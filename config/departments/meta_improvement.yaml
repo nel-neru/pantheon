@@ -1,0 +1,72 @@
+# Meta-Improvement Organization 部署構成定義（上場大企業モデル参考）
+
+departments:
+  - name: "組織進化研究部"
+    type: "org_evolution_research"
+    mission: "上場企業の組織構造を調査・モデル化し、各 Organization に最適な組織設計を提案・支援する"
+    reference_companies: ["McKinsey", "BCG", "トヨタ自動車", "Google"]
+    teams:
+      - name: "Org Research Team"
+        mission: "企業リサーチと組織設計"
+        required_skills:
+          - "corporate_research"
+          - "org_design"
+          - "strategic_planning"
+
+  - name: "エージェントアーキテクチャ部"
+    type: "agent_architecture"
+    mission: "Specialist Agent のスキル設計、ワークフロー改善、新しいエージェント構成の研究と実装"
+    reference_companies: ["OpenAI", "Anthropic", "DeepMind"]
+    teams:
+      - name: "Agent Design Team"
+        mission: "Specialist Agent とワークフローの設計"
+        required_skills:
+          - "agent_workflow_design"
+          - "prompt_engineering"
+          - "tool_integration"
+
+  - name: "ツールインテグレーション部"
+    type: "tool_integration"
+    mission: "新しいツール・サービスのDeep Researchと、安全かつ効果的な組織への導入を推進する"
+    reference_companies: ["Stripe", "Notion", "Linear"]
+    teams:
+      - name: "Tool Adoption Team"
+        mission: "Deep Researchとツール導入"
+        required_skills:
+          - "deep_research"
+          - "tool_integration"
+          - "performance_analysis"
+
+  - name: "Quality Assurance部"
+    type: "performance_optimization"
+    mission: "Internal Consultantとして全活動を厳格に監視・評価し、継続的な品質向上を牽引する"
+    reference_companies: ["監査法人", "McKinsey Quality Assurance"]
+    teams:
+      - name: "Internal Consultant Team"
+        mission: "厳格な品質レビューと改善提案の生成"
+        required_skills:
+          - "performance_analysis"
+          - "strategic_planning"
+          - "deep_research"
+
+  - name: "パフォーマンス最適化部"
+    type: "performance_optimization"
+    mission: "KPI設計、メトリクス分析、改善優先順位付けを行い、組織全体の効率を最大化する"
+    reference_companies: ["Amazon", "Netflix", "Uber"]
+    teams:
+      - name: "Metrics & Optimization Team"
+        mission: "メトリクス設計と改善優先順位付け"
+        required_skills:
+          - "performance_analysis"
+          - "strategic_planning"
+
+  - name: "知識管理・共有部"
+    type: "knowledge_management"
+    mission: "グループ全体の知見を蓄積・構造化し、再利用しやすい基盤を構築する"
+    reference_companies: ["Notion", "Confluenceを活用する先進企業"]
+    teams:
+      - name: "Knowledge Curation Team"
+        mission: "知見の蓄積と再利用基盤の構築"
+        required_skills:
+          - "knowledge_curation"
+          - "strategic_planning"

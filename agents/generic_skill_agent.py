@@ -1,0 +1,158 @@
+"""
+GenericSkillAgent — スキル汎用エージェント
+
+SpecialistAgent のスキルセットを見て AgentSkillEngine でシステムプロンプトを動的生成し、
+任意のタスクを処理できる汎用 LLM エージェント。
+
+専用実装がないスキル（STRATEGIC_PLANNING, CORPORATE_RESEARCH, ORG_DESIGN,
+AGENT_WORKFLOW_DESIGN, PROMPT_ENGINEERING, TOOL_INTEGRATION, etc.）の
+フォールバック実装として機能する。
+
+スキルによる差分の仕組み:
+    同じ GenericSkillAgent クラスでも、SpecialistAgent.skills が異なると
+    AgentSkillEngine が注入するシステムプロンプトが変わるため、
+    LLM は「戦略プランナー」「知識キュレーター」「セキュリティ監査員」等の
+    まったく異なる専門家として振る舞う。
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import List
+
+from core.models.organization import AgentSkill, SpecialistAgent
+
+from .base import AgentResult, AgentTask, BaseAgent
+
+logger = logging.getLogger(__name__)
+
+GENERIC_BASE_PROMPT = """\
+あなたは高度な専門知識を持つ AI エージェントです。
+与えられたタスクを自分のスキルと専門知識を最大限に活かして実行してください。
+
+応答は以下の JSON 形式で返してください（コードブロック不要）:
+{{
+  "result": "タスクの実行結果（詳細な内容）",
+  "key_findings": ["重要な発見事項のリスト"],
+  "recommendations": ["推奨事項のリスト（最大3件）"],
+  "confidence": 0.0から1.0の自信度
+}}"""
+
+
+def _make_specialist(
+    skills: List[AgentSkill],
+    name: str = "GenericSpecialist",
+    description: str = "汎用スキルエージェント",
+) -> SpecialistAgent:
+    """デフォルト SpecialistAgent を作成（スキルは 2〜3 個必須）。"""
+    safe = list(dict.fromkeys(skills))[:3]
+    if len(safe) < 2:
+        safe.append(AgentSkill.DEEP_RESEARCH)
+    return SpecialistAgent(name=name, skills=safe[:3], description=description)
+
+
+class GenericSkillAgent(BaseAgent):
+    """
+    任意のスキルセットに対応する汎用 LLM エージェント。
+
+    AgentSkillEngine がスキルに応じたシステムプロンプトを注入するため、
+    同じクラスでも STRATEGIC_PLANNING と KNOWLEDGE_CURATION では
+    まったく異なる専門家として振る舞う。
+
+    使い方:
+        # 戦略プランナーとして動作
+        agent = GenericSkillAgent.from_skills(
+            [AgentSkill.STRATEGIC_PLANNING, AgentSkill.ORG_DESIGN]
+        )
+        result = await agent.run(AgentTask("organization_design", "..."))
+
+        # AgentFactory 経由（推奨）
+        factory = AgentFactory()
+        agent = factory.create("agent:strategic_planner")
+    """
+
+    def __init__(
+        self,
+        specialist: SpecialistAgent,
+        llm_client=None,
+        **_kwargs,
+    ):
+        super().__init__(specialist)
+        self._llm = llm_client
+
+    @classmethod
+    def from_skills(
+        cls,
+        skills: List[AgentSkill],
+        name: str = "GenericSpecialist",
+        llm_client=None,
+        **_kwargs,
+    ) -> "GenericSkillAgent":
+        """スキルリストから GenericSkillAgent を作成するファクトリメソッド。"""
+        specialist = _make_specialist(skills, name=name)
+        return cls(specialist=specialist, llm_client=llm_client)
+
+    async def run(self, task: AgentTask) -> AgentResult:
+        """スキルを活かしてタスクを実行する。"""
+        system_prompt = self.apply_skills_to_prompt(GENERIC_BASE_PROMPT)
+
+        if self._llm is None:
+            return self._fallback_result(task)
+
+        try:
+            from core.llm import LLMMessage, get_llm_provider
+
+            llm = self._llm or get_llm_provider()
+            messages = [
+                LLMMessage(role="system", content=system_prompt),
+                LLMMessage(
+                    role="user",
+                    content=(
+                        f"タスク種別: {task.task_type}\n\n"
+                        f"{task.description}\n\n"
+                        f"追加コンテキスト: {json.dumps(task.input, ensure_ascii=False, default=str)}"
+                    ),
+                ),
+            ]
+            response = llm.complete(messages)
+            try:
+                data = json.loads(response)
+            except json.JSONDecodeError:
+                data = {
+                    "result": response,
+                    "key_findings": [],
+                    "recommendations": [],
+                    "confidence": 0.7,
+                }
+            return AgentResult(
+                success=True,
+                output=data,
+                thinking_process=f"スキル [{', '.join(s.value for s in self.skills)}] で処理",
+                execution_log=f"GenericSkillAgent.run({task.task_type}): {str(data.get('result', ''))[:100]}",
+            )
+        except Exception as e:
+            logger.error("GenericSkillAgent error: %s", e)
+            return AgentResult(success=False, error=str(e))
+
+    def _fallback_result(self, task: AgentTask) -> AgentResult:
+        skills_str = ", ".join(s.value for s in self.skills)
+        return AgentResult(
+            success=True,
+            output={
+                "result": (
+                    f"{self.name} ({skills_str}) が "
+                    f"タスク '{task.task_type}' を処理します"
+                ),
+                "key_findings": [f"スキル [{skills_str}] が適用されます"],
+                "recommendations": [],
+                "confidence": 0.8,
+            },
+            thinking_process=f"スキル [{skills_str}] を適用",
+            execution_log=f"GenericSkillAgent fallback: {task.task_type}",
+        )
+
+    def describe(self) -> str:
+        """このエージェントの説明文を返す（ログ・UI 向け）。"""
+        skills_str = " + ".join(s.value for s in self.skills)
+        return f"{self.name} [{skills_str}]"

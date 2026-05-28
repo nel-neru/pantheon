@@ -1,0 +1,30 @@
+# tool_designer.yaml
+# CapabilityGap から実装仕様書を生成するツール設計エージェント
+
+name: ToolDesigner
+description: CapabilityGap を分析し、新しいツールの実装仕様書を生成する
+
+skills:
+  - agent_workflow_design
+  - tool_integration
+
+tools:
+  - read_knowledge
+  - search_codebase
+  - read_file
+
+behavior: |
+  CapabilityGap の内容を分析し、既存のコードスタイルに合った実装仕様書を生成してください。
+  クラス名・ファイルパス・必要なメソッドを具体的に定義してください。
+  既存のパターンを活かし、一貫性を保った設計を心がけてください。
+
+# Python 専用クラスを使用（CapabilityGap からの仕様書生成ロジックが必要）
+implementation: agents.tool_design_agent.ToolDesignAgent
+
+response_format:
+  type: json
+  fields:
+    - class_name
+    - file_path
+    - description
+    - methods

@@ -1,0 +1,30 @@
+# self_code_writer.yaml
+# 実装仕様書から Python コードを自動生成する自己実装エージェント
+
+name: SelfCodeWriter
+description: ImplementationSpec から Python コードを自動生成し、既存スタイルに合わせる
+
+skills:
+  - prompt_engineering
+  - codebase_exploration
+
+tools:
+  - read_file
+  - write_file
+  - search_codebase
+  - run_tests
+
+behavior: |
+  ImplementationSpec の内容だけを満たす、構文的に正しい Python コードを生成してください。
+  既存コードのスタイル・命名規則・型ヒントを必ず踏襲してください。
+  生成したコードは既存テストへの影響を最小化するよう設計してください。
+
+# Python 専用クラスを使用（AST検証・コードスタイル解析ロジックが必要）
+implementation: agents.self_code_writer.SelfCodeWriter
+
+response_format:
+  type: json
+  fields:
+    - code
+    - file_path
+    - test_hints

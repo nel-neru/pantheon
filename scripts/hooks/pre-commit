@@ -1,0 +1,38 @@
+#!/bin/sh
+# RepoCorp AI - pre-commit hook
+# GUI ページが変更された場合、対応するテストファイルの存在を確認する
+
+STAGED_PAGES=$(git diff --cached --name-only | grep "web/frontend/src/pages/.*\.tsx$" | grep -v "__tests__" || true)
+
+if [ -n "$STAGED_PAGES" ]; then
+    echo "GUI ページの変更を検出しました:"
+    echo "$STAGED_PAGES" | sed 's/^/  /'
+    echo ""
+    echo "テストカバレッジを確認しています..."
+
+    python3 scripts/check_test_coverage.py
+    EXIT_CODE=$?
+
+    if [ $EXIT_CODE -ne 0 ]; then
+        echo ""
+        echo "コミットをブロックしました。テストを追加してから再度コミットしてください。"
+        exit 1
+    fi
+fi
+
+# UIページが変更された場合、ヘルプページの更新を促す
+CHANGED_PAGES=$(git diff --cached --name-only | grep "web/frontend/src/pages/.*\.tsx$" | grep -v "__tests__" | grep -v "HelpPage" || true)
+HELP_CHANGED=$(git diff --cached --name-only | grep "web/frontend/src/pages/HelpPage\.tsx$" || true)
+
+if [ -n "$CHANGED_PAGES" ] && [ -z "$HELP_CHANGED" ]; then
+  echo ""
+  echo "⚠  警告: UIページが変更されていますが HelpPage.tsx が更新されていません。"
+  echo "   変更されたページ:"
+  echo "$CHANGED_PAGES" | sed 's/^/     /'
+  echo ""
+  echo "   HelpPage.tsx を更新してください (web/frontend/src/pages/HelpPage.tsx)"
+  echo "   問題なければそのままコミットできます。"
+  echo ""
+fi
+
+exit 0

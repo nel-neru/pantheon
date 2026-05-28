@@ -1,0 +1,25 @@
+# RepoCorp AI デフォルト設定
+# このファイルをコピーして custom.yaml などを作成して使う想定
+
+self_improvement:
+  review_strictness:
+    base_level: "very_strict"
+    dynamic_adjustment: true
+    low_health_threshold: 50      # この値以下でさらに厳しくする
+    medium_health_threshold: 70
+
+  human_in_loop:
+    enabled: true
+    auto_approve_below_priority: "medium"
+    timeout_minutes: 60
+
+  improvement_cycle:
+    max_cycles_per_sub: 5
+    stop_if_no_improvement_for: 2
+    default_max_cycles: 3
+
+  metrics:
+    health_score_weights:
+      autonomy: 0.4
+      velocity: 0.3
+      review_score: 0.3

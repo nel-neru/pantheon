@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repocorp-ai"
+version = "0.1.0"
+description = "個人開発者のための自己成長型 AI Organization プラットフォーム"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["ai", "agents", "code-review", "self-improvement", "llm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "pydantic>=2.7",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "PyGithub>=2.3",
+    "GitPython>=3.1",
+    "anthropic>=0.28",
+    "openai>=1.30",
+    "langgraph>=0.2",
+    "langgraph-checkpoint-sqlite>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+web = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.scripts]
+repocorp = "main:main"
+
+[project.urls]
+Repository = "https://github.com/your-username/repocorp-ai"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agents*", "core*", "config*", "github_integration*", "utils*", "web*"]
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

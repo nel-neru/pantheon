@@ -1,0 +1,2172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RepoCorp AI Platform</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --primary: #58a6ff; --green: #3fb950; --yellow: #d29922;
+      --red: #f85149; --muted: #8b949e; --text: #e6edf3;
+      --shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background:
+        radial-gradient(circle at top, rgba(88, 166, 255, 0.12), transparent 28%),
+        linear-gradient(180deg, rgba(13, 17, 23, 0.98), rgba(13, 17, 23, 1));
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: var(--primary); }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13, 17, 23, 0.92);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(88, 166, 255, 0.22), rgba(63, 185, 80, 0.18));
+      border: 1px solid rgba(88, 166, 255, 0.32);
+      font-size: 1.45rem;
+      flex: 0 0 auto;
+    }
+
+    .brand-copy { min-width: 0; }
+    .brand-copy h1 { margin: 0; font-size: 1.1rem; }
+    .brand-copy p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 58vw;
+    }
+
+    .status-stack {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(22, 27, 34, 0.85);
+      color: var(--muted);
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    .status-pill strong { color: var(--text); font-weight: 600; }
+    .status-dot { font-size: 0.72rem; }
+    .status-dot.connected { color: var(--green); }
+    .status-dot.disconnected { color: var(--red); }
+    .status-dot.connecting { color: var(--yellow); }
+    .mono { font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .tab-nav {
+      position: sticky;
+      top: 77px;
+      z-index: 20;
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--border);
+      background: rgba(22, 27, 34, 0.88);
+      backdrop-filter: blur(10px);
+    }
+
+    .tab-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 0.94rem;
+      font-weight: 600;
+      transition: 0.18s ease;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover,
+    .tab-btn.active {
+      color: var(--text);
+      background: rgba(88, 166, 255, 0.08);
+      border-color: rgba(88, 166, 255, 0.24);
+    }
+
+    .app-main {
+      flex: 1;
+      min-height: 0;
+      padding: 20px;
+    }
+
+    .tab-panel {
+      display: none;
+      height: calc(100vh - 146px);
+      overflow: auto;
+    }
+
+    .tab-panel.active { display: block; }
+    #tab-chat.active { display: flex; }
+
+    .card,
+    .panel-card {
+      background: rgba(22, 27, 34, 0.94);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-card { padding: 20px; }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .panel-head h2,
+    .panel-head h3,
+    .section-title {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+
+    .muted { color: var(--muted); }
+    .caption { font-size: 0.82rem; color: var(--muted); }
+    .hidden { display: none !important; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 10px 16px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: var(--primary);
+      color: #0d1117;
+      font-weight: 700;
+      transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+    .btn.secondary {
+      background: rgba(22, 27, 34, 1);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .btn.danger { background: var(--red); color: #fff; }
+    .btn.success { background: var(--green); color: #08130d; }
+    .btn.ghost {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .btn.small {
+      min-height: 34px;
+      padding: 7px 12px;
+      border-radius: 10px;
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .spinner,
+    .spinner-inline {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid rgba(230, 237, 243, 0.18);
+      border-top-color: currentColor;
+      animation: spin 0.9s linear infinite;
+    }
+
+    .spinner-inline { width: 14px; height: 14px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .metric-grid,
+    .stats-grid,
+    .org-grid,
+    .agents-grid,
+    .skills-grid,
+    .goal-grid,
+    .analyze-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .metric-grid { grid-template-columns: 1.2fr 1fr; }
+    .org-grid { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+    .agents-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+    .goal-grid { grid-template-columns: 1.1fr 0.9fr; }
+    .analyze-grid { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; }
+
+    .stat-card,
+    .org-card,
+    .agent-card,
+    .goal-history-card,
+    .result-card,
+    .mini-card {
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(13, 17, 23, 0.44);
+    }
+
+    .stat-card strong {
+      display: block;
+      font-size: 1.6rem;
+      margin-top: 8px;
+      color: var(--text);
+    }
+
+    .hero-card {
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero-score {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .hero-score strong {
+      font-size: clamp(2.6rem, 7vw, 4.8rem);
+      line-height: 1;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .health-row,
+    .inline-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .health-bar {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(48, 54, 61, 0.6);
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .health-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.25s ease;
+    }
+
+    .badge,
+    .chip,
+    .tag,
+    .priority-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      border: 1px solid transparent;
+      width: fit-content;
+    }
+
+    .badge { background: rgba(88, 166, 255, 0.1); color: var(--primary); border-color: rgba(88, 166, 255, 0.2); }
+    .tag { background: rgba(255, 255, 255, 0.03); color: var(--muted); border-color: var(--border); }
+    .priority-badge.high { background: rgba(248, 81, 73, 0.16); color: var(--red); border-color: rgba(248, 81, 73, 0.24); }
+    .priority-badge.medium { background: rgba(210, 153, 34, 0.16); color: var(--yellow); border-color: rgba(210, 153, 34, 0.24); }
+    .priority-badge.low { background: rgba(63, 185, 80, 0.16); color: var(--green); border-color: rgba(63, 185, 80, 0.24); }
+
+    .empty-state,
+    .loading-state {
+      padding: 36px 24px;
+      text-align: center;
+      border: 1px dashed var(--border);
+      border-radius: 16px;
+      color: var(--muted);
+      background: rgba(13, 17, 23, 0.34);
+    }
+
+    .empty-state strong,
+    .loading-state strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text);
+      font-size: 1rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1.2fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: 0.82rem; color: var(--muted); }
+
+    .input,
+    .select,
+    .textarea,
+    input[type="range"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #0d1117;
+      color: var(--text);
+      padding: 11px 13px;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .input:focus,
+    .select:focus,
+    .textarea:focus {
+      border-color: rgba(88, 166, 255, 0.6);
+      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
+    }
+
+    .textarea { min-height: 132px; resize: vertical; }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .repo-path {
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      word-break: break-all;
+    }
+
+    .org-card,
+    .agent-card {
+      display: grid;
+      gap: 12px;
+      min-height: 100%;
+    }
+
+    .card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .table-shell {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      background: rgba(13, 17, 23, 0.34);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid rgba(48, 54, 61, 0.55);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: rgba(22, 27, 34, 0.92);
+    }
+
+    tbody tr:hover { background: rgba(88, 166, 255, 0.04); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    .table-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .search-row,
+    .toolbar-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .toolbar-row .toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .chat-shell {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      min-height: 0;
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: rgba(22, 27, 34, 0.96);
+      box-shadow: var(--shadow);
+    }
+
+    .chat-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13, 17, 23, 0.68);
+    }
+
+    .chat-topbar .toolbar-group { gap: 8px; }
+
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 178px);
+      min-height: 0;
+    }
+
+    .chat-messages {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scroll-behavior: smooth;
+    }
+
+    .message-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 84%;
+    }
+
+    .message-wrap.user { align-self: flex-end; }
+    .message-wrap.assistant { align-self: flex-start; }
+
+    .message-label {
+      color: var(--muted);
+      font-size: 0.76rem;
+      padding: 0 4px;
+    }
+
+    .message {
+      padding: 14px 16px;
+      border-radius: 16px;
+      line-height: 1.6;
+      border: 1px solid var(--border);
+      overflow-wrap: anywhere;
+    }
+
+    .message.user {
+      background: var(--primary);
+      color: #08131f;
+      border-color: transparent;
+      border-radius: 16px 16px 4px 16px;
+    }
+
+    .message.assistant {
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 16px 16px 16px 4px;
+    }
+
+    .message.assistant :first-child { margin-top: 0; }
+    .message.assistant :last-child { margin-bottom: 0; }
+    .message.assistant pre {
+      margin: 12px 0;
+      padding: 14px;
+      border-radius: 12px;
+      overflow: auto;
+      background: rgba(1, 4, 9, 0.75);
+      border: 1px solid var(--border);
+    }
+    .message.assistant code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: rgba(110, 118, 129, 0.18);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.9em;
+    }
+    .message.assistant pre code { background: transparent; padding: 0; }
+    .message.assistant blockquote {
+      margin: 12px 0;
+      padding-left: 14px;
+      border-left: 3px solid var(--border);
+      color: var(--muted);
+    }
+
+    .typing {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+    }
+
+    .chat-input-wrap {
+      position: relative;
+      padding: 14px;
+      border-top: 1px solid var(--border);
+      background: rgba(13, 17, 23, 0.8);
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .chat-input {
+      flex: 1;
+      min-height: 52px;
+      max-height: 220px;
+      resize: none;
+      padding-right: 18px;
+    }
+
+    .chat-help {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      flex-wrap: wrap;
+    }
+
+    .slash-dropdown {
+      position: absolute;
+      left: 14px;
+      right: 110px;
+      bottom: 86px;
+      display: grid;
+      gap: 4px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(22, 27, 34, 0.98);
+      box-shadow: var(--shadow);
+      max-height: 280px;
+      overflow: auto;
+      z-index: 4;
+    }
+
+    .slash-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+    }
+
+    .slash-item small { color: var(--muted); }
+    .slash-item.active,
+    .slash-item:hover { background: rgba(88, 166, 255, 0.09); }
+
+    .toast-container {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: grid;
+      gap: 10px;
+      z-index: 60;
+    }
+
+    .toast {
+      min-width: 260px;
+      max-width: min(420px, calc(100vw - 36px));
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(22, 27, 34, 0.98);
+      box-shadow: var(--shadow);
+      animation: toast-in 0.22s ease;
+    }
+
+    .toast.success { border-color: rgba(63, 185, 80, 0.38); }
+    .toast.error { border-color: rgba(248, 81, 73, 0.38); }
+    .toast.info { border-color: rgba(88, 166, 255, 0.32); }
+    .toast strong { display: block; margin-bottom: 4px; }
+    @keyframes toast-in {
+      from { transform: translateY(8px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .modal-root {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(1, 4, 9, 0.68);
+      z-index: 70;
+    }
+
+    .modal-root.open { display: grid; }
+    .modal-card {
+      width: min(640px, 100%);
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: rgba(22, 27, 34, 0.98);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+
+    .modal-card.wide { width: min(760px, 100%); }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .result-block {
+      margin: 0;
+      padding: 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(13, 17, 23, 0.66);
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    .proposal-list,
+    .summary-list,
+    .history-list,
+    .recommended-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .skill-pill {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(13, 17, 23, 0.52);
+      color: var(--text);
+      font-size: 0.84rem;
+      margin: 0 8px 8px 0;
+    }
+
+    .skill-pill[data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 8px);
+      width: min(280px, 75vw);
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(1, 4, 9, 0.98);
+      color: var(--text);
+      font-size: 0.78rem;
+      white-space: normal;
+      box-shadow: var(--shadow);
+      z-index: 5;
+    }
+
+    .common-select {
+      min-width: 220px;
+    }
+
+    .mobile-stack,
+    .stack { display: grid; gap: 16px; }
+    .stack.tight { gap: 10px; }
+
+    @media (max-width: 1100px) {
+      .metric-grid,
+      .goal-grid,
+      .analyze-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .form-grid .field:last-of-type,
+      .form-grid > .btn { grid-column: span 2; }
+    }
+
+    @media (max-width: 760px) {
+      .app-header,
+      .app-main { padding: 14px; }
+      .tab-nav { top: 95px; padding: 10px 14px; }
+      .brand-copy p { max-width: 100%; }
+      .status-stack { width: 100%; justify-content: flex-start; }
+      .stats-grid,
+      .form-grid { grid-template-columns: 1fr; }
+      .form-grid .field:last-of-type,
+      .form-grid > .btn { grid-column: auto; }
+      .chat-container { height: calc(100vh - 205px); }
+      .slash-dropdown { right: 14px; bottom: 140px; }
+      .message-wrap { max-width: 100%; }
+      .toolbar-row,
+      .search-row,
+      .panel-head,
+      .health-row,
+      .inline-meta { align-items: flex-start; }
+      table, thead, tbody, tr, th, td { display: block; }
+      thead { display: none; }
+      .table-shell { background: transparent; border: none; }
+      tbody { display: grid; gap: 12px; }
+      tr {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(22, 27, 34, 0.92);
+        overflow: hidden;
+      }
+      td {
+        display: grid;
+        gap: 4px;
+        border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+      }
+      td:last-child { border-bottom: none; }
+      td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark">🏢</div>
+      <div class="brand-copy">
+        <h1>RepoCorp AI Platform</h1>
+        <p id="platformHome">Platform home を読み込み中...</p>
+      </div>
+    </div>
+    <div class="status-stack">
+      <div class="status-pill">
+        <span id="connectionDot" class="status-dot disconnected">●</span>
+        <span><strong id="connectionStatusText">Disconnected</strong> <span class="caption">/ws/chat</span></span>
+      </div>
+      <div class="status-pill">
+        <span id="llmDot" class="status-dot disconnected">●</span>
+        <span><strong id="llmStatusText">LLM status unknown</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tab-nav" aria-label="Primary navigation">
+    <button class="tab-btn active" data-tab="chat">💬 Chat</button>
+    <button class="tab-btn" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab-btn" data-tab="orgs">🏗 Organizations</button>
+    <button class="tab-btn" data-tab="proposals">💡 改善提案</button>
+    <button class="tab-btn" data-tab="analyze">🔍 分析</button>
+    <button class="tab-btn" data-tab="goals">🎯 ゴール実行</button>
+    <button class="tab-btn" data-tab="agents">🤖 エージェント</button>
+  </nav>
+
+  <main class="app-main">
+    <section id="tab-chat" class="tab-panel active" aria-label="Chat tab">
+      <div class="chat-shell">
+        <div class="chat-topbar">
+          <div>
+            <div class="section-title">リアルタイム対話</div>
+            <div class="caption">自然言語またはスラッシュコマンドで RepoCorp AI を操作</div>
+          </div>
+          <div class="toolbar-group">
+            <span class="badge">WebSocket</span>
+            <span class="badge">Markdown</span>
+          </div>
+        </div>
+        <div class="chat-container">
+          <div id="chatMessages" class="chat-messages"></div>
+          <div class="chat-input-wrap">
+            <div id="slashDropdown" class="slash-dropdown hidden"></div>
+            <div class="chat-input-row">
+              <textarea id="chatInput" class="input textarea chat-input" placeholder="メッセージを入力...  / でコマンド候補を表示" rows="1"></textarea>
+              <button id="chatSendBtn" class="btn" type="button">送信</button>
+            </div>
+            <div class="chat-help">
+              <span>Enter で送信 / Shift+Enter で改行 / オートリコネクト: 3秒ごと</span>
+              <span>利用可能: /help /init /status /orgs /add /analyze /proposals /approve /goal /agents /exit</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-dashboard" class="tab-panel" aria-label="Dashboard tab">
+      <div class="stack">
+        <div class="metric-grid">
+          <div class="hero-card card">
+            <div class="panel-head">
+              <div>
+                <h2>Platform Health</h2>
+                <div class="caption">グループ全体の状態をリアルタイムに可視化</div>
+              </div>
+              <button id="dashboardInitBtn" class="btn hidden" type="button">⚡ Initialize Platform</button>
+            </div>
+            <div class="hero-score">
+              <strong id="dashboardHealthScore">--</strong>
+              <div>
+                <div class="badge">Group Health Score</div>
+                <div class="caption" id="dashboardHealthMeta">データを取得中...</div>
+              </div>
+            </div>
+            <div class="hero-actions">
+              <button id="dashboardRefreshBtn" class="btn secondary" type="button">↻ 更新</button>
+              <button class="btn ghost" type="button" data-open-tab="orgs">➕ Organization を追加</button>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-head">
+              <div>
+                <h3>Live Summary</h3>
+                <div class="caption">30秒ごとに自動更新</div>
+              </div>
+            </div>
+            <div id="dashboardStats" class="stats-grid"></div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h3>Organizations</h3>
+              <div class="caption">健康度順に表示。カードをクリックすると提案一覧へ移動</div>
+            </div>
+          </div>
+          <div id="dashboardOrgGrid" class="org-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-orgs" class="tab-panel" aria-label="Organizations tab">
+      <div class="stack">
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h2>Organization を追加</h2>
+              <div class="caption">名前・担当リポジトリ・目的を登録して運用開始</div>
+            </div>
+          </div>
+          <form id="orgForm" class="form-grid">
+            <div class="field">
+              <label for="orgName">Name *</label>
+              <input id="orgName" class="input" name="name" required placeholder="MyApp" />
+            </div>
+            <div class="field">
+              <label for="orgRepo">Repo Path</label>
+              <input id="orgRepo" class="input mono" name="target_repo_path" placeholder="/Users/you/project" />
+            </div>
+            <div class="field">
+              <label for="orgPurpose">Purpose</label>
+              <input id="orgPurpose" class="input" name="purpose" placeholder="継続的な品質改善、成長目標など" />
+            </div>
+            <button id="orgSubmitBtn" class="btn" type="submit">➕ 追加</button>
+          </form>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h2>登録済み Organizations</h2>
+              <div class="caption">削除と分析のショートカット付き</div>
+            </div>
+          </div>
+          <div id="orgList" class="org-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-proposals" class="tab-panel" aria-label="Proposals tab">
+      <div class="panel-card stack">
+        <div class="toolbar-row">
+          <div class="toolbar-group">
+            <div class="field">
+              <label for="proposalsOrgSelect">Organization</label>
+              <select id="proposalsOrgSelect" class="select common-select"></select>
+            </div>
+            <button id="proposalsRefreshBtn" class="btn secondary" type="button">↻ 更新</button>
+          </div>
+          <button id="openAnalyzeModalBtn" class="btn" type="button">🔍 新しい分析を実行</button>
+        </div>
+        <div id="proposalsContent"></div>
+      </div>
+    </section>
+
+    <section id="tab-analyze" class="tab-panel" aria-label="Analyze tab">
+      <div class="analyze-grid">
+        <div class="panel-card stack tight">
+          <div>
+            <h2 class="section-title">分析設定</h2>
+            <div class="caption">コードレビューを実行して改善提案を生成</div>
+          </div>
+          <div class="field">
+            <label for="analyzeOrgSelect">Organization</label>
+            <select id="analyzeOrgSelect" class="select"></select>
+          </div>
+          <div class="field">
+            <label for="analyzeMaxFiles">Max files <strong id="analyzeMaxFilesValue">15</strong></label>
+            <input id="analyzeMaxFiles" type="range" min="1" max="50" value="15" />
+          </div>
+          <label class="checkbox-row"><input id="analyzeDryRun" type="checkbox" checked /> Dry-run を有効にする</label>
+          <button id="analyzeRunBtn" class="btn" type="button">▶️ 分析開始</button>
+        </div>
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h2>分析結果</h2>
+              <div class="caption">レビュー件数、生成提案、優先度別一覧を表示</div>
+            </div>
+          </div>
+          <div id="analyzeResult"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-goals" class="tab-panel" aria-label="Goals tab">
+      <div class="goal-grid">
+        <div class="panel-card stack">
+          <div>
+            <h2 class="section-title">ゴール実行</h2>
+            <div class="caption">抽象ゴールからパイプラインを実行</div>
+          </div>
+          <div class="field">
+            <label for="goalInput">Goal</label>
+            <textarea id="goalInput" class="textarea" placeholder="例: ECサイトを作りたい、セキュリティを強化したい"></textarea>
+          </div>
+          <label class="checkbox-row"><input id="goalDryRun" type="checkbox" checked /> Dry-run を有効にする</label>
+          <button id="goalRunBtn" class="btn" type="button">🚀 ゴール実行</button>
+          <div id="goalResult"></div>
+        </div>
+        <div class="panel-card stack">
+          <div class="panel-head">
+            <div>
+              <h2>Recent Goals</h2>
+              <div class="caption">/api/goals/history を優先し、未対応時は localStorage を利用</div>
+            </div>
+            <button id="goalHistoryRefreshBtn" class="btn secondary small" type="button">↻ 再読込</button>
+          </div>
+          <div id="goalHistory"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-agents" class="tab-panel" aria-label="Agents tab">
+      <div class="stack">
+        <div class="panel-card stack">
+          <div class="search-row">
+            <div>
+              <h2 class="section-title">Agents</h2>
+              <div class="caption">15エージェントの定義を検索・閲覧</div>
+            </div>
+            <input id="agentSearchInput" class="input common-select" placeholder="名前・skill・capability_id で検索" />
+          </div>
+          <div id="agentStats" class="caption"></div>
+          <div id="agentsGrid" class="agents-grid"></div>
+        </div>
+
+        <div class="panel-card stack">
+          <div>
+            <h2 class="section-title">Skills</h2>
+            <div class="caption">10スキル。ホバーで persona を表示</div>
+          </div>
+          <div id="skillsCloud"></div>
+        </div>
+
+        <div class="panel-card stack">
+          <div class="toolbar-row">
+            <div>
+              <h2 class="section-title">Orchestration Analysis</h2>
+              <div class="caption">タスクタイプごとに最適パターンと推奨エージェントを確認</div>
+            </div>
+            <div class="toolbar-group">
+              <select id="orchestrationTaskType" class="select common-select">
+                <option value="code_review">code_review</option>
+                <option value="meta_improvement">meta_improvement</option>
+                <option value="security_audit">security_audit</option>
+                <option value="codebase_exploration">codebase_exploration</option>
+                <option value="improvement_execution">improvement_execution</option>
+              </select>
+              <button id="orchestrationAnalyzeBtn" class="btn" type="button">分析</button>
+            </div>
+          </div>
+          <div id="orchestrationResult"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="modalRoot" class="modal-root">
+    <div id="modalCard" class="modal-card"></div>
+  </div>
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script>
+    const SLASH_COMMANDS = [
+      { cmd: '/help', desc: 'ヘルプを表示' },
+      { cmd: '/init', desc: 'プラットフォームを初期化' },
+      { cmd: '/status', desc: 'プラットフォーム状態' },
+      { cmd: '/orgs', desc: 'Organization一覧' },
+      { cmd: '/add', desc: 'Organizationを追加 /add <名前> [パス]' },
+      { cmd: '/analyze', desc: 'リポジトリを分析 /analyze <org>' },
+      { cmd: '/proposals', desc: '改善提案一覧 /proposals <org>' },
+      { cmd: '/approve', desc: '提案を承認 /approve <id> <org>' },
+      { cmd: '/goal', desc: 'ゴールを実行 /goal <テキスト>' },
+      { cmd: '/agents', desc: 'エージェント一覧' },
+      { cmd: '/exit', desc: '終了' },
+    ];
+
+    const App = (() => {
+      const state = {
+        currentTab: 'chat',
+        wsConnection: null,
+        wsReconnectTimer: null,
+        organizations: [],
+        chatHistory: [],
+        platformStatus: null,
+        proposals: [],
+        agents: [],
+        skills: [],
+        goalHistory: [],
+        hasLLM: false,
+        chatPending: false,
+        typingEl: null,
+        slashMatches: [],
+        slashIndex: 0,
+      };
+
+      const els = {};
+
+      function $(id) { return document.getElementById(id); }
+
+      function escapeHtml(value = '') {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function healthColor(score) {
+        const value = Number(score) || 0;
+        if (value >= 70) return 'var(--green)';
+        if (value >= 40) return 'var(--yellow)';
+        return 'var(--red)';
+      }
+
+      function formatNumber(value, digits = 1) {
+        const num = Number(value);
+        return Number.isFinite(num) ? num.toFixed(digits) : '--';
+      }
+
+      function truncate(value, length = 140) {
+        if (!value) return '—';
+        return value.length > length ? `${value.slice(0, length)}…` : value;
+      }
+
+      async function api(method, path, body = null) {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body !== null) opts.body = JSON.stringify(body);
+        const res = await fetch(path, opts);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail || 'API error');
+        }
+        if (res.status === 204) return null;
+        return res.json();
+      }
+
+      function toast(message, type = 'success', title = '') {
+        const toastEl = document.createElement('div');
+        toastEl.className = `toast ${type}`;
+        const heading = title || (type === 'error' ? 'エラー' : type === 'info' ? 'お知らせ' : '完了');
+        toastEl.innerHTML = `<strong>${escapeHtml(heading)}</strong><div>${escapeHtml(message)}</div>`;
+        els.toastContainer.appendChild(toastEl);
+        window.setTimeout(() => {
+          toastEl.style.opacity = '0';
+          toastEl.style.transform = 'translateY(8px)';
+          window.setTimeout(() => toastEl.remove(), 180);
+        }, 3200);
+      }
+
+      function setButtonLoading(button, loading, label) {
+        if (!button) return;
+        if (loading) {
+          if (!button.dataset.originalLabel) button.dataset.originalLabel = button.innerHTML;
+          button.disabled = true;
+          button.innerHTML = `<span class="spinner-inline"></span>${escapeHtml(label || '処理中...')}`;
+        } else {
+          button.disabled = false;
+          if (button.dataset.originalLabel) button.innerHTML = button.dataset.originalLabel;
+        }
+      }
+
+      function renderEmpty(title, body, buttonHtml = '') {
+        return `
+          <div class="empty-state">
+            <strong>${escapeHtml(title)}</strong>
+            <div>${escapeHtml(body)}</div>
+            ${buttonHtml ? `<div style="margin-top:14px">${buttonHtml}</div>` : ''}
+          </div>
+        `;
+      }
+
+      function renderLoading(label = '読み込み中...') {
+        return `
+          <div class="loading-state">
+            <div class="spinner" style="margin:0 auto 12px"></div>
+            <strong>${escapeHtml(label)}</strong>
+            <div>少々お待ちください。</div>
+          </div>
+        `;
+      }
+
+      function updateConnectionStatus(mode) {
+        const map = {
+          connected: { dot: 'connected', text: 'Connected', emoji: '🟢' },
+          disconnected: { dot: 'disconnected', text: 'Disconnected', emoji: '🔴' },
+          connecting: { dot: 'connecting', text: 'Connecting', emoji: '🟡' },
+        };
+        const current = map[mode] || map.disconnected;
+        els.connectionDot.className = `status-dot ${current.dot}`;
+        els.connectionStatusText.textContent = `${current.emoji} ${current.text}`;
+      }
+
+      function updateLLMStatus(hasLLM) {
+        state.hasLLM = Boolean(hasLLM);
+        els.llmDot.className = `status-dot ${state.hasLLM ? 'connected' : 'disconnected'}`;
+        els.llmStatusText.textContent = state.hasLLM ? 'LLM ready' : 'LLM unavailable';
+      }
+
+      function scrollChatToBottom() {
+        els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+      }
+
+      function renderMessage(role, content) {
+        const wrap = document.createElement('div');
+        wrap.className = `message-wrap ${role}`;
+        const label = role === 'user' ? 'You' : 'RepoCorp AI';
+        const message = document.createElement('div');
+        message.className = `message ${role}`;
+        if (role === 'assistant') {
+          message.innerHTML = marked.parse(content || '');
+        } else {
+          message.textContent = content || '';
+        }
+        wrap.innerHTML = `<div class="message-label">${label}</div>`;
+        wrap.appendChild(message);
+        els.chatMessages.appendChild(wrap);
+        state.chatHistory.push({ role, content });
+        scrollChatToBottom();
+      }
+
+      function showTyping() {
+        hideTyping();
+        const wrap = document.createElement('div');
+        wrap.className = 'message-wrap assistant';
+        wrap.innerHTML = `
+          <div class="message-label">RepoCorp AI</div>
+          <div class="message assistant typing"><span class="spinner-inline"></span>応答を生成しています...</div>
+        `;
+        state.typingEl = wrap;
+        els.chatMessages.appendChild(wrap);
+        scrollChatToBottom();
+      }
+
+      function hideTyping() {
+        if (state.typingEl) {
+          state.typingEl.remove();
+          state.typingEl = null;
+        }
+      }
+
+      function autoResizeChatInput() {
+        els.chatInput.style.height = 'auto';
+        els.chatInput.style.height = `${Math.min(els.chatInput.scrollHeight, 220)}px`;
+      }
+
+      function getSlashMatches(text) {
+        const trimmed = text.trimStart();
+        if (!trimmed.startsWith('/')) return [];
+        const currentToken = trimmed.split(/\s+/)[0].toLowerCase();
+        return SLASH_COMMANDS.filter((item) => item.cmd.startsWith(currentToken));
+      }
+
+      function renderSlashDropdown() {
+        state.slashMatches = getSlashMatches(els.chatInput.value);
+        if (!state.slashMatches.length) {
+          els.slashDropdown.classList.add('hidden');
+          els.slashDropdown.innerHTML = '';
+          state.slashIndex = 0;
+          return;
+        }
+        state.slashIndex = Math.min(state.slashIndex, state.slashMatches.length - 1);
+        els.slashDropdown.innerHTML = state.slashMatches.map((item, index) => `
+          <button class="slash-item ${index === state.slashIndex ? 'active' : ''}" type="button" data-cmd="${escapeHtml(item.cmd)}">
+            <span><strong>${escapeHtml(item.cmd)}</strong><br /><small>${escapeHtml(item.desc)}</small></span>
+            <span class="caption">↵</span>
+          </button>
+        `).join('');
+        els.slashDropdown.classList.remove('hidden');
+      }
+
+      function applySlashCommand(command) {
+        const needsArgs = ['/add', '/analyze', '/proposals', '/approve', '/goal'].includes(command);
+        els.chatInput.value = needsArgs ? `${command} ` : command;
+        autoResizeChatInput();
+        renderSlashDropdown();
+        els.chatInput.focus();
+      }
+
+      function connectWS() {
+        if (state.wsConnection && [WebSocket.OPEN, WebSocket.CONNECTING].includes(state.wsConnection.readyState)) return;
+        if (state.wsReconnectTimer) {
+          clearTimeout(state.wsReconnectTimer);
+          state.wsReconnectTimer = null;
+        }
+        updateConnectionStatus('connecting');
+        const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`;
+        state.wsConnection = new WebSocket(wsUrl);
+
+        state.wsConnection.addEventListener('open', () => {
+          updateConnectionStatus('connected');
+          if (!state.chatHistory.length) {
+            renderMessage('assistant', 'ようこそ。WebSocket に接続しました。自然言語または `/help` から始めてください。');
+          } else {
+            toast('チャット接続が復旧しました', 'info', '再接続');
+          }
+        });
+
+        state.wsConnection.addEventListener('message', (event) => {
+          let payload;
+          try {
+            payload = JSON.parse(event.data);
+          } catch {
+            hideTyping();
+            renderMessage('assistant', event.data);
+            return;
+          }
+
+          if (payload.type === 'status') {
+            updateLLMStatus(payload.has_llm);
+            return;
+          }
+
+          if (payload.type === 'message') {
+            state.chatPending = false;
+            hideTyping();
+            renderMessage(payload.role || 'assistant', payload.content || '');
+            return;
+          }
+
+          if (payload.type === 'exit') {
+            state.chatPending = false;
+            hideTyping();
+            toast('チャットセッションを終了しました', 'info', 'Exit');
+            try { state.wsConnection.close(); } catch (error) { console.debug(error); }
+          }
+        });
+
+        state.wsConnection.addEventListener('close', () => {
+          updateConnectionStatus('disconnected');
+          if (state.chatPending) hideTyping();
+          if (!state.wsReconnectTimer) {
+            state.wsReconnectTimer = window.setTimeout(() => {
+              state.wsReconnectTimer = null;
+              connectWS();
+            }, 3000);
+          }
+        });
+
+        state.wsConnection.addEventListener('error', () => {
+          updateConnectionStatus('disconnected');
+        });
+      }
+
+      function sendChatMessage() {
+        const message = els.chatInput.value.trim();
+        if (!message) return;
+        if (!state.wsConnection || state.wsConnection.readyState !== WebSocket.OPEN) {
+          toast('WebSocket が未接続です。再接続を待ってください。', 'error');
+          connectWS();
+          return;
+        }
+        renderMessage('user', message);
+        els.chatInput.value = '';
+        autoResizeChatInput();
+        els.slashDropdown.classList.add('hidden');
+        state.chatPending = true;
+        showTyping();
+        state.wsConnection.send(JSON.stringify({ message }));
+      }
+
+      function showTab(tabId) {
+        state.currentTab = tabId;
+        document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tabId));
+        document.querySelectorAll('.tab-panel').forEach((panel) => panel.classList.toggle('active', panel.id === `tab-${tabId}`));
+        if (tabId === 'dashboard') renderDashboard();
+        if (tabId === 'orgs') renderOrganizations();
+        if (tabId === 'proposals') loadProposals(els.proposalsOrgSelect.value || state.organizations[0]?.name || '');
+        if (tabId === 'analyze') renderAnalyzeResult(state.lastAnalyzeResult);
+        if (tabId === 'goals') renderGoalHistory();
+        if (tabId === 'agents') renderAgents();
+      }
+
+      async function refreshCoreData(options = {}) {
+        const { silent = false } = options;
+        try {
+          const [status, organizations] = await Promise.all([
+            api('GET', '/api/platform/status'),
+            api('GET', '/api/organizations'),
+          ]);
+          state.platformStatus = status;
+          state.organizations = organizations;
+          updateHeader();
+          populateOrgSelects();
+          renderDashboard();
+          renderOrganizations();
+          if (!silent && state.currentTab === 'proposals' && els.proposalsOrgSelect.value) {
+            await loadProposals(els.proposalsOrgSelect.value, true);
+          }
+          return { status, organizations };
+        } catch (error) {
+          if (!silent) toast(error.message, 'error');
+          throw error;
+        }
+      }
+
+      function updateHeader() {
+        const platformHome = state.platformStatus?.platform_home || 'Platform home unavailable';
+        els.platformHome.textContent = platformHome;
+        if (typeof state.platformStatus?.has_llm === 'boolean') updateLLMStatus(state.platformStatus.has_llm);
+      }
+
+      function populateOrgSelects() {
+        const names = state.organizations.map((org) => org.name);
+        const fillSelect = (select, preferred) => {
+          const current = preferred || select.value;
+          if (!names.length) {
+            select.innerHTML = '<option value="">Organization がありません</option>';
+            return;
+          }
+          select.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+          if (names.includes(current)) select.value = current;
+        };
+        fillSelect(els.proposalsOrgSelect, els.proposalsOrgSelect.value);
+        fillSelect(els.analyzeOrgSelect, els.analyzeOrgSelect.value);
+      }
+
+      function renderDashboard() {
+        if (!state.platformStatus) {
+          els.dashboardStats.innerHTML = renderLoading('ダッシュボードを読み込み中...');
+          els.dashboardOrgGrid.innerHTML = '';
+          return;
+        }
+
+        const score = Number(state.platformStatus.group_health_score || 0);
+        els.dashboardHealthScore.textContent = formatNumber(score);
+        els.dashboardHealthScore.style.color = healthColor(score);
+        els.dashboardHealthMeta.textContent = `${state.platformStatus.active_organizations || 0} active / ${state.platformStatus.total_organizations || 0} total organizations`;
+        els.dashboardInitBtn.classList.toggle('hidden', Boolean(state.platformStatus.initialized));
+
+        const stats = [
+          { label: 'Total Orgs', value: state.platformStatus.total_organizations ?? 0 },
+          { label: 'Active Orgs', value: state.platformStatus.active_organizations ?? 0 },
+          { label: 'Group Health', value: formatNumber(state.platformStatus.group_health_score) },
+          { label: 'Balance Score', value: formatNumber(state.platformStatus.balance_score) },
+        ];
+        els.dashboardStats.innerHTML = stats.map((stat) => `
+          <div class="stat-card">
+            <div class="caption">${escapeHtml(stat.label)}</div>
+            <strong>${escapeHtml(stat.value)}</strong>
+          </div>
+        `).join('');
+
+        if (!state.organizations.length) {
+          els.dashboardOrgGrid.innerHTML = renderEmpty(
+            'Organization がありません',
+            'まずは Organization を追加して分析を開始しましょう。',
+            '<button class="btn" type="button" data-open-tab="orgs">➕ 追加する</button>'
+          );
+          return;
+        }
+
+        const sorted = [...state.organizations].sort((a, b) => (b.health_score || 0) - (a.health_score || 0));
+        els.dashboardOrgGrid.innerHTML = sorted.map((org) => {
+          const health = Number(org.health_score || 0);
+          return `
+            <button class="org-card" type="button" data-org-nav="${escapeHtml(org.name)}" style="text-align:left">
+              <div class="health-row">
+                <div>
+                  <div class="badge">${escapeHtml(org.name)}</div>
+                  <div class="repo-path" style="margin-top:8px">${escapeHtml(org.target_repo_path || '(未設定)')}</div>
+                </div>
+                <span class="priority-badge ${health >= 70 ? 'low' : health >= 40 ? 'medium' : 'high'}">${formatNumber(health)}</span>
+              </div>
+              <div class="muted">${escapeHtml(truncate(org.purpose, 90))}</div>
+              <div class="inline-meta">
+                <span class="tag">🤖 ${escapeHtml(org.total_agents || 0)} agents</span>
+                <span class="tag">💡 ${escapeHtml(org.pending_proposals || 0)} pending</span>
+              </div>
+              <div class="health-bar"><div class="health-fill" style="width:${Math.max(0, Math.min(100, health))}%; background:${healthColor(health)}"></div></div>
+            </button>
+          `;
+        }).join('');
+      }
+
+      function renderOrganizations() {
+        if (!state.organizations.length) {
+          els.orgList.innerHTML = renderEmpty('Organization がありません', '上のフォームから最初の Organization を追加してください。');
+          return;
+        }
+
+        const sorted = [...state.organizations].sort((a, b) => a.name.localeCompare(b.name));
+        els.orgList.innerHTML = sorted.map((org) => {
+          const health = Number(org.health_score || 0);
+          return `
+            <article class="org-card">
+              <div class="health-row">
+                <div>
+                  <h3 style="margin:0">${escapeHtml(org.name)}</h3>
+                  <div class="repo-path" style="margin-top:6px">${escapeHtml(org.target_repo_path || '(repo 未設定)')}</div>
+                </div>
+                <span class="priority-badge ${health >= 70 ? 'low' : health >= 40 ? 'medium' : 'high'}">${formatNumber(health)}</span>
+              </div>
+              <div class="muted">${escapeHtml(org.purpose || '目的未設定')}</div>
+              <div class="inline-meta">
+                <span class="tag">Status: ${escapeHtml(org.status)}</span>
+                <span class="tag">🤖 ${escapeHtml(org.total_agents || 0)}</span>
+                <span class="tag">💡 ${escapeHtml(org.pending_proposals || 0)}</span>
+              </div>
+              <div class="health-bar"><div class="health-fill" style="width:${Math.max(0, Math.min(100, health))}%; background:${healthColor(health)}"></div></div>
+              <div class="card-actions">
+                <button class="btn secondary small" type="button" data-org-action="analyze" data-org-name="${escapeHtml(org.name)}">🔍 分析</button>
+                <button class="btn danger small" type="button" data-org-action="delete" data-org-name="${escapeHtml(org.name)}">🗑 削除</button>
+              </div>
+            </article>
+          `;
+        }).join('');
+      }
+
+      async function loadProposals(orgName, silent = false) {
+        const selected = orgName || els.proposalsOrgSelect.value || state.organizations[0]?.name;
+        if (!selected) {
+          els.proposalsContent.innerHTML = renderEmpty('Organization を選択してください', '提案一覧を表示する Organization がまだありません。');
+          return;
+        }
+        els.proposalsOrgSelect.value = selected;
+        if (!silent) els.proposalsContent.innerHTML = renderLoading('改善提案を読み込み中...');
+        try {
+          state.proposals = await api('GET', `/api/organizations/${encodeURIComponent(selected)}/proposals`);
+          if (!state.proposals.length) {
+            els.proposalsContent.innerHTML = renderEmpty(
+              '改善提案はありません',
+              '新しい分析を実行して提案を生成してください。',
+              '<button class="btn" type="button" id="emptyAnalyzeLaunch">🔍 分析を開始</button>'
+            );
+            const btn = $('emptyAnalyzeLaunch');
+            if (btn) btn.addEventListener('click', () => openAnalyzeModal(selected));
+            return;
+          }
+          els.proposalsContent.innerHTML = `
+            <div class="table-shell">
+              <table>
+                <thead>
+                  <tr>
+                    <th>優先度</th>
+                    <th>タイトル</th>
+                    <th>ファイル</th>
+                    <th>説明</th>
+                    <th>アクション</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${state.proposals.map((proposal) => `
+                    <tr>
+                      <td data-label="優先度"><span class="priority-badge ${(proposal.priority || 'low').toLowerCase()}">${escapeHtml((proposal.priority || 'low').toUpperCase())}</span></td>
+                      <td data-label="タイトル"><strong>${escapeHtml(proposal.title || 'Untitled')}</strong></td>
+                      <td data-label="ファイル"><span class="repo-path">${escapeHtml(proposal.file_path || '—')}</span></td>
+                      <td data-label="説明">${escapeHtml(truncate(proposal.description || '', 160))}</td>
+                      <td data-label="アクション">
+                        <div class="table-actions">
+                          <button class="btn success small" type="button" data-proposal-action="approve" data-org-name="${escapeHtml(selected)}" data-proposal-id="${escapeHtml(proposal.id)}">✅ 承認</button>
+                          <button class="btn danger small" type="button" data-proposal-action="reject" data-org-name="${escapeHtml(selected)}" data-proposal-id="${escapeHtml(proposal.id)}">❌ 却下</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+        } catch (error) {
+          els.proposalsContent.innerHTML = renderEmpty('提案の取得に失敗しました', error.message);
+          if (!silent) toast(error.message, 'error');
+        }
+      }
+
+      function renderAnalyzeResult(data) {
+        if (!data) {
+          els.analyzeResult.innerHTML = renderEmpty('まだ分析していません', 'Organization と条件を選んで分析を開始してください。');
+          return;
+        }
+        const proposals = data.generated_proposals || [];
+        els.analyzeResult.innerHTML = `
+          <div class="result-card stack tight">
+            <div class="inline-meta">
+              <div>
+                <div class="badge">${escapeHtml(data.org_name)}</div>
+                <div class="caption" style="margin-top:6px">${data.dry_run ? 'DRY-RUN' : 'LIVE'} analysis complete</div>
+              </div>
+              <button class="btn secondary small" type="button" data-view-proposals="${escapeHtml(data.org_name)}">提案を見る</button>
+            </div>
+            <div class="stats-grid">
+              <div class="stat-card"><div class="caption">Files reviewed</div><strong>${escapeHtml(data.files_reviewed || 0)}</strong></div>
+              <div class="stat-card"><div class="caption">Proposals generated</div><strong>${escapeHtml(data.proposals_generated || 0)}</strong></div>
+              <div class="stat-card"><div class="caption">Dry run</div><strong>${data.dry_run ? 'ON' : 'OFF'}</strong></div>
+              <div class="stat-card"><div class="caption">Target org</div><strong>${escapeHtml(data.org_name || '—')}</strong></div>
+            </div>
+            <div>
+              <strong>Generated Proposals</strong>
+              <div class="proposal-list">
+                ${proposals.length ? proposals.map((proposal) => `
+                  <div class="mini-card">
+                    <div class="health-row">
+                      <strong>${escapeHtml(proposal.title)}</strong>
+                      <span class="priority-badge ${(proposal.priority || 'low').toLowerCase()}">${escapeHtml((proposal.priority || 'low').toUpperCase())}</span>
+                    </div>
+                    <div class="repo-path" style="margin:8px 0">${escapeHtml(proposal.file_path || 'ファイル未指定')}</div>
+                    <div class="muted">${escapeHtml(proposal.description || '')}</div>
+                  </div>
+                `).join('') : '<div class="caption">生成提案はありませんでした。</div>'}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      async function runAnalyze() {
+        const orgName = els.analyzeOrgSelect.value;
+        if (!orgName) {
+          toast('分析対象の Organization を選択してください', 'error');
+          return;
+        }
+        setButtonLoading(els.analyzeRunBtn, true, '分析中...');
+        els.analyzeResult.innerHTML = renderLoading('分析を実行中...');
+        try {
+          const result = await api('POST', '/api/analyze', {
+            org_name: orgName,
+            max_files: Number(els.analyzeMaxFiles.value || 15),
+            dry_run: els.analyzeDryRun.checked,
+          });
+          state.lastAnalyzeResult = result;
+          renderAnalyzeResult(result);
+          toast(`${result.proposals_generated || 0} 件の改善提案を生成しました`);
+          await refreshCoreData({ silent: true });
+          if (state.currentTab === 'proposals' && els.proposalsOrgSelect.value === orgName) {
+            await loadProposals(orgName, true);
+          }
+        } catch (error) {
+          els.analyzeResult.innerHTML = renderEmpty('分析に失敗しました', error.message);
+          toast(error.message, 'error');
+        } finally {
+          setButtonLoading(els.analyzeRunBtn, false);
+        }
+      }
+
+      function openModal(html, wide = false) {
+        els.modalCard.className = `modal-card${wide ? ' wide' : ''}`;
+        els.modalCard.innerHTML = html;
+        els.modalRoot.classList.add('open');
+      }
+
+      function closeModal() {
+        els.modalRoot.classList.remove('open');
+        els.modalCard.innerHTML = '';
+      }
+
+      function confirmDialog({ title, description, confirmText, confirmClass = 'danger', onConfirm }) {
+        openModal(`
+          <div class="stack">
+            <div>
+              <h3 style="margin:0 0 8px">${escapeHtml(title)}</h3>
+              <div class="muted">${escapeHtml(description)}</div>
+            </div>
+            <div class="modal-actions">
+              <button id="modalCancelBtn" class="btn secondary" type="button">キャンセル</button>
+              <button id="modalConfirmBtn" class="btn ${escapeHtml(confirmClass)}" type="button">${escapeHtml(confirmText)}</button>
+            </div>
+          </div>
+        `);
+        $('modalCancelBtn').addEventListener('click', closeModal);
+        $('modalConfirmBtn').addEventListener('click', async (event) => {
+          const button = event.currentTarget;
+          setButtonLoading(button, true, '実行中...');
+          try {
+            await onConfirm();
+            closeModal();
+          } catch (error) {
+            toast(error.message, 'error');
+            setButtonLoading(button, false);
+          }
+        });
+      }
+
+      function openAnalyzeModal(defaultOrg) {
+        const options = state.organizations.length
+          ? state.organizations.map((org) => `<option value="${escapeHtml(org.name)}">${escapeHtml(org.name)}</option>`).join('')
+          : '<option value="">Organization がありません</option>';
+        openModal(`
+          <div class="stack">
+            <div>
+              <h3 style="margin:0 0 8px">新しい分析を実行</h3>
+              <div class="muted">Proposals タブから直接分析条件を指定できます。</div>
+            </div>
+            <div class="field">
+              <label for="modalAnalyzeOrg">Organization</label>
+              <select id="modalAnalyzeOrg" class="select">${options}</select>
+            </div>
+            <div class="field">
+              <label for="modalAnalyzeMaxFiles">Max files <strong id="modalAnalyzeMaxFilesValue">${escapeHtml(els.analyzeMaxFiles.value || 15)}</strong></label>
+              <input id="modalAnalyzeMaxFiles" type="range" min="1" max="50" value="${escapeHtml(els.analyzeMaxFiles.value || 15)}" />
+            </div>
+            <label class="checkbox-row"><input id="modalAnalyzeDryRun" type="checkbox" ${els.analyzeDryRun.checked ? 'checked' : ''} /> Dry-run を有効にする</label>
+            <div class="modal-actions">
+              <button id="modalAnalyzeCancel" class="btn secondary" type="button">閉じる</button>
+              <button id="modalAnalyzeStart" class="btn" type="button">▶️ 分析開始</button>
+            </div>
+          </div>
+        `, true);
+        $('modalAnalyzeOrg').value = defaultOrg || els.proposalsOrgSelect.value || els.analyzeOrgSelect.value || state.organizations[0]?.name || '';
+        $('modalAnalyzeMaxFiles').addEventListener('input', (event) => {
+          $('modalAnalyzeMaxFilesValue').textContent = event.target.value;
+        });
+        $('modalAnalyzeCancel').addEventListener('click', closeModal);
+        $('modalAnalyzeStart').addEventListener('click', () => {
+          els.analyzeOrgSelect.value = $('modalAnalyzeOrg').value;
+          els.analyzeMaxFiles.value = $('modalAnalyzeMaxFiles').value;
+          els.analyzeMaxFilesValue.textContent = $('modalAnalyzeMaxFiles').value;
+          els.analyzeDryRun.checked = $('modalAnalyzeDryRun').checked;
+          closeModal();
+          showTab('analyze');
+          runAnalyze();
+        });
+      }
+
+      async function createOrganization(event) {
+        event.preventDefault();
+        const form = event.currentTarget;
+        setButtonLoading(els.orgSubmitBtn, true, '追加中...');
+        try {
+          await api('POST', '/api/organizations', {
+            name: els.orgName.value.trim(),
+            target_repo_path: els.orgRepo.value.trim(),
+            purpose: els.orgPurpose.value.trim(),
+          });
+          toast('Organization を追加しました');
+          form.reset();
+          await refreshCoreData({ silent: true });
+          if (state.currentTab !== 'orgs') showTab('orgs');
+        } catch (error) {
+          toast(error.message, 'error');
+        } finally {
+          setButtonLoading(els.orgSubmitBtn, false);
+        }
+      }
+
+      async function deleteOrganization(name) {
+        await api('DELETE', `/api/organizations/${encodeURIComponent(name)}`);
+        toast(`Organization「${name}」を削除しました`);
+        await refreshCoreData({ silent: true });
+      }
+
+      async function initPlatform() {
+        setButtonLoading(els.dashboardInitBtn, true, '初期化中...');
+        try {
+          const result = await api('POST', '/api/init');
+          toast(result.status === 'initialized' ? 'プラットフォームを初期化しました' : 'すでに初期化されています');
+          await refreshCoreData({ silent: true });
+        } catch (error) {
+          toast(error.message, 'error');
+        } finally {
+          setButtonLoading(els.dashboardInitBtn, false);
+        }
+      }
+
+      async function handleProposalAction(action, orgName, proposalId, button) {
+        setButtonLoading(button, true, action === 'approve' ? '承認中...' : '却下中...');
+        try {
+          const path = action === 'approve'
+            ? `/api/proposals/${encodeURIComponent(orgName)}/${encodeURIComponent(proposalId)}/approve`
+            : `/api/proposals/${encodeURIComponent(orgName)}/${encodeURIComponent(proposalId)}/reject`;
+          const body = action === 'approve' ? { dry_run: false } : null;
+          await api('POST', path, body);
+          toast(action === 'approve' ? '提案を承認しました' : '提案を却下しました');
+          await loadProposals(orgName, true);
+          await refreshCoreData({ silent: true });
+        } catch (error) {
+          toast(error.message, 'error');
+        } finally {
+          setButtonLoading(button, false);
+        }
+      }
+
+      function saveGoalToLocalHistory(record) {
+        const key = 'repocorp-goal-history';
+        const existing = JSON.parse(localStorage.getItem(key) || '[]');
+        const next = [record, ...existing].slice(0, 6);
+        localStorage.setItem(key, JSON.stringify(next));
+      }
+
+      function localGoalHistory() {
+        try {
+          return JSON.parse(localStorage.getItem('repocorp-goal-history') || '[]');
+        } catch {
+          return [];
+        }
+      }
+
+      async function loadGoalHistory() {
+        try {
+          state.goalHistory = await api('GET', '/api/goals/history');
+        } catch (error) {
+          console.debug('Goal history API unavailable, falling back to localStorage', error);
+          state.goalHistory = localGoalHistory();
+        }
+        renderGoalHistory();
+      }
+
+      function renderGoalHistory() {
+        if (!state.goalHistory.length) {
+          els.goalHistory.innerHTML = renderEmpty('履歴はまだありません', 'ゴールを実行するとここに最近の履歴が表示されます。');
+          return;
+        }
+        els.goalHistory.innerHTML = `<div class="history-list">${state.goalHistory.map((item) => `
+          <article class="goal-history-card">
+            <div class="health-row">
+              <strong>${escapeHtml(item.goal_text || item.summary || 'Goal')}</strong>
+              <span class="tag">${escapeHtml(item.dry_run ? 'dry-run' : 'live')}</span>
+            </div>
+            <div class="caption" style="margin:8px 0">${escapeHtml(item.created_at || '')}</div>
+            <div class="muted">${escapeHtml(truncate(item.summary || '', 180))}</div>
+          </article>
+        `).join('')}</div>`;
+      }
+
+      async function runGoal() {
+        const goalText = els.goalInput.value.trim();
+        if (!goalText) {
+          toast('ゴールを入力してください', 'error');
+          return;
+        }
+        setButtonLoading(els.goalRunBtn, true, '実行中...');
+        els.goalResult.innerHTML = renderLoading('ゴールパイプラインを実行中...');
+        try {
+          const result = await api('POST', '/api/goals/run', {
+            goal_text: goalText,
+            dry_run: els.goalDryRun.checked,
+          });
+          saveGoalToLocalHistory(result);
+          els.goalResult.innerHTML = `
+            <div class="result-card stack tight">
+              <div class="inline-meta">
+                <div>
+                  <div class="badge">${escapeHtml(result.organization || 'Organization')}</div>
+                  <div class="caption" style="margin-top:6px">${escapeHtml(result.goal_type || 'goal')} / ${escapeHtml(result.scale || 'unknown')}</div>
+                </div>
+                <span class="priority-badge ${result.success ? 'low' : 'medium'}">${result.success ? 'SUCCESS' : 'IN PROGRESS'}</span>
+              </div>
+              <pre class="result-block">${escapeHtml(result.summary || '')}</pre>
+            </div>
+          `;
+          toast('ゴール実行が完了しました');
+          await loadGoalHistory();
+          await refreshCoreData({ silent: true });
+        } catch (error) {
+          els.goalResult.innerHTML = renderEmpty('ゴール実行に失敗しました', error.message);
+          toast(error.message, 'error');
+        } finally {
+          setButtonLoading(els.goalRunBtn, false);
+        }
+      }
+
+      async function loadAgentsAndSkills() {
+        if (state.agents.length && state.skills.length) {
+          renderAgents();
+          return;
+        }
+        try {
+          const [agents, skills] = await Promise.all([
+            api('GET', '/api/agents'),
+            api('GET', '/api/skills'),
+          ]);
+          state.agents = agents;
+          state.skills = skills;
+          renderAgents();
+        } catch (error) {
+          toast(error.message, 'error');
+        }
+      }
+
+      function renderAgents() {
+        if (!state.agents.length && !state.skills.length) {
+          els.agentsGrid.innerHTML = renderLoading('エージェントを読み込み中...');
+          els.skillsCloud.innerHTML = '';
+          return;
+        }
+        const query = els.agentSearchInput.value.trim().toLowerCase();
+        const filtered = state.agents.filter((agent) => {
+          const haystack = `${agent.name} ${agent.capability_id} ${(agent.skills || []).join(' ')} ${agent.implementation || ''}`.toLowerCase();
+          return haystack.includes(query);
+        });
+        els.agentStats.textContent = `${filtered.length} / ${state.agents.length} agents 表示中`;
+        els.agentsGrid.innerHTML = filtered.length ? filtered.map((agent) => `
+          <article class="agent-card">
+            <div class="health-row">
+              <div>
+                <h3 style="margin:0">${escapeHtml(agent.name)}</h3>
+                <div class="repo-path" style="margin-top:6px">${escapeHtml(agent.capability_id)}</div>
+              </div>
+              <span class="tag">${agent.implementation ? 'Python' : 'YAML'}</span>
+            </div>
+            <div>${(agent.skills || []).map((skill) => `<span class="skill-pill">${escapeHtml(skill)}</span>`).join('') || '<span class="caption">No skills</span>'}</div>
+            <div class="muted">${escapeHtml(agent.description || '説明なし')}</div>
+            <div class="mini-card">
+              <div class="caption">Implementation</div>
+              <div class="repo-path">${escapeHtml(agent.implementation || 'GenericSkillAgent / YAML driven')}</div>
+            </div>
+            <div class="mini-card">
+              <div class="caption">Behavior Preview</div>
+              <div class="muted">${escapeHtml(truncate(agent.behavior || 'behavior 未設定', 180))}</div>
+            </div>
+          </article>
+        `).join('') : renderEmpty('一致するエージェントがありません', '検索条件を変更してください。');
+        els.skillsCloud.innerHTML = state.skills.map((skill) => `
+          <span class="skill-pill" data-tooltip="${escapeHtml(skill.persona || skill.description || skill.focus || skill.name)}">
+            ${escapeHtml(skill.name)}
+          </span>
+        `).join('');
+      }
+
+      async function analyzeOrchestration() {
+        const taskType = els.orchestrationTaskType.value;
+        setButtonLoading(els.orchestrationAnalyzeBtn, true, '分析中...');
+        els.orchestrationResult.innerHTML = renderLoading('オーケストレーション分析を実行中...');
+        try {
+          const result = await api('GET', `/api/orchestration/analyze/${encodeURIComponent(taskType)}`);
+          els.orchestrationResult.innerHTML = `
+            <div class="result-card stack tight">
+              <div class="stats-grid">
+                <div class="stat-card"><div class="caption">Pattern</div><strong>${escapeHtml(result.recommended_pattern || '—')}</strong></div>
+                <div class="stat-card"><div class="caption">Complexity</div><strong>${escapeHtml(result.complexity || '—')}</strong></div>
+                <div class="stat-card"><div class="caption">Confidence</div><strong>${escapeHtml(formatNumber(result.confidence || 0, 2))}</strong></div>
+                <div class="stat-card"><div class="caption">Estimated tokens</div><strong>${escapeHtml(result.estimated_tokens || 0)}</strong></div>
+              </div>
+              <div>
+                <strong>Reasoning</strong>
+                <div class="result-block" style="margin-top:10px">${escapeHtml(result.reasoning || 'No reasoning available')}</div>
+              </div>
+              <div>
+                <strong>Recommended Agents</strong>
+                <div class="recommended-list">
+                  ${(result.recommended_agents || []).length ? result.recommended_agents.map((agent) => `
+                    <div class="mini-card">
+                      <div class="health-row">
+                        <strong>${escapeHtml(agent.name || agent.capability_id)}</strong>
+                        <span class="tag">${escapeHtml(agent.capability_id || '')}</span>
+                      </div>
+                      <div class="muted" style="margin-top:8px">${escapeHtml((agent.skills || []).join(', ') || 'skills なし')}</div>
+                    </div>
+                  `).join('') : '<div class="caption">推奨エージェントはありません。</div>'}
+                </div>
+              </div>
+            </div>
+          `;
+        } catch (error) {
+          els.orchestrationResult.innerHTML = renderEmpty('分析に失敗しました', error.message);
+          toast(error.message, 'error');
+        } finally {
+          setButtonLoading(els.orchestrationAnalyzeBtn, false);
+        }
+      }
+
+      function bindEvents() {
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+          btn.addEventListener('click', () => showTab(btn.dataset.tab));
+        });
+
+        document.addEventListener('click', (event) => {
+          const tabButton = event.target.closest('[data-open-tab]');
+          if (tabButton) {
+            showTab(tabButton.dataset.openTab);
+            return;
+          }
+          const dashboardCard = event.target.closest('[data-org-nav]');
+          if (dashboardCard) {
+            showTab('proposals');
+            loadProposals(dashboardCard.dataset.orgNav);
+            return;
+          }
+          const orgAction = event.target.closest('[data-org-action]');
+          if (orgAction) {
+            const name = orgAction.dataset.orgName;
+            if (orgAction.dataset.orgAction === 'delete') {
+              confirmDialog({
+                title: 'Organization を削除しますか？',
+                description: `${name} を削除すると一覧から消えます。`,
+                confirmText: '削除する',
+                onConfirm: () => deleteOrganization(name),
+              });
+            } else if (orgAction.dataset.orgAction === 'analyze') {
+              els.analyzeOrgSelect.value = name;
+              showTab('analyze');
+            }
+            return;
+          }
+          const proposalAction = event.target.closest('[data-proposal-action]');
+          if (proposalAction) {
+            const { proposalAction: action, orgName, proposalId } = proposalAction.dataset;
+            if (action === 'reject') {
+              confirmDialog({
+                title: '提案を却下しますか？',
+                description: `提案 ${proposalId.slice(0, 8)} を却下します。`,
+                confirmText: '却下する',
+                onConfirm: () => handleProposalAction(action, orgName, proposalId, proposalAction),
+              });
+            } else {
+              handleProposalAction(action, orgName, proposalId, proposalAction);
+            }
+            return;
+          }
+          const viewProposals = event.target.closest('[data-view-proposals]');
+          if (viewProposals) {
+            showTab('proposals');
+            loadProposals(viewProposals.dataset.viewProposals);
+            return;
+          }
+        });
+
+        els.modalRoot.addEventListener('click', (event) => {
+          if (event.target === els.modalRoot) closeModal();
+        });
+
+        els.chatSendBtn.addEventListener('click', sendChatMessage);
+        els.chatInput.addEventListener('input', () => {
+          autoResizeChatInput();
+          renderSlashDropdown();
+        });
+        els.chatInput.addEventListener('keydown', (event) => {
+          if (!els.slashDropdown.classList.contains('hidden')) {
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              state.slashIndex = (state.slashIndex + 1) % state.slashMatches.length;
+              renderSlashDropdown();
+              return;
+            }
+            if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              state.slashIndex = (state.slashIndex - 1 + state.slashMatches.length) % state.slashMatches.length;
+              renderSlashDropdown();
+              return;
+            }
+            if ((event.key === 'Tab' || event.key === 'Enter') && state.slashMatches.length) {
+              const trimmed = els.chatInput.value.trimStart();
+              if (trimmed.startsWith('/')) {
+                event.preventDefault();
+                applySlashCommand(state.slashMatches[state.slashIndex].cmd);
+                return;
+              }
+            }
+          }
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendChatMessage();
+          }
+        });
+        els.slashDropdown.addEventListener('click', (event) => {
+          const item = event.target.closest('[data-cmd]');
+          if (item) applySlashCommand(item.dataset.cmd);
+        });
+
+        els.dashboardRefreshBtn.addEventListener('click', () => refreshCoreData());
+        els.dashboardInitBtn.addEventListener('click', initPlatform);
+        els.orgForm.addEventListener('submit', createOrganization);
+        els.proposalsRefreshBtn.addEventListener('click', () => loadProposals(els.proposalsOrgSelect.value));
+        els.proposalsOrgSelect.addEventListener('change', () => loadProposals(els.proposalsOrgSelect.value));
+        els.openAnalyzeModalBtn.addEventListener('click', () => openAnalyzeModal(els.proposalsOrgSelect.value));
+        els.analyzeMaxFiles.addEventListener('input', (event) => { els.analyzeMaxFilesValue.textContent = event.target.value; });
+        els.analyzeRunBtn.addEventListener('click', runAnalyze);
+        els.goalRunBtn.addEventListener('click', runGoal);
+        els.goalHistoryRefreshBtn.addEventListener('click', loadGoalHistory);
+        els.agentSearchInput.addEventListener('input', renderAgents);
+        els.orchestrationAnalyzeBtn.addEventListener('click', analyzeOrchestration);
+      }
+
+      async function init() {
+        marked.setOptions({ breaks: true, gfm: true });
+        Object.assign(els, {
+          platformHome: $('platformHome'),
+          connectionDot: $('connectionDot'),
+          connectionStatusText: $('connectionStatusText'),
+          llmDot: $('llmDot'),
+          llmStatusText: $('llmStatusText'),
+          toastContainer: $('toastContainer'),
+          modalRoot: $('modalRoot'),
+          modalCard: $('modalCard'),
+          chatMessages: $('chatMessages'),
+          chatInput: $('chatInput'),
+          chatSendBtn: $('chatSendBtn'),
+          slashDropdown: $('slashDropdown'),
+          dashboardHealthScore: $('dashboardHealthScore'),
+          dashboardHealthMeta: $('dashboardHealthMeta'),
+          dashboardStats: $('dashboardStats'),
+          dashboardOrgGrid: $('dashboardOrgGrid'),
+          dashboardRefreshBtn: $('dashboardRefreshBtn'),
+          dashboardInitBtn: $('dashboardInitBtn'),
+          orgForm: $('orgForm'),
+          orgName: $('orgName'),
+          orgRepo: $('orgRepo'),
+          orgPurpose: $('orgPurpose'),
+          orgSubmitBtn: $('orgSubmitBtn'),
+          orgList: $('orgList'),
+          proposalsOrgSelect: $('proposalsOrgSelect'),
+          proposalsRefreshBtn: $('proposalsRefreshBtn'),
+          openAnalyzeModalBtn: $('openAnalyzeModalBtn'),
+          proposalsContent: $('proposalsContent'),
+          analyzeOrgSelect: $('analyzeOrgSelect'),
+          analyzeMaxFiles: $('analyzeMaxFiles'),
+          analyzeMaxFilesValue: $('analyzeMaxFilesValue'),
+          analyzeDryRun: $('analyzeDryRun'),
+          analyzeRunBtn: $('analyzeRunBtn'),
+          analyzeResult: $('analyzeResult'),
+          goalInput: $('goalInput'),
+          goalDryRun: $('goalDryRun'),
+          goalRunBtn: $('goalRunBtn'),
+          goalResult: $('goalResult'),
+          goalHistory: $('goalHistory'),
+          goalHistoryRefreshBtn: $('goalHistoryRefreshBtn'),
+          agentSearchInput: $('agentSearchInput'),
+          agentStats: $('agentStats'),
+          agentsGrid: $('agentsGrid'),
+          skillsCloud: $('skillsCloud'),
+          orchestrationTaskType: $('orchestrationTaskType'),
+          orchestrationAnalyzeBtn: $('orchestrationAnalyzeBtn'),
+          orchestrationResult: $('orchestrationResult'),
+        });
+
+        bindEvents();
+        autoResizeChatInput();
+        updateConnectionStatus('connecting');
+        connectWS();
+        els.proposalsContent.innerHTML = renderLoading('提案一覧を読み込み中...');
+        els.analyzeResult.innerHTML = renderEmpty('まだ分析していません', 'Organization を選択して分析を開始してください。');
+        els.goalResult.innerHTML = renderEmpty('ゴール未実行', 'ゴールを入力して実行結果を確認してください。');
+        els.orchestrationResult.innerHTML = renderEmpty('まだ分析していません', 'タスクタイプを選んで分析を実行してください。');
+        try {
+          await refreshCoreData({ silent: true });
+        } catch (error) {
+          toast(error.message, 'error');
+        }
+        await Promise.allSettled([loadGoalHistory(), loadAgentsAndSkills()]);
+        showTab('chat');
+        window.setInterval(() => {
+          if (!document.hidden) refreshCoreData({ silent: true }).catch(() => {});
+        }, 30000);
+      }
+
+      return { init };
+    })();
+
+    document.addEventListener('DOMContentLoaded', App.init);
+  </script>
+</body>
+</html>

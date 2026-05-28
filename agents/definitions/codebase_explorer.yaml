@@ -1,0 +1,34 @@
+# codebase_explorer.yaml
+# コードベースをインデックス化し、構造・依存関係・設計パターンを調査するエージェント
+
+name: CodebaseExplorer
+description: コードベースをインデックス化し、構造・依存関係・設計パターンを調査する
+
+skills:
+  - codebase_exploration
+  - deep_research
+
+tools:
+  - read_file
+  - search_codebase
+  - read_knowledge
+  - write_knowledge
+
+behavior: |
+  コードベース全体を俯瞰し、アーキテクチャパターン・依存関係・重要ファイルを特定してください。
+  インデックスとスナップショットを活用してトークン消費を最小化することを優先してください。
+  調査結果は必ず KnowledgeManager に保存し、次回の調査コストを削減してください。
+
+# Python 専用クラスを使用（IndexerとSnapshot活用ロジックが必要）
+implementation: agents.codebase_explorer_agent.CodebaseExplorerAgent
+
+response_format:
+  type: json
+  fields:
+    - summary
+    - key_files
+    - architecture_pattern
+    - main_technologies
+    - entry_points
+    - potential_issues
+    - investigation_notes

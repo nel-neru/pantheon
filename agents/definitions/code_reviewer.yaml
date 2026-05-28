@@ -1,0 +1,27 @@
+# code_reviewer.yaml
+# コードを静的解析し、品質・セキュリティ・パフォーマンスの改善提案を生成するエージェント
+# implementation フィールドで専用 Python クラスを使用する
+
+name: CodeReviewer
+description: コードを静的解析し、品質・セキュリティ・パフォーマンスの改善提案を生成する
+
+skills:
+  - codebase_exploration
+  - performance_analysis
+
+tools:
+  - read_file
+  - search_codebase
+
+behavior: |
+  リポジトリ全体のコードを分析し、実行可能な改善提案を 3〜5 件生成してください。
+  品質・保守性・パフォーマンス・セキュリティの観点から評価し、
+  優先度と期待される改善効果を必ず明示してください。
+
+# Python 専用クラスを使用（複雑なファイル収集ロジックが必要）
+implementation: agents.code_review_agent.CodeReviewAgent
+
+response_format:
+  type: json
+  fields:
+    - suggestions  # [{title, description, file_path, priority, category, expected_impact}]

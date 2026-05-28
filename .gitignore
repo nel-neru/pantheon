@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / Secrets
+.env
+.env.local
+.env.production
+.env.*.local
+
+# pytest / ruff / mypy
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node.js (web/frontend)
+node_modules/
+web/frontend/dist/
+web/frontend/.vite/
+
+# RepoCorp runtime state (per-repo)
+.repocorp/
+
+# Misc
+*.log
+*.bak
+*.tmp
