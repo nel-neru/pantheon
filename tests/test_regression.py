@@ -116,6 +116,7 @@ class TestOrchestrationRegression:
             "recommended_pattern",
             "recommended_agent_ids",
             "spawn_new_agent",
+            "spawn_spec",
             "research_notes",
             "estimated_tokens",
             "confidence",

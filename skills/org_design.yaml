@@ -1,3 +1,4 @@
+schema_version: "1.0"
 id: org_design
 name: Organization Design
 description: AI組織構造設計・責任分離・スケーリング設計

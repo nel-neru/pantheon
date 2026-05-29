@@ -44,10 +44,16 @@ type SlashCommand = {
 const INPUT_PLACEHOLDER = 'プラットフォーム、組織、ゴールについて RepoCorp AI に問い合わせてください'
 
 const slashCommands: SlashCommand[] = [
-  { command: 'analyze', description: 'リポジトリ分析ワークフローを開始します。' },
-  { command: 'status', description: 'プラットフォームとデーモンの状態を確認します。' },
   { command: 'help', description: '利用可能なコマンドと使い方を表示します。' },
+  { command: 'init', description: 'プラットフォームを初期化します。' },
+  { command: 'orgs', description: '登録済みの Organization 一覧を表示します。' },
+  { command: 'add', description: 'Organization を追加します。例: /add demo ./repo' },
+  { command: 'analyze', description: 'リポジトリ分析ワークフローを開始します。' },
   { command: 'proposals', description: '最新の改善提案を確認します。' },
+  { command: 'approve', description: '提案を承認します。例: /approve <id> <org>' },
+  { command: 'goal', description: '抽象ゴールを実行します。例: /goal テストを増やす' },
+  { command: 'status', description: 'プラットフォームとデーモンの状態を確認します。' },
+  { command: 'agents', description: '登録済みエージェント一覧を確認します。' },
 ]
 
 function renderInline(line: string) {

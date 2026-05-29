@@ -83,6 +83,23 @@ def test_medium_priority_is_human_required(engine):
     assert v.decision == ApprovalDecision.HUMAN_REQUIRED
 
 
+def test_large_single_file_is_not_auto_approved(engine):
+    p = _proposal(priority="low", category="style", file_path="src/large.py")
+    p["file_size_kb"] = 150
+    v = engine.evaluate(p)
+    assert v.decision == ApprovalDecision.HUMAN_REQUIRED
+
+
+def test_large_changed_file_entry_is_not_auto_approved(engine):
+    p = _proposal(priority="low", category="style", file_path="src/small.py")
+    p["changed_files"] = [
+        {"path": "src/small.py", "size_kb": 20},
+        {"path": "src/huge.py", "size_bytes": 150 * 1024},
+    ]
+    v = engine.evaluate(p)
+    assert v.decision == ApprovalDecision.HUMAN_REQUIRED
+
+
 # ---- batch ----
 
 def test_get_auto_approvable(engine):

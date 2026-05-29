@@ -12,11 +12,12 @@ AgentFactory と GenericSkillAgent の動作検証テスト。
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agents.agent_factory import AgentFactory
+from agents.agent_factory import AgentFactory, _skills_from_ids
 from agents.base import AgentResult, AgentTask
 from agents.generic_skill_agent import GenericSkillAgent
 from core.models.organization import AgentSkill, SpecialistAgent
@@ -69,6 +70,15 @@ class TestAgentFactoryCreate:
         agent = factory.create("agent:nonexistent_agent_xyz")
         assert agent is None
 
+    def test_unknown_skill_ids_log_warning_and_use_fallbacks(self, caplog):
+        caplog.set_level("WARNING")
+        skills = _skills_from_ids(["unknown_skill", AgentSkill.STRATEGIC_PLANNING.value])
+
+        assert AgentSkill.STRATEGIC_PLANNING in skills
+        assert len(skills) >= 2
+        assert "unknown skill ids" in caplog.text
+        assert "unknown_skill" in caplog.text
+
     def test_quality_guardian_preserves_custom_skill_tags(self):
         factory = AgentFactory()
         agent = factory.create("agent:quality_guardian")
@@ -82,6 +92,25 @@ class TestAgentFactoryCreate:
         for cap_id in factory.all_capability_ids():
             agent = factory.create(cap_id)
             assert agent is not None, f"Failed to create agent for {cap_id}"
+
+    def test_yaml_agent_prompt_preserves_base_prompt(self, monkeypatch):
+        factory = AgentFactory()
+        defn = SimpleNamespace(
+            name="YamlAgent",
+            description="desc",
+            skills=[AgentSkill.STRATEGIC_PLANNING.value, AgentSkill.DEEP_RESEARCH.value],
+            implementation="",
+            build_system_prompt=lambda _loader: "YAML_PROMPT",
+        )
+        monkeypatch.setattr(factory, "_get_agent_loader", lambda: SimpleNamespace(get=lambda _capability_id: defn))
+        monkeypatch.setattr(factory, "_get_skill_loader", lambda: object())
+
+        agent = factory.create("agent:yaml_agent")
+
+        assert agent is not None
+        prompt = agent.apply_skills_to_prompt("BASE_PROMPT")
+        assert "BASE_PROMPT" in prompt
+        assert "YAML_PROMPT" in prompt
 
 
 # ────────────────────────────────────────────────────────────────────────────

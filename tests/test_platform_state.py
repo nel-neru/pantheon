@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from core.platform.state import PlatformStateManager
-from core.org_factory import create_default_organization
+from core.org_factory import create_default_organization, create_organization_from_template
 
 
 @pytest.fixture
@@ -90,3 +90,12 @@ def test_multiple_organizations(tmp_psm):
         tmp_psm.save_organization(org)
     orgs = tmp_psm.load_organizations()
     assert len(orgs) == 3
+
+
+def test_create_organization_from_template_sets_repo_path(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    org = create_organization_from_template("TemplatedOrg", "purpose", repo_path=repo)
+
+    assert org.target_repo_path == str(repo)

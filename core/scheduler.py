@@ -177,9 +177,12 @@ class AutonomousScheduler:
             elif verdict.decision == ApprovalDecision.AUTO_APPROVE:
                 applied = await self._apply_proposal(org, prop_dict)
                 if applied:
+                    proposal.status = "done"
+                    sm.save_improvement_proposal(proposal)
                     auto_applied += 1
                     print(f"    ✅ AUTO applied: {proposal.title}")
                 else:
+                    proposal.status = "pending"
                     sm.save_improvement_proposal(proposal)
                     pending_for_human += 1
 
@@ -205,7 +208,7 @@ class AutonomousScheduler:
 
         specialist = SpecialistAgent(
             name="AutoExecutor",
-            skills=[AgentSkill.PROMPT_ENGINEERING],
+            skills=[AgentSkill.PROMPT_ENGINEERING, AgentSkill.TOOL_INTEGRATION],
         )
         executor = ImprovementExecutorAgent(specialist)
         task = AgentTask(

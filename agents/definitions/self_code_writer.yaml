@@ -1,7 +1,9 @@
 # self_code_writer.yaml
 # 実装仕様書から Python コードを自動生成する自己実装エージェント
 
+schema_version: "1.0"
 name: SelfCodeWriter
+capability_id: agent:self_code_writer
 description: ImplementationSpec から Python コードを自動生成し、既存スタイルに合わせる
 
 skills:

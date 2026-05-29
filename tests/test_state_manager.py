@@ -28,6 +28,13 @@ class TestRepoStateManager:
         assert loaded["key"] == "value"
         assert "last_updated" in loaded
 
+    def test_save_current_state_does_not_mutate_input(self, state_manager):
+        payload = {"key": "value"}
+
+        state_manager.save_current_state(payload)
+
+        assert payload == {"key": "value"}
+
     def test_save_and_list_proposals(self, state_manager):
         p = ImprovementProposal(review_id=uuid4(), title="Fix bug", description="desc")
         state_manager.save_improvement_proposal(p)
@@ -125,3 +132,35 @@ class TestRepoStateManager:
         assert state["pending_tasks"] == 1
         assert len(state["recent_tasks"]) == 1
         assert state["recent_tasks"][0]["org_name"] == "CrossOrg"
+
+    def test_load_organizations_skips_malformed_json(self, state_manager):
+        good_org = Organization(name="GoodOrg", purpose="ok")
+        state_manager.save_organization(good_org)
+        (state_manager.organizations_dir / "broken.json").write_text("{not json", encoding="utf-8")
+
+        orgs = state_manager.load_organizations()
+
+        assert [org.name for org in orgs] == ["GoodOrg"]
+
+    def test_get_recent_decisions_places_invalid_timestamp_last(self, state_manager):
+        state_manager.record_decision("d1", "Valid", "Content", "Tester")
+        invalid = state_manager.decisions_dir / "broken.json"
+        invalid.write_text(
+            json.dumps(
+                {
+                    "id": "broken",
+                    "timestamp": "not-a-timestamp",
+                    "title": "Broken",
+                    "content": "bad",
+                    "made_by": "Tester",
+                    "tags": [],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        decisions = state_manager.get_recent_decisions(limit=2)
+
+        assert [decision["id"] for decision in decisions] == ["d1", "broken"]

@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -818,7 +819,12 @@ async def handle_slash_command(cmd: str, session: ChatSession) -> Optional[str]:
     /xxx 形式のコマンドを処理する。
     Returns: 出力テキスト。None なら通常の自然言語処理にフォールバック。
     """
-    parts = cmd.strip().split(None, 3)
+    try:
+        parts = shlex.split(cmd.strip())
+    except ValueError as exc:
+        return f"コマンドを解析できませんでした: {exc}"
+    if not parts:
+        return None
     command = parts[0].lower()
 
     if command in ("/exit", "/quit", "/bye"):

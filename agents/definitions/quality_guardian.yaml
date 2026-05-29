@@ -1,5 +1,6 @@
+schema_version: "1.0"
 name: QualityGuardian
-capability_id: quality_guardian
+capability_id: agent:quality_guardian
 description: コード変更を監視して品質問題を自律的に発見・修正提案するSpecialist Agent
 
 persona: |

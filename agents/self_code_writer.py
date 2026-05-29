@@ -105,6 +105,8 @@ class SelfCodeWriter(BaseAgent):
             if self._is_agent_spec(spec)
             else self._render_utility_template(spec)
         )
+        self._validate_generated_code(code_content, spec.file_path)
+        self._warn_on_placeholder_code(code_content, spec)
         return CodeOutput(
             output_id=f"code:{spec.spec_id}",
             file_path=spec.file_path,
@@ -129,16 +131,33 @@ Existing code context:
         try:
             response = self._llm.invoke(prompt)
             content = response.content if hasattr(response, "content") else str(response)
+            code_content = content.strip()
+            self._validate_generated_code(code_content, spec.file_path)
+            self._warn_on_placeholder_code(code_content, spec)
             return CodeOutput(
                 output_id=f"code:{spec.spec_id}",
                 file_path=spec.file_path,
-                code_content=content.strip(),
+                code_content=code_content,
                 is_new_file=True,
                 spec_id=spec.spec_id,
             )
         except Exception as exc:
             logger.warning("SelfCodeWriter LLM generation failed: %s", exc)
             return None
+
+    def _validate_generated_code(self, code: str, file_path: str) -> None:
+        try:
+            ast.parse(code)
+        except SyntaxError as exc:
+            raise ValueError(f"Generated code is not syntactically valid for {file_path}: {exc}") from exc
+
+    def _warn_on_placeholder_code(self, code: str, spec: ImplementationSpec) -> None:
+        if "TODO" in code:
+            logger.warning(
+                "SelfCodeWriter generated placeholder TODO code for %s (%s)",
+                spec.spec_id,
+                spec.file_path,
+            )
 
     def detect_required_libraries(self, code: str) -> list[str]:
         """Detect likely third-party imports from generated code."""
@@ -308,4 +327,10 @@ Existing code context:
         return spec.file_path.startswith("agents/") or spec.class_name.endswith("Agent")
 
     def _escape_string(self, value: str) -> str:
-        return value.replace('"', '\\"')
+        return (
+            value.replace("\\", "\\\\")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+            .replace('"', '\\"')
+        )

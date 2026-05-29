@@ -11,19 +11,22 @@ from uuid import uuid4
 from agents.base import AgentResult, AgentTask
 from agents.code_review_agent import CodeImprovementSuggestion, CodeReviewAgent
 from agents.conversation_agent import ConversationAgent
+from agents.improvement_executor_agent import ImprovementExecutorAgent
 from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
 from core.goals.goal_decomposer import GoalDecomposer
 from core.goals.goal_parser import GoalParser, GoalType
 from core.goals.org_instantiator import OrgInstantiator
 from core.hierarchy.org_designer import OrganizationDesigner
+from core.events.detector import DetectedEvent, EventType
 from core.intelligence.capability_registry import CapabilityEntry, CapabilityRegistry
-from core.models.organization import AgentSkill, ImprovementProposal, SpecialistAgent
+from core.models.organization import AgentSkill, ImprovementProposal, Organization, SpecialistAgent
 from core.monitoring.proactive_notifier import ProactiveNotifier
 from core.orchestration.dynamic_agent_spawner import DynamicAgentSpawner, SpawnRequest
 from core.orchestration.orchestration_pattern_store import OrchestrationPatternStore
 from core.orchestration.pre_task_orchestrator import OrchestrationPattern, PreTaskOrchestrator, TaskAnalysis
 from core.orchestration.task_router import TaskRouter
 from core.policy.engine import ApprovalDecision, PolicyEngine
+from core.scheduler import AutonomousScheduler
 from core.state.manager import RepoStateManager
 from core.ui.rich_dashboard import RichDashboard
 
@@ -186,6 +189,68 @@ class TestCodeReviewToProposalFlow:
         assert len(pending) == 1
         assert pending[0].title == "認証境界の見直し"
         assert recent_decisions[0]["title"] == "コメント整備"
+
+    def test_mocked_pdca_workflow_applies_low_risk_change(self, tmp_path, monkeypatch):
+        repo_path = tmp_path / "repo"
+        repo_path.mkdir()
+        (repo_path / "src").mkdir()
+        (repo_path / "src" / "app.py").write_text("print('hello')\n", encoding="utf-8")
+
+        scheduler = AutonomousScheduler(platform_home=tmp_path, max_files_per_org=5)
+        org = Organization(name="PDCA Org", purpose="Test end-to-end flow", target_repo_path=str(repo_path))
+        scheduler._psm.save_organization(org)
+
+        suggestion = {
+            "title": "Comment cleanup",
+            "description": "Improve comments for clarity",
+            "file_path": "src/app.py",
+            "priority": "low",
+            "category": "comment",
+            "expected_impact": "読みやすさが向上する",
+        }
+
+        async def fake_review_run(self, task):
+            assert task.task_type == "code_review"
+            return AgentResult(
+                success=True,
+                output={"files_reviewed": 1, "suggestions": [suggestion]},
+            )
+
+        async def fake_execute_run(self, task):
+            assert task.task_type == "improvement_execution"
+            assert task.input["suggestion"]["title"] == "Comment cleanup"
+            return AgentResult(
+                success=True,
+                output={
+                    "change_summary": "Applied comment cleanup",
+                    "branch": "repocorp/improvement-comment-cleanup",
+                    "pr_url": "https://example.com/pr/42",
+                },
+            )
+
+        monkeypatch.setattr(CodeReviewAgent, "run", fake_review_run)
+        monkeypatch.setattr(ImprovementExecutorAgent, "run", fake_execute_run)
+
+        result = asyncio.run(
+            scheduler._process_org(
+                org.name,
+                [DetectedEvent(event_type=EventType.SCHEDULED, org_name=org.name, org_id=str(org.id))],
+            )
+        )
+
+        saved_proposals = scheduler._psm.get_org_state_manager(org).get_pending_improvement_proposals(limit=10)
+        proposal_files = list((repo_path / ".repocorp" / "improvements").glob("*.json"))
+
+        assert result == {
+            "org": "PDCA Org",
+            "status": "ok",
+            "auto_applied": 1,
+            "pending_for_human": 0,
+            "rejected": 0,
+        }
+        assert saved_proposals == []
+        assert proposal_files
+        assert "done" in proposal_files[0].read_text(encoding="utf-8")
 
 
 class TestOrchestrationFlow:

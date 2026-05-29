@@ -16,7 +16,6 @@ from core.intelligence.semantic_search import SemanticCodeSearch
 from core.intelligence.understanding_score import UnderstandingScoreTracker
 from core.models.organization import ImprovementProposal
 from core.orchestration.task_router import LoadBalancer
-from core.policy.engine import PolicyEngine
 from core.security.auditor import SecurityAuditor
 from core.state.sqlite_manager import SQLiteStateManager
 from core.ui.doc_generator import DocGenerator
@@ -87,10 +86,6 @@ def test_i18n_japanese_default(monkeypatch):
 def test_i18n_english_via_env(monkeypatch):
     monkeypatch.setenv("REPOCORP_LANG", "en")
     assert I18n().t("status_healthy") == "Healthy"
-
-
-def test_policy_engine_empty_proposals():
-    assert PolicyEngine().get_auto_approvable([]) == []
 
 
 def test_save_100_proposals_performance(tmp_path):
@@ -241,6 +236,21 @@ def test_doc_generator_generate_markdown(tmp_path):
     target.write_text('"""module doc"""\n', encoding="utf-8")
     markdown = DocGenerator().generate_markdown(target)
     assert markdown.startswith("# sample.py")
+
+
+def test_doc_generator_skips_syntax_error_files(tmp_path, caplog):
+    (tmp_path / "good.py").write_text('"""good"""\n', encoding="utf-8")
+    (tmp_path / "bad.py").write_text("def broken(:\n    pass\n", encoding="utf-8")
+    output = tmp_path / "docs.md"
+
+    caplog.set_level("WARNING")
+    count = DocGenerator().generate_for_directory(tmp_path, output)
+    content = output.read_text(encoding="utf-8")
+
+    assert count == 1
+    assert "# good.py" in content
+    assert "# bad.py" not in content
+    assert "Skipping documentation for" in caplog.text
 
 
 def test_semantic_search_tokenize():

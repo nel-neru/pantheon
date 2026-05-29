@@ -22,22 +22,25 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
+
+from core.loaders.schema_support import validate_schema_version
 
 logger = logging.getLogger(__name__)
 
 # スキルの YAML で定義できるフィールド
 _REQUIRED_FIELDS = {"id"}
-_OPTIONAL_FIELDS = {"name", "description", "persona", "focus", "output_hint", "tags"}
+_OPTIONAL_FIELDS = {"name", "description", "persona", "focus", "output_hint", "tags", "schema_version"}
 
 
 class SkillDefinition:
     """YAML から読み込んだスキル定義。"""
 
-    __slots__ = ("id", "name", "description", "persona", "focus", "output_hint", "tags")
+    __slots__ = ("id", "name", "description", "persona", "focus", "output_hint", "tags", "schema_version")
 
-    def __init__(self, data: dict):
+    def __init__(self, data: dict[str, Any]):
         self.id: str = data["id"]
+        self.schema_version: str = str(data.get("schema_version", ""))
         self.name: str = data.get("name", self.id)
         self.description: str = data.get("description", "")
         self.persona: str = data.get("persona", "").strip()
@@ -102,6 +105,8 @@ class SkillLoader:
                 if not isinstance(data, dict) or "id" not in data:
                     logger.debug("Skipping %s: missing 'id' field", yaml_file.name)
                     continue
+                data = dict(data)
+                data["schema_version"] = validate_schema_version(data, yaml_file.name, kind="Skill definition")
                 skill = SkillDefinition(data)
                 self._cache[skill.id] = skill
                 logger.debug("SkillLoader: loaded %s", skill.id)

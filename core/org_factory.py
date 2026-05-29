@@ -44,12 +44,19 @@ def _resolve_division_type(type_str: str) -> DivisionType:
     return _DIVISION_TYPE_MAP.get(type_str, DivisionType.ORG_EVOLUTION)
 
 
+def _normalize_repo_path(repo_path: str | Path | None) -> str | None:
+    if repo_path in (None, ""):
+        return None
+    return str(repo_path)
+
+
 def create_organization_from_template(
     name: str,
     purpose: str,
     template_path: Optional[Path] = None,
     status: OrganizationStatus = OrganizationStatus.INCUBATING,
     is_system: bool = False,
+    repo_path: str | Path | None = None,
 ) -> Organization:
     """
     YAML テンプレートから Organization を作成する。
@@ -59,13 +66,19 @@ def create_organization_from_template(
 
     if not path.exists():
         logger.warning("Template not found: %s. Creating minimal organization.", path)
-        return _create_minimal_organization(name, purpose, status, is_system)
+        return _create_minimal_organization(name, purpose, status, is_system, repo_path=repo_path)
 
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
     departments = data.get("departments", [])
-    org = Organization(name=name, purpose=purpose, status=status, is_system=is_system)
+    org = Organization(
+        name=name,
+        purpose=purpose,
+        target_repo_path=_normalize_repo_path(repo_path),
+        status=status,
+        is_system=is_system,
+    )
 
     for dept in departments:
         division = _build_division(dept)
@@ -79,9 +92,10 @@ def create_default_organization(
     purpose: str,
     status: OrganizationStatus = OrganizationStatus.INCUBATING,
     is_system: bool = False,
+    repo_path: str | Path | None = None,
 ) -> Organization:
     """最小構成の Organization を作成する（テンプレートなし）。"""
-    return _create_minimal_organization(name, purpose, status, is_system)
+    return _create_minimal_organization(name, purpose, status, is_system, repo_path=repo_path)
 
 
 def _build_division(dept: dict) -> Division:
@@ -131,9 +145,16 @@ def _create_minimal_organization(
     purpose: str,
     status: OrganizationStatus,
     is_system: bool = False,
+    repo_path: str | Path | None = None,
 ) -> Organization:
     """テンプレートなしの最小構成 Organization。"""
-    org = Organization(name=name, purpose=purpose, status=status, is_system=is_system)
+    org = Organization(
+        name=name,
+        purpose=purpose,
+        target_repo_path=_normalize_repo_path(repo_path),
+        status=status,
+        is_system=is_system,
+    )
     division = Division(
         name="Core Team",
         type=DivisionType.ORG_EVOLUTION,

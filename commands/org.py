@@ -1,0 +1,495 @@
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from core.models.organization import ImprovementProposal
+
+
+def _print_proposal(proposal: dict[str, Any]) -> None:
+    print(f"  ID       : {proposal.get('id')}")
+    print(f"  タイトル : {proposal.get('title')}")
+    print(f"  優先度   : {proposal.get('priority')}")
+    if proposal.get("file_path"):
+        print(f"  ファイル : {proposal.get('file_path')}")
+    print(f"  説明     : {str(proposal.get('description', ''))[:100]}...")
+    print()
+
+
+def _find_pending_proposal(proposals: list[dict[str, Any]], proposal_id: str) -> dict[str, Any] | None:
+    return next((proposal for proposal in proposals if str(proposal.get("id", "")).startswith(proposal_id)), None)
+
+
+def _print_org(org, pending_count: int) -> None:
+    print(f"\nOrganization 詳細 — {org.name}\n")
+    print(f"  ID        : {org.id}")
+    print(f"  状態      : {org.status.value}")
+    print(f"  目的      : {org.purpose}")
+    print(f"  リポジトリ: {org.target_repo_path or '(未設定)'}")
+    print(f"  作成日時  : {org.created_at.isoformat()}")
+    print(f"  最終活動  : {org.last_active.isoformat()}")
+    print(f"  自律度    : {org.autonomy_score:.1f}")
+    print(f"  成長速度  : {org.improvement_velocity:.1f}")
+    print(f"  未対応提案: {pending_count} 件")
+    agents = org.get_all_agents()
+    print(f"  Agent数   : {len(agents)} 個")
+    for division in org.divisions:
+        print(f"  - Division: {division.name} [{division.type.value}]")
+        for team in division.teams:
+            print(f"    • Team: {team.name} [{team.division_type.value}] ({len(team.agents)} agents)")
+            for agent in team.agents:
+                skills = " / ".join(getattr(skill, "value", skill) for skill in agent.skills)
+                print(f"      - {agent.name} [{skills}]")
+    print()
+
+
+async def cmd_init(args: argparse.Namespace, *, get_psm: Any, get_platform_home: Any) -> None:
+    """グローバルプラットフォームを初期化する"""
+    from core.bootstrap import bootstrap_platform
+
+    psm = get_psm()
+    if psm.is_initialized():
+        orgs = psm.load_organizations()
+        print("[OK] プラットフォームはすでに初期化されています")
+        print(f"   場所    : {psm.platform_home}")
+        print(f"   子会社数 : {len(orgs)} 個")
+        print('\n次のステップ: repocorp org add --name "MyApp" --repo /path/to/app')
+        return
+
+    bootstrap_platform()
+    print("\n[OK] RepoCorp AI プラットフォームを初期化しました")
+    print(f"   場所: {get_platform_home()}")
+    print('\n次のステップ: repocorp org add --name "MyApp" --repo /path/to/app')
+
+
+async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: Path) -> None:
+    """新しい Organization（子会社）を担当リポジトリ付きで登録する"""
+    from core.bootstrap import bootstrap_platform
+    from core.org_factory import create_default_organization, create_organization_from_template
+
+    psm = bootstrap_platform()
+
+    existing = psm.load_organization_by_name(args.name)
+    if existing:
+        print(f"[WARN] Organization '{args.name}' はすでに存在します (ID: {existing.id})")
+        return
+
+    repo_path = Path(args.repo).resolve() if args.repo else None
+    if repo_path and not repo_path.exists():
+        print(f"[ERROR] リポジトリパスが存在しません: {repo_path}")
+        sys.exit(1)
+
+    if args.template:
+        template_path = project_root / "config" / "departments" / f"{args.template}.yaml"
+        org = create_organization_from_template(
+            args.name,
+            args.purpose or "",
+            template_path,
+            repo_path=repo_path,
+        )
+    else:
+        org = create_default_organization(args.name, args.purpose or "", repo_path=repo_path)
+    psm.save_organization(org)
+
+    agents = org.get_all_agents()
+    print("\n[OK] Organization を登録しました\n")
+    print(f"  名前      : {org.name}")
+    print(f"  目的      : {org.purpose}")
+    print(f"  リポジトリ: {org.target_repo_path}")
+    print(f"  ID        : {org.id}")
+    print(f"  Division  : {len(org.divisions)} 個 / Agent: {len(agents)} 個")
+    for agent in agents:
+        skills = " / ".join(getattr(skill, "value", skill) for skill in agent.skills)
+        print(f"    • {agent.name} [{skills}]")
+    print(f'\n次のステップ: repocorp analyze --org-name "{org.name}"')
+
+
+async def cmd_org_list(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """登録済み Organization を一覧表示する"""
+    psm = get_psm()
+    orgs = psm.load_organizations()
+
+    if not orgs:
+        print("Organization が登録されていません。")
+        print("\nヒント: repocorp org add --name MyApp --repo /path/to/app")
+        return
+
+    print(f"\nOrganization 一覧 ({len(orgs)} 件)\n")
+    for org in orgs:
+        state_manager = psm.get_org_state_manager(org)
+        pending = len(state_manager.get_pending_improvement_proposals(limit=100))
+        print(f"  {org.name}")
+        print(f"    リポジトリ : {org.target_repo_path or '(未設定)'}")
+        print(f"    目的       : {org.purpose[:60]}")
+        print(f"    ステータス : {org.status.value}")
+        print(f"    Agent数    : {len(org.get_all_agents())} 個")
+        print(f"    未対応提案 : {pending} 件")
+        print()
+
+
+async def cmd_org_show(args: argparse.Namespace, *, get_psm: Any) -> None:
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.name)
+    if not org:
+        print(f"[ERROR] Organization '{args.name}' が見つかりません。")
+        sys.exit(1)
+
+    state_manager = psm.get_org_state_manager(org)
+    pending = len(state_manager.get_pending_improvement_proposals(limit=100))
+    _print_org(org, pending)
+
+
+async def cmd_org_remove(args: argparse.Namespace, *, confirm_action: Any, get_psm: Any) -> None:
+    """Organization を削除する"""
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.name)
+    if not org:
+        print(f"[ERROR] Organization '{args.name}' が見つかりません。")
+        sys.exit(1)
+    if not confirm_action(
+        f"Organization '{args.name}' を削除します。関連する設定参照が使えなくなる可能性があります。続行しますか?",
+        assume_yes=getattr(args, "yes", False),
+    ):
+        print("[INFO] 削除を中止しました。")
+        return
+    psm.remove_organization(str(org.id))
+    print(f"[OK] Organization '{args.name}' を削除しました。")
+
+
+async def cmd_analyze(args: argparse.Namespace, *, get_orchestrator: Any, get_psm: Any) -> None:
+    """Organization の担当リポジトリを分析して改善提案を生成する"""
+    from agents.base import AgentTask
+    from core.state.manager import RepoStateManager
+
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.org_name)
+    if not org:
+        print(f"[ERROR] Organization '{args.org_name}' が見つかりません。")
+        print("   repocorp org list で登録済みの一覧を確認してください。")
+        sys.exit(1)
+
+    repo_path = Path(org.target_repo_path) if org.target_repo_path else Path(".")
+    print(f"\n{org.name} のコード分析を開始します...")
+    print(f"   リポジトリ: {repo_path}\n")
+
+    state_manager = RepoStateManager(repo_path, org.name)
+    agent = get_orchestrator()
+    task = AgentTask(
+        task_type="code_review",
+        description=f"{org.name} のコードレビューと改善提案生成",
+        input={"repo_path": str(repo_path), "max_files": args.max_files},
+    )
+
+    result = await agent.run(task)
+    if not result.success:
+        print(f"[ERROR] 分析失敗: {result.error}")
+        sys.exit(1)
+
+    suggestions = result.output.get("suggestions", [])
+    files = result.output.get("files_reviewed", 0)
+    print(f"[OK] {files} ファイルを分析し、{len(suggestions)} 件の改善提案を生成しました。\n")
+
+    for suggestion in suggestions:
+        proposal = ImprovementProposal(
+            review_id=uuid4(),
+            priority=suggestion.get("priority", "medium"),
+            category=suggestion.get("category", "general"),
+            title=suggestion.get("title", "改善提案"),
+            description=suggestion.get("description", ""),
+            file_path=suggestion.get("file_path", ""),
+            expected_impact=suggestion.get("expected_impact", ""),
+        )
+        state_manager.save_improvement_proposal(proposal)
+        badge = "[HIGH]" if proposal.priority == "high" else "[MEDIUM]" if proposal.priority == "medium" else "[LOW]"
+        print(f"  {badge} [{proposal.priority.upper():6}] {proposal.title}")
+        if proposal.file_path:
+            print(f"           ファイル: {proposal.file_path}")
+        print(f"           {proposal.description[:80]}...")
+        print()
+
+    print(f"[OK] {len(suggestions)} 件を保存しました。")
+    print(f'\n次のステップ: repocorp proposals --org-name "{org.name}"')
+
+
+async def cmd_proposals(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """未対応の改善提案を一覧表示する"""
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.org_name)
+    if not org:
+        print(f"[ERROR] Organization '{args.org_name}' が見つかりません。")
+        sys.exit(1)
+
+    state_manager = psm.get_org_state_manager(org)
+    proposals = state_manager.get_pending_improvement_proposals(limit=50)
+
+    if not proposals:
+        print("未対応の改善提案はありません。")
+        print(f'\nヒント: repocorp analyze --org-name "{org.name}"')
+        return
+
+    executable = [proposal for proposal in proposals if proposal.get("file_path")]
+    meta = [proposal for proposal in proposals if not proposal.get("file_path")]
+
+    print(f"\n未対応の改善提案 ({len(proposals)} 件) — {org.name}\n")
+    if executable:
+        print(f"【実行可能】 ({len(executable)} 件)")
+        for proposal in executable:
+            _print_proposal(proposal)
+    if meta:
+        print(f"【Meta-level（手動対応）】 ({len(meta)} 件)")
+        for proposal in meta:
+            _print_proposal(proposal)
+
+    print(f'承認: repocorp approve <ID の最初の8文字> --org-name "{org.name}"')
+
+
+async def cmd_proposal_show(args: argparse.Namespace, *, get_psm: Any) -> None:
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.org_name)
+    if not org:
+        print(f"[ERROR] Organization '{args.org_name}' が見つかりません。")
+        sys.exit(1)
+
+    state_manager = psm.get_org_state_manager(org)
+    proposal = _find_pending_proposal(state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id)
+    if not proposal:
+        print(f"[ERROR] ID '{args.proposal_id}' に一致する未対応提案が見つかりません。")
+        sys.exit(1)
+
+    print(f"\n提案詳細 — {org.name}\n")
+    for key in ("id", "title", "status", "priority", "category", "file_path", "expected_impact", "implementation_difficulty", "created_at"):
+        value = proposal.get(key, "")
+        if key == "file_path" and not value:
+            value = "(なし)"
+        print(f"  {key:24}: {value}")
+    print(f"  description              : {proposal.get('description', '')}")
+    print()
+
+
+async def cmd_proposal_reject(args: argparse.Namespace, *, confirm_action: Any, get_psm: Any) -> None:
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.org_name)
+    if not org:
+        print(f"[ERROR] Organization '{args.org_name}' が見つかりません。")
+        sys.exit(1)
+
+    state_manager = psm.get_org_state_manager(org)
+    proposal = _find_pending_proposal(state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id)
+    if not proposal:
+        print(f"[ERROR] ID '{args.proposal_id}' に一致する未対応提案が見つかりません。")
+        sys.exit(1)
+
+    if not confirm_action(f"提案 '{proposal.get('title')}' を却下しますか?", assume_yes=getattr(args, "yes", False)):
+        print("[INFO] 却下を中止しました。")
+        return
+
+    state_manager.update_proposal_status(str(proposal.get("id", "")), "rejected")
+    print(f"[OK] 提案 '{proposal.get('title')}' を却下しました。")
+
+
+async def cmd_proposal_apply(
+    args: argparse.Namespace,
+    *,
+    confirm_action: Any,
+    get_orchestrator: Any,
+    get_psm: Any,
+    require_api_key: Any,
+) -> None:
+    from agents.base import AgentTask
+
+    require_api_key("repocorp approve")
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.org_name)
+    if not org:
+        print(f"[ERROR] Organization '{args.org_name}' が見つかりません。")
+        sys.exit(1)
+
+    state_manager = psm.get_org_state_manager(org)
+    proposal = _find_pending_proposal(state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id)
+    if not proposal:
+        print(f"[ERROR] ID '{args.proposal_id}' に一致する未対応提案が見つかりません。")
+        sys.exit(1)
+
+    file_path = proposal.get("file_path", "")
+    if not file_path:
+        print("[ERROR] この提案は file_path がありません（meta-level 提案）。")
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "rejected")
+        sys.exit(1)
+
+    repo_path = Path(org.target_repo_path) if org.target_repo_path else Path(".")
+    print(f"\n改善提案を適用します: {proposal.get('title')}")
+    print(f"   ファイル   : {file_path}")
+    print(f"   リポジトリ : {repo_path}\n")
+
+    if not confirm_action(
+        f"提案 '{proposal.get('title')}' を適用しますか?",
+        assume_yes=getattr(args, "yes", False),
+    ):
+        print("[INFO] 適用を中止しました。")
+        return
+
+    state_manager.update_proposal_status(str(proposal.get("id", "")), "in_progress")
+    github_token = args.github_token or os.getenv("GITHUB_TOKEN")
+
+    executor = get_orchestrator()
+    task = AgentTask(
+        task_type="improvement_execution",
+        description=f"改善提案の適用: {proposal.get('title')}",
+        input={
+            "repo_path": str(repo_path),
+            "suggestion": proposal,
+            "github_token": github_token,
+            "github_repo": args.github_repo,
+        },
+    )
+
+    result = await executor.run(task)
+    if not result.success:
+        print(f"[ERROR] 適用失敗: {result.error}")
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "failed")
+        sys.exit(1)
+
+    state_manager.update_proposal_status(str(proposal.get("id", "")), "done")
+    if "pr_url" in result.output:
+        print(f"[OK] PR を作成しました: {result.output['pr_url']}")
+    elif "branch" in result.output:
+        print(f"[OK] ローカルブランチを作成しました: {result.output['branch']}")
+        print(f"   変更内容: {result.output.get('change_summary')}")
+    else:
+        print(f"[OK] 完了: {result.output}")
+
+
+async def cmd_query(
+    args: argparse.Namespace,
+    *,
+    get_platform_home: Any,
+    parse_query_filters: Any,
+) -> None:
+    """SQLite proposals table を簡易検索する"""
+    from core.state.sqlite_manager import SQLiteStateManager
+
+    db_path = (
+        Path(args.db_path).expanduser().resolve()
+        if getattr(args, "db_path", None)
+        else get_platform_home() / "state.db"
+    )
+    manager = SQLiteStateManager(db_path)
+    try:
+        field_filters = parse_query_filters(getattr(args, "filter", ""))
+        rows = manager.query_proposals(
+            field_filters=field_filters,
+            limit=getattr(args, "limit", 50),
+        )
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+    finally:
+        manager.close()
+
+    if not rows:
+        print("条件に一致する提案はありません。")
+        return
+
+    print(f"\nQuery Results ({len(rows)} 件)\n")
+    for row in rows:
+        print(f"  ID       : {row.get('id')}")
+        print(f"  タイトル : {row.get('title')}")
+        print(f"  優先度   : {row.get('priority')}")
+        print(f"  ステータス: {row.get('status')}")
+        if row.get("file_path"):
+            print(f"  ファイル : {row.get('file_path')}")
+        print()
+
+
+async def cmd_approve(
+    args: argparse.Namespace,
+    *,
+    confirm_action: Any,
+    get_orchestrator: Any,
+    get_psm: Any,
+    require_api_key: Any,
+) -> None:
+    """改善提案を承認してコードに適用し PR またはローカルブランチを作成する"""
+    await cmd_proposal_apply(
+        args,
+        confirm_action=confirm_action,
+        get_orchestrator=get_orchestrator,
+        get_psm=get_psm,
+        require_api_key=require_api_key,
+    )
+
+
+def register(subparsers: Any) -> None:
+    init_parser = subparsers.add_parser("init", help="グローバルプラットフォームを初期化する")
+    init_parser.set_defaults(handler_name="cmd_init")
+
+    org_parser = subparsers.add_parser("org", help="Organization（子会社）の管理")
+    org_sub = org_parser.add_subparsers(dest="org_command", required=True)
+
+    add_parser = org_sub.add_parser("add", help="新しい Organization を登録する")
+    add_parser.add_argument("--name", required=True, help="Organization 名")
+    add_parser.add_argument("--repo", default=None, help="担当リポジトリの絶対パス")
+    add_parser.add_argument("--purpose", default="", help="Organization の目的・ゴール")
+    add_parser.add_argument("--template", default=None, help="テンプレート名（例: meta_improvement）")
+    add_parser.set_defaults(handler_name="cmd_org_add")
+
+    list_parser = org_sub.add_parser("list", help="Organization の一覧を表示する")
+    list_parser.set_defaults(handler_name="cmd_org_list")
+
+    show_parser = org_sub.add_parser("show", help="Organization の詳細を表示する")
+    show_parser.add_argument("--name", required=True, help="Organization 名")
+    show_parser.set_defaults(handler_name="cmd_org_show")
+
+    remove_parser = org_sub.add_parser("remove", help="Organization を削除する")
+    remove_parser.add_argument("--name", required=True, help="削除する Organization 名")
+    remove_parser.add_argument("--yes", action="store_true", help="確認を省略して削除する")
+    remove_parser.set_defaults(handler_name="cmd_org_remove")
+
+    analyze_parser = subparsers.add_parser("analyze", help="担当リポジトリを分析して改善提案を生成")
+    analyze_parser.add_argument("--org-name", required=True, help="対象 Organization 名")
+    analyze_parser.add_argument("--max-files", type=int, default=15, help="分析する最大ファイル数")
+    analyze_parser.set_defaults(handler_name="cmd_analyze")
+
+    proposals_parser = subparsers.add_parser("proposals", help="未対応の改善提案を一覧表示")
+    proposals_parser.add_argument("--org-name", required=True, help="対象 Organization 名")
+    proposals_parser.set_defaults(handler_name="cmd_proposals")
+
+    proposal_parser = subparsers.add_parser("proposal", help="改善提案の詳細・却下・適用")
+    proposal_sub = proposal_parser.add_subparsers(dest="proposal_command", required=True)
+
+    proposal_show = proposal_sub.add_parser("show", help="改善提案の詳細を表示")
+    proposal_show.add_argument("proposal_id", help="提案 ID（先頭一致可）")
+    proposal_show.add_argument("--org-name", required=True, help="対象 Organization 名")
+    proposal_show.set_defaults(handler_name="cmd_proposal_show")
+
+    proposal_reject = proposal_sub.add_parser("reject", help="改善提案を却下")
+    proposal_reject.add_argument("proposal_id", help="提案 ID（先頭一致可）")
+    proposal_reject.add_argument("--org-name", required=True, help="対象 Organization 名")
+    proposal_reject.add_argument("--yes", action="store_true", help="確認を省略して却下する")
+    proposal_reject.set_defaults(handler_name="cmd_proposal_reject")
+
+    proposal_apply = proposal_sub.add_parser("apply", help="改善提案を適用")
+    proposal_apply.add_argument("proposal_id", help="提案 ID（先頭一致可）")
+    proposal_apply.add_argument("--org-name", required=True, help="対象 Organization 名")
+    proposal_apply.add_argument("--github-repo", default=None, help="GitHub リポジトリ (owner/repo)")
+    proposal_apply.add_argument("--github-token", default=None, help="GitHub トークン")
+    proposal_apply.add_argument("--yes", action="store_true", help="確認を省略して適用する")
+    proposal_apply.set_defaults(handler_name="cmd_proposal_apply")
+
+    approve_parser = subparsers.add_parser("approve", help="改善提案を承認してコードに適用")
+    approve_parser.add_argument("proposal_id", help="承認する提案の ID（先頭 8 文字以上）")
+    approve_parser.add_argument("--org-name", required=True, help="対象 Organization 名")
+    approve_parser.add_argument("--github-repo", default=None, help="GitHub リポジトリ (owner/repo)")
+    approve_parser.add_argument("--github-token", default=None, help="GitHub トークン")
+    approve_parser.add_argument("--yes", action="store_true", help="確認を省略して適用する")
+    approve_parser.set_defaults(handler_name="cmd_approve")
+
+    query_parser = subparsers.add_parser("query", help="SQLite proposals を条件付きで検索")
+    query_parser.add_argument("--filter", default="", help="安全な filter 条件 (例: priority=high,status=proposed)")
+    query_parser.add_argument("--limit", type=int, default=50, help="最大件数")
+    query_parser.add_argument("--db-path", default=None, help="対象 SQLite DB パス")
+    query_parser.set_defaults(handler_name="cmd_query")

@@ -31,8 +31,34 @@ type Organization = {
   icon_data?: string
 }
 
+type TreeAgent = {
+  id: string
+  name: string
+  skills: string[]
+  performance_score: number
+  current_task?: string | null
+}
+
+type TreeTeam = {
+  id: string
+  name: string
+  division_type: string
+  mission?: string
+  depends_on?: string | null
+  agents: TreeAgent[]
+}
+
+type TreeDivision = {
+  id: string
+  name: string
+  type: string
+  mission?: string
+  teams: TreeTeam[]
+}
+
 type OrgDetail = Organization & {
   agents: { id: string; name: string; capability_id: string; skills: string[] }[]
+  divisions: TreeDivision[]
 }
 
 type Proposal = {
@@ -147,6 +173,98 @@ function Modal({
         <div className="dialog-desc">{description}</div>
         {children}
       </div>
+    </div>
+  )
+}
+
+function OrganizationTree({ divisions }: { divisions: TreeDivision[] }) {
+  if (divisions.length === 0) {
+    return <div className="text-muted text-sm">Division / Team / Agent の階層データはまだありません。</div>
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {divisions.map((division) => (
+        <details key={division.id} open className="card org-tree-card">
+          <summary className="flex items-center justify-between gap-3 cursor-pointer px-4 py-3">
+            <div>
+              <div className="font-semibold">{division.name}</div>
+              <div className="text-xs text-muted">{division.type}</div>
+            </div>
+            <span className="badge badge-neutral text-xs">{division.teams.length} teams</span>
+          </summary>
+          <div className="px-4 pb-4 flex flex-col gap-3">
+            {division.teams.map((team) => (
+              <details key={team.id} open style={{ marginLeft: '12px' }}>
+                <summary className="flex items-center justify-between gap-3 cursor-pointer py-2">
+                  <div>
+                    <div className="font-medium">{team.name}</div>
+                    <div className="text-xs text-muted">{team.mission || 'ミッション未設定'}</div>
+                  </div>
+                  <span className="badge badge-blue text-xs">{team.agents.length} agents</span>
+                </summary>
+                <div className="flex flex-col gap-2 pt-2" style={{ marginLeft: '12px' }}>
+                  {team.agents.map((agent) => (
+                    <div key={agent.id} className="org-tree-agent-row">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Bot size={12} />
+                          <span className="font-medium">{agent.name}</span>
+                        </div>
+                        <div className="text-xs text-muted mt-1">{agent.skills.join(' / ') || 'skill 未設定'}</div>
+                      </div>
+                      <span className="badge badge-green text-xs">ready</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        </details>
+      ))}
+    </div>
+  )
+}
+
+function DependencyMap({ divisions }: { divisions: TreeDivision[] }) {
+  if (divisions.length === 0) {
+    return <div className="text-muted text-sm">依存関係データはまだありません。</div>
+  }
+
+  return (
+    <div className="dependency-map">
+      {divisions.map((division, divisionIndex) => (
+        <div key={division.id} className="dependency-division">
+          <div className="dependency-division-header">
+            <div>
+              <div className="dependency-division-title">{division.name}</div>
+              <div className="text-xs text-muted">{division.mission || division.type}</div>
+            </div>
+            <span className="badge badge-neutral">{division.type}</span>
+          </div>
+          <div className="dependency-lane">
+            {division.teams.map((team, teamIndex) => (
+              <div key={team.id} className="dependency-team-card">
+                <div className="dependency-team-head">
+                  <div className="font-medium">{team.name}</div>
+                  {team.depends_on ? <span className="badge badge-blue">依存: {team.depends_on}</span> : null}
+                </div>
+                <div className="dependency-team-meta">{team.mission || 'ミッション未設定'}</div>
+                <div className="dependency-agent-list">
+                  {team.agents.map((agent) => (
+                    <div key={agent.id} className="dependency-agent-chip">
+                      <div>{agent.name}</div>
+                      <div className="text-xs text-muted">{agent.skills.join(' / ')}</div>
+                    </div>
+                  ))}
+                </div>
+                {teamIndex < division.teams.length - 1 ? <div className="dependency-arrow">→</div> : null}
+              </div>
+            ))}
+          </div>
+          {divisionIndex < divisions.length - 1 ? <div className="dependency-cross-link">↓ 次の Division に引き継ぎ</div> : null}
+        </div>
+      ))}
     </div>
   )
 }
@@ -333,6 +451,16 @@ function DetailPanel({
             </section>
           )}
 
+          <section className="detail-section">
+            <div className="detail-section-label">依存マップ</div>
+            <DependencyMap divisions={org.divisions ?? []} />
+          </section>
+
+          <section className="detail-section">
+            <div className="detail-section-label">組織ツリー</div>
+            <OrganizationTree divisions={org.divisions ?? []} />
+          </section>
+
           {/* Proposals */}
           <section className="detail-section">
             <div className="detail-section-label">
@@ -375,6 +503,19 @@ function DetailPanel({
   )
 }
 
+function getDetailLoadErrorMessage(error: unknown, orgName: string) {
+  if (error instanceof Error) {
+    if (error.message.includes('見つかりません') || error.message.includes('404')) {
+      return `組織「${orgName}」は見つかりません。一覧を更新して再度お試しください。`
+    }
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      return '組織詳細の取得中にネットワークエラーが発生しました。接続を確認して再試行してください。'
+    }
+    return `組織の詳細を読み込めませんでした: ${error.message}`
+  }
+  return '組織の詳細を読み込めませんでした。'
+}
+
 export function OrgsPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
@@ -407,8 +548,9 @@ export function OrgsPage() {
     try {
       const data = await api<OrgDetail>('GET', `/api/organizations/${encodeURIComponent(orgName)}`)
       setDetail(data)
-    } catch {
-      toast.error('組織の詳細を読み込めませんでした。')
+    } catch (error) {
+      setDetail(null)
+      toast.error(getDetailLoadErrorMessage(error, orgName))
     }
   }, [])
 

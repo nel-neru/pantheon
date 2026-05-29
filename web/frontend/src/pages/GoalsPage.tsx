@@ -15,6 +15,20 @@ type GoalHistoryItem = {
   timestamp: string
 }
 
+type GoalHistoryApiItem = Partial<GoalHistoryItem> & {
+  goal_text?: string
+  summary?: string
+  created_at?: string
+}
+
+function normalizeGoalHistoryItem(item: GoalHistoryApiItem): GoalHistoryItem {
+  return {
+    goal: item.goal ?? item.goal_text ?? '—',
+    result: item.result ?? item.summary ?? '—',
+    timestamp: item.timestamp ?? item.created_at ?? '',
+  }
+}
+
 type LogEntry = {
   id: string
   text: string
@@ -23,9 +37,12 @@ type LogEntry = {
 
 function describeGoalEvent(event: Record<string, unknown>) {
   const type = typeof event.type === 'string' ? event.type : 'progress'
+  const data = typeof event.data === 'object' && event.data !== null ? (event.data as Record<string, unknown>) : null
 
   if (type === 'start') return `${String(event.org_name ?? 'プラットフォーム全体')} のゴール実行を開始します`
-  if (type === 'result') return String(event.result ?? event.content ?? 'ゴール実行の結果が生成されました')
+  if (type === 'result') {
+    return String(event.result ?? data?.result ?? event.summary ?? data?.summary ?? event.content ?? 'ゴール実行の結果が生成されました')
+  }
   if (type === 'done') return String(event.content ?? 'ゴール実行が完了しました')
   if (type === 'error') return String(event.content ?? event.message ?? 'ゴール実行に失敗しました')
   return String(event.content ?? event.message ?? 'ゴールを実行中です')
@@ -43,8 +60,8 @@ export function GoalsPage() {
 
   const loadHistory = useCallback(async () => {
     try {
-      const data = await api<GoalHistoryItem[]>('GET', '/api/goals/history')
-      setHistory(data)
+      const data = await api<GoalHistoryApiItem[]>('GET', '/api/goals/history')
+      setHistory(data.map(normalizeGoalHistoryItem))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'ゴール履歴の読み込みに失敗しました。')
     }
@@ -91,7 +108,8 @@ export function GoalsPage() {
         appendLog(text, type === 'done' ? 'done' : type === 'error' ? 'error' : 'line')
 
         if (type === 'result') {
-          setResult(String(event.result ?? event.content ?? ''))
+          const data = typeof event.data === 'object' && event.data !== null ? (event.data as Record<string, unknown>) : null
+          setResult(String(event.result ?? data?.result ?? event.summary ?? data?.summary ?? event.content ?? ''))
         }
 
         if (type === 'done') {

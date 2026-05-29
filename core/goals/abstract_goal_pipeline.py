@@ -45,12 +45,9 @@ class PipelineResult:
         lines = [
             f"目標: {self.goal.description}",
             f"種別: {self.goal.goal_type}  スケール: {self.goal.scale}",
-            f"Organization: {self.org_result.organization.name}"
-            f" ({'新規' if self.org_result.is_new else '流用'})",
-            f"タスク: {self.execution_progress.done_count}/{self.execution_progress.total} 完了"
-            f" (失敗: {self.execution_progress.failed_count})",
-            f"達成度: {self.verification.achievement_pct:.1f}%"
-            f" ({'✅ 達成' if self.success else '⚠️ 未達成'})",
+            f"Organization: {self.org_result.organization.name} ({'新規' if self.org_result.is_new else '流用'})",
+            f"タスク: {self.execution_progress.done_count}/{self.execution_progress.total} 完了 (失敗: {self.execution_progress.failed_count})",
+            f"達成度: {self.verification.achievement_pct:.1f}% ({'✅ 達成' if self.success else '⚠️ 未達成'})",
         ]
         if self.verification.recommendations:
             lines.append("推奨事項:")

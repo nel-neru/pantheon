@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -126,6 +127,7 @@ def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "started"
+    assert data["message"] == "デーモンを起動しました。"
     assert data["running"] is True
     assert data["pid"] == 9876
     assert data["log_path"] == str(tmp_path / "daemon.log")
@@ -162,12 +164,30 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.json() == {
         "status": "stopped",
+        "message": "デーモンを停止しました。",
         "running": False,
         "pid": 2222,
         "log_path": str(tmp_path / "daemon.log"),
     }
     assert killed == {"pid": 2222, "sig": server.signal.SIGTERM}
     assert not pid_file.exists()
+
+
+def test_init_platform_response_includes_message(tmp_path, monkeypatch):
+    import core.bootstrap as bootstrap_module
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(bootstrap_module, "bootstrap_platform", lambda: psm)
+
+    response = client.post("/api/init")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "initialized"
+    assert data["message"] == "プラットフォームを初期化しました。"
+    assert data["platform_home"] == str(tmp_path)
+    assert data["initialized"] is False
 
 
 def test_analyze_stream_emits_sse_events(monkeypatch):
@@ -192,13 +212,13 @@ def test_analyze_stream_emits_sse_events(monkeypatch):
     assert response.headers["x-accel-buffering"] == "no"
     assert response.headers["content-type"].startswith("text/event-stream")
     assert _read_sse_events(response.text) == [
-        {"type": "start", "org": "demo-org"},
-        {"type": "progress", "message": "Loading organization..."},
-        {"type": "progress", "message": "Running code review..."},
-        {"type": "progress", "message": "Saving generated proposals..."},
-        {"type": "proposal", "data": {"id": "p1", "title": "First", "status": "proposed"}},
-        {"type": "proposal", "data": {"id": "p2", "title": "Second", "status": "proposed"}},
-        {"type": "done", "count": 2},
+        {"type": "start", "org": "demo-org", "org_name": "demo-org", "content": "demo-org の分析を開始します"},
+        {"type": "progress", "message": "Loading organization...", "content": "Loading organization..."},
+        {"type": "progress", "message": "Running code review...", "content": "Running code review..."},
+        {"type": "progress", "message": "Saving generated proposals...", "content": "Saving generated proposals..."},
+        {"type": "proposal", "org_name": "demo-org", "title": "First", "file_path": None, "content": "First", "data": {"id": "p1", "title": "First", "status": "proposed"}},
+        {"type": "proposal", "org_name": "demo-org", "title": "Second", "file_path": None, "content": "Second", "data": {"id": "p2", "title": "Second", "status": "proposed"}},
+        {"type": "done", "org_name": "demo-org", "files_reviewed": 2, "proposals_generated": 2, "count": 2, "content": "2 件のファイルを確認し、2 件の提案を生成しました"},
     ]
 
 
@@ -231,11 +251,25 @@ def test_goals_stream_emits_sse_events(monkeypatch):
     assert response.headers["x-accel-buffering"] == "no"
     assert response.headers["content-type"].startswith("text/event-stream")
     assert _read_sse_events(response.text) == [
-        {"type": "start", "goal": "Ship SSE support"},
-        {"type": "progress", "message": "Planning goal execution..."},
-        {"type": "progress", "message": "Saving goal history..."},
-        {"type": "result", "data": goal_result},
-        {"type": "done"},
+        {"type": "start", "goal": "Ship SSE support", "org_name": None},
+        {"type": "progress", "message": "Planning goal execution...", "content": "Planning goal execution..."},
+        {"type": "progress", "message": "Saving goal history...", "content": "Saving goal history..."},
+        {
+            "type": "result",
+            "goal": "Ship SSE support",
+            "org_name": "Platform",
+            "result": "done",
+            "summary": "done",
+            "content": "done",
+            "data": goal_result,
+        },
+        {
+            "type": "done",
+            "goal": "Ship SSE support",
+            "org_name": "Platform",
+            "result": "done",
+            "content": "ゴール実行が完了しました",
+        },
     ]
 
 
@@ -316,6 +350,22 @@ def test_chat_session_add_message(tmp_path, monkeypatch):
     assert [message["role"] for message in session["messages"]] == ["user", "assistant"]
 
 
+def test_chat_endpoint_rejects_blank_message(monkeypatch):
+    called = {"value": False}
+
+    async def fake_process_chat_message(message, session_context=None):
+        called["value"] = True
+        return "should not run"
+
+    monkeypatch.setattr(server, "_process_chat_message", fake_process_chat_message)
+
+    response = client.post("/api/chat", json={"message": "   "})
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "メッセージを入力してください"}
+    assert called["value"] is False
+
+
 
 def test_list_proposals_returns_only_active_statuses(monkeypatch):
     monkeypatch.setattr(
@@ -337,11 +387,11 @@ def test_list_proposals_returns_only_active_statuses(monkeypatch):
     response = client.get("/api/organizations/demo-org/proposals")
 
     assert response.status_code == 200
-    assert response.json() == [
-        {"id": "proposed", "title": "Proposed proposal", "status": "proposed"},
-        {"id": "pending", "title": "Pending proposal", "status": "pending"},
-        {"id": "running", "title": "Running proposal", "status": "in_progress"},
-    ]
+    payload = response.json()
+    assert [item["id"] for item in payload] == ["proposed", "pending", "running"]
+    assert [item["status"] for item in payload] == ["proposed", "pending", "in_progress"]
+    assert all("diff_text" in item for item in payload)
+    assert all("approval_notes" in item for item in payload)
 
 
 
@@ -374,6 +424,44 @@ def test_list_organizations_counts_only_active_proposals(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()[0]["pending_proposals"] == 3
+
+
+
+def test_get_organization_includes_division_tree(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("Tree Org", "Inspect hierarchy")
+    psm.save_organization(org)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    response = client.get(f"/api/organizations/{org.name}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["divisions"]
+    first_division = data["divisions"][0]
+    assert first_division["teams"]
+    assert first_division["teams"][0]["agents"]
+
+
+
+def test_runtime_agents_endpoint_returns_status_and_proficiency(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("Runtime Org", "Track runtime agents")
+    runtime_agent = org.divisions[0].teams[0].agents[0]
+    runtime_agent.current_task = "Investigate regressions"
+    runtime_agent.performance_score = 88
+    psm.save_organization(org)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    response = client.get("/api/agents/runtime")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["organization"] == "Runtime Org"
+    assert data[0]["status"] == "running"
+    assert data[0]["proficiency"] == 88
+    assert data[0]["configuration"]["current_task"] == "Investigate regressions"
+
 
 
 def test_approve_proposal_runs_without_request_body(tmp_path, monkeypatch):
@@ -419,6 +507,7 @@ def test_approve_proposal_runs_without_request_body(tmp_path, monkeypatch):
         "status": "done",
         "proposal_id": str(proposal.id),
         "title": "Add tests",
+        "approval_notes": "",
         "change_summary": "Applied the requested improvement.",
         "branch": "feature/add-tests",
         "pr_url": "https://example.com/pr/1",
@@ -429,6 +518,47 @@ def test_approve_proposal_runs_without_request_body(tmp_path, monkeypatch):
         },
     }
     assert json.loads(proposal_path.read_text(encoding="utf-8"))["status"] == "done"
+
+
+
+def test_approve_proposal_persists_approval_notes(tmp_path, monkeypatch):
+    import agents.orchestrator_agent as orchestrator_module
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("ApproveNotesOrg", "Apply proposal with notes")
+    org.target_repo_path = str(tmp_path / "repo")
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    proposal = ImprovementProposal(
+        review_id=uuid4(),
+        title="Add docs",
+        description="Document the new workflow.",
+        priority="low",
+        category="documentation",
+        file_path="docs/workflow.md",
+    )
+    proposal_path = sm.save_improvement_proposal(proposal)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    class FakeOrchestrator:
+        async def run(self, task):
+            return SimpleNamespace(success=True, output={}, error=None)
+
+    monkeypatch.setattr(
+        orchestrator_module.OrchestratorAgent,
+        "create",
+        classmethod(lambda cls, llm_client=None, **kwargs: FakeOrchestrator()),
+    )
+
+    response = client.post(
+        f"/api/proposals/{org.name}/{str(proposal.id)[:8]}/approve",
+        json={"approval_notes": "Ship after smoke test."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["approval_notes"] == "Ship after smoke test."
+    stored = json.loads(proposal_path.read_text(encoding="utf-8"))
+    assert stored["approval_notes"] == "Ship after smoke test."
 
 
 def test_welcome_creates_sample_org(tmp_path, monkeypatch):
@@ -479,24 +609,26 @@ def test_get_settings_returns_defaults(tmp_path, monkeypatch):
     response = client.get("/api/settings")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "llm_provider": "anthropic",
-        "llm_model": "claude-3-5-sonnet-20241022",
-        "anthropic_api_key_masked": "",
-        "openai_api_key_masked": "",
-        "groq_api_key_masked": "",
-        "github_models_api_key_masked": "",
-        "gemini_api_key_masked": "",
-        "anthropic_api_key_set": False,
-        "openai_api_key_set": False,
-        "groq_api_key_set": False,
-        "github_models_api_key_set": False,
-        "gemini_api_key_set": False,
-        "daemon_interval": 3600,
-        "daemon_max_files": 10,
-        "settings_file": str(tmp_path / "settings.json"),
-        "has_llm": False,
-    }
+    payload = response.json()
+    assert payload["llm_provider"] == "anthropic"
+    assert payload["llm_model"] == "claude-3-5-sonnet-20241022"
+    assert payload["anthropic_api_key_masked"] == ""
+    assert payload["openai_api_key_masked"] == ""
+    assert payload["groq_api_key_masked"] == ""
+    assert payload["github_models_api_key_masked"] == ""
+    assert payload["gemini_api_key_masked"] == ""
+    assert payload["anthropic_api_key_set"] is False
+    assert payload["openai_api_key_set"] is False
+    assert payload["groq_api_key_set"] is False
+    assert payload["github_models_api_key_set"] is False
+    assert payload["gemini_api_key_set"] is False
+    assert payload["daemon_interval"] == 3600
+    assert payload["daemon_max_files"] == 10
+    assert payload["settings_file"] == str(tmp_path / "settings.json")
+    assert payload["has_llm"] is False
+    assert isinstance(payload["model_configurations"], dict)
+    assert isinstance(payload["prompt_templates"], dict)
+    assert isinstance(payload["policy_rules"], dict)
 
 
 def test_get_settings_masks_api_key(tmp_path, monkeypatch):
@@ -524,6 +656,35 @@ def test_get_settings_masks_api_key(tmp_path, monkeypatch):
     assert data["anthropic_api_key_set"] is True
 
 
+
+def test_cors_preflight_allows_localhost_origin():
+    response = client.options(
+        "/api/settings",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+
+def test_get_settings_warns_on_open_permissions(tmp_path, monkeypatch, caplog):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text("{}", encoding="utf-8")
+    settings_file.chmod(0o644)
+    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+
+    with caplog.at_level(logging.WARNING):
+        response = client.get("/api/settings")
+
+    assert response.status_code == 200
+    assert "expected 0o600" in caplog.text
+
+
+
 def test_update_settings_saves_to_file(tmp_path, monkeypatch):
     """設定更新がファイルに保存されること"""
     settings_file = tmp_path / "settings.json"
@@ -538,17 +699,20 @@ def test_update_settings_saves_to_file(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["status"] == "saved"
-    assert json.loads(settings_file.read_text(encoding="utf-8")) == {
-        "llm_provider": "openai",
-        "llm_model": "gpt-4o-mini",
-        "anthropic_api_key": "",
-        "openai_api_key": "",
-        "groq_api_key": "",
-        "github_models_api_key": "",
-        "gemini_api_key": "",
-        "daemon_interval": 3600,
-        "daemon_max_files": 10,
-    }
+
+    saved = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert saved["llm_provider"] == "openai"
+    assert saved["llm_model"] == "gpt-4o-mini"
+    assert saved["anthropic_api_key"] == ""
+    assert saved["openai_api_key"] == ""
+    assert saved["groq_api_key"] == ""
+    assert saved["github_models_api_key"] == ""
+    assert saved["gemini_api_key"] == ""
+    assert saved["daemon_interval"] == 3600
+    assert saved["daemon_max_files"] == 10
+    assert isinstance(saved["model_configurations"], dict)
+    assert isinstance(saved["prompt_templates"], dict)
+    assert isinstance(saved["policy_rules"], dict)
 
 
 def test_update_settings_sets_env_vars(tmp_path, monkeypatch):
@@ -567,6 +731,20 @@ def test_update_settings_sets_env_vars(tmp_path, monkeypatch):
     assert response.json() == {"status": "saved", "has_llm": True}
     assert server.os.environ["ANTHROPIC_API_KEY"] == "secret-key-1234"
     assert json.loads(settings_file.read_text(encoding="utf-8"))["anthropic_api_key"] == "secret-key-1234"
+
+
+
+def test_update_settings_sets_restrictive_permissions(tmp_path, monkeypatch):
+    settings_file = tmp_path / "settings.json"
+    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+
+    response = client.put(
+        "/api/settings",
+        json={"llm_provider": "openai"},
+    )
+
+    assert response.status_code == 200
+    assert settings_file.stat().st_mode & 0o777 == 0o600
 
 
 
@@ -904,6 +1082,48 @@ def test_update_organization_404_for_missing(tmp_path, monkeypatch):
     assert response.json() == {"detail": "Organization 'missing-org' が見つかりません"}
 
 
+def test_goal_history_normalizes_summary_records(tmp_path, monkeypatch):
+    history_file = tmp_path / "goal_history.json"
+    history_file.write_text(
+        json.dumps([
+            {
+                "goal_text": "品質を改善する",
+                "summary": "改善提案を作成しました",
+                "organization": "Platform",
+                "created_at": "2025-01-01T00:00:00+00:00",
+                "success": True,
+            }
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(server, "_goal_history_path", lambda: history_file)
+
+    response = client.get("/api/goals/history")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "goal": "品質を改善する",
+            "goal_text": "品質を改善する",
+            "result": "改善提案を作成しました",
+            "summary": "改善提案を作成しました",
+            "timestamp": "2025-01-01T00:00:00+00:00",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "org_name": "Platform",
+            "organization": "Platform",
+            "success": True,
+            "goal_type": None,
+            "scale": None,
+            "done_count": None,
+            "total": None,
+            "failed_count": None,
+            "achievement_pct": None,
+            "recommendations": [],
+            "id": None,
+        }
+    ]
+
+
 def test_clear_goal_history_creates_empty_file(tmp_path, monkeypatch):
     """履歴削除後に空のJSONファイルが作られること"""
     history_file = tmp_path / "goal_history.json"
@@ -998,3 +1218,206 @@ def test_create_and_delete_knowledge_file(tmp_path, monkeypatch):
 
     after_del = client.get("/api/knowledge/files/test_temp_knowledge.md")
     assert after_del.status_code == 404
+
+
+def test_create_knowledge_file_rejects_non_markdown_extension(tmp_path, monkeypatch):
+    _set_knowledge_dir(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/knowledge/files",
+        json={
+            "name": "notes.txt",
+            "content": "blocked",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Markdown ファイルのみ作成できます"}
+
+
+
+def test_create_organization_rejects_parent_traversal_path():
+    response = client.post(
+        "/api/organizations",
+        json={
+            "name": "Unsafe Org",
+            "purpose": "reject traversal",
+            "target_repo_path": "../outside-repo",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+
+def test_queue_task_rejects_invalid_task_type(tmp_path, monkeypatch):
+    _set_task_queue_home(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/tasks",
+        json={
+            "task_type": "../escape",
+            "org_name": "TestOrg",
+            "description": "bad task type",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+
+def test_run_goal_rejects_overlong_goal_text():
+    response = client.post("/api/goals/run", json={"goal_text": "x" * 4001})
+
+    assert response.status_code == 422
+
+
+
+def test_create_knowledge_file_rejects_parent_traversal_name(tmp_path, monkeypatch):
+    _set_knowledge_dir(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/knowledge/files",
+        json={
+            "name": "../escape.md",
+            "content": "blocked",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+
+def test_execution_history_endpoint_combines_saved_history_and_goal_history(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    _set_task_queue_home(tmp_path, monkeypatch)
+
+    (tmp_path / "execution_history.json").write_text(
+        json.dumps([
+            {
+                "id": "evt-1",
+                "timestamp": "2025-01-03T10:00:00+00:00",
+                "operation": "organization_created",
+                "status": "success",
+                "title": "Created alpha",
+                "details": "alpha created",
+                "org_name": "alpha",
+                "entity_type": "organization",
+                "entity_id": "alpha",
+                "route": "/orgs",
+                "metadata": {},
+            }
+        ]),
+        encoding="utf-8",
+    )
+    (tmp_path / "goal_history.json").write_text(
+        json.dumps([
+            {
+                "goal": "Ship search",
+                "result": "Search shipped",
+                "timestamp": "2025-01-02T10:00:00+00:00",
+                "org_name": "alpha",
+                "success": True,
+            }
+        ]),
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/execution-history")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["operation"] == "organization_created"
+    assert any(item["operation"] == "goal_completed" for item in data)
+
+
+
+def test_search_endpoint_returns_matching_entities(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    org = create_default_organization("alpha-org", "General search improvements")
+    psm.save_organization(org)
+
+    proposal = ImprovementProposal(
+        review_id=uuid4(),
+        title="General search audit trail",
+        description="Index proposals and goals",
+        file_path="web/server.py",
+        status="proposed",
+    )
+    psm.get_org_state_manager(org).save_improvement_proposal(proposal)
+    (tmp_path / "goal_history.json").write_text(
+        json.dumps([
+            {
+                "goal": "Improve general search",
+                "result": "Search launched",
+                "timestamp": "2025-01-01T00:00:00+00:00",
+                "org_name": "alpha-org",
+                "success": True,
+            }
+        ]),
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/search", params={"q": "general"})
+
+    assert response.status_code == 200
+    types = {item["type"] for item in response.json()}
+    assert {"organization", "agent", "proposal", "goal"}.issubset(types)
+
+
+
+def test_batch_reject_proposals_updates_multiple_entries(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    org = create_default_organization("batch-org", "Batch proposal updates")
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    proposal_one = ImprovementProposal(review_id=uuid4(), title="First", description="One", file_path="a.py", status="proposed")
+    proposal_two = ImprovementProposal(review_id=uuid4(), title="Second", description="Two", file_path="b.py", status="pending")
+    sm.save_improvement_proposal(proposal_one)
+    sm.save_improvement_proposal(proposal_two)
+
+    response = client.post(
+        f"/api/proposals/{org.name}/batch",
+        json={
+            "proposal_ids": [str(proposal_one.id), str(proposal_two.id)],
+            "action": "reject",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["updated"] == 2
+    proposals = client.get(f"/api/organizations/{org.name}/proposals")
+    assert proposals.status_code == 200
+    assert proposals.json() == []
+
+
+
+def test_updates_websocket_receives_task_queue_events(tmp_path, monkeypatch):
+    _set_task_queue_home(tmp_path, monkeypatch)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    with client.websocket_connect("/ws/updates") as websocket:
+        initial = websocket.receive_json()
+        assert initial["status"] == "connected"
+
+        response = client.post(
+            "/api/tasks",
+            json={
+                "task_type": "custom",
+                "org_name": "alpha-org",
+                "description": "Queue searchable task",
+                "priority": 5,
+            },
+        )
+
+        assert response.status_code == 200
+        event = websocket.receive_json()
+        assert event["type"] == "task_queued"
+        assert event["title"] == "Queue searchable task"

@@ -185,7 +185,7 @@ class PolicyEngine:
 
         # カテゴリチェック
         for cat in cond.get("categories", []):
-            if cat in (p.get("category") or ""):
+            if cat == (p.get("category") or ""):
                 return PolicyVerdict(
                     decision=ApprovalDecision.HUMAN_REQUIRED,
                     reason=f"カテゴリ '{cat}' は常に人間確認",
@@ -202,6 +202,35 @@ class PolicyEngine:
                     rule_name="human_required.file_patterns",
                 )
         return None
+
+    def _collect_changed_file_sizes_kb(self, proposal: Dict[str, Any]) -> List[tuple[str, float]]:
+        sizes: List[tuple[str, float]] = []
+
+        def append_size(path: str, raw_value: Any, *, divide_by_1024: bool = False) -> None:
+            if raw_value in (None, ""):
+                return
+            try:
+                size = float(raw_value)
+            except (TypeError, ValueError):
+                return
+            if divide_by_1024:
+                size /= 1024
+            sizes.append((path, size))
+
+        file_path = str(proposal.get("file_path") or "")
+        append_size(file_path, proposal.get("file_size_kb"))
+        append_size(file_path, proposal.get("size_kb"))
+        append_size(file_path, proposal.get("size_bytes"), divide_by_1024=True)
+
+        for changed_file in proposal.get("changed_files", []):
+            if not isinstance(changed_file, dict):
+                continue
+            path = str(changed_file.get("file_path") or changed_file.get("path") or file_path or "<unknown>")
+            append_size(path, changed_file.get("file_size_kb"))
+            append_size(path, changed_file.get("size_kb"))
+            append_size(path, changed_file.get("size_bytes"), divide_by_1024=True)
+
+        return sizes
 
     def _check_auto_approve(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
         cond = self._policy.get("auto_approve", {}).get("conditions", {})
@@ -222,6 +251,18 @@ class PolicyEngine:
         for pattern in cond.get("forbidden_patterns", []):
             if pattern in file_path:
                 return None
+
+        max_file_size_kb = cond.get("max_file_size_kb")
+        if max_file_size_kb is not None:
+            for changed_path, size_kb in self._collect_changed_file_sizes_kb(p):
+                if size_kb > float(max_file_size_kb):
+                    logger.info(
+                        "Auto-approve skipped for %s because %.1fKB exceeds max_file_size_kb=%s",
+                        changed_path,
+                        size_kb,
+                        max_file_size_kb,
+                    )
+                    return None
 
         return PolicyVerdict(
             decision=ApprovalDecision.AUTO_APPROVE,

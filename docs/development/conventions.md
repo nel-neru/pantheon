@@ -70,7 +70,7 @@
 ## テストパターン
 
 テストフレームワークは `pytest` + `pytest-asyncio` です。
-`python -m pytest tests/ --collect-only -q` では現在 **404 tests collected** です。
+`python -m pytest tests/ --collect-only -q` で現在の収集数を確認できます。
 
 ### よく使うパターン
 
@@ -97,11 +97,16 @@
 
 CLI出力を検証するため、`capsys.readouterr().out` を使います。
 
-#### 4. 非同期ヘルパー
+#### 4. pre-commit フック
+
+`bash scripts/install_hooks.sh` で pre-commit フックを導入できます。
+このフックは GUI ページのテスト不足と HelpPage の更新漏れを早期に知らせます。
+
+#### 5. 非同期ヘルパー
 
 テストでは `_run(coro)` や `asyncio.run(coro)` で非同期関数を同期的に呼ぶパターンがあります。
 
-#### 5. 安定APIの回帰テスト
+#### 6. 安定APIの回帰テスト
 
 `tests/test_regression.py` では dict schema / rule名 / JSON構造の安定性を守っています。
 キー名や出力形式の変更は要注意です。

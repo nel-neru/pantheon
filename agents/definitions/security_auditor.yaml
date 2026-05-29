@@ -1,7 +1,9 @@
 # security_auditor.yaml
 # セキュリティ脆弱性監査・依存関係リスク評価の専門エージェント
 
+schema_version: "1.0"
 name: SecurityAuditor
+capability_id: agent:security_auditor
 description: セキュリティ脆弱性監査・依存関係リスク評価の専門エージェント
 
 skills:

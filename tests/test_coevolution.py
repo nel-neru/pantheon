@@ -250,6 +250,30 @@ def test_apply_change_rolls_back_on_failed_tests(tmp_path, monkeypatch):
     assert file_path.read_text(encoding="utf-8") == "before"
 
 
+def test_resolve_path_rejects_parent_traversal(tmp_path):
+    executor = SafeChangeExecutor(project_root=tmp_path)
+
+    with pytest.raises(ValueError, match="escapes project root"):
+        executor._resolve_path("../escape.py")
+
+
+def test_resolve_path_rejects_absolute_path(tmp_path):
+    executor = SafeChangeExecutor(project_root=tmp_path)
+
+    with pytest.raises(ValueError, match="escapes project root"):
+        executor._resolve_path("/etc/passwd")
+
+
+
+def test_resolve_path_rejects_absolute_path_outside_project(tmp_path):
+    executor = SafeChangeExecutor(project_root=tmp_path)
+    outside_path = tmp_path.parent / "escape.py"
+
+    with pytest.raises(ValueError, match="escapes project root"):
+        executor._resolve_path(str(outside_path))
+
+
+
 def test_list_backups(tmp_path):
     file_path = tmp_path / "sample.py"
     file_path.write_text("original", encoding="utf-8")

@@ -6,7 +6,10 @@ docstringからMarkdownドキュメントを生成する
 from __future__ import annotations
 
 import ast
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class DocGenerator:
@@ -15,8 +18,14 @@ class DocGenerator:
     def __init__(self):
         pass
 
-    def extract_docstrings(self, file_path: Path) -> dict:
-        tree = ast.parse(Path(file_path).read_text(encoding="utf-8"))
+    def extract_docstrings(self, file_path: Path) -> dict | None:
+        try:
+            source = Path(file_path).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (OSError, SyntaxError) as exc:
+            logger.warning("Skipping documentation for %s: %s", file_path, exc)
+            return None
+
         classes: dict[str, dict] = {}
         functions: dict[str, str] = {}
 
@@ -41,6 +50,9 @@ class DocGenerator:
 
     def generate_markdown(self, file_path: Path) -> str:
         extracted = self.extract_docstrings(file_path)
+        if extracted is None:
+            return ""
+
         lines = [f"# {Path(file_path).name}"]
         if extracted["module"]:
             lines.extend(["", extracted["module"]])
@@ -72,7 +84,10 @@ class DocGenerator:
         for py_file in sorted(Path(directory).rglob("*.py")):
             if py_file == output_file:
                 continue
-            docs.append(self.generate_markdown(py_file))
+            markdown = self.generate_markdown(py_file)
+            if not markdown:
+                continue
+            docs.append(markdown)
             count += 1
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text("\n\n---\n\n".join(docs), encoding="utf-8")

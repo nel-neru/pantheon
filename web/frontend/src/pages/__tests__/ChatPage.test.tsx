@@ -203,6 +203,8 @@ describe('ChatPage', () => {
     expect(screen.getByRole('listbox', { name: 'スラッシュコマンド' })).toBeInTheDocument()
     expect(screen.getByText('/help')).toBeInTheDocument()
     expect(screen.getByText('/analyze')).toBeInTheDocument()
+    expect(screen.getByText('/goal')).toBeInTheDocument()
+    expect(screen.getByText('/agents')).toBeInTheDocument()
   })
 
   it('sends a message through the session API and renders the response', async () => {

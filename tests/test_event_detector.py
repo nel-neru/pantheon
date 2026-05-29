@@ -73,3 +73,26 @@ def test_commit_cache_saves(tmp_path):
     # キャッシュが作られていること
     cache_path = tmp_path / "event_cache.json"
     assert cache_path.exists()
+
+
+def test_load_commit_cache_logs_warning_for_invalid_json(tmp_path, caplog):
+    cache_path = tmp_path / "event_cache.json"
+    cache_path.write_text("{not-json", encoding="utf-8")
+
+    caplog.set_level("WARNING")
+    detector = EventDetector(platform_home=tmp_path)
+
+    assert detector._last_commits == {}
+    assert "Failed to load commit cache" in caplog.text
+
+
+def test_save_commit_cache_creates_parent_directory(tmp_path):
+    platform_home = tmp_path / "nested" / "platform-home"
+    detector = EventDetector(platform_home=platform_home)
+    detector._last_commits = {"org-1": "abc123"}
+
+    detector._save_commit_cache()
+
+    cache_path = platform_home / "event_cache.json"
+    assert cache_path.exists()
+    assert '"org-1": "abc123"' in cache_path.read_text(encoding="utf-8")

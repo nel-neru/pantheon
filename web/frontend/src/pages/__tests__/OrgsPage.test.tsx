@@ -209,6 +209,44 @@ describe('OrgsPage', () => {
     expect(screen.getAllByText('/Users/test/repos/acme').length).toBeGreaterThan(0)
   })
 
+  it('shows a specific not-found message when loading details returns 404', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      if (method === 'GET' && path === '/api/organizations/acme-platform') {
+        throw new Error("Organization 'acme-platform' が見つかりません")
+      }
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+
+    await waitFor(() => {
+      expect(mockedToast.error).toHaveBeenCalledWith('組織「acme-platform」は見つかりません。一覧を更新して再度お試しください。')
+    })
+  })
+
+  it('shows a specific network message when loading details fails to fetch', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      if (method === 'GET' && path === '/api/organizations/acme-platform') {
+        throw new Error('Failed to fetch')
+      }
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+
+    await waitFor(() => {
+      expect(mockedToast.error).toHaveBeenCalledWith('組織詳細の取得中にネットワークエラーが発生しました。接続を確認して再試行してください。')
+    })
+  })
+
   it('edits an existing organization', async () => {
     let currentOrgs = [baseOrg]
     mockApi.mockImplementation(async (method, path, body) => {

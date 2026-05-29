@@ -1,7 +1,9 @@
 # tool_designer.yaml
 # CapabilityGap から実装仕様書を生成するツール設計エージェント
 
+schema_version: "1.0"
 name: ToolDesigner
+capability_id: agent:tool_designer
 description: CapabilityGap を分析し、新しいツールの実装仕様書を生成する
 
 skills:

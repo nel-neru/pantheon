@@ -29,3 +29,35 @@ def test_policy_engine_all_auto_approve():
 def test_policy_engine_all_human_required():
     proposals = [{"priority": "high", "category": "style", "file_path": f"src/{i}.py"} for i in range(3)]
     assert len(engine.get_human_required(proposals)) == 3
+
+
+def test_policy_engine_ignores_invalid_changed_files_entries():
+    proposal = {
+        "priority": "low",
+        "category": "style",
+        "file_path": "src/app.py",
+        "changed_files": [
+            None,
+            "bad-entry",
+            {"path": "src/app.py", "size_kb": 1},
+        ],
+    }
+
+    verdict = engine.evaluate(proposal)
+
+    assert verdict.decision == ApprovalDecision.AUTO_APPROVE
+
+
+def test_policy_engine_rejects_oversized_changed_file():
+    proposal = {
+        "priority": "low",
+        "category": "style",
+        "file_path": "src/app.py",
+        "changed_files": [
+            {"path": "src/app.py", "size_bytes": 150 * 1024},
+        ],
+    }
+
+    verdict = engine.evaluate(proposal)
+
+    assert verdict.decision == ApprovalDecision.HUMAN_REQUIRED

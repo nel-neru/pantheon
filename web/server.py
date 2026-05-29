@@ -11,24 +11,28 @@ import asyncio
 import colorsys
 import hashlib
 import json
+from copy import deepcopy
 import logging
 import os
 import signal
+import stat
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.models.organization import ImprovementProposal, is_active_improvement_proposal_status
 from core.platform.state import PlatformStateManager, get_platform_home
+from core.policy.engine import DEFAULT_POLICY
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="RepoCorp AI Platform", version="2.0.0")
@@ -40,6 +44,7 @@ KNOWLEDGE_DIR = Path(__file__).parent.parent / "knowledge"
 SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "RepoCorp Core", "meta-improvement"}
 SETTINGS_FILE = Path.home() / ".repocorp" / "gui_settings.json"
 CHAT_SESSIONS_DIR = Path.home() / ".repocorp" / "chat_sessions"
+DEFAULT_CORS_ORIGINS = ("http://localhost:5173",)
 CHAT_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 _PROVIDER_KEY_MAPPING = {
     "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
@@ -92,21 +97,29 @@ FALLBACK_MODELS = {
         "gemini-1.5-flash-8b",
     ],
 }
-_model_cache: dict[str, tuple[list[str], float]] = {}
-_CACHE_TTL = 300
+DEFAULT_MODEL_CONFIGURATIONS = {
+    "default": {
+        "temperature": 0.2,
+        "max_tokens": 4096,
+        "fallback_model": "",
+        "reasoning_effort": "balanced",
+    },
+    "providers": {
+        "anthropic": {"temperature": 0.2, "max_tokens": 4096},
+        "openai": {"temperature": 0.2, "max_tokens": 4096},
+        "groq": {"temperature": 0.1, "max_tokens": 8192},
+        "github_models": {"temperature": 0.2, "max_tokens": 4096},
+        "gemini": {"temperature": 0.2, "max_tokens": 4096},
+    },
+}
+DEFAULT_PROMPT_TEMPLATES = {
+    "analysis": "Analyze the repository, summarize risks, and propose the highest-value improvements.",
+    "goal_execution": "Plan the goal, execute the highest-priority steps, and report measurable outcomes.",
+    "proposal_review": "Review the proposal diff, identify risk, and capture the rationale for approval or rejection.",
+}
 
-# Serve React build (dist/) when available, fallback to legacy static/
-_serve_dir = DIST_DIR if DIST_DIR.is_dir() else STATIC_DIR
-app.mount("/assets", StaticFiles(directory=_serve_dir / "assets" if (DIST_DIR / "assets").is_dir() else STATIC_DIR), name="assets")
 
-
-def _load_gui_settings() -> Dict[str, Any]:
-    """GUI 設定ファイルを読み込む（存在しなければデフォルト値を返す）"""
-    if SETTINGS_FILE.exists():
-        try:
-            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+def _default_gui_settings() -> Dict[str, Any]:
     return {
         "llm_provider": os.getenv("REPOCORP_DEFAULT_LLM_PROVIDER", "anthropic"),
         "llm_model": os.getenv("REPOCORP_DEFAULT_MODEL", "claude-3-5-sonnet-20241022"),
@@ -117,12 +130,88 @@ def _load_gui_settings() -> Dict[str, Any]:
         "gemini_api_key": "",
         "daemon_interval": 3600,
         "daemon_max_files": 10,
+        "model_configurations": deepcopy(DEFAULT_MODEL_CONFIGURATIONS),
+        "prompt_templates": deepcopy(DEFAULT_PROMPT_TEMPLATES),
+        "policy_rules": deepcopy(DEFAULT_POLICY),
     }
+
+
+_model_cache: dict[str, tuple[list[str], float]] = {}
+_CACHE_TTL = 300
+
+
+def _cors_allowed_origins() -> list[str]:
+    raw_origins = os.getenv("REPOCORP_CORS_ORIGINS", "")
+    if raw_origins.strip():
+        origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+        if origins:
+            return origins
+    return list(DEFAULT_CORS_ORIGINS)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve React build (dist/) when available, fallback to legacy static/
+_serve_dir = DIST_DIR if DIST_DIR.is_dir() else STATIC_DIR
+app.mount("/assets", StaticFiles(directory=_serve_dir / "assets" if (DIST_DIR / "assets").is_dir() else STATIC_DIR), name="assets")
+
+
+def _warn_if_settings_permissions_too_open(path: Path) -> None:
+    if os.name == "nt" or not path.exists():
+        return
+    try:
+        file_mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError:
+        return
+    if file_mode & 0o077:
+        logger.warning(
+            "GUI settings file permissions are too open (%s: %s); expected 0o600",
+            path,
+            oct(file_mode),
+        )
+
+
+
+def _set_settings_file_permissions(path: Path) -> None:
+    if os.name == "nt" or not path.exists():
+        return
+    try:
+        path.chmod(0o600)
+    except OSError as exc:
+        logger.warning("Failed to set restrictive permissions on %s: %s", path, exc)
+
+
+
+def _load_gui_settings() -> Dict[str, Any]:
+    """GUI 設定ファイルを読み込む（存在しなければデフォルト値を返す）"""
+    defaults = _default_gui_settings()
+    if SETTINGS_FILE.exists():
+        _warn_if_settings_permissions_too_open(SETTINGS_FILE)
+        try:
+            loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                merged = deepcopy(defaults)
+                merged.update({k: v for k, v in loaded.items() if k not in {"model_configurations", "prompt_templates", "policy_rules"}})
+                for key in ("model_configurations", "prompt_templates", "policy_rules"):
+                    value = loaded.get(key)
+                    if isinstance(value, dict):
+                        merged[key] = value
+                return merged
+        except Exception:
+            pass
+    return defaults
 
 
 def _save_gui_settings(data: Dict[str, Any]) -> None:
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _set_settings_file_permissions(SETTINGS_FILE)
 
 
 
@@ -271,72 +360,387 @@ def _get_provider_api_key(settings: Dict[str, Any], provider: str) -> str:
     return str(api_keys.get(provider) or settings.get(setting_key) or os.getenv(env_key, ""))
 
 
-class OrgCreateRequest(BaseModel):
-    name: str
-    purpose: str = ""
-    target_repo_path: str = ""
+
+def _normalize_request_path(
+    value: str,
+    field_name: str,
+    *,
+    allow_empty: bool = True,
+    file_name_only: bool = False,
+) -> str:
+    if "\x00" in value:
+        raise ValueError(f"{field_name} に無効な文字が含まれています")
+    if value == "":
+        if allow_empty:
+            return value
+        raise ValueError(f"{field_name} は必須です")
+
+    normalized = Path(os.path.normpath(str(Path(value).expanduser())))
+    if any(part == ".." for part in normalized.parts):
+        raise ValueError(f"{field_name} に親ディレクトリ参照は使えません")
+    if file_name_only and (normalized.is_absolute() or len(normalized.parts) != 1):
+        raise ValueError(f"{field_name} にはファイル名のみ指定できます")
+    return str(normalized)
 
 
-class OrgIconRequest(BaseModel):
-    icon_data: str
+
+class ApiRequestModel(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
 
 
-class AnalyzeRequest(BaseModel):
-    org_name: str
+
+class OrgCreateRequest(ApiRequestModel):
+    name: str = Field(min_length=1, max_length=120)
+    purpose: str = Field(default="", max_length=2000)
+    target_repo_path: str = Field(default="", max_length=4096)
+
+    @field_validator("target_repo_path")
+    @classmethod
+    def validate_target_repo_path(cls, value: str) -> str:
+        return _normalize_request_path(value, "target_repo_path")
+
+
+
+class OrgIconRequest(ApiRequestModel):
+    icon_data: str = Field(max_length=512 * 1024)
+
+
+
+class AnalyzeRequest(ApiRequestModel):
+    org_name: str = Field(min_length=1, max_length=120)
     max_files: int = Field(default=15, ge=1, le=50)
 
 
-class ProposalApproveRequest(BaseModel):
-    pass
+
+class ProposalApproveRequest(ApiRequestModel):
+    approval_notes: str | None = Field(default=None, max_length=2000)
 
 
-class GoalRunRequest(BaseModel):
-    goal_text: str
+
+class GoalRunRequest(ApiRequestModel):
+    goal_text: str = Field(min_length=1, max_length=4000)
 
 
-class DaemonStartRequest(BaseModel):
+
+class DaemonStartRequest(ApiRequestModel):
     interval: int = Field(default=3600, ge=1)
-    max_files: int = Field(default=10, ge=1)
+    max_files: int = Field(default=10, ge=1, le=1000)
 
 
-class TaskQueueRequest(BaseModel):
-    task_type: str
-    org_name: str
-    description: str
+
+class TaskQueueRequest(ApiRequestModel):
+    task_type: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
+    org_name: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=2000)
     payload: dict[str, Any] = Field(default_factory=dict)
     priority: int = Field(default=5, ge=1, le=10)
 
 
-class ChatPayload(BaseModel):
-    message: str
+
+class ChatPayload(ApiRequestModel):
+    message: str = Field(max_length=4000)
 
 
-class ChatRequest(BaseModel):
-    message: str
+
+class ChatRequest(ApiRequestModel):
+    message: str = Field(max_length=4000)
     session_context: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class ChatSessionCreate(BaseModel):
-    name: str = ""
+
+class ChatSessionCreate(ApiRequestModel):
+    name: str = Field(default="", max_length=120)
 
 
-class ChatSessionUpdate(BaseModel):
-    name: str
+
+class ChatSessionUpdate(ApiRequestModel):
+    name: str = Field(max_length=120)
 
 
-class ChatMessageCreate(BaseModel):
-    content: str
-    role: str = "user"
+
+class ChatMessageCreate(ApiRequestModel):
+    content: str = Field(max_length=4000)
+    role: Literal["user"] = "user"
 
 
-class KnowledgeFileUpdate(BaseModel):
-    content: str
+
+class KnowledgeFileUpdate(ApiRequestModel):
+    content: str = Field(max_length=200000)
 
 
-class KnowledgeFileCreate(BaseModel):
-    name: str
-    content: str = ""
 
+class KnowledgeFileCreate(ApiRequestModel):
+    name: str = Field(max_length=255)
+    content: str = Field(default="", max_length=200000)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _normalize_request_path(value, "name", allow_empty=False, file_name_only=True)
+
+
+class ProposalBatchRequest(ApiRequestModel):
+    proposal_ids: list[str] = Field(min_length=1, max_length=100)
+    action: Literal["approve", "reject"]
+
+
+class PlatformStatusResponse(BaseModel):
+    group_health_score: float
+    balance_score: float
+    total_organizations: int
+    active_organizations: int
+    weakest_organization: str | None
+    strongest_organization: str | None
+    platform_home: str
+    initialized: bool
+    has_llm: bool
+
+
+class DaemonStatusResponse(BaseModel):
+    status: str | None = None
+    message: str | None = None
+    running: bool
+    pid: int | None
+    log_path: str | None
+    interval: int | None = None
+    max_files: int | None = None
+
+
+class PlatformInitResponse(BaseModel):
+    status: str
+    message: str
+    platform_home: str
+    meta_improvement_org: str | None = None
+    initialized: bool
+
+
+class AnalyzeResponse(BaseModel):
+    org_name: str
+    files_reviewed: int
+    proposals_generated: int
+    generated_proposals: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class GoalHistoryItemResponse(BaseModel):
+    id: str | None = None
+    goal: str
+    result: str
+    timestamp: str
+    org_name: str | None = None
+    summary: str | None = None
+    goal_text: str | None = None
+    created_at: str | None = None
+    organization: str | None = None
+    success: bool | None = None
+    goal_type: str | None = None
+    scale: str | None = None
+    done_count: int | None = None
+    total: int | None = None
+    failed_count: int | None = None
+    achievement_pct: float | None = None
+    recommendations: list[Any] = Field(default_factory=list)
+
+
+class SettingsResponse(BaseModel):
+    llm_provider: str
+    llm_model: str
+    anthropic_api_key_masked: str
+    openai_api_key_masked: str
+    groq_api_key_masked: str
+    github_models_api_key_masked: str
+    gemini_api_key_masked: str
+    anthropic_api_key_set: bool
+    openai_api_key_set: bool
+    groq_api_key_set: bool
+    github_models_api_key_set: bool
+    gemini_api_key_set: bool
+    daemon_interval: int
+    daemon_max_files: int
+    model_configurations: dict[str, Any] = Field(default_factory=dict)
+    prompt_templates: dict[str, str] = Field(default_factory=dict)
+    policy_rules: dict[str, Any] = Field(default_factory=dict)
+    settings_file: str
+    has_llm: bool
+
+
+class ProviderModelsResponse(BaseModel):
+    provider: str
+    models: list[str] = Field(default_factory=list)
+    source: str
+
+
+class ExecutionHistoryItemResponse(BaseModel):
+    id: str
+    timestamp: str
+    operation: str
+    status: str
+    title: str
+    details: str = ""
+    org_name: str | None = None
+    entity_type: str | None = None
+    entity_id: str | None = None
+    route: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SearchResultItemResponse(BaseModel):
+    id: str
+    type: str
+    title: str
+    subtitle: str = ""
+    route: str
+    org_name: str | None = None
+    status: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+PLATFORM_STATUS_EXAMPLE = {
+    "group_health_score": 82.5,
+    "balance_score": 91.0,
+    "total_organizations": 3,
+    "active_organizations": 2,
+    "weakest_organization": "sandbox",
+    "strongest_organization": "platform-core",
+    "platform_home": str(Path.home() / ".repocorp"),
+    "initialized": True,
+    "has_llm": True,
+}
+DAEMON_STATUS_EXAMPLE = {
+    "running": True,
+    "pid": 4321,
+    "log_path": str(Path.home() / ".repocorp" / "daemon.log"),
+}
+DAEMON_ACTION_EXAMPLE = {
+    "status": "started",
+    "message": "デーモンを起動しました。",
+    "running": True,
+    "pid": 4321,
+    "log_path": str(Path.home() / ".repocorp" / "daemon.log"),
+    "interval": 3600,
+    "max_files": 10,
+}
+INIT_RESPONSE_EXAMPLE = {
+    "status": "initialized",
+    "message": "プラットフォームを初期化しました。",
+    "platform_home": str(Path.home() / ".repocorp"),
+    "meta_improvement_org": "Meta-Improvement Organization",
+    "initialized": True,
+}
+ANALYZE_RESPONSE_EXAMPLE = {
+    "org_name": "demo-org",
+    "files_reviewed": 12,
+    "proposals_generated": 3,
+    "generated_proposals": [
+        {
+            "id": "proposal-1",
+            "priority": "high",
+            "category": "quality",
+            "title": "テストを追加する",
+            "description": "エッジケースをカバーするテストが不足しています。",
+            "file_path": "web/server.py",
+            "expected_impact": "回帰を防止できます。",
+            "status": "proposed",
+        }
+    ],
+}
+GOAL_HISTORY_EXAMPLE = {
+    "goal": "品質を改善する",
+    "goal_text": "品質を改善する",
+    "result": "改善提案を3件作成しました。",
+    "summary": "改善提案を3件作成しました。",
+    "timestamp": "2025-01-01T00:00:00+00:00",
+    "created_at": "2025-01-01T00:00:00+00:00",
+    "org_name": "Platform",
+    "organization": "Platform",
+    "success": True,
+    "goal_type": "quality",
+    "scale": "medium",
+    "done_count": 3,
+    "total": 3,
+    "failed_count": 0,
+    "achievement_pct": 100.0,
+    "recommendations": [],
+}
+SETTINGS_RESPONSE_EXAMPLE = {
+    "llm_provider": "anthropic",
+    "llm_model": "claude-3-5-sonnet-20241022",
+    "anthropic_api_key_masked": "sk-ant-****",
+    "openai_api_key_masked": "",
+    "groq_api_key_masked": "",
+    "github_models_api_key_masked": "",
+    "gemini_api_key_masked": "",
+    "anthropic_api_key_set": True,
+    "openai_api_key_set": False,
+    "groq_api_key_set": False,
+    "github_models_api_key_set": False,
+    "gemini_api_key_set": False,
+    "daemon_interval": 3600,
+    "daemon_max_files": 10,
+    "settings_file": str(Path.home() / ".repocorp" / "gui_settings.json"),
+    "has_llm": True,
+}
+PROVIDER_MODELS_EXAMPLE = {
+    "provider": "anthropic",
+    "models": ["claude-opus-4-5", "claude-sonnet-4-5"],
+    "source": "api",
+}
+EXECUTION_HISTORY_EXAMPLE = {
+    "id": "org-create-1",
+    "timestamp": "2025-01-01T00:00:00+00:00",
+    "operation": "organization_created",
+    "status": "success",
+    "title": "Organization created",
+    "details": "Created sample-org",
+    "org_name": "sample-org",
+    "entity_type": "organization",
+    "entity_id": "sample-org",
+    "route": "/orgs",
+    "metadata": {},
+}
+SEARCH_RESULT_EXAMPLE = {
+    "id": "organization:sample-org",
+    "type": "organization",
+    "title": "sample-org",
+    "subtitle": "Demo organization",
+    "route": "/orgs",
+    "org_name": "sample-org",
+    "status": "active",
+    "metadata": {},
+}
+
+
+class UpdateHub:
+    def __init__(self) -> None:
+        self._connections: set[WebSocket] = set()
+        self._lock = asyncio.Lock()
+
+    async def connect(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        async with self._lock:
+            self._connections.add(websocket)
+
+    async def disconnect(self, websocket: WebSocket) -> None:
+        async with self._lock:
+            self._connections.discard(websocket)
+
+    async def broadcast(self, event: dict[str, Any]) -> None:
+        async with self._lock:
+            connections = list(self._connections)
+
+        stale: list[WebSocket] = []
+        for connection in connections:
+            try:
+                await connection.send_json(event)
+            except Exception:
+                stale.append(connection)
+
+        if stale:
+            async with self._lock:
+                for connection in stale:
+                    self._connections.discard(connection)
+
+
+_updates_hub = UpdateHub()
 
 
 def _migrate_system_orgs(psm: PlatformStateManager | None = None) -> None:
@@ -377,6 +781,27 @@ def _goal_history_path() -> Path:
 
 
 
+def _normalize_goal_history_item(item: dict[str, Any]) -> dict[str, Any]:
+    goal = str(item.get("goal") or item.get("goal_text") or "")
+    result = str(item.get("result") or item.get("summary") or "")
+    timestamp = str(item.get("timestamp") or item.get("created_at") or "")
+    org_name = item.get("org_name") or item.get("organization")
+    normalized = dict(item)
+    normalized.update({
+        "goal": goal,
+        "goal_text": str(item.get("goal_text") or goal),
+        "result": result,
+        "summary": str(item.get("summary") or result),
+        "timestamp": timestamp,
+        "created_at": str(item.get("created_at") or timestamp),
+        "org_name": org_name,
+        "organization": item.get("organization") or org_name,
+        "recommendations": item.get("recommendations") if isinstance(item.get("recommendations"), list) else [],
+    })
+    return normalized
+
+
+
 def _load_goal_history() -> list[dict[str, Any]]:
     path = _goal_history_path()
     if not path.exists():
@@ -385,16 +810,185 @@ def _load_goal_history() -> list[dict[str, Any]]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return []
-    return data if isinstance(data, list) else []
+    if not isinstance(data, list):
+        return []
+    return [_normalize_goal_history_item(item) for item in data if isinstance(item, dict)]
 
 
 
 def _save_goal_history(record: dict[str, Any], keep: int = 12) -> None:
-    history = [record, *_load_goal_history()][:keep]
+    history = [_normalize_goal_history_item(record), *_load_goal_history()][:keep]
     _goal_history_path().write_text(
         json.dumps(history, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+
+def _execution_history_path() -> Path:
+    return _psm().platform_home / "execution_history.json"
+
+
+
+def _normalize_execution_history_item(item: dict[str, Any]) -> dict[str, Any]:
+    timestamp = str(item.get("timestamp") or datetime.now(timezone.utc).isoformat())
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    return {
+        "id": str(item.get("id") or uuid4()),
+        "timestamp": timestamp,
+        "operation": str(item.get("operation") or "event"),
+        "status": str(item.get("status") or "info"),
+        "title": str(item.get("title") or "RepoCorp event"),
+        "details": str(item.get("details") or ""),
+        "org_name": item.get("org_name"),
+        "entity_type": item.get("entity_type"),
+        "entity_id": str(item.get("entity_id")) if item.get("entity_id") is not None else None,
+        "route": item.get("route"),
+        "metadata": metadata,
+    }
+
+
+
+def _load_execution_history() -> list[dict[str, Any]]:
+    path = _execution_history_path()
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [_normalize_execution_history_item(item) for item in data if isinstance(item, dict)]
+
+
+
+def _save_execution_history(records: list[dict[str, Any]], keep: int = 200) -> None:
+    normalized = [_normalize_execution_history_item(record) for record in records][:keep]
+    _execution_history_path().write_text(
+        json.dumps(normalized, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+
+def _append_execution_history(record: dict[str, Any], keep: int = 200) -> dict[str, Any]:
+    normalized = _normalize_execution_history_item(record)
+    _save_execution_history([normalized, *_load_execution_history()], keep=keep)
+    return normalized
+
+
+
+def _matches_search_text(query: str, *values: Any) -> bool:
+    needle = query.strip().lower()
+    if not needle:
+        return True
+    return any(needle in str(value).lower() for value in values if value is not None and value != "")
+
+
+
+def _goal_history_execution_items() -> list[dict[str, Any]]:
+    items = []
+    for goal in _load_goal_history():
+        items.append(_normalize_execution_history_item({
+            "id": f"goal-{goal.get('id') or hashlib.sha1(json.dumps(goal, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]}",
+            "timestamp": goal.get("timestamp") or goal.get("created_at"),
+            "operation": "goal_completed",
+            "status": "success" if goal.get("success", True) else "error",
+            "title": goal.get("goal") or goal.get("goal_text") or "Goal run",
+            "details": goal.get("result") or goal.get("summary") or "",
+            "org_name": goal.get("org_name") or goal.get("organization"),
+            "entity_type": "goal",
+            "entity_id": goal.get("id") or goal.get("goal_text"),
+            "route": "/data",
+            "metadata": {
+                "success": goal.get("success"),
+                "goal_type": goal.get("goal_type"),
+                "scale": goal.get("scale"),
+            },
+        }))
+    return items
+
+
+
+def _task_execution_items() -> list[dict[str, Any]]:
+    items = []
+    for task in _task_queue().list_tasks(limit=None):
+        timestamp = task.get("completed_at") or task.get("started_at") or task.get("created_at")
+        status = str(task.get("status") or "pending")
+        items.append(_normalize_execution_history_item({
+            "id": f"task-{task.get('id')}",
+            "timestamp": timestamp,
+            "operation": f"task_{status}",
+            "status": "error" if status == "failed" else "success" if status in {"done", "cancelled"} else "pending",
+            "title": task.get("description") or "Task update",
+            "details": task.get("error") or "",
+            "org_name": task.get("org_name"),
+            "entity_type": "task",
+            "entity_id": task.get("id"),
+            "route": "/dashboard",
+            "metadata": {
+                "task_type": task.get("type"),
+                "status": status,
+                "result": task.get("result"),
+            },
+        }))
+    return items
+
+
+
+def _combined_execution_history(search: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    records = [*_load_execution_history(), *_goal_history_execution_items(), *_task_execution_items()]
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for record in sorted(records, key=lambda item: item.get("timestamp", ""), reverse=True):
+        record_id = str(record.get("id"))
+        if record_id in seen:
+            continue
+        seen.add(record_id)
+        if search and not _matches_search_text(
+            search,
+            record.get("title"),
+            record.get("details"),
+            record.get("org_name"),
+            record.get("operation"),
+            record.get("entity_type"),
+            json.dumps(record.get("metadata", {}), ensure_ascii=False),
+        ):
+            continue
+        deduped.append(record)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+
+async def _record_execution_event(
+    operation: str,
+    title: str,
+    *,
+    status: str = "success",
+    details: str = "",
+    org_name: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    route: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    record = _append_execution_history({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "operation": operation,
+        "status": status,
+        "title": title,
+        "details": details,
+        "org_name": org_name,
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "route": route,
+        "metadata": metadata or {},
+    })
+    await _updates_hub.broadcast({"type": operation, **record})
+    return record
 
 
 
@@ -465,6 +1059,27 @@ def _daemon_status_payload() -> dict[str, Any]:
 
 
 
+def _daemon_action_message(status: str) -> str:
+    messages = {
+        "started": "デーモンを起動しました。",
+        "already_running": "デーモンはすでに起動しています。",
+        "stopped": "デーモンを停止しました。",
+        "already_stopped": "デーモンはすでに停止しています。",
+        "not_running": "デーモンは起動していません。",
+    }
+    return messages.get(status, "デーモンの操作が完了しました。")
+
+
+
+def _init_message(already_initialized: bool, meta_name: str | None) -> str:
+    if already_initialized:
+        return "プラットフォームはすでに初期化されています。"
+    if meta_name:
+        return f"プラットフォームを初期化しました。メタ組織: {meta_name}"
+    return "プラットフォームを初期化しました。"
+
+
+
 def _serialize_generated_proposal(proposal: ImprovementProposal) -> dict[str, Any]:
     return {
         "id": str(proposal.id),
@@ -481,7 +1096,7 @@ def _serialize_generated_proposal(proposal: ImprovementProposal) -> dict[str, An
 
 def _goal_record(req: GoalRunRequest, result: Any) -> dict[str, Any]:
     summary = result.summary() if callable(getattr(result, "summary", None)) else str(result)
-    return {
+    return _normalize_goal_history_item({
         "goal_text": req.goal_text,
         "summary": summary,
         "success": result.success,
@@ -494,7 +1109,7 @@ def _goal_record(req: GoalRunRequest, result: Any) -> dict[str, Any]:
         "achievement_pct": result.verification.achievement_pct,
         "recommendations": result.verification.recommendations,
         "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    })
 
 
 
@@ -545,7 +1160,31 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
             expected_impact=suggestion.get("expected_impact", ""),
         )
         sm.save_improvement_proposal(proposal)
-        generated_proposals.append(_serialize_generated_proposal(proposal))
+        serialized = _serialize_generated_proposal(proposal)
+        generated_proposals.append(serialized)
+        await _record_execution_event(
+            "proposal_created",
+            proposal.title,
+            status="pending",
+            details=proposal.description,
+            org_name=org.name,
+            entity_type="proposal",
+            entity_id=str(proposal.id),
+            route=f"/proposals?org={org.name}",
+            metadata={"file_path": proposal.file_path, "priority": proposal.priority},
+        )
+
+    await _record_execution_event(
+        "analysis_completed",
+        f"{org.name} の分析が完了しました",
+        status="success",
+        details=f"{len(generated_proposals)} 件の改善提案を生成しました",
+        org_name=org.name,
+        entity_type="organization",
+        entity_id=str(org.id),
+        route="/orgs",
+        metadata={"files_reviewed": result.output.get("files_reviewed", 0), "proposals_generated": len(generated_proposals)},
+    )
 
     return {
         "org_name": org.name,
@@ -563,6 +1202,17 @@ async def _perform_goal_run(req: GoalRunRequest) -> dict[str, Any]:
     result = await pipeline.run(req.goal_text)
     record = _goal_record(req, result)
     _save_goal_history(record)
+    await _updates_hub.broadcast({
+        "type": "goal_completed",
+        "status": "success" if record.get("success", True) else "error",
+        "title": record.get("goal") or req.goal_text,
+        "details": record.get("result") or record.get("summary") or "",
+        "org_name": record.get("org_name") or record.get("organization"),
+        "entity_type": "goal",
+        "entity_id": record.get("id"),
+        "route": "/data",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
     return record
 
 
@@ -660,6 +1310,151 @@ def _find_pending_proposal(org_name: str, proposal_id: str) -> tuple[Any, Any, d
 
 
 
+def _load_all_proposals() -> list[dict[str, Any]]:
+    proposals: list[dict[str, Any]] = []
+    psm = _psm()
+    for org in psm.load_organizations():
+        sm = psm.get_org_state_manager(org)
+        improvements_dir = sm.state_dir / "improvements"
+        if not improvements_dir.exists():
+            continue
+        for path in sorted(improvements_dir.glob("*.json"), reverse=True):
+            try:
+                proposal = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(proposal, dict):
+                continue
+            proposal["org_name"] = org.name
+            proposals.append(proposal)
+    return sorted(
+        proposals,
+        key=lambda item: str(item.get("last_updated") or item.get("created_at") or ""),
+        reverse=True,
+    )
+
+
+
+def _serialize_org_structure(org: Any) -> list[dict[str, Any]]:
+    divisions: list[dict[str, Any]] = []
+    for division_index, division in enumerate(org.divisions):
+        teams: list[dict[str, Any]] = []
+        previous_team_name: str | None = None
+        previous_division_name = org.divisions[division_index - 1].name if division_index > 0 else None
+        for team in division.teams:
+            teams.append({
+                "id": str(team.id),
+                "name": team.name,
+                "mission": team.mission,
+                "depends_on": previous_team_name or previous_division_name,
+                "agents": [
+                    {
+                        "id": str(agent.id),
+                        "name": agent.name,
+                        "description": agent.description,
+                        "skills": [str(skill) for skill in agent.skills],
+                    }
+                    for agent in team.agents
+                ],
+            })
+            previous_team_name = team.name
+        divisions.append({
+            "id": str(division.id),
+            "name": division.name,
+            "type": str(division.type.value if hasattr(division.type, "value") else division.type),
+            "mission": division.mission,
+            "teams": teams,
+        })
+    return divisions
+
+
+
+def _search_results(query: str, limit: int = 20) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    psm = _psm()
+    organizations = psm.load_organizations()
+
+    for org in organizations:
+        if _matches_search_text(query, org.name, org.purpose, org.target_repo_path, org.status.value):
+            results.append({
+                "id": f"organization:{org.id}",
+                "type": "organization",
+                "title": org.name,
+                "subtitle": org.purpose,
+                "route": "/orgs",
+                "org_name": org.name,
+                "status": org.status.value,
+                "metadata": {"target_repo_path": org.target_repo_path},
+            })
+        for division in org.divisions:
+            for team in division.teams:
+                for agent in team.agents:
+                    skills = [str(skill) for skill in agent.skills]
+                    if _matches_search_text(query, agent.name, agent.description, *skills, team.name, division.name, org.name):
+                        results.append({
+                            "id": f"agent:{agent.id}",
+                            "type": "agent",
+                            "title": agent.name,
+                            "subtitle": f"{org.name} / {team.name}",
+                            "route": "/agents",
+                            "org_name": org.name,
+                            "status": None,
+                            "metadata": {"team": team.name, "division": division.name, "skills": skills},
+                        })
+
+    for proposal in _load_all_proposals():
+        if _matches_search_text(
+            query,
+            proposal.get("title"),
+            proposal.get("description"),
+            proposal.get("file_path"),
+            proposal.get("category"),
+            proposal.get("org_name"),
+            proposal.get("status"),
+        ):
+            org_name = str(proposal.get("org_name") or "")
+            results.append({
+                "id": f"proposal:{proposal.get('id')}",
+                "type": "proposal",
+                "title": str(proposal.get("title") or "改善提案"),
+                "subtitle": str(proposal.get("description") or proposal.get("file_path") or ""),
+                "route": f"/proposals?org={org_name}",
+                "org_name": org_name or None,
+                "status": proposal.get("status"),
+                "metadata": {
+                    "file_path": proposal.get("file_path"),
+                    "priority": proposal.get("priority"),
+                    "category": proposal.get("category"),
+                },
+            })
+
+    for goal in _load_goal_history():
+        if _matches_search_text(query, goal.get("goal"), goal.get("goal_text"), goal.get("result"), goal.get("summary"), goal.get("org_name")):
+            results.append({
+                "id": f"goal:{goal.get('id') or hashlib.sha1(json.dumps(goal, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]}",
+                "type": "goal",
+                "title": str(goal.get("goal") or goal.get("goal_text") or "Goal"),
+                "subtitle": str(goal.get("result") or goal.get("summary") or ""),
+                "route": "/data",
+                "org_name": goal.get("org_name") or goal.get("organization"),
+                "status": "success" if goal.get("success", True) else "error",
+                "metadata": {"goal_type": goal.get("goal_type"), "scale": goal.get("scale")},
+            })
+
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for result in results:
+        result_id = str(result.get("id"))
+        if result_id in seen:
+            continue
+        seen.add(result_id)
+        deduped.append(result)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+
 def _serialize_agent(defn) -> dict[str, Any]:
     return {
         "name": defn.name,
@@ -670,6 +1465,13 @@ def _serialize_agent(defn) -> dict[str, Any]:
         "implementation": defn.implementation,
         "behavior": defn.behavior,
         "source_file": defn.source_file,
+        "schema_version": getattr(defn, "schema_version", ""),
+        "configuration": {
+            "response_format": getattr(defn, "response_format", {}),
+            "tools": list(getattr(defn, "tools", [])),
+            "skills": list(getattr(defn, "skills", [])),
+            "behavior": getattr(defn, "behavior", ""),
+        },
     }
 
 
@@ -683,10 +1485,101 @@ def _serialize_skill(defn) -> dict[str, Any]:
         "focus": defn.focus,
         "output_hint": defn.output_hint,
         "tags": list(defn.tags),
+        "schema_version": getattr(defn, "schema_version", ""),
     }
 
 
-@app.get("/api/platform/status")
+def _serialize_org_tree(org: Any) -> list[dict[str, Any]]:
+    divisions: list[dict[str, Any]] = []
+    for division in getattr(org, "divisions", []):
+        divisions.append(
+            {
+                "id": str(division.id),
+                "name": division.name,
+                "type": getattr(division.type, "value", division.type),
+                "mission": getattr(division, "mission", ""),
+                "teams": [
+                    {
+                        "id": str(team.id),
+                        "name": team.name,
+                        "division_type": getattr(team.division_type, "value", team.division_type),
+                        "mission": getattr(team, "mission", ""),
+                        "agents": [
+                            {
+                                "id": str(agent.id),
+                                "name": agent.name,
+                                "skills": [getattr(skill, "value", skill) for skill in getattr(agent, "skills", [])],
+                                "performance_score": getattr(agent, "performance_score", 0.0),
+                                "current_task": getattr(agent, "current_task", None),
+                            }
+                            for agent in getattr(team, "agents", [])
+                        ],
+                    }
+                    for team in getattr(division, "teams", [])
+                ],
+            }
+        )
+    return divisions
+
+
+def _collect_runtime_agents() -> list[dict[str, Any]]:
+    runtime_agents: list[dict[str, Any]] = []
+    for org in _psm().load_organizations():
+        for division in getattr(org, "divisions", []):
+            for team in getattr(division, "teams", []):
+                for agent in getattr(team, "agents", []):
+                    runtime_agents.append(
+                        {
+                            "id": str(agent.id),
+                            "name": agent.name,
+                            "organization": org.name,
+                            "division": division.name,
+                            "team": team.name,
+                            "skills": [getattr(skill, "value", skill) for skill in getattr(agent, "skills", [])],
+                            "status": "running" if getattr(agent, "current_task", None) else "idle",
+                            "current_task": getattr(agent, "current_task", None),
+                            "proficiency": float(getattr(agent, "performance_score", 0.0)),
+                            "configuration": {
+                                "organization": org.name,
+                                "division": division.name,
+                                "team": team.name,
+                                "skills": [getattr(skill, "value", skill) for skill in getattr(agent, "skills", [])],
+                                "description": getattr(agent, "description", ""),
+                                "performance_score": getattr(agent, "performance_score", 0.0),
+                                "current_task": getattr(agent, "current_task", None),
+                            },
+                        }
+                    )
+    return runtime_agents
+
+
+def _extract_proposal_diff_text(proposal: dict[str, Any]) -> str:
+    for key in ("diff_text", "diff", "patch"):
+        value = proposal.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    file_changes = proposal.get("file_changes")
+    if isinstance(file_changes, list):
+        patches: list[str] = []
+        for change in file_changes:
+            if not isinstance(change, dict):
+                continue
+            patch = change.get("patch") or change.get("diff")
+            if isinstance(patch, str) and patch.strip():
+                patches.append(patch.strip())
+        if patches:
+            return "\n\n".join(patches)
+
+    return ""
+
+
+@app.get(
+    "/api/platform/status",
+    response_model=PlatformStatusResponse,
+    tags=["platform"],
+    responses={200: {"content": {"application/json": {"example": PLATFORM_STATUS_EXAMPLE}}}},
+)
 async def api_platform_status() -> Dict[str, Any]:
     """プラットフォーム全体のステータス"""
     from core.metrics.balanced_growth import calculate_group_metrics, calculate_organization_metrics
@@ -729,19 +1622,33 @@ async def api_platform_status() -> Dict[str, Any]:
     }
 
 
-@app.get("/api/daemon/status")
+@app.get(
+    "/api/daemon/status",
+    response_model=DaemonStatusResponse,
+    response_model_exclude_none=True,
+    tags=["platform"],
+    responses={200: {"content": {"application/json": {"example": DAEMON_STATUS_EXAMPLE}}}},
+)
 async def api_daemon_status() -> Dict[str, Any]:
     return _daemon_status_payload()
 
 
-@app.post("/api/daemon/start")
+@app.post(
+    "/api/daemon/start",
+    response_model=DaemonStatusResponse,
+    response_model_exclude_none=True,
+    tags=["platform"],
+    responses={200: {"content": {"application/json": {"example": DAEMON_ACTION_EXAMPLE}}}},
+)
 async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, Any]:
     req = req or DaemonStartRequest()
     pid_file, log_file = _daemon_paths()
     pid = _read_daemon_pid(pid_file)
     if pid is not None and _is_process_running(pid):
+        status = "already_running"
         return {
-            "status": "already_running",
+            "status": status,
+            "message": _daemon_action_message(status),
             **_daemon_status_payload(),
             "interval": req.interval,
             "max_files": req.max_files,
@@ -766,8 +1673,10 @@ async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, A
             start_new_session=True,
         )
     pid_file.write_text(str(proc.pid), encoding="utf-8")
+    status = "started"
     return {
-        "status": "started",
+        "status": status,
+        "message": _daemon_action_message(status),
         "running": True,
         "pid": proc.pid,
         "log_path": str(log_file),
@@ -776,14 +1685,22 @@ async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, A
     }
 
 
-@app.post("/api/daemon/stop")
+@app.post(
+    "/api/daemon/stop",
+    response_model=DaemonStatusResponse,
+    response_model_exclude_none=True,
+    tags=["platform"],
+    responses={200: {"content": {"application/json": {"example": {**DAEMON_ACTION_EXAMPLE, "status": "stopped", "running": False}}}}},
+)
 async def api_daemon_stop() -> Dict[str, Any]:
     pid_file, log_file = _daemon_paths()
     pid = _read_daemon_pid(pid_file)
     if pid is None:
         pid_file.unlink(missing_ok=True)
+        status = "not_running"
         return {
-            "status": "not_running",
+            "status": status,
+            "message": _daemon_action_message(status),
             "running": False,
             "pid": None,
             "log_path": str(log_file),
@@ -797,25 +1714,35 @@ async def api_daemon_stop() -> Dict[str, Any]:
     pid_file.unlink(missing_ok=True)
     return {
         "status": status,
+        "message": _daemon_action_message(status),
         "running": False,
         "pid": pid,
         "log_path": str(log_file),
     }
 
 
-@app.post("/api/init")
+@app.post(
+    "/api/init",
+    response_model=PlatformInitResponse,
+    tags=["platform"],
+    responses={200: {"content": {"application/json": {"example": INIT_RESPONSE_EXAMPLE}}}},
+)
 async def api_init_platform() -> Dict[str, Any]:
-    from core.bootstrap import bootstrap_platform
+    bootstrap = globals().get("bootstrap_platform")
+    if bootstrap is None:
+        from core.bootstrap import bootstrap_platform as bootstrap
 
     already_initialized = _psm().is_initialized()
-    psm = bootstrap_platform()
+    psm = bootstrap()
     meta_id = psm.load_platform_config().get("meta_improvement_org_id")
     meta_name = None
     if meta_id:
         meta = psm.load_organization_by_id(meta_id)
         meta_name = meta.name if meta else None
+    status = "already_initialized" if already_initialized else "initialized"
     return {
-        "status": "already_initialized" if already_initialized else "initialized",
+        "status": status,
+        "message": _init_message(already_initialized, meta_name),
         "platform_home": str(psm.platform_home),
         "meta_improvement_org": meta_name,
         "initialized": psm.is_initialized(),
@@ -845,6 +1772,15 @@ async def api_create_welcome_data() -> Dict[str, Any]:
             org.target_repo_path = s["target_repo_path"]
             psm.save_organization(org)
             created.append(s["name"])
+            await _record_execution_event(
+                "organization_created",
+                f"{s['name']} を作成しました",
+                org_name=s["name"],
+                entity_type="organization",
+                entity_id=s["name"],
+                route="/orgs",
+                metadata={"source": "welcome", "target_repo_path": s["target_repo_path"]},
+            )
 
     return {"created": created, "skipped": [s["name"] for s in sample_orgs if s["name"] not in created]}
 
@@ -869,13 +1805,25 @@ async def api_list_tasks(org_name: str | None = None, status: str | None = None,
 async def api_queue_task(body: TaskQueueRequest) -> Dict[str, Any]:
     """タスクをキューに追加する"""
     queue = _task_queue()
-    return queue.add_task(
+    task = queue.add_task(
         task_type=body.task_type,
         org_name=body.org_name,
         description=body.description,
         payload=body.payload,
         priority=body.priority,
     )
+    await _record_execution_event(
+        "task_queued",
+        body.description,
+        status="pending",
+        details=f"{body.task_type} task queued",
+        org_name=body.org_name,
+        entity_type="task",
+        entity_id=str(task.get("id")),
+        route="/dashboard",
+        metadata={"task_type": body.task_type, "priority": body.priority},
+    )
+    return task
 
 
 @app.get("/api/tasks/{task_id}")
@@ -892,24 +1840,44 @@ async def api_get_task(task_id: str) -> Dict[str, Any]:
 async def api_cancel_task(task_id: str) -> Dict[str, Any]:
     """タスクをキャンセルする"""
     queue = _task_queue()
+    task = queue.get_task(task_id)
     if not queue.cancel_task(task_id):
         raise HTTPException(status_code=400, detail="タスクをキャンセルできません（実行中または存在しない）")
+    await _record_execution_event(
+        "task_cancelled",
+        str(task.get("description") if task else "Task cancelled"),
+        status="success",
+        details="Task cancelled",
+        org_name=task.get("org_name") if task else None,
+        entity_type="task",
+        entity_id=task_id,
+        route="/dashboard",
+        metadata={"task_type": task.get("type") if task else None},
+    )
     return {"status": "cancelled", "task_id": task_id}
 
 
-class SettingsUpdateRequest(BaseModel):
-    llm_provider: str | None = None
-    llm_model: str | None = None
-    anthropic_api_key: str | None = None
-    openai_api_key: str | None = None
-    groq_api_key: str | None = None
-    github_models_api_key: str | None = None
-    gemini_api_key: str | None = None
-    daemon_interval: int | None = None
-    daemon_max_files: int | None = None
+class SettingsUpdateRequest(ApiRequestModel):
+    llm_provider: str | None = Field(default=None, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
+    llm_model: str | None = Field(default=None, max_length=120)
+    anthropic_api_key: str | None = Field(default=None, max_length=512)
+    openai_api_key: str | None = Field(default=None, max_length=512)
+    groq_api_key: str | None = Field(default=None, max_length=512)
+    github_models_api_key: str | None = Field(default=None, max_length=512)
+    gemini_api_key: str | None = Field(default=None, max_length=512)
+    daemon_interval: int | None = Field(default=None, ge=1)
+    daemon_max_files: int | None = Field(default=None, ge=1, le=1000)
+    model_configurations: dict[str, Any] | None = None
+    prompt_templates: dict[str, str] | None = None
+    policy_rules: dict[str, Any] | None = None
 
 
-@app.get("/api/settings")
+@app.get(
+    "/api/settings",
+    response_model=SettingsResponse,
+    tags=["settings"],
+    responses={200: {"content": {"application/json": {"example": SETTINGS_RESPONSE_EXAMPLE}}}},
+)
 async def api_get_settings() -> Dict[str, Any]:
     """現在の GUI 設定を返す（APIキーはマスク表示）"""
     s = _load_gui_settings()
@@ -928,6 +1896,9 @@ async def api_get_settings() -> Dict[str, Any]:
         "gemini_api_key_set": bool(s.get("gemini_api_key") or os.getenv("GOOGLE_API_KEY")),
         "daemon_interval": s.get("daemon_interval", 3600),
         "daemon_max_files": s.get("daemon_max_files", 10),
+        "model_configurations": s.get("model_configurations", deepcopy(DEFAULT_MODEL_CONFIGURATIONS)),
+        "prompt_templates": s.get("prompt_templates", deepcopy(DEFAULT_PROMPT_TEMPLATES)),
+        "policy_rules": s.get("policy_rules", deepcopy(DEFAULT_POLICY)),
         "settings_file": str(SETTINGS_FILE),
         "has_llm": _has_llm(s),
     }
@@ -1031,12 +2002,23 @@ async def api_update_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
         s["daemon_interval"] = req.daemon_interval
     if req.daemon_max_files is not None:
         s["daemon_max_files"] = req.daemon_max_files
+    if req.model_configurations is not None:
+        s["model_configurations"] = req.model_configurations
+    if req.prompt_templates is not None:
+        s["prompt_templates"] = req.prompt_templates
+    if req.policy_rules is not None:
+        s["policy_rules"] = req.policy_rules
 
     _save_gui_settings(s)
     return {"status": "saved", "has_llm": _has_llm(s)}
 
 
-@app.get("/api/providers/{provider}/models")
+@app.get(
+    "/api/providers/{provider}/models",
+    response_model=ProviderModelsResponse,
+    tags=["settings"],
+    responses={200: {"content": {"application/json": {"example": PROVIDER_MODELS_EXAMPLE}}}},
+)
 async def get_provider_models(provider: str) -> Dict[str, Any]:
     """プロバイダーから利用可能なモデル一覧を取得する。"""
     cached = _get_cached_models(provider)
@@ -1172,6 +2154,15 @@ async def api_create_organization(req: OrgCreateRequest) -> Dict[str, Any]:
     org = create_default_organization(req.name, req.purpose)
     org.target_repo_path = req.target_repo_path
     psm.save_organization(org)
+    await _record_execution_event(
+        "organization_created",
+        f"{org.name} を作成しました",
+        org_name=org.name,
+        entity_type="organization",
+        entity_id=str(org.id),
+        route="/orgs",
+        metadata={"target_repo_path": org.target_repo_path},
+    )
 
     return {
         "id": str(org.id),
@@ -1192,12 +2183,27 @@ async def api_delete_organization(org_name: str) -> Dict[str, Any]:
     if org.is_system:
         raise HTTPException(status_code=403, detail=f"システム組織「{org_name}」は削除できません。")
     psm.remove_organization(str(org.id))
+    await _record_execution_event(
+        "organization_deleted",
+        f"{org_name} を削除しました",
+        org_name=org_name,
+        entity_type="organization",
+        entity_id=str(org.id),
+        route="/orgs",
+    )
     return {"status": "deleted", "name": org_name}
 
 
-class OrgUpdateRequest(BaseModel):
-    purpose: str | None = None
-    target_repo_path: str | None = None
+class OrgUpdateRequest(ApiRequestModel):
+    purpose: str | None = Field(default=None, max_length=2000)
+    target_repo_path: str | None = Field(default=None, max_length=4096)
+
+    @field_validator("target_repo_path")
+    @classmethod
+    def validate_target_repo_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_request_path(value, "target_repo_path")
 
 
 @app.get("/api/organizations/{org_name}")
@@ -1232,6 +2238,7 @@ async def api_get_organization(org_name: str) -> Dict[str, Any]:
         "autonomy_score": org.autonomy_score,
         "total_agents": len(agents),
         "agents": agents,
+        "divisions": _serialize_org_structure(org),
         "pending_proposals": pending,
         "last_active": org.last_active.isoformat(),
         "is_system": org.is_system,
@@ -1253,6 +2260,15 @@ async def api_update_organization(org_name: str, req: OrgUpdateRequest) -> Dict[
         org.target_repo_path = req.target_repo_path
 
     psm.save_organization(org)
+    await _record_execution_event(
+        "organization_updated",
+        f"{org.name} を更新しました",
+        org_name=org.name,
+        entity_type="organization",
+        entity_id=str(org.id),
+        route="/orgs",
+        metadata={"target_repo_path": org.target_repo_path},
+    )
     return {
         "id": str(org.id),
         "name": org.name,
@@ -1318,11 +2334,18 @@ async def api_clear_goal_history() -> Dict[str, Any]:
 async def api_list_proposals(org_name: str) -> List[Dict[str, Any]]:
     """Organization の未完了改善提案一覧"""
     _, _, proposals = _pending_proposals_for(org_name)
-    return [proposal for proposal in proposals if is_active_improvement_proposal_status(proposal.get("status"))]
+    active_proposals = [proposal for proposal in proposals if is_active_improvement_proposal_status(proposal.get("status"))]
+    return [
+        {
+            **proposal,
+            "diff_text": _extract_proposal_diff_text(proposal),
+            "approval_notes": str(proposal.get("approval_notes") or ""),
+        }
+        for proposal in active_proposals
+    ]
 
 
-@app.post("/api/proposals/{org_name}/{proposal_id}/approve")
-async def api_approve_proposal(
+async def _approve_proposal_internal(
     org_name: str,
     proposal_id: str,
     req: ProposalApproveRequest | None = None,
@@ -1334,9 +2357,25 @@ async def api_approve_proposal(
     if not target.get("file_path"):
         raise HTTPException(status_code=400, detail="この提案は file_path がないため承認できません")
 
+    approval_notes = str(req.approval_notes).strip() if req and req.approval_notes is not None else ""
+    if approval_notes:
+        sm.update_proposal_fields(str(target.get("id", "")), approval_notes=approval_notes)
+        target["approval_notes"] = approval_notes
+
     org = _find_org(org_name)
     repo_path = Path(org.target_repo_path) if org.target_repo_path else psm.platform_home
     sm.update_proposal_status(str(target.get("id", "")), "in_progress")
+    await _record_execution_event(
+        "proposal_started",
+        str(target.get("title") or "改善提案を実行中"),
+        status="pending",
+        details=str(target.get("description") or ""),
+        org_name=org_name,
+        entity_type="proposal",
+        entity_id=str(target.get("id", "")),
+        route=f"/proposals?org={org_name}",
+        metadata={"file_path": target.get("file_path")},
+    )
 
     task = AgentTask(
         task_type="improvement_execution",
@@ -1350,55 +2389,167 @@ async def api_approve_proposal(
     result = await OrchestratorAgent.create().run(task)
     if not result.success:
         sm.update_proposal_status(str(target.get("id", "")), "failed")
+        await _record_execution_event(
+            "proposal_failed",
+            str(target.get("title") or "改善提案の適用に失敗"),
+            status="error",
+            details=result.error or "改善提案の適用に失敗しました",
+            org_name=org_name,
+            entity_type="proposal",
+            entity_id=str(target.get("id", "")),
+            route=f"/proposals?org={org_name}",
+            metadata={"file_path": target.get("file_path")},
+        )
         raise HTTPException(status_code=500, detail=result.error or "改善提案の適用に失敗しました")
 
     next_status = "done"
     sm.update_proposal_status(str(target.get("id", "")), next_status)
-    return {
+    payload = {
         "status": next_status,
         "proposal_id": str(target.get("id", "")),
         "title": target.get("title"),
+        "approval_notes": approval_notes,
         "change_summary": result.output.get("change_summary", ""),
         "branch": result.output.get("branch"),
         "pr_url": result.output.get("pr_url"),
         "output": result.output,
     }
+    await _record_execution_event(
+        "proposal_approved",
+        str(target.get("title") or "改善提案を承認"),
+        status="success",
+        details=result.output.get("change_summary", "") or str(target.get("description") or ""),
+        org_name=org_name,
+        entity_type="proposal",
+        entity_id=str(target.get("id", "")),
+        route=f"/proposals?org={org_name}",
+        metadata={
+            "file_path": target.get("file_path"),
+            "branch": result.output.get("branch"),
+            "pr_url": result.output.get("pr_url"),
+        },
+    )
+    await _updates_hub.broadcast({
+        "type": "task_complete",
+        "status": "success",
+        "title": str(target.get("title") or "改善提案を承認"),
+        "details": result.output.get("change_summary", "") or str(target.get("description") or ""),
+        "org_name": org_name,
+        "entity_type": "proposal",
+        "entity_id": str(target.get("id", "")),
+        "route": f"/proposals?org={org_name}",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return payload
 
 
-@app.post("/api/proposals/{org_name}/{proposal_id}/reject")
-async def api_reject_proposal(org_name: str, proposal_id: str) -> Dict[str, Any]:
+async def _reject_proposal_internal(org_name: str, proposal_id: str) -> Dict[str, Any]:
     _, sm, target = _find_pending_proposal(org_name, proposal_id)
     sm.update_proposal_status(str(target.get("id", "")), "rejected")
-    return {
+    payload = {
         "status": "rejected",
         "proposal_id": str(target.get("id", "")),
         "title": target.get("title"),
     }
+    await _record_execution_event(
+        "proposal_rejected",
+        str(target.get("title") or "改善提案を却下"),
+        status="success",
+        details=str(target.get("description") or ""),
+        org_name=org_name,
+        entity_type="proposal",
+        entity_id=str(target.get("id", "")),
+        route=f"/proposals?org={org_name}",
+        metadata={"file_path": target.get("file_path")},
+    )
+    return payload
 
 
-@app.post("/api/analyze")
+@app.post("/api/proposals/{org_name}/{proposal_id}/approve")
+async def api_approve_proposal(
+    org_name: str,
+    proposal_id: str,
+    req: ProposalApproveRequest | None = None,
+) -> Dict[str, Any]:
+    return await _approve_proposal_internal(org_name, proposal_id, req)
+
+
+@app.post("/api/proposals/{org_name}/{proposal_id}/reject")
+async def api_reject_proposal(org_name: str, proposal_id: str) -> Dict[str, Any]:
+    return await _reject_proposal_internal(org_name, proposal_id)
+
+
+@app.post("/api/proposals/{org_name}/batch")
+async def api_batch_update_proposals(org_name: str, body: ProposalBatchRequest) -> Dict[str, Any]:
+    results = []
+    for proposal_id in body.proposal_ids:
+        try:
+            result = (
+                await _approve_proposal_internal(org_name, proposal_id)
+                if body.action == "approve"
+                else await _reject_proposal_internal(org_name, proposal_id)
+            )
+            results.append({"proposal_id": proposal_id, "ok": True, **result})
+        except HTTPException as exc:
+            results.append({"proposal_id": proposal_id, "ok": False, "detail": exc.detail})
+
+    updated = [item for item in results if item.get("ok")]
+    failed = [item for item in results if not item.get("ok")]
+    return {
+        "action": body.action,
+        "updated": len(updated),
+        "failed": len(failed),
+        "results": results,
+    }
+
+
+@app.post(
+    "/api/analyze",
+    response_model=AnalyzeResponse,
+    tags=["analysis"],
+    responses={200: {"content": {"application/json": {"example": ANALYZE_RESPONSE_EXAMPLE}}}},
+)
 async def api_analyze(req: AnalyzeRequest) -> Dict[str, Any]:
     """Organization の担当リポジトリを分析して改善提案を生成"""
     return await _perform_analyze(req)
 
 
-@app.post("/api/analyze/stream")
+@app.post("/api/analyze/stream", tags=["analysis"])
 async def api_analyze_stream(req: AnalyzeRequest) -> StreamingResponse:
     async def event_generator():
         try:
-            yield _format_sse({"type": "start", "org": req.org_name})
+            yield _format_sse({
+                "type": "start",
+                "org": req.org_name,
+                "org_name": req.org_name,
+                "content": f"{req.org_name} の分析を開始します",
+            })
             await asyncio.sleep(0)
-            yield _format_sse({"type": "progress", "message": "Loading organization..."})
+            yield _format_sse({"type": "progress", "message": "Loading organization...", "content": "Loading organization..."})
             await asyncio.sleep(0)
-            yield _format_sse({"type": "progress", "message": "Running code review..."})
+            yield _format_sse({"type": "progress", "message": "Running code review...", "content": "Running code review..."})
             await asyncio.sleep(0)
             result = await _perform_analyze(req)
-            yield _format_sse({"type": "progress", "message": "Saving generated proposals..."})
+            yield _format_sse({"type": "progress", "message": "Saving generated proposals...", "content": "Saving generated proposals..."})
             await asyncio.sleep(0)
             for proposal in result["generated_proposals"]:
-                yield _format_sse({"type": "proposal", "data": proposal})
+                yield _format_sse({
+                    "type": "proposal",
+                    "org_name": result["org_name"],
+                    "title": proposal.get("title"),
+                    "file_path": proposal.get("file_path"),
+                    "content": proposal.get("title") or "改善提案を生成しました",
+                    "data": proposal,
+                })
                 await asyncio.sleep(0)
-            yield _format_sse({"type": "done", "count": result["proposals_generated"]})
+            yield _format_sse({
+                "type": "done",
+                "org_name": result["org_name"],
+                "files_reviewed": result["files_reviewed"],
+                "proposals_generated": result["proposals_generated"],
+                "count": result["proposals_generated"],
+                "content": f"{result['files_reviewed']} 件のファイルを確認し、{result['proposals_generated']} 件の提案を生成しました",
+            })
             await asyncio.sleep(0)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Analyze stream failed", exc_info=exc)
@@ -1415,6 +2566,11 @@ async def api_agents() -> List[Dict[str, Any]]:
     return [_serialize_agent(defn) for defn in AgentLoader().all()]
 
 
+@app.get("/api/agents/runtime")
+async def api_runtime_agents() -> List[Dict[str, Any]]:
+    return _collect_runtime_agents()
+
+
 @app.get("/api/skills")
 async def api_skills() -> List[Dict[str, Any]]:
     from core.loaders.skill_loader import SkillLoader
@@ -1422,25 +2578,49 @@ async def api_skills() -> List[Dict[str, Any]]:
     return [_serialize_skill(defn) for defn in SkillLoader().all()]
 
 
-@app.post("/api/goals/run")
+@app.post(
+    "/api/goals/run",
+    response_model=GoalHistoryItemResponse,
+    tags=["goals"],
+    responses={200: {"content": {"application/json": {"example": GOAL_HISTORY_EXAMPLE}}}},
+)
 async def api_run_goal(req: GoalRunRequest) -> Dict[str, Any]:
     return await _perform_goal_run(req)
 
 
-@app.post("/api/goals/stream")
+@app.post("/api/goals/stream", tags=["goals"])
 async def api_goals_stream(req: GoalRunRequest) -> StreamingResponse:
     async def event_generator():
         try:
-            yield _format_sse({"type": "start", "goal": req.goal_text})
+            yield _format_sse({
+                "type": "start",
+                "goal": req.goal_text,
+                "org_name": getattr(req, "org_name", None),
+            })
             await asyncio.sleep(0)
-            yield _format_sse({"type": "progress", "message": "Planning goal execution..."})
+            yield _format_sse({"type": "progress", "message": "Planning goal execution...", "content": "Planning goal execution..."})
             await asyncio.sleep(0)
             result = await _perform_goal_run(req)
-            yield _format_sse({"type": "progress", "message": "Saving goal history..."})
+            yield _format_sse({"type": "progress", "message": "Saving goal history...", "content": "Saving goal history..."})
             await asyncio.sleep(0)
-            yield _format_sse({"type": "result", "data": result})
+            result_text = str(result.get("result") or result.get("summary") or "")
+            yield _format_sse({
+                "type": "result",
+                "goal": result.get("goal") or req.goal_text,
+                "org_name": result.get("org_name") or result.get("organization"),
+                "result": result_text,
+                "summary": result.get("summary") or result_text,
+                "content": result_text,
+                "data": result,
+            })
             await asyncio.sleep(0)
-            yield _format_sse({"type": "done"})
+            yield _format_sse({
+                "type": "done",
+                "goal": result.get("goal") or req.goal_text,
+                "org_name": result.get("org_name") or result.get("organization"),
+                "result": result_text,
+                "content": "ゴール実行が完了しました",
+            })
             await asyncio.sleep(0)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Goal stream failed", exc_info=exc)
@@ -1450,9 +2630,39 @@ async def api_goals_stream(req: GoalRunRequest) -> StreamingResponse:
     return _stream_response(event_generator())
 
 
-@app.get("/api/goals/history")
+@app.get(
+    "/api/goals/history",
+    response_model=List[GoalHistoryItemResponse],
+    tags=["goals"],
+    responses={200: {"content": {"application/json": {"example": [GOAL_HISTORY_EXAMPLE]}}}},
+)
 async def api_goal_history() -> List[Dict[str, Any]]:
     return _load_goal_history()
+
+
+@app.get(
+    "/api/execution-history",
+    response_model=List[ExecutionHistoryItemResponse],
+    tags=["history"],
+    responses={200: {"content": {"application/json": {"example": [EXECUTION_HISTORY_EXAMPLE]}}}},
+)
+async def api_execution_history(search: str | None = None, limit: int = 50) -> List[Dict[str, Any]]:
+    safe_limit = max(1, min(limit, 200))
+    return _combined_execution_history(search=search, limit=safe_limit)
+
+
+@app.get(
+    "/api/search",
+    response_model=List[SearchResultItemResponse],
+    tags=["search"],
+    responses={200: {"content": {"application/json": {"example": [SEARCH_RESULT_EXAMPLE]}}}},
+)
+async def api_search(q: str = "", limit: int = 20) -> List[Dict[str, Any]]:
+    query = q.strip()
+    if not query:
+        return []
+    safe_limit = max(1, min(limit, 50))
+    return _search_results(query, limit=safe_limit)
 
 
 @app.get("/api/knowledge/files")
@@ -1691,6 +2901,24 @@ async def ws_chat(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "message", "role": "assistant", "content": response})
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")
+
+
+@app.websocket("/ws/updates")
+async def ws_updates(websocket: WebSocket) -> None:
+    await _updates_hub.connect(websocket)
+    await websocket.send_json({
+        "type": "status",
+        "status": "connected",
+        "title": "リアルタイム更新に接続しました",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await _updates_hub.disconnect(websocket)
+        logger.info("Updates WebSocket client disconnected")
 
 
 

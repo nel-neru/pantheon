@@ -108,6 +108,18 @@ describe('ProposalsPage', () => {
     expect(await screen.findByText('改善提案がありません')).toBeInTheDocument()
   })
 
+  it('shows an inline error state when organizations fail to load', async () => {
+    mockApi.mockRejectedValue(new Error('organization load failed'))
+
+    renderWithRouter(<ProposalsPage />)
+
+    await waitFor(() => {
+      expect(mockedToast.error).toHaveBeenCalledWith('organization load failed')
+    })
+    expect(await screen.findByText('組織の読み込みに失敗しました')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument()
+  })
+
   it('shows an error toast when proposals fail to load', async () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/organizations') return organizations
@@ -122,6 +134,8 @@ describe('ProposalsPage', () => {
     await waitFor(() => {
       expect(mockedToast.error).toHaveBeenCalledWith('proposal load failed')
     })
+    expect(await screen.findByText('提案の読み込みに失敗しました')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument()
   })
 
   it('treats proposed and in-progress proposals as active in the pending filter', async () => {

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Activity, Power, RefreshCw, Terminal } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Activity, Clock3, Power, RefreshCw, Terminal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
@@ -57,11 +57,61 @@ type TaskItem = {
   org_name: string
   description: string
   status: string
+  created_at?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  payload?: {
+    progress?: number
+    [key: string]: unknown
+  }
 }
 
 type TaskQueueResponse = {
   tasks: TaskItem[]
   stats: TaskStats
+}
+
+type ExecutionHistoryItem = {
+  id: string
+  timestamp: string
+  operation: string
+  status: string
+  title: string
+  details: string
+  org_name?: string | null
+  entity_type?: string | null
+}
+
+function taskStatusClass(status: string) {
+  if (status === 'running') return 'badge-blue'
+  if (status === 'done') return 'badge-green'
+  if (status === 'failed') return 'badge-red'
+  if (status === 'pending') return 'badge-yellow'
+  return 'badge-neutral'
+}
+
+function formatElapsed(task: TaskItem) {
+  const start = task.started_at || task.created_at
+  if (!start) return '開始待ち'
+  const startMs = Date.parse(start)
+  if (Number.isNaN(startMs)) return '計測不可'
+  const endMs = task.completed_at ? Date.parse(task.completed_at) : Date.now()
+  const seconds = Math.max(0, Math.floor((endMs - startMs) / 1000))
+  const minutes = Math.floor(seconds / 60)
+  if (minutes > 0) return `${minutes}分 ${seconds % 60}秒`
+  return `${seconds}秒`
+}
+
+function taskProgress(task: TaskItem) {
+  const payloadProgress = task.payload?.progress
+  if (typeof payloadProgress === 'number') {
+    return Math.max(0, Math.min(100, payloadProgress))
+  }
+  if (task.status === 'done') return 100
+  if (task.status === 'failed') return 100
+  if (task.status === 'running') return 65
+  if (task.status === 'pending') return 20
+  return 0
 }
 
 export function DashboardPage() {
@@ -71,6 +121,8 @@ export function DashboardPage() {
   const [daemon, setDaemon] = useState<DaemonStatus | null>(null)
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null)
   const [recentTasks, setRecentTasks] = useState<TaskItem[]>([])
+  const [executionHistory, setExecutionHistory] = useState<ExecutionHistoryItem[]>([])
+  const [historySearch, setHistorySearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [initializing, setInitializing] = useState(false)
@@ -91,9 +143,10 @@ export function DashboardPage() {
         api<Organization[]>('GET', '/api/organizations'),
         api<DaemonStatus>('GET', '/api/daemon/status'),
         api<TaskQueueResponse>('GET', '/api/tasks'),
+        api<ExecutionHistoryItem[]>('GET', '/api/execution-history?limit=40'),
       ])
 
-      const [platformResult, settingsResult, orgsResult, daemonResult, taskQueueResult] = results
+      const [platformResult, settingsResult, orgsResult, daemonResult, taskQueueResult, historyResult] = results
 
       if (platformResult.status === 'fulfilled') {
         setPlatform(platformResult.value)
@@ -122,6 +175,12 @@ export function DashboardPage() {
         setTaskStats(null)
         setRecentTasks([])
       }
+
+      if (historyResult.status === 'fulfilled') {
+        setExecutionHistory(historyResult.value)
+      } else {
+        setExecutionHistory([])
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -132,7 +191,7 @@ export function DashboardPage() {
     void loadData()
     const interval = window.setInterval(() => {
       void loadData(true)
-    }, 30000)
+    }, 10000)
 
     return () => window.clearInterval(interval)
   }, [loadData])
@@ -176,12 +235,62 @@ export function DashboardPage() {
   const llmReady = settings?.has_llm ?? platform?.has_llm ?? false
   const systemInfoBadgeClass = settingsError ? 'badge-yellow' : llmReady ? 'badge-green' : 'badge-red'
   const systemInfoBadgeLabel = settingsError ? '要再起動' : llmReady ? 'LLM 接続済み' : 'LLM 未設定'
-  const taskStatusClass = (status: string) => {
-    if (status === 'running') return 'badge-blue'
-    if (status === 'done') return 'badge-green'
-    if (status === 'failed') return 'badge-red'
-    return 'badge-neutral'
-  }
+  const activeTasks = useMemo(
+    () => recentTasks.filter((task) => task.status === 'running' || task.status === 'pending').slice(0, 6),
+    [recentTasks],
+  )
+  const approvedCount = useMemo(
+    () => executionHistory.filter((item) => item.operation === 'proposal_approved').length,
+    [executionHistory],
+  )
+  const rejectedCount = useMemo(
+    () => executionHistory.filter((item) => item.operation === 'proposal_rejected').length,
+    [executionHistory],
+  )
+  const agentCount = useMemo(
+    () => organizations.reduce((sum, org) => sum + org.total_agents, 0),
+    [organizations],
+  )
+  const totalProposals = useMemo(
+    () => organizations.reduce((sum, org) => sum + org.pending_proposals, 0) + approvedCount + rejectedCount,
+    [approvedCount, organizations, rejectedCount],
+  )
+  const approvalRate = approvedCount + rejectedCount > 0 ? (approvedCount / (approvedCount + rejectedCount)) * 100 : 0
+  const velocityData = useMemo(() => {
+    const labels = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date()
+      date.setDate(date.getDate() - (5 - index))
+      const key = date.toISOString().slice(0, 10)
+      return {
+        key,
+        label: `${date.getMonth() + 1}/${date.getDate()}`,
+        created: 0,
+        approved: 0,
+      }
+    })
+    const byKey = new Map(labels.map((item) => [item.key, item]))
+
+    executionHistory.forEach((item) => {
+      const key = item.timestamp.slice(0, 10)
+      const current = byKey.get(key)
+      if (!current) return
+      if (item.operation === 'proposal_created') current.created += 1
+      if (item.operation === 'proposal_approved') current.approved += 1
+    })
+
+    return labels
+  }, [executionHistory])
+  const velocityMax = Math.max(1, ...velocityData.flatMap((item) => [item.created, item.approved]))
+  const filteredHistory = useMemo(
+    () => executionHistory.filter((item) => {
+      const query = historySearch.trim().toLowerCase()
+      if (!query) return true
+      return [item.title, item.details, item.org_name, item.operation].some((value) =>
+        (value ?? '').toLowerCase().includes(query),
+      )
+    }),
+    [executionHistory, historySearch],
+  )
 
   return (
     <>
@@ -281,6 +390,112 @@ export function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <div>
+              <div className="card-title">主要メトリクス</div>
+              <div className="card-description">組織・提案・承認率・エージェント数のサマリーです。</div>
+            </div>
+          </div>
+          <div className="card-body">
+            <div className="metrics-grid">
+              <div className="metric-card">
+                <div className="metric-label">総組織数</div>
+                <div className="metric-value">{organizations.length}</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">総提案数</div>
+                <div className="metric-value">{totalProposals}</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">承認率</div>
+                <div className="metric-value mono">{approvalRate.toFixed(0)}%</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">総エージェント数</div>
+                <div className="metric-value">{agentCount}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <div className="card-title">改善速度</div>
+              <div className="card-description">直近 6 日間の提案生成数 / 承認数です。</div>
+            </div>
+            <div className="chart-legend">
+              <span className="chart-legend-item"><span className="chart-swatch created" />作成</span>
+              <span className="chart-legend-item"><span className="chart-swatch approved" />承認</span>
+            </div>
+          </div>
+          <div className="card-body">
+            <div className="velocity-chart">
+              <svg viewBox={`0 0 ${velocityData.length * 72} 190`} className="velocity-chart-svg" role="img" aria-label="改善速度チャート">
+                {velocityData.map((item, index) => {
+                  const baseX = index * 72 + 18
+                  const createdHeight = (item.created / velocityMax) * 96
+                  const approvedHeight = (item.approved / velocityMax) * 96
+                  return (
+                    <g key={item.key}>
+                      <rect x={baseX} y={126 - createdHeight} width="18" height={createdHeight || 2} rx="4" className="chart-bar created" />
+                      <rect x={baseX + 24} y={126 - approvedHeight} width="18" height={approvedHeight || 2} rx="4" className="chart-bar approved" />
+                      <text x={baseX + 21} y="156" textAnchor="middle" className="chart-label">{item.label}</text>
+                      <text x={baseX + 9} y={144 - createdHeight} textAnchor="middle" className="chart-value">{item.created}</text>
+                      <text x={baseX + 33} y={144 - approvedHeight} textAnchor="middle" className="chart-value">{item.approved}</text>
+                    </g>
+                  )
+                })}
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <div className="card-title">実行モニター</div>
+              <div className="card-description">現在の running / pending タスクを 10 秒ごとに更新します。</div>
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void refreshTasks()}>
+              更新
+            </button>
+          </div>
+          <div className="card-body">
+            {activeTasks.length === 0 ? (
+              <div className="text-sm text-muted">現在監視対象の実行はありません。</div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {activeTasks.map((task) => (
+                  <div key={task.id} className="rounded-xl border border-white/10 p-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="font-semibold">{task.description}</div>
+                        <div className="text-xs text-muted">{task.org_name}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`badge ${taskStatusClass(task.status)}`}>{task.status}</span>
+                        <span className="text-xs text-muted inline-flex items-center gap-1">
+                          <Clock3 size={12} />
+                          {formatElapsed(task)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="health-track">
+                      <div
+                        className={`health-fill ${task.status === 'pending' ? 'warning' : 'good'}`}
+                        style={{ width: `${taskProgress(task)}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-muted">進捗 {taskProgress(task)}%</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
               <div className="card-title">タスクキュー</div>
               <div className="card-description">実行中・待機中のタスク</div>
             </div>
@@ -323,6 +538,43 @@ export function DashboardPage() {
               </div>
             ) : (
               <div className="text-sm text-muted mt-3">最近のタスクはまだありません。</div>
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <div className="card-title">実行履歴 / 監査ログ</div>
+              <div className="card-description">最近の操作と結果を検索できます。</div>
+            </div>
+            <input
+              className="input history-search-input"
+              value={historySearch}
+              onChange={(event) => setHistorySearch(event.target.value)}
+              placeholder="組織名・操作名・詳細で検索"
+              aria-label="実行履歴を検索"
+            />
+          </div>
+          <div className="card-body">
+            {filteredHistory.length === 0 ? (
+              <div className="text-sm text-muted">一致する履歴はまだありません。</div>
+            ) : (
+              <div className="history-list">
+                {filteredHistory.slice(0, 8).map((item) => (
+                  <div key={item.id} className="history-item">
+                    <div className="history-item-head">
+                      <span className={`badge ${item.status === 'error' ? 'badge-red' : item.status === 'pending' ? 'badge-yellow' : 'badge-green'}`}>
+                        {item.status}
+                      </span>
+                      <span className="text-xs text-muted">{item.timestamp ? new Date(item.timestamp).toLocaleString('ja-JP') : '—'}</span>
+                    </div>
+                    <div className="history-item-title">{item.title}</div>
+                    <div className="history-item-details">{item.details || item.operation}</div>
+                    {item.org_name ? <div className="text-xs text-muted">{item.org_name}</div> : null}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

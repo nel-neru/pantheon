@@ -1,7 +1,9 @@
 # improvement_executor.yaml
 # 承認済みの改善提案をコードに適用し、GitHub PR を作成するエージェント
 
+schema_version: "1.0"
 name: ImprovementExecutor
+capability_id: agent:improvement_executor
 description: 承認済みの改善提案をコードに適用し、GitHub PR を作成する
 
 skills:

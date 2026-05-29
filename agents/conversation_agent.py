@@ -8,6 +8,7 @@ ConversationAgent — 開発者との自然言語会話エージェント (I-01)
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from core.platform.state import get_platform_home
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -109,14 +112,16 @@ class ConversationAgent:
             try:
                 result = search(keywords)
                 return list(result) if result else []
-            except Exception:
+            except Exception as exc:
+                logger.warning("ConversationAgent knowledge search failed: %s", exc)
                 return []
 
         get_insights = getattr(self.knowledge_manager, "get_insights", None)
         if callable(get_insights):
             try:
                 return list(get_insights(tags=keywords, limit=10))
-            except Exception:
+            except Exception as exc:
+                logger.warning("ConversationAgent insight lookup failed: %s", exc)
                 return []
         return []
 

@@ -77,7 +77,7 @@ describe('AgentsPage', () => {
     expect(screen.getByText('ルーティング未分析')).toBeInTheDocument()
   })
 
-  it('shows an error toast when the registry request fails', async () => {
+  it('shows an error toast and inline error state when the registry request fails', async () => {
     mockApi.mockRejectedValue(new Error('agent load failed'))
 
     renderWithRouter(<AgentsPage />)
@@ -85,6 +85,8 @@ describe('AgentsPage', () => {
     await waitFor(() => {
       expect(mockedToast.error).toHaveBeenCalledWith('agent load failed')
     })
+    expect(await screen.findByText('レジストリの読み込みに失敗しました')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument()
   })
 
   it('renders agent and skill data', async () => {

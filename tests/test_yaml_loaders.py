@@ -98,6 +98,7 @@ class TestSkillLoader:
         skill_yaml = tmp_path / "custom_skill.yaml"
         skill_yaml.write_text(
             yaml.dump({
+                "schema_version": "1.0",
                 "id": "custom_skill",
                 "name": "Custom Skill",
                 "persona": "あなたはカスタムスキルの専門家です。",
@@ -110,6 +111,62 @@ class TestSkillLoader:
         skill = loader.get("custom_skill")
         assert skill is not None
         assert skill.name == "Custom Skill"
+        assert skill.schema_version == "1.0"
+
+    def test_missing_schema_version_logs_warning_for_skill(self, tmp_path, caplog):
+        from core.loaders.skill_loader import SkillLoader
+        import yaml
+
+        (tmp_path / "legacy_skill.yaml").write_text(
+            yaml.dump({"id": "legacy_skill", "persona": "legacy"}),
+            encoding="utf-8",
+        )
+
+        with caplog.at_level("WARNING"):
+            loader = SkillLoader(skills_dir=tmp_path)
+            assert loader.get("legacy_skill") is not None
+
+        assert "missing schema_version" in caplog.text
+
+    def test_unsupported_schema_version_logs_warning_for_skill(self, tmp_path, caplog):
+        from core.loaders.skill_loader import SkillLoader
+        import yaml
+
+        (tmp_path / "future_skill.yaml").write_text(
+            yaml.dump({"schema_version": "2.0", "id": "future_skill", "persona": "future"}),
+            encoding="utf-8",
+        )
+
+        with caplog.at_level("WARNING"):
+            loader = SkillLoader(skills_dir=tmp_path)
+            assert loader.get("future_skill") is not None
+
+        assert "unsupported schema_version 2.0" in caplog.text
+
+    def test_malformed_yaml_is_skipped_for_skill_loader(self, tmp_path, caplog):
+        from core.loaders.skill_loader import SkillLoader
+
+        (tmp_path / "good_skill.yaml").write_text(
+            """
+schema_version: "1.0"
+id: good_skill
+name: Good Skill
+persona: "safe"
+focus: "testing"
+""".strip(),
+            encoding="utf-8",
+        )
+        (tmp_path / "bad_skill.yaml").write_text(
+            "schema_version: [1.0\nid: broken_skill\n",
+            encoding="utf-8",
+        )
+
+        with caplog.at_level("WARNING"):
+            loader = SkillLoader(skills_dir=tmp_path)
+
+        assert loader.get("good_skill") is not None
+        assert loader.get("broken_skill") is None
+        assert "failed to load bad_skill.yaml" in caplog.text
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -178,6 +235,7 @@ class TestAgentLoader:
         # 新エージェント定義を tmp_path に作成
         (tmp_path / "my_new_agent.yaml").write_text(
             yaml.dump({
+                "schema_version": "1.0",
                 "name": "MyNewAgent",
                 "description": "テスト用カスタムエージェント",
                 "skills": ["strategic_planning", "deep_research"],
@@ -192,6 +250,63 @@ class TestAgentLoader:
         assert defn is not None
         assert defn.name == "MyNewAgent"
         assert "strategic_planning" in defn.skills
+        assert defn.schema_version == "1.0"
+
+    def test_missing_schema_version_logs_warning_for_agent(self, tmp_path, caplog):
+        from core.loaders.agent_loader import AgentLoader
+        import yaml
+
+        (tmp_path / "legacy_agent.yaml").write_text(
+            yaml.dump({"name": "LegacyAgent", "behavior": "legacy behavior"}),
+            encoding="utf-8",
+        )
+
+        with caplog.at_level("WARNING"):
+            loader = AgentLoader(definitions_dir=tmp_path)
+            assert loader.get("agent:legacy_agent") is not None
+
+        assert "missing schema_version" in caplog.text
+
+    def test_unsupported_schema_version_logs_warning_for_agent(self, tmp_path, caplog):
+        from core.loaders.agent_loader import AgentLoader
+        import yaml
+
+        (tmp_path / "future_agent.yaml").write_text(
+            yaml.dump({"schema_version": "9.9", "name": "FutureAgent", "behavior": "future behavior"}),
+            encoding="utf-8",
+        )
+
+        with caplog.at_level("WARNING"):
+            loader = AgentLoader(definitions_dir=tmp_path)
+            assert loader.get("agent:future_agent") is not None
+
+        assert "unsupported schema_version 9.9" in caplog.text
+
+    def test_malformed_yaml_is_skipped_for_agent_loader(self, tmp_path, caplog):
+        from core.loaders.agent_loader import AgentLoader
+
+        (tmp_path / "good_agent.yaml").write_text(
+            """
+schema_version: "1.0"
+name: GoodAgent
+behavior: "safe"
+skills: ["strategic_planning", "deep_research"]
+response_format:
+  type: json
+""".strip(),
+            encoding="utf-8",
+        )
+        (tmp_path / "bad_agent.yaml").write_text(
+            "schema_version: [1.0\nname: BrokenAgent\n",
+            encoding="utf-8",
+        )
+
+        with caplog.at_level("WARNING"):
+            loader = AgentLoader(definitions_dir=tmp_path)
+
+        assert loader.get("agent:good_agent") is not None
+        assert loader.get("agent:broken_agent") is None
+        assert "failed to load bad_agent.yaml" in caplog.text
 
 
 # ────────────────────────────────────────────────────────────────────────────

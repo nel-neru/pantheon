@@ -11,6 +11,7 @@ RepoCorp AI - Agent Execution Base
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -19,6 +20,9 @@ from core.models.organization import AgentSkill, SpecialistAgent
 
 if TYPE_CHECKING:
     from core.knowledge.manager import KnowledgeManager
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -45,10 +49,37 @@ class BaseAgent(ABC):
     def __init__(self, specialist: SpecialistAgent):
         self.specialist = specialist
         self._skill_engine: Optional[Any] = None  # AgentSkillEngine (遅延初期化)
+        self.knowledge_manager: Optional[Any] = None
 
     @abstractmethod
     async def run(self, task: AgentTask) -> AgentResult:
         """タスクを実行して結果を返す"""
+
+    async def safe_run(self, task: AgentTask) -> AgentResult:
+        """標準化されたエラーハンドリング付きでタスクを実行する。"""
+        try:
+            return await self.run(task)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Agent %s failed while executing task %s",
+                self.name,
+                task.task_type,
+            )
+            return self.handle_run_error(task, exc)
+
+    def handle_run_error(self, task: AgentTask, error: Exception) -> AgentResult:
+        """safe_run() で利用する標準エラー結果を返す。"""
+        return AgentResult(
+            success=False,
+            output={
+                "agent_name": self.name,
+                "task_type": task.task_type,
+                "task_description": task.description,
+            },
+            thinking_process="エージェント実行中に内部エラーが発生しました。",
+            execution_log=f"{type(error).__name__}: {error}",
+            error=str(error),
+        )
 
     @property
     def name(self) -> str:
@@ -93,7 +124,7 @@ class BaseAgent(ABC):
 
     def _enrich_with_knowledge(
         self,
-        knowledge_manager: "KnowledgeManager",
+        knowledge_manager: Optional["KnowledgeManager"] = None,
         extra_tags: Optional[List[str]] = None,
         limit: int = 5,
     ) -> str:
@@ -109,10 +140,14 @@ class BaseAgent(ABC):
         Returns:
             プロンプトに埋め込める形式の知識文字列（ない場合は空文字）
         """
+        manager = knowledge_manager or self.knowledge_manager
+        if manager is None:
+            return ""
+
         tags = self.get_skill_tags()
         if extra_tags:
             tags = tags + extra_tags
-        return knowledge_manager.get_context_for_agent(tags=tags, limit=limit)
+        return manager.get_context_for_agent(tags=tags, limit=limit)
 
     def _save_execution_knowledge(
         self,
@@ -131,6 +166,10 @@ class BaseAgent(ABC):
         if not result.success:
             return None
 
+        manager = knowledge_manager or self.knowledge_manager
+        if manager is None:
+            return None
+
         tags = self.get_skill_tags()
         if extra_tags:
             tags = tags + extra_tags
@@ -142,7 +181,7 @@ class BaseAgent(ABC):
             f"実行ログ: {result.execution_log}"
         )
 
-        return knowledge_manager.save_insight(
+        return manager.save_insight(
             title=f"[{self.name}] {task.task_type}: {task.description[:60]}",
             content=content,
             tags=tags,

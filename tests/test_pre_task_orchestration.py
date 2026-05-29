@@ -275,6 +275,40 @@ class TestPreTaskOrchestrator:
         result = asyncio.run(orchestrator.execute(task, analysis, agent_factory=factory))
         assert result.success
 
+    def test_execute_single_returns_error_when_no_agent_selected(self):
+        orchestrator = PreTaskOrchestrator()
+        analysis = TaskAnalysis(
+            task_type="code_review",
+            description="テスト",
+            recommended_pattern=OrchestrationPattern.SINGLE_AGENT,
+            recommended_agent_ids=[],
+        )
+        task = AgentTask(task_type="code_review", description="テスト")
+
+        result = asyncio.run(orchestrator.execute(task, analysis, agent_factory=lambda _: None))
+
+        assert result.success is False
+        assert result.error == "No agent selected"
+
+    def test_execute_parallel_returns_error_when_all_agents_fail(self):
+        class FailingAgent:
+            async def run(self, task):
+                return AgentResult(success=False, error="boom")
+
+        orchestrator = PreTaskOrchestrator()
+        analysis = TaskAnalysis(
+            task_type="code_review",
+            description="テスト",
+            recommended_pattern=OrchestrationPattern.PARALLEL_THEN_MERGE,
+            recommended_agent_ids=["agent:a", "agent:b"],
+        )
+        task = AgentTask(task_type="code_review", description="テスト")
+
+        result = asyncio.run(orchestrator.execute(task, analysis, agent_factory=lambda _: FailingAgent()))
+
+        assert result.success is False
+        assert result.error == "All parallel agents failed"
+
     def test_execute_without_factory_uses_default_factory(self):
         """agent_factory=None を明示的に渡した場合、
         デフォルト AgentFactory を使うため analysis がそのまま返ることはなくなった。

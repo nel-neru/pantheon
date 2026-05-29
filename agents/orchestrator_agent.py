@@ -24,6 +24,10 @@ from core.models.organization import AgentSkill, SpecialistAgent
 logger = logging.getLogger(__name__)
 
 
+def _analysis_reasoning(analysis: Any) -> str:
+    return getattr(analysis, "reasoning", getattr(analysis, "research_notes", ""))
+
+
 class OrchestratorAgent(BaseAgent):
     """
     RepoCorp AI の中央オーケストレーターエージェント。
@@ -111,7 +115,7 @@ class OrchestratorAgent(BaseAgent):
                         "analysis_only": True,
                         "recommended_pattern": analysis.recommended_pattern,
                         "recommended_agents": analysis.recommended_agent_ids,
-                        "reasoning": analysis.reasoning,
+                        "reasoning": _analysis_reasoning(analysis),
                     },
                     thinking_process="No agent factory — returned analysis only",
                 )
@@ -139,6 +143,6 @@ class OrchestratorAgent(BaseAgent):
             "recommended_agents": analysis.recommended_agent_ids,
             "complexity": analysis.complexity,
             "spawn_new_agent": analysis.spawn_new_agent,
-            "reasoning": analysis.research_notes,
+            "reasoning": _analysis_reasoning(analysis),
         }
         return routing

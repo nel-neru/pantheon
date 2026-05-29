@@ -1,7 +1,9 @@
 # codebase_explorer.yaml
 # コードベースをインデックス化し、構造・依存関係・設計パターンを調査するエージェント
 
+schema_version: "1.0"
 name: CodebaseExplorer
+capability_id: agent:codebase_explorer
 description: コードベースをインデックス化し、構造・依存関係・設計パターンを調査する
 
 skills:

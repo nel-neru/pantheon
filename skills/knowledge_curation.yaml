@@ -1,3 +1,4 @@
+schema_version: "1.0"
 id: knowledge_curation
 name: Knowledge Curation
 description: 知識管理・ベストプラクティス抽出・ドキュメント整備

@@ -1,5 +1,7 @@
+schema_version: "1.0"
 id: chat_agent
 name: ChatAgent
+capability_id: agent:chat_agent
 description: |
   ユーザーの自然言語の依頼を理解し、適切なツールを呼び出して作業を実行する
   対話型エージェント。repocorp chat コマンドのフロントエンドとして機能する。
@@ -33,5 +35,6 @@ behavior: |
 
 response_format:
   type: text
+  fields:
+    - message
 
-implementation: agents.chat_agent.ChatSession

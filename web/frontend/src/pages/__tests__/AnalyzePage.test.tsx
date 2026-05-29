@@ -57,7 +57,18 @@ describe('AnalyzePage', () => {
     expect(await screen.findByText('解析中')).toBeInTheDocument()
   })
 
-  it('shows an error toast when organization loading fails', async () => {
+  it('shows a distinct empty state when no organizations exist', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return []
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    renderWithRouter(<AnalyzePage />)
+
+    expect(await screen.findByText('分析対象の組織がありません')).toBeInTheDocument()
+  })
+
+  it('shows an error toast and inline error state when organization loading fails', async () => {
     mockApi.mockRejectedValue(new Error('org load failed'))
 
     renderWithRouter(<AnalyzePage />)
@@ -65,6 +76,8 @@ describe('AnalyzePage', () => {
     await waitFor(() => {
       expect(mockedToast.error).toHaveBeenCalledWith('org load failed')
     })
+    expect(await screen.findByText('組織の読み込みに失敗しました')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument()
   })
 
   it('runs analysis and renders streamed results', async () => {

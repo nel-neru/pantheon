@@ -1,3 +1,4 @@
+schema_version: "1.0"
 id: performance_analysis
 name: Performance Analysis
 description: パフォーマンス計測・ボトルネック分析・最適化提案

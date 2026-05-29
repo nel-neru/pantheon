@@ -1,7 +1,9 @@
 # knowledge_curator.yaml
 # 知識の整理・ベストプラクティス抽出・ドキュメント生成の専門エージェント
 
+schema_version: "1.0"
 name: KnowledgeCurator
+capability_id: agent:knowledge_curator
 description: 知識の整理・ベストプラクティス抽出・ドキュメント生成の専門エージェント
 
 skills:

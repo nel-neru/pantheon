@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import time
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -186,7 +186,7 @@ def test_cmd_query_prints_results(tmp_path: Path, capsys):
     manager.save_improvement_proposal(make_proposal(title="CLI visible", priority="high"))
     manager.close()
 
-    _run(cmd_query(SimpleNamespace(filter="WHERE priority='high'", limit=10, db_path=str(db_path))))
+    _run(cmd_query(SimpleNamespace(filter="priority=high", limit=10, db_path=str(db_path))))
     out = capsys.readouterr().out
 
     assert "CLI visible" in out
@@ -222,8 +222,8 @@ def test_backup_manager_cleanup_old(tmp_path: Path):
     source.write_text("v1", encoding="utf-8")
     for idx in range(3):
         source.write_text(f"v{idx}", encoding="utf-8")
-        manager.backup_now(source)
-        time.sleep(0.01)
+        backup = manager.backup_now(source)
+        os.utime(backup, (1_700_000_000 + idx, 1_700_000_000 + idx))
 
     deleted = manager.cleanup_old_backups("source.txt", keep=1)
 

@@ -1,94 +1,79 @@
-# RepoCorp AI - Personal AI Organization Platform
+# RepoCorp AI
 
-**開発者一人ひとりが、自分専用の自己成長型AI組織を立ち上げ、共に進化させられるプラットフォーム**です。
+開発者が自分専用の自己成長型 AI Organization を作り、CLI / Web / 自律実行パイプラインで改善を回せるプラットフォームです。
 
-## システムの目的（2026-05-25 更新）
+## できること
 
-### 解決したい課題
-- 個人開発者がアイデアをサービスとして立ち上げるのは大変
-- 一人だと組織的に考えたり、継続的に改善したりすることが難しい
-- 自分の作ったものを、ただ作るだけでなく「自分と共に成長させ続けたい」
+- `repocorp` CLI で Organization を作成・分析・承認
+- FastAPI ベースの Web UI / API を起動
+- YAML 定義から Agent / Skill / 組織テンプレートを読み込み
+- 自律改善ループで提案を収集・実行
 
-### このシステムが提供する価値
-開発者が**自分専用の自己成長型AI組織**を簡単に作成し、その組織が自分のアイデアをサービスとして実現しながら、**開発者自身と共に進化し続ける**環境を提供します。
+## インストール
 
----
+```bash
+git clone https://github.com/nel-neru/repocorp_ai.git
+cd repocorp_ai
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev,web]"
+```
 
-## 核心コンセプト
+`requirements.txt` を使う場合は次でも可です。
 
-### 基本構造：Core（中核） + Organization（組織）
+```bash
+python -m pip install -r requirements.txt
+```
 
-- **RepoCorp AI（Core / 中核エンジン）**
-  - すべてのOrganizationの基盤となる自己改善エンジン
-  - メトリクス収集、改善優先順位付け、知識共有を担う
-  - 自分自身（Core）も継続的に進化する
+## 初期設定
 
-- **Organization（組織）**
-  - ユーザーの具体的な目的やアイデアごとに**動的に作成**される自律的な組織
-  - 各Organizationは目的に合った構造（Division / Team / Specialist Agent）を持つ
-  - 最初に作成される代表的な組織は **Meta-Improvement Organization**（システム全体の強化を担う）
+```bash
+cp .env.example .env
+```
 
-### Specialist Agentの設計思想
+`.env` には少なくとも 1 つの LLM プロバイダーのキーを入れてください。
 
-- 各Teamに配置されるのは**「2〜3個の専門スキルを抱えたSpecialist Agent」**
-- 新しいスキルが必要になったら：
-  - 新Agentの作成
-  - または既存Agentへのスキル追加
-- Agentはジェネラリストではなく、**深い専門性を持った存在**として設計
+- Anthropic: `ANTHROPIC_API_KEY`
+- OpenAI: `OPENAI_API_KEY`
+- Groq: `GROQ_API_KEY`
+- Gemini: `GOOGLE_API_KEY`
 
-### 成長のバランス（重要）
+GitHub 連携や PR 作成を使う場合は `GITHUB_TOKEN` も設定します。
 
-Coreだけでなく各Organizationも成長させるために、以下の仕組みを導入：
-- メトリクスに基づく優先順位付け
-- 健康度の低いOrganizationに対してはInternal Consultantがより厳しくレビュー
-- Human-in-the-Loopによる重要な改善の人間承認
+## クイックスタート
 
----
+```bash
+bash scripts/install_hooks.sh
+python scripts/validate_config.py
+repocorp init
+repocorp org add --name "MyApp" --repo /absolute/path/to/app --purpose "ECサイト改善"
+repocorp analyze --org-name "MyApp"
+repocorp proposals --org-name "MyApp"
+repocorp serve
+```
 
-## 用語の整理（会社比喩の完全撤廃）
+- CLI は `repocorp --help` で確認できます
+- Web UI は通常 `http://localhost:7860`
+- OpenAPI は `http://localhost:7860/docs`
 
-| 旧称          | 新称                     | 意味 |
-|---------------|--------------------------|------|
-| 会社 / 子会社 | **Organization**         | 目的を持った自律的な組織 |
-| 部署          | **Division**             | 組織内の機能別グループ |
-| チーム        | **Team**                 | Division内の実行単位 |
-| ワーカー      | **Specialist Agent**     | 2〜3スキルを保有する専門エージェント |
-| 本社          | **Core**                 | システム全体の中核エンジン |
+## pre-commit フック
 
----
+`bash scripts/install_hooks.sh` で `git commit` 時の pre-commit フックを `.git/hooks/pre-commit` に配置します。
 
-## 主要な技術的特徴
+このフックでは主に次をチェックします。
 
-- **Internal Consultant Layer**: 常に厳しい視点で品質を監視・改善提案
-- **メトリクス駆動の自己改善**: 健康度に応じてレビュー強度を動的に調整
-- **Human-in-the-Loop**: 重要な改善には人間の承認を挟む
-- **LangGraphによるステートフルワークフロー**: 長期的な改善ループを安定して回す
-- **設定の外部化**: YAMLでレビュー強度や承認ルールを柔軟に変更可能
+- GUI ページ追加時のテスト不足
+- UI 変更時の `HelpPage.tsx` 更新漏れ
 
----
+## ドキュメント
 
-## 開発ロードマップ（整理後）
+- `docs/api/cli_reference.md`
+- `docs/api/rest_api.md`
+- `docs/development/conventions.md`
+- `docs/development/adding_new_features.md`
+- `docs/agents/README.md`
 
-### Phase 0: 基盤整理（現在）
-- ビジョンと言語の統一
-- アーキテクチャの整理
-- 状態管理の一本化 + エラーハンドリング強化
+## 検証
 
-### Phase 1: Core Engineの強化
-- メトリクスフィードバックの完全統合
-- 動的レビュー強度の本格運用
-- 設定YAMLの本格適用
-
-### Phase 2: ユーザー体験の基盤
-- シンプルなCLIエントリーポイント
-- Organization作成・管理の基本フロー
-- Human-in-the-Loopの完成
-
-### Phase 3: 商品化準備
-- クロスプラットフォーム対応の基盤整備
-- GUIの設計・実装
-- パッケージングと配布の準備
-
----
-
-このREADMEは、レビューの指摘を基に「会社」という比喩を完全に撤廃し、開発者個人が自分と共に成長する「Personal AI Organization」として再定義したものです。
+```bash
+python -m pytest tests/ -q --tb=short
+```

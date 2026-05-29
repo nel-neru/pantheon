@@ -1,7 +1,9 @@
 # corporate_researcher.yaml
 # 業界調査・競合分析・技術トレンドリサーチの専門エージェント
 
+schema_version: "1.0"
 name: CorporateResearcher
+capability_id: agent:corporate_researcher
 description: 業界調査・競合分析・OSS技術トレンドリサーチの専門エージェント
 
 skills:

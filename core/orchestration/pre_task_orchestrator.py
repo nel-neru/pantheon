@@ -91,6 +91,7 @@ class TaskAnalysis:
             "recommended_pattern": self.recommended_pattern,
             "recommended_agent_ids": self.recommended_agent_ids,
             "spawn_new_agent": self.spawn_new_agent,
+            "spawn_spec": self.spawn_spec,
             "research_notes": self.research_notes,
             "estimated_tokens": self.estimated_tokens,
             "confidence": self.confidence,

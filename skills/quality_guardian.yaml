@@ -1,3 +1,4 @@
+schema_version: "1.0"
 id: quality_guardian
 name: quality_guardian
 description: コード変更に伴う品質保証を自律的に実行するスキル

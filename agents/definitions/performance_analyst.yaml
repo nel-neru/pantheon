@@ -1,7 +1,9 @@
 # performance_analyst.yaml
 # パフォーマンス計測・ボトルネック分析・最適化提案の専門エージェント
 
+schema_version: "1.0"
 name: PerformanceAnalyst
+capability_id: agent:performance_analyst
 description: パフォーマンス計測・ボトルネック分析・最適化提案の専門エージェント
 
 skills:

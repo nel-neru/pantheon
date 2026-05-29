@@ -255,10 +255,18 @@ Existing code patterns:
         return base + max(method_count - 1, 0) * 12
 
     def _extract_json_object(self, content: str) -> Optional[dict[str, Any]]:
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if not match:
-            return None
-        return json.loads(match.group())
+        decoder = json.JSONDecoder()
+        start = content.find("{")
+        while start != -1:
+            try:
+                payload, _ = decoder.raw_decode(content[start:])
+            except json.JSONDecodeError:
+                start = content.find("{", start + 1)
+                continue
+            if isinstance(payload, dict):
+                return payload
+            start = content.find("{", start + 1)
+        return None
 
     def _to_snake_case(self, value: str) -> str:
         normalized = value.replace("-", "_")

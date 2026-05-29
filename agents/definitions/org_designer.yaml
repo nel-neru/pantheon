@@ -1,7 +1,9 @@
 # org_designer.yaml
 # AI 組織構造設計・責任分離・スケーリング設計の専門エージェント
 
+schema_version: "1.0"
 name: OrgDesigner
+capability_id: agent:org_designer
 description: AI組織構造設計・Division/Team/Agent配置・責任分離設計の専門エージェント
 
 skills:

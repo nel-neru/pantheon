@@ -1,5 +1,6 @@
 """Unit tests for core data models"""
 import pytest
+from pydantic import ValidationError
 from uuid import uuid4
 from datetime import datetime
 
@@ -92,6 +93,18 @@ class TestOrganization:
         div.add_team(team)
         org.add_division(div)
         assert len(org.get_all_agents()) == 1
+
+    def test_target_repo_path_accepts_absolute_path(self, tmp_path):
+        org = Organization(name="RepoOrg", purpose="Testing", target_repo_path=str(tmp_path))
+        assert org.target_repo_path == str(tmp_path)
+
+    def test_target_repo_path_allows_none(self):
+        org = Organization(name="RepoOrg", purpose="Testing", target_repo_path=None)
+        assert org.target_repo_path is None
+
+    def test_target_repo_path_rejects_relative_path(self):
+        with pytest.raises(ValidationError):
+            Organization(name="RepoOrg", purpose="Testing", target_repo_path="relative/path")
 
 
 class TestImprovementProposal:

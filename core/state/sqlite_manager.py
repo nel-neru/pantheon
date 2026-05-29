@@ -164,7 +164,26 @@ class SQLiteStateManager:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def query_proposals(self, sql_filter: str = "", limit: int = 50) -> list[dict]:
+    def query_proposals(
+        self,
+        sql_filter: str = "",
+        limit: int = 50,
+        field_filters: dict[str, str] | None = None,
+    ) -> list[dict]:
+        safe_limit = max(1, min(int(limit), 500))
+        if field_filters:
+            allowed_fields = {"id", "priority", "category", "title", "file_path", "status"}
+            unknown_fields = set(field_filters) - allowed_fields
+            if unknown_fields:
+                raise ValueError(f"Unsupported filter fields: {', '.join(sorted(unknown_fields))}")
+
+            where_clause = " AND ".join(f"{field} = ?" for field in field_filters)
+            query = f"SELECT * FROM proposals WHERE {where_clause} LIMIT ?"
+            params = (*field_filters.values(), safe_limit)
+            with self._lock:
+                rows = self._conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+
         filter_clause = (sql_filter or "").strip()
         if filter_clause:
             upper = filter_clause.upper()
@@ -174,7 +193,6 @@ class SQLiteStateManager:
             if not (upper.startswith("WHERE ") or upper.startswith("ORDER BY ")):
                 raise ValueError("Only WHERE/ORDER BY filters are allowed.")
 
-        safe_limit = max(1, min(int(limit), 500))
         query = f"SELECT * FROM proposals {filter_clause} LIMIT ?"
         with self._lock:
             rows = self._conn.execute(query, (safe_limit,)).fetchall()

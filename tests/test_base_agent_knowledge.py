@@ -21,6 +21,11 @@ class DummyAgent(BaseAgent):
         return AgentResult(success=True)
 
 
+class FailingAgent(BaseAgent):
+    async def run(self, task: AgentTask) -> AgentResult:
+        raise RuntimeError(f"boom: {task.task_type}")
+
+
 @pytest.fixture
 
 def specialist():
@@ -99,3 +104,15 @@ class TestBaseAgentKnowledge:
 
         assert insight_id is None
         assert manager.count() == 0
+
+    @pytest.mark.asyncio
+    async def test_safe_run_returns_standardized_error_result(self, specialist):
+        agent = FailingAgent(specialist)
+
+        result = await agent.safe_run(AgentTask(task_type="review", description="Inspect the repository"))
+
+        assert result.success is False
+        assert result.error == "boom: review"
+        assert result.output["agent_name"] == "KnowledgeAgent"
+        assert result.output["task_type"] == "review"
+        assert "RuntimeError" in result.execution_log

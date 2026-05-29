@@ -1,7 +1,9 @@
 # workflow_designer.yaml
 # LangGraph ワークフロー設計・エージェント協調パターンの専門エージェント
 
+schema_version: "1.0"
 name: WorkflowDesigner
+capability_id: agent:workflow_designer
 description: LangGraphワークフロー設計・エージェント協調パターン・Human-in-the-Loop設計の専門エージェント
 
 skills:

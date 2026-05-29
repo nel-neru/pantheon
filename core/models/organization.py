@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ============================================================
@@ -151,7 +152,7 @@ class Organization(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     name: str
     purpose: str  # この組織が達成したい目的
-    target_repo_path: str = ""  # 担当するリポジトリの絶対パス
+    target_repo_path: str | None = None  # 担当するリポジトリの絶対パス
     divisions: List[Division] = Field(default_factory=list)
     status: OrganizationStatus = OrganizationStatus.INCUBATING
     autonomy_score: float = Field(40.0, ge=0, le=100)
@@ -160,6 +161,15 @@ class Organization(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_active: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     icon_data: str = Field("", description="カスタムアイコン（base64 data URLまたはSVG文字列）")
+
+    @field_validator("target_repo_path")
+    @classmethod
+    def validate_target_repo_path(cls, value: str | None) -> str | None:
+        if value in (None, ""):
+            return value
+        if not Path(value).is_absolute():
+            raise ValueError("target_repo_path must be an absolute path")
+        return value
 
     def add_division(self, division: Division) -> None:
         self.divisions.append(division)

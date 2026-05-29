@@ -14,6 +14,24 @@ type GoalHistoryItem = {
   success?: boolean
 }
 
+type GoalHistoryApiItem = Partial<GoalHistoryItem> & {
+  goal_text?: string
+  summary?: string
+  created_at?: string
+  organization?: string
+}
+
+function normalizeGoalHistoryItem(item: GoalHistoryApiItem): GoalHistoryItem {
+  return {
+    id: item.id,
+    goal: item.goal ?? item.goal_text ?? '—',
+    org_name: item.org_name ?? item.organization,
+    result: item.result ?? item.summary ?? '—',
+    timestamp: item.timestamp ?? item.created_at ?? '',
+    success: item.success,
+  }
+}
+
 interface KnowledgeFile {
   path: string
   name: string
@@ -66,8 +84,8 @@ export function DataPage() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
     try {
-      const items = await api<GoalHistoryItem[]>('GET', '/api/goals/history')
-      setHistory(items)
+      const items = await api<GoalHistoryApiItem[]>('GET', '/api/goals/history')
+      setHistory(items.map(normalizeGoalHistoryItem))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'データの読み込みに失敗しました。')
     } finally {

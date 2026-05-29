@@ -20,6 +20,9 @@ type SettingsData = {
   gemini_api_key_set: boolean
   daemon_interval: number
   daemon_max_files: number
+  model_configurations: Record<string, unknown>
+  prompt_templates: Record<string, string>
+  policy_rules: Record<string, unknown>
   settings_file: string
   has_llm: boolean
 }
@@ -70,6 +73,18 @@ const DEFAULT_SETTINGS_DATA: SettingsData = {
   gemini_api_key_set: false,
   daemon_interval: 3600,
   daemon_max_files: 10,
+  model_configurations: {
+    default: { temperature: 0.2, max_tokens: 4096, fallback_model: '' },
+  },
+  prompt_templates: {
+    analysis: 'Analyze the repository and propose improvements.',
+    goal_execution: 'Plan and execute the goal.',
+  },
+  policy_rules: {
+    auto_approve: { conditions: {} },
+    human_required: { conditions: {} },
+    auto_reject: { conditions: {} },
+  },
   settings_file: '—',
   has_llm: false,
 }
@@ -122,8 +137,8 @@ function ApiKeyField({
           type="button"
           className="btn btn-ghost btn-icon"
           onClick={() => setShow((v) => !v)}
-          aria-label={show ? '隠す' : '表示'}
-          tabIndex={-1}
+          aria-label={show ? `${label} を隠す` : `${label} を表示する`}
+          title={show ? '値を隠す' : '値を表示する'}
         >
           {show ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
@@ -136,19 +151,37 @@ function ApiKeyField({
   )
 }
 
+function prettyJson(value: Record<string, unknown>) {
+  return JSON.stringify(value, null, 2)
+}
+
+function parseJsonObject(label: string, text: string) {
+  try {
+    const parsed = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(`${label} は JSON オブジェクトで指定してください。`)
+    }
+    return parsed as Record<string, unknown>
+  } catch (error) {
+    if (error instanceof Error) throw error
+    throw new Error(`${label} の解析に失敗しました。`)
+  }
+}
+
 export function SettingsPage() {
   const [data, setData] = useState<SettingsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
 
-  // Form fields
   const [provider, setProvider] = useState(DEFAULT_SETTINGS_DATA.llm_provider)
   const [model, setModel] = useState(DEFAULT_SETTINGS_DATA.llm_model)
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsSource, setModelsSource] = useState<ModelsSource>(null)
+  const [modelsError, setModelsError] = useState<string | null>(null)
   const [anthropicKey, setAnthropicKey] = useState('')
   const [openaiKey, setOpenaiKey] = useState('')
   const [groqKey, setGroqKey] = useState('')
@@ -156,6 +189,9 @@ export function SettingsPage() {
   const [geminiKey, setGeminiKey] = useState('')
   const [daemonInterval, setDaemonInterval] = useState(3600)
   const [daemonMaxFiles, setDaemonMaxFiles] = useState(10)
+  const [modelConfigurationsText, setModelConfigurationsText] = useState(prettyJson(DEFAULT_SETTINGS_DATA.model_configurations))
+  const [promptTemplatesText, setPromptTemplatesText] = useState(prettyJson(DEFAULT_SETTINGS_DATA.prompt_templates as Record<string, unknown>))
+  const [policyRulesText, setPolicyRulesText] = useState(prettyJson(DEFAULT_SETTINGS_DATA.policy_rules))
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -165,13 +201,23 @@ export function SettingsPage() {
     ])
 
     if (settingsResult.status === 'fulfilled') {
-      const s = settingsResult.value
+      const s: SettingsData = {
+        ...DEFAULT_SETTINGS_DATA,
+        ...settingsResult.value,
+        model_configurations: settingsResult.value.model_configurations ?? DEFAULT_SETTINGS_DATA.model_configurations,
+        prompt_templates: settingsResult.value.prompt_templates ?? DEFAULT_SETTINGS_DATA.prompt_templates,
+        policy_rules: settingsResult.value.policy_rules ?? DEFAULT_SETTINGS_DATA.policy_rules,
+      }
       setData(s)
       setProvider(s.llm_provider)
       setModel(s.llm_model)
       setDaemonInterval(s.daemon_interval)
       setDaemonMaxFiles(s.daemon_max_files)
+      setModelConfigurationsText(prettyJson(s.model_configurations))
+      setPromptTemplatesText(prettyJson(s.prompt_templates as Record<string, unknown>))
+      setPolicyRulesText(prettyJson(s.policy_rules))
       setLoadError(null)
+      setValidationError(null)
     } else {
       setData(null)
       setLoadError('設定を取得できませんでした。サーバーを再起動してください: python main.py serve')
@@ -187,6 +233,7 @@ export function SettingsPage() {
 
   const fetchModels = useCallback(async (selectedProvider: string) => {
     setModelsLoading(true)
+    setModelsError(null)
     try {
       const result = await api<ModelsResponse>('GET', `/api/providers/${selectedProvider}/models`)
       const normalizedSource: ModelsSource =
@@ -195,15 +242,17 @@ export function SettingsPage() {
           : null
       setAvailableModels(result.models)
       setModelsSource(normalizedSource)
+      setModelsError(null)
       setModel((currentModel) => {
         if (result.models.length > 0 && !result.models.includes(currentModel)) {
           return result.models[0]
         }
         return currentModel
       })
-    } catch {
+    } catch (error) {
       setAvailableModels([])
       setModelsSource(null)
+      setModelsError(error instanceof Error ? error.message : 'モデル一覧の取得に失敗しました。')
     } finally {
       setModelsLoading(false)
     }
@@ -215,6 +264,44 @@ export function SettingsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
+    setValidationError(null)
+
+    let modelConfigurations: Record<string, unknown>
+    let promptTemplates: Record<string, string>
+    let policyRules: Record<string, unknown>
+
+    try {
+      if (daemonInterval < 60) {
+        throw new Error('実行間隔は 60 秒以上にしてください。')
+      }
+      if (daemonMaxFiles < 1 || daemonMaxFiles > 1000) {
+        throw new Error('最大ファイル数は 1〜1000 の範囲で指定してください。')
+      }
+
+      modelConfigurations = parseJsonObject('モデル構成', modelConfigurationsText)
+      const parsedPromptTemplates = parseJsonObject('プロンプトテンプレート', promptTemplatesText)
+      const invalidPromptTemplate = Object.entries(parsedPromptTemplates).find(
+        ([, value]) => typeof value !== 'string' || value.trim().length === 0,
+      )
+      if (invalidPromptTemplate) {
+        throw new Error('プロンプトテンプレートは空でない文字列の JSON オブジェクトで指定してください。')
+      }
+      promptTemplates = Object.fromEntries(
+        Object.entries(parsedPromptTemplates).map(([key, value]) => [key, String(value)]),
+      )
+      policyRules = parseJsonObject('ポリシールール', policyRulesText)
+      for (const key of ['auto_approve', 'human_required', 'auto_reject']) {
+        if (!(key in policyRules)) {
+          throw new Error(`ポリシールールには ${key} を含めてください。`)
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '設定の検証に失敗しました。'
+      setValidationError(message)
+      toast.error(message)
+      return
+    }
+
     setSaving(true)
     try {
       const body: Record<string, unknown> = {
@@ -222,6 +309,9 @@ export function SettingsPage() {
         llm_model: model,
         daemon_interval: daemonInterval,
         daemon_max_files: daemonMaxFiles,
+        model_configurations: modelConfigurations,
+        prompt_templates: promptTemplates,
+        policy_rules: policyRules,
       }
       if (anthropicKey) body.anthropic_api_key = anthropicKey
       if (openaiKey) body.openai_api_key = openaiKey
@@ -271,7 +361,13 @@ export function SettingsPage() {
               </div>
             ) : null}
 
-            {/* LLM Status */}
+            {validationError ? (
+              <div className="settings-status-bar warn">
+                <span className="badge badge-red">検証エラー</span>
+                <span className="text-sm text-muted">{validationError}</span>
+              </div>
+            ) : null}
+
             <div className={`settings-status-bar ${effectiveData.has_llm ? 'ok' : 'warn'}`}>
               <span className={`badge ${effectiveData.has_llm ? 'badge-green' : 'badge-red'}`}>
                 {effectiveData.has_llm ? 'LLM 接続済み' : 'LLM 未設定'}
@@ -283,7 +379,6 @@ export function SettingsPage() {
               </span>
             </div>
 
-            {/* LLM Provider */}
             <div className="card">
               <div className="card-header">
                 <div>
@@ -320,18 +415,10 @@ export function SettingsPage() {
                       </label>
                       <div className="flex items-center gap-2">
                         {modelsLoading ? <span className="text-xs text-muted">読み込み中...</span> : null}
-                        {modelsSource === 'api' ? (
-                          <span className="badge badge-green text-xs">最新</span>
-                        ) : null}
-                        {modelsSource === 'fallback' ? (
-                          <span className="badge badge-yellow text-xs">デフォルト</span>
-                        ) : null}
-                        {modelsSource === 'cache' ? (
-                          <span className="badge badge-neutral text-xs">キャッシュ</span>
-                        ) : null}
-                        {modelsSource === null && !modelsLoading ? (
-                          <span className="badge badge-red text-xs">取得失敗</span>
-                        ) : null}
+                        {modelsSource === 'api' ? <span className="badge badge-green text-xs">最新</span> : null}
+                        {modelsSource === 'fallback' ? <span className="badge badge-yellow text-xs">デフォルト</span> : null}
+                        {modelsSource === 'cache' ? <span className="badge badge-neutral text-xs">キャッシュ</span> : null}
+                        {modelsSource === null && !modelsLoading ? <span className="badge badge-red text-xs">取得失敗</span> : null}
                       </div>
                     </div>
                     <select
@@ -364,6 +451,20 @@ export function SettingsPage() {
                               ? 'モデル一覧の取得に失敗しました。手動でモデル名を入力してください'
                               : ''}
                     </p>
+                    {modelsError ? (
+                      <div className="settings-status-bar warn">
+                        <span className="badge badge-red">取得失敗</span>
+                        <span className="text-sm text-muted">{modelsError}</span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => void fetchModels(provider)}
+                          disabled={modelsLoading}
+                        >
+                          再試行
+                        </button>
+                      </div>
+                    ) : null}
                     {modelsSource === null && !modelsLoading ? (
                       <div className="input-group mt-2">
                         <label className="input-label" htmlFor="llm-model-manual">
@@ -436,7 +537,52 @@ export function SettingsPage() {
               </div>
             </div>
 
-            {/* Daemon Settings */}
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">高度な構成管理</div>
+                  <div className="card-description">モデル構成、プロンプトテンプレート、ポリシールールを保存します。</div>
+                </div>
+              </div>
+              <div className="card-body flex flex-col gap-4">
+                <div className="input-group">
+                  <label className="input-label" htmlFor="model-configurations">モデル構成(JSON)</label>
+                  <textarea
+                    id="model-configurations"
+                    className="textarea mono"
+                    rows={10}
+                    value={modelConfigurationsText}
+                    onChange={(e) => setModelConfigurationsText(e.target.value)}
+                  />
+                  <p className="settings-hint">temperature / max_tokens / fallback model などの既定値を管理します。</p>
+                </div>
+
+                <div className="input-group">
+                  <label className="input-label" htmlFor="prompt-templates">プロンプトテンプレート(JSON)</label>
+                  <textarea
+                    id="prompt-templates"
+                    className="textarea mono"
+                    rows={10}
+                    value={promptTemplatesText}
+                    onChange={(e) => setPromptTemplatesText(e.target.value)}
+                  />
+                  <p className="settings-hint">各ワークフローの既定プロンプトをキー/値形式で保持します。</p>
+                </div>
+
+                <div className="input-group">
+                  <label className="input-label" htmlFor="policy-rules">ポリシールール(JSON)</label>
+                  <textarea
+                    id="policy-rules"
+                    className="textarea mono"
+                    rows={12}
+                    value={policyRulesText}
+                    onChange={(e) => setPolicyRulesText(e.target.value)}
+                  />
+                  <p className="settings-hint">auto_approve / human_required / auto_reject を含むポリシーを保存します。</p>
+                </div>
+              </div>
+            </div>
+
             <div className="card">
               <div className="card-header">
                 <div>
@@ -461,12 +607,8 @@ export function SettingsPage() {
                       onChange={(e) => setDaemonInterval(Number(e.target.value))}
                     />
                     <p className="settings-hint">
-                      {Math.floor(daemonInterval / 3600) > 0
-                        ? `${Math.floor(daemonInterval / 3600)} 時間`
-                        : ''}{' '}
-                      {Math.floor((daemonInterval % 3600) / 60) > 0
-                        ? `${Math.floor((daemonInterval % 3600) / 60)} 分`
-                        : ''}
+                      {Math.floor(daemonInterval / 3600) > 0 ? `${Math.floor(daemonInterval / 3600)} 時間` : ''}{' '}
+                      {Math.floor((daemonInterval % 3600) / 60) > 0 ? `${Math.floor((daemonInterval % 3600) / 60)} 分` : ''}
                       ごとに改善ループが実行されます。
                     </p>
                   </div>
@@ -480,7 +622,7 @@ export function SettingsPage() {
                       className="input"
                       type="number"
                       min={1}
-                      max={100}
+                      max={1000}
                       value={daemonMaxFiles}
                       onChange={(e) => setDaemonMaxFiles(Number(e.target.value))}
                     />
@@ -525,7 +667,6 @@ export function SettingsPage() {
               </div>
             ) : null}
 
-            {/* Save button */}
             <div className="settings-save-row">
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 <Save size={14} />

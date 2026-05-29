@@ -1,3 +1,4 @@
+schema_version: "1.0"
 id: deep_research
 name: Deep Research
 description: 技術調査・根本原因分析・詳細調査

@@ -78,12 +78,14 @@ class EventDetector:
         if p.exists():
             try:
                 return json.loads(p.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to load commit cache from %s: %s", p, exc)
         return {}
 
     def _save_commit_cache(self) -> None:
-        self._cache_path().write_text(
+        cache_file = self._cache_path()
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(
             json.dumps(self._last_commits, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )

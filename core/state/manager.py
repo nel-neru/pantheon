@@ -44,9 +44,10 @@ class RepoStateManager:
 
     def save_current_state(self, state: Dict[str, Any]) -> None:
         """現在の全体状態を保存"""
-        state["last_updated"] = datetime.now(timezone.utc).isoformat()
+        payload = dict(state)
+        payload["last_updated"] = datetime.now(timezone.utc).isoformat()
         with open(self.current_state_file, "w", encoding="utf-8") as f:
-            json.dump(state, f, ensure_ascii=False, indent=2)
+            json.dump(payload, f, ensure_ascii=False, indent=2)
 
     def load_current_state(self) -> Dict[str, Any]:
         if self.current_state_file.exists():
@@ -79,10 +80,18 @@ class RepoStateManager:
     def get_recent_decisions(self, limit: int = 10) -> list[Dict[str, Any]]:
         """最近の決定を取得（他のセッションが参照するため）"""
         decisions = []
-        for f in sorted(self.decisions_dir.glob("*.json"), reverse=True)[:limit]:
+        for f in self.decisions_dir.glob("*.json"):
             with open(f, "r", encoding="utf-8") as fp:
                 decisions.append(json.load(fp))
-        return decisions
+
+        def sort_key(decision: Dict[str, Any]) -> datetime:
+            timestamp = str(decision.get("timestamp", ""))
+            try:
+                return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            except ValueError:
+                return datetime.min.replace(tzinfo=timezone.utc)
+
+        return sorted(decisions, key=sort_key, reverse=True)[:limit]
 
     # ============================================================
     # Quality Review & Improvement Proposal 永続化
@@ -138,8 +147,8 @@ class RepoStateManager:
                 continue
         return proposals
 
-    def update_proposal_status(self, proposal_id: str, status: str) -> bool:
-        """改善提案のステータスを更新する。Returns True if successful."""
+    def update_proposal_fields(self, proposal_id: str, **updates: Any) -> bool:
+        """改善提案の任意フィールドを更新する。Returns True if successful."""
         improvements_dir = self.state_dir / "improvements"
         if not improvements_dir.exists():
             return False
@@ -147,12 +156,16 @@ class RepoStateManager:
             if f.stem == proposal_id:
                 with open(f, "r", encoding="utf-8") as fp:
                     data = json.load(fp)
-                data["status"] = status
+                data.update(updates)
                 data["last_updated"] = datetime.now(timezone.utc).isoformat()
                 with open(f, "w", encoding="utf-8") as fp:
                     json.dump(data, fp, ensure_ascii=False, indent=2)
                 return True
         return False
+
+    def update_proposal_status(self, proposal_id: str, status: str) -> bool:
+        """改善提案のステータスを更新する。Returns True if successful."""
+        return self.update_proposal_fields(proposal_id, status=status)
 
     # ============================================================
     # Organization 永続化

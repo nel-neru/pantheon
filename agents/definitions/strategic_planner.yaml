@@ -4,7 +4,9 @@
 # このファイルだけで新エージェントが定義できます。
 # Python コードは不要です。
 
+schema_version: "1.0"
 name: StrategicPlanner
+capability_id: agent:strategic_planner
 description: 長期戦略・組織設計・ロードマップ立案の専門エージェント
 
 # 保有スキル（skills/*.yaml のIDを指定）

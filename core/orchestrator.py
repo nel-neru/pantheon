@@ -66,11 +66,14 @@ class RepoCorpOrchestrator:
         async with self._lock:
             if template_name:
                 template_path = Path(__file__).parent.parent / "config" / "departments" / f"{template_name}.yaml"
-                org = create_organization_from_template(name, purpose, template_path)
+                org = create_organization_from_template(
+                    name,
+                    purpose,
+                    template_path,
+                    repo_path=target_repo_path or None,
+                )
             else:
-                org = create_default_organization(name, purpose)
-
-            org.target_repo_path = target_repo_path
+                org = create_default_organization(name, purpose, repo_path=target_repo_path or None)
 
             self.state.add_organization(org)
             self._psm.save_organization(org)

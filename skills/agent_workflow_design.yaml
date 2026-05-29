@@ -1,3 +1,4 @@
+schema_version: "1.0"
 id: agent_workflow_design
 name: Agent Workflow Design
 description: LangGraph/エージェントワークフロー・Human-in-the-Loop設計

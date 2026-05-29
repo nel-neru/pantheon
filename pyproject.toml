@@ -19,36 +19,38 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-    "pydantic>=2.7",
-    "python-dotenv>=1.0",
-    "pyyaml>=6.0",
-    "PyGithub>=2.3",
-    "GitPython>=3.1",
-    "anthropic>=0.28",
-    "openai>=1.30",
-    "langgraph>=0.2",
-    "langgraph-checkpoint-sqlite>=1.0",
+    "pydantic~=2.7",
+    "python-dotenv~=1.0",
+    "PyYAML~=6.0",
+    "PyGithub~=2.3",
+    "GitPython~=3.1",
+    "anthropic~=0.28",
+    "openai~=1.30",
+    "google-generativeai~=0.8.0",
+    "langgraph~=0.2",
+    "langgraph-checkpoint-sqlite~=1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
+    "pytest~=8.0",
+    "pytest-asyncio~=0.23",
 ]
 web = [
-    "fastapi>=0.111",
-    "uvicorn[standard]>=0.30",
+    "fastapi~=0.111",
+    "httpx~=0.27",
+    "uvicorn[standard]~=0.30",
 ]
 
 [project.scripts]
 repocorp = "main:main"
 
 [project.urls]
-Repository = "https://github.com/your-username/repocorp-ai"
+Repository = "https://github.com/nel-neru/repocorp_ai"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agents*", "core*", "config*", "github_integration*", "utils*", "web*"]
+include = ["agents*", "core*", "config*", "github_integration*", "web*"]
 
 [tool.setuptools]
 py-modules = ["main"]

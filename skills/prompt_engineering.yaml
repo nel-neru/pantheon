@@ -1,3 +1,4 @@
+schema_version: "1.0"
 id: prompt_engineering
 name: Prompt Engineering
 description: LLMプロンプト最適化・トークン効率・出力品質改善

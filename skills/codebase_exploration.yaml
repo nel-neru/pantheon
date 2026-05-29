@@ -1,3 +1,4 @@
+schema_version: "1.0"
 id: codebase_exploration
 name: Codebase Exploration
 description: コードベース調査・依存関係分析・アーキテクチャ把握

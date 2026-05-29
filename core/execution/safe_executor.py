@@ -171,6 +171,15 @@ class SafeChangeExecutor:
 
     def _resolve_path(self, file_path: str) -> Path:
         path = Path(file_path)
-        if path.is_absolute():
-            return path
-        return self.project_root / path
+        candidate = path if path.is_absolute() else self.project_root / path
+        resolved = candidate.resolve(strict=False)
+        if not self._is_within_project_root(resolved):
+            raise ValueError(f"Path escapes project root: {file_path}")
+        return resolved
+
+    def _is_within_project_root(self, path: Path) -> bool:
+        try:
+            path.relative_to(self.project_root)
+            return True
+        except ValueError:
+            return False

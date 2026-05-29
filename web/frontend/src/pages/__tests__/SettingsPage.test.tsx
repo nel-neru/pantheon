@@ -261,7 +261,8 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('option', { name: 'gpt-4o-mini' })).toBeInTheDocument()
   })
 
-  it('shows a manual model input when loading models fails', async () => {
+  it('shows a manual model input when loading models fails and allows retry', async () => {
+    let modelCalls = 0
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/settings') {
         return settings
@@ -270,17 +271,28 @@ describe('SettingsPage', () => {
         return storageInfo
       }
       if (isModelsRequest(method, path)) {
-        throw new Error('models load failed')
+        modelCalls += 1
+        if (modelCalls === 1) {
+          throw new Error('models load failed')
+        }
+        return buildModelsResponse(path, { anthropic: 'api' })
       }
       throw new Error(`Unexpected request: ${method} ${path}`)
     })
 
+    const user = userEvent.setup()
     renderWithRouter(<SettingsPage />)
 
-    expect(await screen.findByText('取得失敗')).toBeInTheDocument()
+    expect((await screen.findAllByText('取得失敗')).length).toBeGreaterThan(0)
+    expect(screen.getByText('models load failed')).toBeInTheDocument()
     expect(screen.getByText('モデル一覧の取得に失敗しました。手動でモデル名を入力してください')).toBeInTheDocument()
     expect(screen.getByLabelText('モデル')).toBeDisabled()
     expect(screen.getByLabelText('モデル名を直接入力')).toHaveValue('claude-3-5-sonnet-20241022')
+
+    await user.click(screen.getByRole('button', { name: '再試行' }))
+
+    expect(await screen.findByText('最新')).toBeInTheDocument()
+    expect(screen.queryByText('models load failed')).not.toBeInTheDocument()
   })
 
   it('shows a saving state while the form is being submitted', async () => {
@@ -311,12 +323,15 @@ describe('SettingsPage', () => {
 
     saveRequest.resolve({ ok: true })
     await waitFor(() => {
-      expect(mockApi).toHaveBeenCalledWith('PUT', '/api/settings', {
+      expect(mockApi).toHaveBeenCalledWith('PUT', '/api/settings', expect.objectContaining({
         llm_provider: 'anthropic',
         llm_model: 'claude-3-5-sonnet-20241022',
         daemon_interval: 3600,
         daemon_max_files: 10,
-      })
+        model_configurations: expect.any(Object),
+        prompt_templates: expect.any(Object),
+        policy_rules: expect.any(Object),
+      }))
     })
   })
 
@@ -366,13 +381,16 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(mockedToast.success).toHaveBeenCalledWith('設定を保存しました。')
     })
-    expect(mockApi).toHaveBeenCalledWith('PUT', '/api/settings', {
+    expect(mockApi).toHaveBeenCalledWith('PUT', '/api/settings', expect.objectContaining({
       llm_provider: 'openai',
       llm_model: 'gpt-4o',
       daemon_interval: 7200,
       daemon_max_files: 25,
       openai_api_key: 'sk-new-openai',
-    })
+      model_configurations: expect.any(Object),
+      prompt_templates: expect.any(Object),
+      policy_rules: expect.any(Object),
+    }))
     expect(screen.getByLabelText('OpenAI API キー')).toHaveValue('')
   })
 })

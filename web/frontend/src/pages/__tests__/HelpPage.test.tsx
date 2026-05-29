@@ -39,6 +39,16 @@ describe('HelpPage', () => {
     expect(screen.getByText(/マスク表示されたキーを確認し、表示切り替えしながら更新できます/)).toBeInTheDocument()
   })
 
+  it('documents the supported slash commands with /goal', async () => {
+    const user = userEvent.setup()
+    renderWithRouter(<HelpPage />)
+
+    await user.click(screen.getByRole('button', { name: '各画面の使い方' }))
+
+    expect(await screen.findByText('/goal')).toBeInTheDocument()
+    expect(screen.queryByText('/goals')).not.toBeInTheDocument()
+  })
+
   it('switches to the advanced settings tab', async () => {
     const user = userEvent.setup()
     renderWithRouter(<HelpPage />)

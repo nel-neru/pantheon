@@ -8,6 +8,7 @@ AgentFactory が自動的に GenericSkillAgent インスタンスを生成する
 YAML フォーマット（例: agents/definitions/strategic_planner.yaml）:
     name: StrategicPlanner
     description: 長期戦略の専門エージェント
+    capability_id: agent:strategic_planner
     skills:
         - strategic_planning
         - org_design
@@ -37,6 +38,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.loaders.schema_support import validate_schema_version
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,10 +61,18 @@ class AgentDefinition:
     response_format: Dict[str, Any] = field(default_factory=dict)
     implementation: str = ""   # "module.path.ClassName" — Python実装を使う場合に指定
     source_file: str = ""
+    schema_version: str = ""
+    capability_id_override: str = ""
 
     @property
     def capability_id(self) -> str:
         """CapabilityRegistry の agent_id 形式（例: "agent:strategic_planner"）。"""
+        if self.capability_id_override:
+            return (
+                self.capability_id_override
+                if self.capability_id_override.startswith("agent:")
+                else f"agent:{self.capability_id_override}"
+            )
         stem = Path(self.source_file).stem if self.source_file else self.name.lower()
         return f"agent:{stem}"
 
@@ -77,7 +88,6 @@ class AgentDefinition:
         """
         parts: List[str] = []
 
-        # スキルのプロンプトアドオンを追加
         if skill_loader and self.skills:
             skill_sections = []
             for skill_id in self.skills:
@@ -89,16 +99,14 @@ class AgentDefinition:
             if skill_sections:
                 parts.append("\n\n---\n\n".join(skill_sections))
 
-        # エージェント固有の振る舞い
         if self.behavior.strip():
             parts.append(f"【このエージェントの振る舞い】\n{self.behavior.strip()}")
 
-        # レスポンス形式の指示
         if self.response_format:
             fmt_type = self.response_format.get("type", "json")
             fields = self.response_format.get("fields", [])
             if fmt_type == "json" and fields:
-                fields_str = "\n".join(f'  "{f}": ...' for f in fields)
+                fields_str = "\n".join(f'  "{field}": ...' for field in fields)
                 parts.append(
                     f"【出力形式】\n以下の JSON 形式のみで返してください（コードブロック不要）:\n"
                     f"{{\n{fields_str}\n}}"
@@ -112,6 +120,16 @@ class AgentDefinition:
             f"skills={self.skills!r}, "
             f"capability_id={self.capability_id!r})"
         )
+
+
+def _normalize_response_format(response_format: Any) -> Dict[str, Any]:
+    if not isinstance(response_format, dict):
+        return {}
+    normalized = dict(response_format)
+    if not normalized.get("fields") and isinstance(normalized.get("schema"), dict):
+        normalized["fields"] = list(normalized["schema"].keys())
+    normalized.pop("schema", None)
+    return normalized
 
 
 class AgentLoader:
@@ -134,11 +152,9 @@ class AgentLoader:
 
     def __init__(self, definitions_dir: Optional[Path] = None):
         if definitions_dir is None:
-            definitions_dir = (
-                Path(__file__).parent.parent.parent / "agents" / "definitions"
-            )
+            definitions_dir = Path(__file__).parent.parent.parent / "agents" / "definitions"
         self._definitions_dir = Path(definitions_dir)
-        self._cache: Dict[str, AgentDefinition] = {}  # capability_id → AgentDefinition
+        self._cache: Dict[str, AgentDefinition] = {}
         self._loaded = False
 
     def _load_all(self) -> None:
@@ -162,20 +178,28 @@ class AgentLoader:
                 if not isinstance(data, dict) or "name" not in data:
                     logger.debug("Skipping %s: missing 'name' field", yaml_file.name)
                     continue
+                data = dict(data)
+                data["schema_version"] = validate_schema_version(
+                    data,
+                    yaml_file.name,
+                    kind="Agent definition",
+                )
                 defn = AgentDefinition(
                     name=data["name"],
                     description=data.get("description", ""),
                     skills=data.get("skills", []),
                     tools=data.get("tools", []),
                     behavior=data.get("behavior", ""),
-                    response_format=data.get("response_format", {}),
+                    response_format=_normalize_response_format(data.get("response_format", {})),
                     implementation=data.get("implementation", ""),
                     source_file=yaml_file.name,
+                    schema_version=data.get("schema_version", ""),
+                    capability_id_override=str(data.get("capability_id", "")).strip(),
                 )
                 self._cache[defn.capability_id] = defn
                 logger.debug("AgentLoader: loaded %s → %s", yaml_file.name, defn.capability_id)
-            except Exception as e:
-                logger.warning("AgentLoader: failed to load %s: %s", yaml_file.name, e)
+            except Exception as exc:
+                logger.warning("AgentLoader: failed to load %s: %s", yaml_file.name, exc)
 
         self._loaded = True
         logger.info(
@@ -207,7 +231,6 @@ class AgentLoader:
         return len(self._cache)
 
 
-# モジュールレベルのシングルトン
 _default_loader: Optional[AgentLoader] = None
 
 

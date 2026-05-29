@@ -191,3 +191,19 @@ def test_get_llm_provider_supports_groq():
     )
 
     assert provider.provider_name == "groq"
+
+
+def test_handle_slash_command_returns_unknown_command_message():
+    session = chat_agent.ChatSession()
+
+    result = asyncio.run(chat_agent.handle_slash_command("/does-not-exist", session))
+
+    assert result == "❓ 未知のコマンド '/does-not-exist'。/help でコマンド一覧を確認してください。"
+
+
+def test_handle_slash_command_returns_none_for_empty_input():
+    session = chat_agent.ChatSession()
+
+    result = asyncio.run(chat_agent.handle_slash_command("   ", session))
+
+    assert result is None

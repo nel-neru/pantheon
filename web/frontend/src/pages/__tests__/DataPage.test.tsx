@@ -110,6 +110,28 @@ describe('DataPage', () => {
     expect(screen.getByText('テストを追加しました')).toBeInTheDocument()
   })
 
+  it('normalizes legacy history rows that still use summary fields', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/goals/history') {
+        return [
+          {
+            goal_text: '品質を改善する',
+            summary: '改善提案を作成しました',
+            organization: 'beta',
+            created_at: '2025-01-02T10:00:00.000Z',
+          },
+        ]
+      }
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    renderWithRouter(<DataPage />)
+
+    expect(await screen.findByText('品質を改善する')).toBeInTheDocument()
+    expect(screen.getByText('beta')).toBeInTheDocument()
+    expect(screen.getByText('改善提案を作成しました')).toBeInTheDocument()
+  })
+
   it('refreshes history when the reload button is clicked', async () => {
     const first: typeof historyItem[] = []
     const second: typeof historyItem[] = [historyItem]

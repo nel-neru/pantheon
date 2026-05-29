@@ -1,7 +1,9 @@
 # prompt_optimizer.yaml
 # LLM プロンプト最適化・トークン効率改善の専門エージェント
 
+schema_version: "1.0"
 name: PromptOptimizer
+capability_id: agent:prompt_optimizer
 description: LLMプロンプト最適化・トークン効率改善・出力品質向上の専門エージェント
 
 skills:

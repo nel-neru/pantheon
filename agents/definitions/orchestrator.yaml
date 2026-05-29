@@ -1,5 +1,7 @@
+schema_version: "1.0"
 id: orchestrator
 name: Orchestrator
+capability_id: agent:orchestrator
 description: |
   CLIからのすべてのタスクを受け取り、PreTaskOrchestrator で分析したうえで
   最適な専門エージェントにルーティングして実行する中央指揮エージェント。
@@ -30,10 +32,10 @@ behavior: |
 
 response_format:
   type: json
-  schema:
-    success: bool
-    recommended_pattern: str
-    recommended_agents: list[str]
-    output: dict
+  fields:
+    - success
+    - recommended_pattern
+    - recommended_agents
+    - output
 
 implementation: agents.orchestrator_agent.OrchestratorAgent

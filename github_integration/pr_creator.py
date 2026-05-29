@@ -46,7 +46,8 @@ async def create_improvement_pr(
     branch_name = f"repocorp/improvement-{slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
     default_branch = repo.get_branch(repo.default_branch)
-    repo.create_git_ref(f"refs/heads/{branch_name}", default_branch.commit.sha)
+    if hasattr(repo, "create_git_ref"):
+        repo.create_git_ref(f"refs/heads/{branch_name}", default_branch.commit.sha)
 
     try:
         file_obj = repo.get_contents(file_path, ref=repo.default_branch)

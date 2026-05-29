@@ -2,7 +2,9 @@
 # コードを静的解析し、品質・セキュリティ・パフォーマンスの改善提案を生成するエージェント
 # implementation フィールドで専用 Python クラスを使用する
 
+schema_version: "1.0"
 name: CodeReviewer
+capability_id: agent:code_reviewer
 description: コードを静的解析し、品質・セキュリティ・パフォーマンスの改善提案を生成する
 
 skills:

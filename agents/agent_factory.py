@@ -45,17 +45,25 @@ def _import_class(class_path: str) -> Type:
 def _skills_from_ids(skill_ids: List[str]) -> List[AgentSkill]:
     """スキルID文字列のリストを AgentSkill enum リストに変換する。"""
     skills: List[AgentSkill] = []
+    unknown_skill_ids: List[str] = []
     for sid in skill_ids:
         try:
             skills.append(AgentSkill(sid))
         except ValueError:
-            logger.warning("AgentFactory: unknown skill id %r, using fallback skills", sid)
+            unknown_skill_ids.append(sid)
 
     for fallback in (AgentSkill.DEEP_RESEARCH, AgentSkill.CODEBASE_EXPLORATION):
         if len(skills) >= 2:
             break
         if fallback not in skills:
             skills.append(fallback)
+
+    if unknown_skill_ids:
+        logger.warning(
+            "AgentFactory: unknown skill ids %s, using fallback skills %s",
+            unknown_skill_ids,
+            [skill.value for skill in skills[:3]],
+        )
     return skills[:3]
 
 
@@ -156,6 +164,8 @@ class AgentFactory:
 
             def apply_skills_to_prompt(self, base_prompt: str) -> str:
                 yaml_prompt = self._yaml_defn.build_system_prompt(self._yaml_skill_loader)
+                if yaml_prompt and base_prompt.strip():
+                    return f"{base_prompt.rstrip()}\n\n---\n\n{yaml_prompt}"
                 return yaml_prompt if yaml_prompt else super().apply_skills_to_prompt(base_prompt)
 
             def get_skill_tags(self) -> List[str]:

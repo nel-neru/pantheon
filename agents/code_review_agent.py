@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
 
 from core.llm import LLMMessage, get_llm_provider
@@ -24,6 +25,21 @@ MAX_FILE_SIZE_BYTES = 8_000
 MAX_TOTAL_CHARS = 40_000
 
 PRIORITY_STEMS = {"main", "app", "cli", "__main__", "server", "api", "run", "index"}
+VALID_PRIORITIES = {"high", "medium", "low"}
+VALID_CATEGORIES = {
+    "architecture",
+    "bug",
+    "comment",
+    "documentation",
+    "general",
+    "maintainability",
+    "performance",
+    "quality",
+    "security",
+    "self_extension",
+    "style",
+    "testing",
+}
 
 REVIEW_SYSTEM_PROMPT = """あなたはシニアソフトウェアエンジニアです。
 与えられたコードリポジトリを分析し、品質・保守性・パフォーマンス・セキュリティの観点から
@@ -44,6 +60,29 @@ REVIEW_SYSTEM_PROMPT = """あなたはシニアソフトウェアエンジニア
 }"""
 
 
+def _normalize_choice(value: str, *, field_name: str, allowed_values: set[str]) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized not in allowed_values:
+        allowed = ", ".join(sorted(allowed_values))
+        raise ValueError(f"{field_name} must be one of: {allowed}")
+    return normalized
+
+
+def _normalize_relative_file_path(file_path: str) -> str:
+    normalized = (file_path or "").strip().replace("\\", "/")
+    if not normalized:
+        raise ValueError("file_path must not be empty")
+    if normalized.startswith("/") or normalized.startswith("~"):
+        raise ValueError("file_path must be a repository-relative path")
+    if len(normalized) >= 2 and normalized[1] == ":" and normalized[0].isalpha():
+        raise ValueError("file_path must be a repository-relative path")
+
+    pure_path = PurePosixPath(normalized)
+    if pure_path.name in {"", ".", ".."} or any(part in {".", ".."} for part in pure_path.parts):
+        raise ValueError("file_path must stay within the repository root")
+    return pure_path.as_posix()
+
+
 @dataclass
 class CodeImprovementSuggestion:
     """コード改善提案の構造体"""
@@ -54,6 +93,19 @@ class CodeImprovementSuggestion:
     priority: str = "medium"
     category: str = "maintainability"
     expected_impact: str = ""
+
+    def __post_init__(self) -> None:
+        self.priority = _normalize_choice(
+            self.priority,
+            field_name="priority",
+            allowed_values=VALID_PRIORITIES,
+        )
+        self.category = _normalize_choice(
+            self.category,
+            field_name="category",
+            allowed_values=VALID_CATEGORIES,
+        )
+        self.file_path = _normalize_relative_file_path(self.file_path)
 
 
 class CodeReviewAgent(BaseAgent):
@@ -75,6 +127,7 @@ class CodeReviewAgent(BaseAgent):
         super().__init__(specialist)
         self._provider_name = provider_name
         self._knowledge = knowledge_manager
+        self.knowledge_manager = knowledge_manager
 
     async def run(self, task: AgentTask) -> AgentResult:
         repo_path = Path(task.input.get("repo_path", "."))
@@ -147,16 +200,26 @@ class CodeReviewAgent(BaseAgent):
             ".repocorp",
         }
         code_exts = {".py", ".ts", ".js", ".go", ".rs", ".java", ".rb", ".cpp", ".c"}
+        repo_root = repo_path.resolve()
 
         candidates: List[Path] = []
-        for f in repo_path.rglob("*"):
-            if f.is_dir():
-                continue
-            if f.suffix not in code_exts:
-                continue
-            if any(part in exclude_dirs for part in f.relative_to(repo_path).parts):
-                continue
-            candidates.append(f)
+        for current_root, dirnames, filenames in os.walk(repo_root, followlinks=False):
+            current_path = Path(current_root)
+            dirnames[:] = [
+                dirname
+                for dirname in dirnames
+                if dirname not in exclude_dirs and not (current_path / dirname).is_symlink()
+            ]
+            for filename in filenames:
+                candidate = current_path / filename
+                if candidate.is_symlink() or candidate.suffix not in code_exts:
+                    continue
+                try:
+                    resolved_candidate = candidate.resolve()
+                    resolved_candidate.relative_to(repo_root)
+                except (OSError, ValueError):
+                    continue
+                candidates.append(resolved_candidate)
 
         def priority_key(f: Path) -> tuple:
             is_entry = f.stem.lower() in PRIORITY_STEMS
@@ -177,7 +240,7 @@ class CodeReviewAgent(BaseAgent):
                 content = f.read_text(encoding="utf-8", errors="ignore")
                 if len(content) > MAX_FILE_SIZE_BYTES:
                     content = content[:MAX_FILE_SIZE_BYTES] + "\n... (truncated)"
-                rel = str(f.relative_to(repo_path))
+                rel = str(f.relative_to(repo_root))
                 result[rel] = content
                 total_chars += len(content)
             except OSError:
@@ -235,7 +298,13 @@ class CodeReviewAgent(BaseAgent):
         try:
             response = await provider.generate(messages=messages, temperature=0.3, max_tokens=3000)
             data = json.loads(response.content)
-            return [CodeImprovementSuggestion(**s) for s in data.get("suggestions", [])]
+            suggestions: List[CodeImprovementSuggestion] = []
+            for raw_suggestion in data.get("suggestions", []):
+                try:
+                    suggestions.append(CodeImprovementSuggestion(**raw_suggestion))
+                except (TypeError, ValueError) as exc:
+                    logger.warning("CodeReviewAgent: skipping invalid suggestion: %s", exc)
+            return suggestions
         except json.JSONDecodeError as e:
             logger.warning("CodeReviewAgent: JSON parse failed: %s", e)
             return []

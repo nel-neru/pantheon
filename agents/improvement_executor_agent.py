@@ -44,7 +44,7 @@ class ImprovementExecutorAgent(BaseAgent):
         self._provider_name = provider_name
 
     async def run(self, task: AgentTask) -> AgentResult:
-        repo_path = Path(task.input.get("repo_path", "."))
+        repo_path = Path(task.input.get("repo_path", ".")).resolve()
         suggestion: Dict[str, Any] = task.input.get("suggestion", {})
         github_token: Optional[str] = task.input.get("github_token")
         github_repo: Optional[str] = task.input.get("github_repo")
@@ -56,14 +56,18 @@ class ImprovementExecutorAgent(BaseAgent):
         if not file_path:
             return AgentResult(success=False, error="suggestion.file_path is required.")
 
-        target_file = repo_path / file_path
+        try:
+            target_file = self._resolve_repo_file_path(repo_path, file_path)
+        except ValueError as exc:
+            return AgentResult(success=False, error=str(exc))
+        normalized_file_path = str(target_file.relative_to(repo_path))
         if not target_file.exists():
-            return AgentResult(success=False, error=f"Target file not found: {file_path}")
+            return AgentResult(success=False, error=f"Target file not found: {normalized_file_path}")
 
         original_content = target_file.read_text(encoding="utf-8")
 
         modified_content, change_summary = await self._generate_code_change(
-            original_content, file_path, suggestion
+            original_content, normalized_file_path, suggestion
         )
         if not modified_content:
             return AgentResult(success=False, error="LLM failed to generate a valid code change.")
@@ -75,17 +79,17 @@ class ImprovementExecutorAgent(BaseAgent):
                     repo_path=repo_path,
                     github_token=github_token,
                     github_repo=github_repo,
-                    file_path=file_path,
+                    file_path=normalized_file_path,
                     modified_content=modified_content,
                     suggestion=suggestion,
                 )
-                output = {"pr_url": pr_url, "change_summary": change_summary, "file_path": file_path}
+                output = {"pr_url": pr_url, "change_summary": change_summary, "file_path": normalized_file_path}
             except Exception as e:
                 return AgentResult(success=False, error=f"PR creation failed: {e}")
         else:
             try:
                 output = self._apply_local_change(
-                    repo_path, file_path, modified_content, change_summary, suggestion
+                    repo_path, normalized_file_path, modified_content, change_summary, suggestion
                 )
             except Exception as e:
                 return AgentResult(success=False, error=f"Local change failed: {e}")
@@ -93,8 +97,8 @@ class ImprovementExecutorAgent(BaseAgent):
         return AgentResult(
             success=True,
             output=output,
-            thinking_process=f"改善提案「{suggestion.get('title')}」を {file_path} に適用",
-            execution_log=f"Modified {file_path}: {change_summary}",
+            thinking_process=f"改善提案「{suggestion.get('title')}」を {normalized_file_path} に適用",
+            execution_log=f"Modified {normalized_file_path}: {change_summary}",
         )
 
     def _apply_local_change(
@@ -112,24 +116,47 @@ class ImprovementExecutorAgent(BaseAgent):
             raise ImportError("GitPython が必要です: pip install GitPython")
 
         import re
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         slug = re.sub(r"[^a-z0-9]+", "-", suggestion.get("title", "improvement").lower())[:40]
-        branch_name = f"repocorp/improvement-{slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        branch_name = f"repocorp/improvement-{slug}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
-        repo = git.Repo(repo_path)
+        repo_root = repo_path.resolve()
+        target = self._resolve_repo_file_path(repo_root, file_path)
+        relative_file_path = str(target.relative_to(repo_root))
+
+        repo = git.Repo(repo_root)
         repo.git.checkout("-b", branch_name)
 
-        target = repo_path / file_path
         target.write_text(modified_content, encoding="utf-8")
-        repo.index.add([file_path])
+        repo.index.add([relative_file_path])
         repo.index.commit(f"refactor: {suggestion.get('title', 'Apply improvement')}")
 
         return {
             "branch": branch_name,
             "change_summary": change_summary,
-            "file_path": file_path,
+            "file_path": relative_file_path,
         }
+
+    def _resolve_repo_file_path(self, repo_path: Path, file_path: str) -> Path:
+        candidate = Path(file_path)
+        if candidate.is_absolute():
+            raise ValueError("Absolute paths are not allowed in suggestion.file_path")
+        if any(part == ".." for part in candidate.parts):
+            raise ValueError("Path traversal is not allowed in suggestion.file_path")
+
+        resolved_repo_path = repo_path.resolve()
+        resolved_target = (resolved_repo_path / candidate).resolve(strict=False)
+        if not self._is_within_repo(resolved_target, resolved_repo_path):
+            raise ValueError("Resolved path escapes the repository root")
+        return resolved_target
+
+    def _is_within_repo(self, path: Path, repo_path: Path) -> bool:
+        try:
+            path.relative_to(repo_path)
+            return True
+        except ValueError:
+            return False
 
     async def _generate_code_change(
         self,

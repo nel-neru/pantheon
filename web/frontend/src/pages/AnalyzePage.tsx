@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, Search } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
@@ -40,15 +40,21 @@ export function AnalyzePage() {
   const [running, setRunning] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
 
   const loadOrganizations = useCallback(async () => {
     try {
       const data = await api<Organization[]>('GET', '/api/organizations')
       setOrganizations(data)
-      setSelectedOrg((current) => current || data[0]?.name || '')
+      setSelectedOrg((current) => (current && data.some((org) => org.name === current) ? current : data[0]?.name || ''))
+      setLoadError(null)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '組織の読み込みに失敗しました。')
+      const message = error instanceof Error ? error.message : '組織の読み込みに失敗しました。'
+      setOrganizations([])
+      setSelectedOrg('')
+      setLoadError(message)
+      toast.error(message)
     }
   }, [])
 
@@ -134,52 +140,71 @@ export function AnalyzePage() {
             </div>
           </div>
           <div className="card-body flex flex-col gap-4">
-            <div className="grid-2">
-              <div className="input-group">
-                <label className="input-label" htmlFor="analysis-org">
-                  対象組織
-                </label>
-                <select
-                  id="analysis-org"
-                  className="select"
-                  value={selectedOrg}
-                  onChange={(event) => setSelectedOrg(event.target.value)}
-                >
-                  {organizations.map((org) => (
-                    <option key={org.name} value={org.name}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
+            {loadError ? (
+              <div className="empty-state">
+                <AlertTriangle className="empty-state-icon" size={28} />
+                <h3>組織の読み込みに失敗しました</h3>
+                <p>{loadError}</p>
+                <button type="button" className="btn btn-secondary" onClick={() => void loadOrganizations()}>
+                  再試行
+                </button>
               </div>
-
-              <div className="input-group">
-                <label className="input-label" htmlFor="analysis-max-files">
-                  最大ファイル数
-                </label>
-                <input
-                  id="analysis-max-files"
-                  className="input"
-                  type="number"
-                  min="1"
-                  value={maxFiles}
-                  onChange={(event) => setMaxFiles(event.target.value)}
-                  placeholder="任意の上限"
-                />
+            ) : organizations.length === 0 ? (
+              <div className="empty-state">
+                <Search className="empty-state-icon" size={28} />
+                <h3>分析対象の組織がありません</h3>
+                <p>まず組織を作成すると、ここからリポジトリ分析を開始できます。</p>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="grid-2">
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="analysis-org">
+                      対象組織
+                    </label>
+                    <select
+                      id="analysis-org"
+                      className="select"
+                      value={selectedOrg}
+                      onChange={(event) => setSelectedOrg(event.target.value)}
+                    >
+                      {organizations.map((org) => (
+                        <option key={org.name} value={org.name}>
+                          {org.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-            <div>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleRun}
-                disabled={running || !selectedOrg}
-              >
-                <Search size={14} />
-                {running ? '実行中' : '分析を実行'}
-              </button>
-            </div>
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="analysis-max-files">
+                      最大ファイル数
+                    </label>
+                    <input
+                      id="analysis-max-files"
+                      className="input"
+                      type="number"
+                      min="1"
+                      value={maxFiles}
+                      onChange={(event) => setMaxFiles(event.target.value)}
+                      placeholder="任意の上限"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleRun}
+                    disabled={running || !selectedOrg}
+                  >
+                    <Search size={14} />
+                    {running ? '実行中' : '分析を実行'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
