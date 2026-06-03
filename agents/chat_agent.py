@@ -34,155 +34,55 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 SETTINGS_FILE = Path.home() / ".repocorp" / "gui_settings.json"
-DEFAULT_PROVIDER = "anthropic"
-DEFAULT_MODEL = "claude-3-5-sonnet-20241022"
-PROVIDER_ENV_VAR_MAP = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "groq": "GROQ_API_KEY",
-    "github_models": "GITHUB_TOKEN",
-    "gemini": "GOOGLE_API_KEY",
-}
-PROVIDER_LABEL_MAP = {
-    "anthropic": "Anthropic Claude",
-    "openai": "OpenAI GPT",
-    "groq": "Groq",
-    "github_models": "GitHub Models",
-    "gemini": "Google Gemini",
-}
-OPENAI_COMPATIBLE_BASE_URLS = {
-    "openai": None,
-    "groq": "https://api.groq.com/openai/v1",
-    "github_models": "https://models.inference.ai.azure.com",
-}
+DEFAULT_MODEL = ""  # empty => let the `claude` CLI pick its own default model
 
 
 def _load_llm_config() -> dict[str, Any]:
-    """GUIの設定ファイルからLLM設定を読み込む。なければ環境変数を使う。"""
-    provider = os.environ.get("REPOCORP_DEFAULT_LLM_PROVIDER", DEFAULT_PROVIDER)
-    model = os.environ.get("REPOCORP_DEFAULT_MODEL", DEFAULT_MODEL)
-    api_keys = {
-        "anthropic": os.environ.get("ANTHROPIC_API_KEY", ""),
-        "openai": os.environ.get("OPENAI_API_KEY", ""),
-        "groq": os.environ.get("GROQ_API_KEY", ""),
-        "github_models": os.environ.get("GITHUB_TOKEN", ""),
-        "gemini": os.environ.get("GOOGLE_API_KEY", ""),
-    }
+    """Resolve Pantheon's only execution backend: the local ``claude`` CLI.
 
+    There are no API keys. The optional model preference comes from
+    ``PANTHEON_DEFAULT_MODEL`` (or the GUI settings file, if present).
+    """
+    from core.runtime.claude_code import claude_available
+
+    model = os.environ.get("PANTHEON_DEFAULT_MODEL", DEFAULT_MODEL)
     if SETTINGS_FILE.exists():
         try:
             settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-            provider = settings.get("llm_provider", provider)
-            model = settings.get("llm_model", model)
-            nested_keys = settings.get("api_keys", {}) if isinstance(settings.get("api_keys"), dict) else {}
-            file_keys = {
-                "anthropic": settings.get("anthropic_api_key", nested_keys.get("anthropic", "")),
-                "openai": settings.get("openai_api_key", nested_keys.get("openai", "")),
-                "groq": settings.get("groq_api_key", nested_keys.get("groq", "")),
-                "github_models": settings.get("github_models_api_key", nested_keys.get("github_models", "")),
-                "gemini": settings.get("gemini_api_key", nested_keys.get("gemini", "")),
-            }
-            for key, value in file_keys.items():
-                if value:
-                    api_keys[key] = value
+            model = settings.get("llm_model", model) or model
         except Exception:
-            logger.warning("Failed to load GUI LLM settings from %s", SETTINGS_FILE, exc_info=True)
-
-    if provider not in PROVIDER_ENV_VAR_MAP:
-        provider = DEFAULT_PROVIDER
-
-    api_key = api_keys.get(provider, "")
-    if provider == "github_models":
-        api_key = os.environ.get("GITHUB_TOKEN", api_key)
+            logger.warning("Failed to load GUI settings from %s", SETTINGS_FILE, exc_info=True)
 
     return {
-        "provider": provider,
+        "provider": "claude_code",
         "model": model,
-        "api_key": api_key,
-        "api_keys": api_keys,
+        "available": claude_available(),
     }
 
 
 def _apply_llm_config_to_env(config: dict[str, Any]) -> None:
-    """GUI設定を現在プロセスの環境変数にも反映する。"""
-    os.environ["REPOCORP_DEFAULT_LLM_PROVIDER"] = config.get("provider", DEFAULT_PROVIDER)
-    os.environ["REPOCORP_DEFAULT_MODEL"] = config.get("model", DEFAULT_MODEL)
-
-    api_keys = config.get("api_keys", {}) or {}
-    for provider, env_var in PROVIDER_ENV_VAR_MAP.items():
-        value = api_keys.get(provider, "")
-        if value:
-            os.environ[env_var] = value
+    """Reflect the optional model preference into the environment."""
+    model = config.get("model") or ""
+    if model:
+        os.environ["PANTHEON_DEFAULT_MODEL"] = model
 
 
 def _has_llm_config(config: dict[str, Any]) -> bool:
-    return bool(config.get("api_key"))
+    return bool(config.get("available"))
 
 
 def _missing_api_key_message(config: dict[str, Any]) -> str:
-    provider = config.get("provider", DEFAULT_PROVIDER)
-    env_var = PROVIDER_ENV_VAR_MAP.get(provider, f"{provider.upper()}_API_KEY")
     return (
-        "APIキーが設定されていません。\n"
-        f"GUIの設定ページで {PROVIDER_LABEL_MAP.get(provider, provider)} のAPIキーを入力するか、"
-        f"環境変数 {env_var} を設定してください。\n"
-        f"例: export {env_var}=your-api-key"
+        "Claude Code が見つかりません。\n"
+        "Pantheon は唯一の実行基盤として `claude` CLI を使います。\n"
+        "`claude` をインストールしてログイン済みか確認してください（`claude --version`）。"
     )
 
 
 def _build_llm_config(config: dict[str, Any]):
     from core.llm import LLMConfig
 
-    return LLMConfig(
-        default_provider=config.get("provider", DEFAULT_PROVIDER),
-        default_model=config.get("model", DEFAULT_MODEL),
-        api_keys=config.get("api_keys", {}),
-    )
-
-
-def _create_openai_compatible_client(config: dict[str, Any]):
-    from openai import AsyncOpenAI
-
-    provider = config["provider"]
-    kwargs: dict[str, Any] = {"api_key": config.get("api_key", "")}
-    base_url = OPENAI_COMPATIBLE_BASE_URLS.get(provider)
-    if base_url:
-        kwargs["base_url"] = base_url
-    return AsyncOpenAI(**kwargs)
-
-
-def _create_anthropic_client(config: dict[str, Any]):
-    import anthropic
-
-    key = config.get("api_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    return anthropic.AsyncAnthropic(api_key=key)
-
-
-def _create_gemini_provider(config: dict[str, Any]):
-    from core.llm.base import LLMConfig
-    from core.llm.gemini_provider import GeminiProvider
-
-    return GeminiProvider(
-        LLMConfig(
-            default_provider="gemini",
-            default_model=config.get("model", "gemini-2.0-flash"),
-            api_keys={**(config.get("api_keys", {}) or {}), "gemini": config.get("api_key", "")},
-        )
-    )
-
-
-def _normalize_openai_tools() -> List[Dict[str, Any]]:
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": tool["name"],
-                "description": tool.get("description", ""),
-                "parameters": tool.get("input_schema", {"type": "object", "properties": {}, "required": []}),
-            },
-        }
-        for tool in TOOLS
-    ]
+    return LLMConfig(default_model=config.get("model") or None)
 
 
 def _parse_tool_input(raw_input: Any) -> Dict[str, Any]:
@@ -224,80 +124,21 @@ def _classify_agent_task(user_message: str) -> Optional[str]:
 
 
 async def _generate_llm_response(messages: List[Dict[str, Any]], config: dict[str, Any]) -> Dict[str, Any]:
-    provider = config["provider"]
-    model = config.get("model") or DEFAULT_MODEL
+    """Generate a conversational reply via Claude Code (the local ``claude`` CLI).
 
-    if provider == "anthropic":
-        client = _create_anthropic_client(config)
-        system_prompt = None
-        anthropic_messages = []
-        for message in messages:
-            if message["role"] == "system":
-                system_prompt = message["content"]
-            else:
-                anthropic_messages.append({"role": message["role"], "content": message["content"]})
+    Claude Code manages its own tools, so Pantheon no longer runs a manual
+    tool-call loop here: we return the assistant text with an empty
+    ``tool_calls`` list. Explicit platform operations remain available through
+    slash commands and the orchestrator path in :func:`_handle_agent_task`.
+    """
+    from core.llm import LLMMessage, get_llm_provider
 
-        response = await client.messages.create(
-            model=model,
-            max_tokens=4096,
-            temperature=0.2,
-            system=system_prompt,
-            messages=anthropic_messages,
-            tools=TOOLS,
-            tool_choice={"type": "auto"},
-        )
-
-        content = ""
-        tool_calls: List[Dict[str, Any]] = []
-        for block in response.content or []:
-            if block.type == "text":
-                content += block.text
-            elif block.type == "tool_use":
-                tool_calls.append({"id": block.id, "name": block.name, "input": block.input})
-        return {"content": content, "tool_calls": tool_calls}
-
-    if provider == "gemini":
-        from core.llm.base import LLMMessage
-
-        gemini_provider = _create_gemini_provider(config)
-        response = await gemini_provider.generate(
-            messages=[LLMMessage(role=message["role"], content=message["content"]) for message in messages],
-            model=model,
-            temperature=0.2,
-            max_tokens=4096,
-            tools=TOOLS,
-            tool_choice="auto",
-        )
-        return {
-            "content": response.content,
-            "tool_calls": response.tool_calls or [],
-        }
-
-    client = _create_openai_compatible_client(config)
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[{"role": message["role"], "content": message["content"]} for message in messages],
-        temperature=0.2,
-        max_tokens=4096,
-        tools=_normalize_openai_tools(),
-        tool_choice="auto",
+    provider = get_llm_provider()
+    response = await provider.generate(
+        messages=[LLMMessage(role=message["role"], content=message["content"]) for message in messages],
+        model=config.get("model") or None,
     )
-
-    choice = response.choices[0]
-    tool_calls = []
-    for tool_call in choice.message.tool_calls or []:
-        tool_calls.append(
-            {
-                "id": tool_call.id,
-                "name": tool_call.function.name,
-                "input": _parse_tool_input(tool_call.function.arguments),
-            }
-        )
-
-    return {
-        "content": choice.message.content or "",
-        "tool_calls": tool_calls,
-    }
+    return {"content": response.content, "tool_calls": []}
 
 
 async def _handle_agent_task(user_message: str, config: dict[str, Any], current_org: Optional[str] = None) -> str:
@@ -318,7 +159,7 @@ async def _handle_agent_task(user_message: str, config: dict[str, Any], current_
         return "エージェントシステムが利用できません。requirements.txt を確認してください。"
 
     _apply_llm_config_to_env(config)
-    llm_provider = get_llm_provider(config["provider"], config=_build_llm_config(config))
+    llm_provider = get_llm_provider()
     repo_path = Path.cwd()
     task_input = {
         "repo_path": str(repo_path),

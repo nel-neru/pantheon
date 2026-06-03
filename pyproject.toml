@@ -24,9 +24,8 @@ dependencies = [
     "PyYAML~=6.0",
     "PyGithub~=2.3",
     "GitPython~=3.1",
-    "anthropic~=0.28",
-    "openai~=1.30",
-    "google-generativeai~=0.8.0",
+    # No hosted-LLM SDKs: Pantheon runs everything through the local `claude` CLI.
+    # langgraph is retained only as a local orchestration library (no API calls).
     "langgraph~=0.2",
     "langgraph-checkpoint-sqlite~=1.0",
 ]

@@ -12,76 +12,33 @@ import core.orchestration.pre_task_orchestrator as orchestrator_module
 from core.llm.base import LLMConfig
 
 
-def test_load_llm_config_reads_gui_settings_file(tmp_path, monkeypatch):
+def test_load_llm_config_reports_claude_code_backend(tmp_path, monkeypatch):
+    """Pantheon has a single backend (Claude Code) and reads only an optional model."""
     settings_file = tmp_path / "gui_settings.json"
     settings_file.write_text(
-        json.dumps(
-            {
-                "llm_provider": "groq",
-                "llm_model": "llama-3.1-8b-instant",
-                "groq_api_key": "gsk-test-key",
-            }
-        ),
+        json.dumps({"llm_model": "claude-opus-4-8"}),
         encoding="utf-8",
     )
     monkeypatch.setattr(chat_agent, "SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("REPOCORP_DEFAULT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("REPOCORP_DEFAULT_MODEL", raising=False)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("PANTHEON_DEFAULT_MODEL", raising=False)
 
     config = chat_agent._load_llm_config()
 
-    assert config["provider"] == "groq"
-    assert config["model"] == "llama-3.1-8b-instant"
-    assert config["api_key"] == "gsk-test-key"
-    assert config["api_keys"]["groq"] == "gsk-test-key"
+    assert config["provider"] == "claude_code"
+    assert config["model"] == "claude-opus-4-8"
+    # No API keys exist anymore; availability mirrors the claude CLI (disabled in tests).
+    assert "api_key" not in config
+    assert config["available"] is False
 
 
-def test_load_llm_config_supports_github_models_env_fallback(tmp_path, monkeypatch):
-    settings_file = tmp_path / "gui_settings.json"
-    settings_file.write_text(
-        json.dumps(
-            {
-                "llm_provider": "github_models",
-                "llm_model": "gpt-4o-mini",
-                "api_keys": {"github_models": "file-token"},
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(chat_agent, "SETTINGS_FILE", settings_file)
-    monkeypatch.setenv("GITHUB_TOKEN", "env-token")
+def test_load_llm_config_model_env_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(chat_agent, "SETTINGS_FILE", tmp_path / "absent.json")
+    monkeypatch.setenv("PANTHEON_DEFAULT_MODEL", "claude-sonnet-4-6")
 
     config = chat_agent._load_llm_config()
 
-    assert config["provider"] == "github_models"
-    assert config["api_key"] == "env-token"
-    assert config["api_keys"]["github_models"] == "file-token"
-
-
-def test_load_llm_config_reads_gemini_settings_file(tmp_path, monkeypatch):
-    settings_file = tmp_path / "gui_settings.json"
-    settings_file.write_text(
-        json.dumps(
-            {
-                "llm_provider": "gemini",
-                "llm_model": "gemini-2.0-flash",
-                "gemini_api_key": "AIza-test-key",
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(chat_agent, "SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("REPOCORP_DEFAULT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("REPOCORP_DEFAULT_MODEL", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-
-    config = chat_agent._load_llm_config()
-
-    assert config["provider"] == "gemini"
-    assert config["model"] == "gemini-2.0-flash"
-    assert config["api_key"] == "AIza-test-key"
-    assert config["api_keys"]["gemini"] == "AIza-test-key"
+    assert config["provider"] == "claude_code"
+    assert config["model"] == "claude-sonnet-4-6"
 
 
 def test_handle_agent_task_routes_through_pre_task_orchestrator(monkeypatch):
@@ -126,15 +83,11 @@ def test_handle_agent_task_routes_through_pre_task_orchestrator(monkeypatch):
     monkeypatch.setattr(
         llm_module,
         "get_llm_provider",
-        lambda provider_name=None, config=None: SimpleNamespace(provider_name=provider_name or "openai"),
+        lambda provider_name=None, config=None: SimpleNamespace(provider_name="claude_code"),
     )
 
-    config = {
-        "provider": "openai",
-        "model": "gpt-4o-mini",
-        "api_key": "sk-test",
-        "api_keys": {"openai": "sk-test"},
-    }
+    # available=True simulates a machine where the `claude` CLI is installed.
+    config = {"provider": "claude_code", "model": "", "available": True}
 
     result = asyncio.run(chat_agent._handle_agent_task("このリポジトリのコードをレビューして", config))
 
@@ -145,23 +98,23 @@ def test_handle_agent_task_routes_through_pre_task_orchestrator(monkeypatch):
     assert "reviewed successfully" in result
 
 
-def test_chat_session_reports_provider_specific_missing_key(monkeypatch):
+def test_chat_session_reports_missing_claude_code(monkeypatch):
     monkeypatch.setattr(
         chat_agent,
         "_load_llm_config",
-        lambda: {"provider": "groq", "model": "llama-3.1-8b-instant", "api_key": "", "api_keys": {}},
+        lambda: {"provider": "claude_code", "model": "", "available": False},
     )
 
     session = chat_agent.ChatSession()
     result = asyncio.run(session.send("こんにちは"))
 
-    assert "GROQ_API_KEY" in result
-    assert "APIキーが設定されていません" in result
+    assert "Claude Code" in result
+    assert "claude" in result
 
 
 def test_agent_factory_passes_provider_name_to_implementation(monkeypatch):
     class DummyImplementation:
-        def __init__(self, specialist, provider_name="anthropic"):
+        def __init__(self, specialist, provider_name="claude_code"):
             self.specialist = specialist
             self.provider_name = provider_name
 
@@ -174,23 +127,23 @@ def test_agent_factory_passes_provider_name_to_implementation(monkeypatch):
                 implementation="dummy.module.DummyImplementation",
             )
 
-    factory = agent_factory_module.AgentFactory(llm_client=SimpleNamespace(provider_name="groq"))
+    factory = agent_factory_module.AgentFactory(llm_client=SimpleNamespace(provider_name="claude_code"))
     monkeypatch.setattr(factory, "_get_agent_loader", lambda: FakeLoader())
     monkeypatch.setattr(agent_factory_module, "_import_class", lambda path: DummyImplementation)
 
     agent = factory.create("agent:dummy")
 
     assert isinstance(agent, DummyImplementation)
-    assert agent.provider_name == "groq"
+    assert agent.provider_name == "claude_code"
 
 
-def test_get_llm_provider_supports_groq():
+def test_get_llm_provider_returns_claude_code():
     provider = llm_module.get_llm_provider(
-        "groq",
-        config=LLMConfig(default_model="llama-3.1-8b-instant", api_keys={"groq": "gsk-test"}),
+        "anything",
+        config=LLMConfig(default_model="claude-opus-4-8"),
     )
 
-    assert provider.provider_name == "groq"
+    assert provider.provider_name == "claude_code"
 
 
 def test_handle_slash_command_returns_unknown_command_message():

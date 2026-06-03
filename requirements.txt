@@ -1,5 +1,9 @@
-# RepoCorp AI - Core Dependencies
+# Pantheon - Core Dependencies
 # Python 3.11+
+#
+# Pantheon has NO hosted-LLM dependencies: all reasoning runs through the local
+# `claude` CLI (Claude Code). There are no anthropic/openai/google API SDKs and
+# no API keys.
 
 # Core runtime
 pydantic~=2.7
@@ -7,9 +11,7 @@ python-dotenv~=1.0
 PyYAML~=6.0
 PyGithub~=2.3
 GitPython~=3.1
-anthropic~=0.28
-openai~=1.30
-google-generativeai~=0.8.0
+# langgraph is kept purely as a local orchestration library (no API calls).
 langgraph~=0.2
 langgraph-checkpoint-sqlite~=1.0
 

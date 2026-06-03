@@ -1,9 +1,10 @@
 """
-RepoCorp AI - LLM Provider Abstraction Layer
+Pantheon - LLM message/response value objects (Claude Code only)
 
-すべてのLLM呼び出しをこのインターフェース経由で行う。
-将来的にローカルLLMや他のプロバイダを追加する際も、
-このインターフェースを実装するだけで切り替え可能。
+The provider abstraction is gone: Pantheon runs every generation through the
+local ``claude`` CLI (see :mod:`core.runtime.claude_code`). These small value
+objects remain because the rest of the codebase passes them around; they no
+longer carry any API-key / hosted-provider configuration.
 """
 
 from __future__ import annotations
@@ -24,16 +25,20 @@ class LLMMessage:
 @dataclass
 class LLMResponse:
     content: str
-    model: str
+    model: str = "claude-code"
     usage: Optional[Dict[str, int]] = None  # prompt_tokens, completion_tokens, total_tokens
     finish_reason: Optional[str] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
 
+    def __str__(self) -> str:  # several call sites do str(response)
+        return self.content or ""
+
 
 class LLMProvider(ABC):
-    """
-    LLMプロバイダーの抽象基底クラス。
-    すべての実装はこのインターフェースに従う。
+    """Abstract execution backend.
+
+    Retained for typing/duck-compat only; the sole concrete implementation is
+    :class:`core.runtime.claude_code.ClaudeCodeProvider`.
     """
 
     @abstractmethod
@@ -47,8 +52,7 @@ class LLMProvider(ABC):
         tool_choice: Optional[str] = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        """単発の応答を生成"""
-        pass
+        """Generate a single response."""
 
     @abstractmethod
     async def stream(
@@ -59,53 +63,42 @@ class LLMProvider(ABC):
         max_tokens: Optional[int] = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """ストリーミング応答"""
-        pass
+        """Stream a response."""
 
     @abstractmethod
     def get_model_name(self, task_type: str = "default") -> str:
-        """タスク種別に応じたモデル名を返す（設定駆動）"""
-        pass
+        """Return the model name for a task type."""
 
     @property
     @abstractmethod
     def provider_name(self) -> str:
-        """プロバイダー名（例: openai, anthropic）"""
-        pass
+        """Backend name (always ``claude_code``)."""
 
 
 class LLMConfig:
-    """
-    LLM関連の設定を一元管理。
-    将来的にYAMLやGUIから読み込めるように設計。
+    """Lightweight, secret-free runtime config.
+
+    Kept for backwards compatibility with call sites that construct it. The only
+    meaningful field today is ``default_model`` (optional ``--model`` passed to
+    the ``claude`` CLI). ``api_keys`` is accepted but ignored.
     """
 
     def __init__(
         self,
-        default_provider: str = "anthropic",
-        default_model: str = "claude-3-5-sonnet-20241022",
+        default_provider: str = "claude_code",
+        default_model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
         api_keys: Optional[Dict[str, str]] = None,
     ):
-        self.default_provider = default_provider
+        self.default_provider = "claude_code"
         self.default_model = default_model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.api_keys = api_keys or {}
+        self.api_keys = {}  # intentionally empty: Pantheon uses no API keys
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
-        """環境変数から設定を読み込む（将来的にpydantic-settingsに移行）"""
         import os
-        return cls(
-            default_provider=os.getenv("REPOCORP_DEFAULT_LLM_PROVIDER", "anthropic"),
-            default_model=os.getenv("REPOCORP_DEFAULT_MODEL", "claude-3-5-sonnet-20241022"),
-            api_keys={
-                "openai": os.getenv("OPENAI_API_KEY", ""),
-                "anthropic": os.getenv("ANTHROPIC_API_KEY", ""),
-                "groq": os.getenv("GROQ_API_KEY", ""),
-                "github_models": os.getenv("GITHUB_TOKEN", ""),
-                "gemini": os.getenv("GOOGLE_API_KEY", ""),
-            },
-        )
+
+        return cls(default_model=os.getenv("PANTHEON_DEFAULT_MODEL") or None)
