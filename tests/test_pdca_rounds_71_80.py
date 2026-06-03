@@ -5,12 +5,13 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace, ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from commands import build_parser
 from commands.doctor import cmd_doctor
+from commands.orchestration import cmd_agent_list
 from commands.org import cmd_org_show, cmd_proposal_apply, cmd_proposal_reject, cmd_proposal_show
 from commands.platform import (
     cmd_platform_backup,
@@ -19,7 +20,6 @@ from commands.platform import (
     cmd_platform_logs,
     cmd_platform_restore,
 )
-from commands.orchestration import cmd_agent_list
 from commands.version import get_version_string
 from core.ui.doc_generator import DocGenerator
 from core.ui.error_messages import ErrorMessageHelper
@@ -209,7 +209,6 @@ def test_platform_config_logs_backup_restore(capsys, tmp_path):
     assert "three" in logs_output
     assert '{"cycle": 2}' in logs_output
 
-    backup_dir = platform_home / "backups"
     asyncio.run(cmd_platform_backup(SimpleNamespace(), get_psm=lambda: psm))
     state_file.write_text('{"theme": "light"}', encoding="utf-8")
     asyncio.run(cmd_platform_restore(SimpleNamespace(), get_psm=lambda: psm))

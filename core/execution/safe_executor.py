@@ -89,6 +89,49 @@ class SafeChangeExecutor:
                 error_message=str(exc),
             )
 
+    def apply_changes(self, changes: list[ChangeRequest]) -> ChangeResult:
+        """複数ファイルを原子的に変更する。全てバックアップ→全て書込→テスト1回→失敗で全ロールバック。"""
+        if not changes:
+            return ChangeResult(
+                success=False, file_path="", backup_path="",
+                tests_passed=False, rolled_back=False, error_message="no changes provided",
+            )
+
+        backups: list[BackupRecord] = []
+        targets: list[tuple[Path, str]] = []
+        try:
+            for change in changes:
+                target_path = self._resolve_path(change.file_path)
+                backups.append(self.create_backup(str(target_path)))
+                targets.append((target_path, change.new_content))
+
+            for target_path, content in targets:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                target_path.write_text(content, encoding="utf-8")
+
+            tests_passed, test_output, summary = self._run_tests()
+            primary = str(targets[0][0])
+            primary_backup = backups[0].backup_path if backups else ""
+            if not tests_passed:
+                rolled_back = all(self.rollback(record) for record in backups)
+                return ChangeResult(
+                    success=False, file_path=primary, backup_path=primary_backup,
+                    tests_passed=False, rolled_back=rolled_back,
+                    error_message=self._build_test_error_message(test_output, summary),
+                )
+            return ChangeResult(
+                success=True, file_path=primary, backup_path=primary_backup,
+                tests_passed=True, rolled_back=False,
+            )
+        except Exception as exc:
+            rolled_back = all(self.rollback(record) for record in backups) if backups else False
+            return ChangeResult(
+                success=False,
+                file_path=str(targets[0][0]) if targets else "",
+                backup_path="", tests_passed=False, rolled_back=rolled_back,
+                error_message=str(exc),
+            )
+
     def rollback(self, backup_record: BackupRecord) -> bool:
         original_path = Path(backup_record.original_path)
         try:

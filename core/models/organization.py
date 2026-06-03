@@ -13,11 +13,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
-
 
 # ============================================================
 # Quality Review Models

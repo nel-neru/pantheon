@@ -4,7 +4,6 @@ ErrorMessageHelper — ユーザーフレンドリーエラーメッセージ (I
 
 from __future__ import annotations
 
-
 ERROR_MESSAGES: dict[str, dict] = {
     "MISSING_API_KEY": {
         "message": "ANTHROPIC_API_KEY が未設定です。",

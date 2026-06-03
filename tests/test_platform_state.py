@@ -1,13 +1,10 @@
 """Tests for PlatformStateManager"""
 
-import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
-from core.platform.state import PlatformStateManager
 from core.org_factory import create_default_organization, create_organization_from_template
+from core.platform.state import PlatformStateManager
 
 
 @pytest.fixture

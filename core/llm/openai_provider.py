@@ -4,11 +4,14 @@ OpenAI-compatible Provider Implementation (OpenAI, Groq)
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from .base import LLMConfig, LLMMessage, LLMProvider, LLMResponse
+from .json_mode import OPENAI_JSON_RESPONSE_FORMAT, ensure_json_keyword
+from .retry import call_with_retry
+from .tool_schema import parse_openai_tool_calls, to_openai_tool_choice, to_openai_tools
+from .usage import record_usage
 
 
 class OpenAIProvider(LLMProvider):
@@ -66,63 +69,6 @@ class OpenAIProvider(LLMProvider):
             return "gpt-4o"
         return self.config.default_model or self.DEFAULT_MODELS[self._provider_name]
 
-    @staticmethod
-    def _normalize_tools(tools: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
-        if not tools:
-            return None
-
-        normalized = []
-        for tool in tools:
-            if tool.get("type") == "function" and "function" in tool:
-                normalized.append(tool)
-                continue
-
-            normalized.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": tool["name"],
-                        "description": tool.get("description", ""),
-                        "parameters": tool.get(
-                            "input_schema",
-                            {"type": "object", "properties": {}, "required": []},
-                        ),
-                    },
-                }
-            )
-        return normalized
-
-    @staticmethod
-    def _normalize_tool_choice(tool_choice: Optional[str | Dict[str, Any]]) -> Optional[str | Dict[str, Any]]:
-        if tool_choice is None:
-            return None
-        if isinstance(tool_choice, str) and tool_choice in {"auto", "none", "required"}:
-            return tool_choice
-        if isinstance(tool_choice, str):
-            return {"type": "function", "function": {"name": tool_choice}}
-        return tool_choice
-
-    @staticmethod
-    def _parse_tool_calls(choice_message: Any) -> Optional[List[Dict[str, Any]]]:
-        if not getattr(choice_message, "tool_calls", None):
-            return None
-
-        parsed_calls = []
-        for tool_call in choice_message.tool_calls:
-            raw_arguments = tool_call.function.arguments or "{}"
-            try:
-                arguments = json.loads(raw_arguments)
-            except json.JSONDecodeError:
-                arguments = raw_arguments
-            parsed_calls.append(
-                {
-                    "id": tool_call.id,
-                    "name": tool_call.function.name,
-                    "input": arguments,
-                }
-            )
-        return parsed_calls
-
     async def generate(
         self,
         messages: List[LLMMessage],
@@ -131,6 +77,7 @@ class OpenAIProvider(LLMProvider):
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str | Dict[str, Any]] = None,
+        json_mode: bool = False,
         **kwargs: Any,
     ) -> LLMResponse:
         client = self._get_client()
@@ -138,24 +85,35 @@ class OpenAIProvider(LLMProvider):
 
         openai_messages = [{"role": m.role, "content": m.content} for m in messages]
 
-        response = await client.chat.completions.create(
-            model=model_name,
-            messages=openai_messages,
-            temperature=temperature,
-            max_tokens=max_tokens or self.config.max_tokens,
-            tools=self._normalize_tools(tools),
-            tool_choice=self._normalize_tool_choice(tool_choice),
+        create_kwargs: Dict[str, Any] = {
+            "model": model_name,
+            "messages": openai_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or self.config.max_tokens,
+            "tools": to_openai_tools(tools),
+            "tool_choice": to_openai_tool_choice(tool_choice),
             **kwargs,
+        }
+        if json_mode:
+            # response_format=json_object は messages に "json" を要求するため補う
+            create_kwargs["messages"] = ensure_json_keyword(openai_messages)
+            create_kwargs["response_format"] = dict(OPENAI_JSON_RESPONSE_FORMAT)
+
+        response = await call_with_retry(
+            lambda: client.chat.completions.create(**create_kwargs),
+            provider=self._provider_name,
         )
 
         choice = response.choices[0]
-        return LLMResponse(
+        result = LLMResponse(
             content=choice.message.content or "",
             model=response.model,
             usage=response.usage.model_dump() if response.usage else None,
             finish_reason=choice.finish_reason,
-            tool_calls=self._parse_tool_calls(choice.message),
+            tool_calls=parse_openai_tool_calls(choice.message),
         )
+        record_usage(self._provider_name, result.model, result.usage)
+        return result
 
     async def stream(
         self,

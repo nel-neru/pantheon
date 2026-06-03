@@ -72,14 +72,18 @@ class AbstractGoalPipeline:
         coordinator: Optional[ExecutionCoordinator] = None,
         verifier: Optional[GoalVerifier] = None,
         pre_task_orchestrator: Optional[Any] = None,
+        llm_client: Optional[Any] = None,
     ):
-        self._parser = parser or GoalParser()
-        self._decomposer = decomposer or GoalDecomposer()
+        # llm_client が渡された場合のみ各コンポーネントが実 LLM を使う。
+        # 未指定（None）なら従来どおりヒューリスティック/テンプレート動作。
+        self._llm_client = llm_client
+        self._parser = parser or GoalParser(llm_client=llm_client)
+        self._decomposer = decomposer or GoalDecomposer(llm_client=llm_client)
         self._instantiator = instantiator or OrgInstantiator()
         self._coordinator = coordinator or ExecutionCoordinator(
             pre_task_orchestrator=pre_task_orchestrator
         )
-        self._verifier = verifier or GoalVerifier()
+        self._verifier = verifier or GoalVerifier(llm_client=llm_client)
 
     async def run(
         self,
@@ -97,7 +101,10 @@ class AbstractGoalPipeline:
         Returns:
             PipelineResult
         """
-        logger.info("AbstractGoalPipeline: starting for '%s'", raw_goal_text[:60])
+        # LLMクライアントが構成済みなら、明示指定が無くても LLM パスを使う
+        # （＝APIキーがあればスタブに落ちず実 LLM で動作する）。
+        use_llm = use_llm or (self._llm_client is not None)
+        logger.info("AbstractGoalPipeline: starting for '%s' (use_llm=%s)", raw_goal_text[:60], use_llm)
 
         goal = self._parser.parse(raw_goal_text, use_llm=use_llm)
         logger.info("Goal parsed: type=%s, scale=%s", goal.goal_type, goal.scale)

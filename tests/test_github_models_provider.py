@@ -9,7 +9,6 @@ from core.llm.base import LLMConfig
 from core.llm.github_models_provider import GitHubModelsProvider
 
 
-
 def test_github_models_provider_requires_token():
     """GITHUB_TOKEN がない場合はエラーになること"""
     config = LLMConfig(default_provider="github_models", default_model="gpt-4o", api_keys={})

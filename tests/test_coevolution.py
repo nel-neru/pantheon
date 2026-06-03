@@ -1,9 +1,8 @@
-import json
 from pathlib import Path
 
 import pytest
 
-from core.execution.safe_executor import BackupRecord, ChangeRequest, SafeChangeExecutor
+from core.execution.safe_executor import ChangeRequest, SafeChangeExecutor
 from core.hierarchy.org_designer import OrganizationDesigner
 from core.models.organization import (
     AgentSkill,
@@ -14,7 +13,6 @@ from core.models.organization import (
     Team,
 )
 from core.profile.developer_profile import DeveloperProfileManager
-
 
 # -------------------- DeveloperProfileManager --------------------
 

@@ -1,0 +1,23 @@
+---
+description: RepoCorp AI — 正典は AGENTS.md。全エージェント共通の作業ルール。
+alwaysApply: true
+---
+
+# RepoCorp AI Project Rules (Cursor)
+
+このリポジトリの**正典は `AGENTS.md`**（リポジトリ直下）です。Cursor を含むすべての外部AI
+コーディングエージェントは、まず `AGENTS.md` と `docs/architecture.md` を読んでから作業してください。
+本ルールは指示を二重管理しないために最小限に留めています。
+
+## 絶対に守る要点（詳細は AGENTS.md）
+
+- 新規 `.py` は `from __future__ import annotations` で開始する
+- `datetime.utcnow()` 禁止 → `datetime.now(timezone.utc)`
+- テストは `tests/` に追加し、`python -m pytest tests/ -q` を常に緑に保つ
+- Web/API 変更時は 404 系挙動を壊さない（`web/server.py`）
+- LLM 呼び出しは必ず `core/llm`（プロバイダー非依存）経由。`get_default_llm_client()` / `generate_json` を使う
+
+## 命名の衝突
+
+`skills/` `agents/` `commands/` は **RepoCorp の実行時概念**であり、Cursor のルールや
+他ツールの設定とは無関係です（AGENTS.md の「エージェントの2つの平面」を参照）。

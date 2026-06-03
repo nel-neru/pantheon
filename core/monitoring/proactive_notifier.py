@@ -10,7 +10,6 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 from uuid import uuid4
 
 from core.platform.state import get_platform_home

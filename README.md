@@ -52,8 +52,20 @@ repocorp serve
 ```
 
 - CLI は `repocorp --help` で確認できます
-- Web UI は通常 `http://localhost:7860`
+- Web UI は通常 `http://localhost:7860`（既定で **localhost 限定**。LAN 公開は `repocorp serve --host 0.0.0.0`）
 - OpenAPI は `http://localhost:7860/docs`
+
+## Web GUI の主な機能
+
+Web UI（`web/frontend` を `npm --prefix web/frontend install && npm --prefix web/frontend run build` でビルド）には次が含まれます。
+
+- **チャット / 組織 / 分析 / ゴール / 改善提案 / エージェント / プラットフォーム / データ / 設定 / ヘルプ**
+- **ターミナル**: cmux 風の縦タブ・ワークスペース。実シェル(PTY)を埋め込み、git ブランチ/状態/エージェント待ち通知を表示（localhost 限定）。
+- **実行モード（API / CLI）**: 設定画面で切替。API=内蔵エージェント、CLI=外部コーディングCLI（Claude Code / Codex / Gemini / Aider / OpenCode）をターミナルで起動。
+- **Core 自己改善**: 改善提案画面の「Core 自己改善」から、契約中の任意 LLM で RepoCorp 自身を改善。テスト検証済みの変更を人間承認待ちの提案として登録（作業ツリーへ自動適用しない）。
+- **トークン使用量 / プロバイダー対応機能** を設定画面で可視化。
+
+開発タスクは `make help` 参照（`make verify` で CI 同等チェック一括）。
 
 ## pre-commit フック
 

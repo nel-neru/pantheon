@@ -4,11 +4,11 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-from agents.base import AgentResult
 import agents.agent_factory as agent_factory_module
 import agents.chat_agent as chat_agent
 import core.llm as llm_module
 import core.orchestration.pre_task_orchestrator as orchestrator_module
+from agents.base import AgentResult
 from core.llm.base import LLMConfig
 
 

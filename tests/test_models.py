@@ -1,8 +1,8 @@
 """Unit tests for core data models"""
+from uuid import uuid4
+
 import pytest
 from pydantic import ValidationError
-from uuid import uuid4
-from datetime import datetime
 
 from core.models.organization import (
     AgentSkill,
@@ -12,8 +12,6 @@ from core.models.organization import (
     ImprovementProposal,
     Organization,
     OrganizationStatus,
-    QualityReview,
-    QualityScore,
     SpecialistAgent,
     Team,
 )

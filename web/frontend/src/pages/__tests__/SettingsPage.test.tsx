@@ -113,6 +113,17 @@ function buildModelsResponse(
     provider,
     models: [...(providerModels[provider as keyof typeof providerModels] ?? [])],
     source: sourceByProvider[provider] ?? 'fallback',
+    capabilities: {
+      provider,
+      supports_tools: true,
+      supports_json_mode: false,
+      supports_streaming: true,
+      supports_streaming_tools: false,
+      supports_reasoning_effort: false,
+      supports_system_prompt: true,
+      max_context_tokens: 200000,
+      notes: 'test caps',
+    },
   }
 }
 
@@ -228,6 +239,11 @@ describe('SettingsPage', () => {
     expect(screen.getByText('APIから最新のモデル一覧を取得しました')).toBeInTheDocument()
     expect(mockApi).toHaveBeenCalledWith('GET', '/api/providers/anthropic/models')
     expect(screen.getByRole('option', { name: 'claude-3-opus-20240229' })).toBeInTheDocument()
+
+    // プロバイダー能力チップが表示される（Phase 1 capabilities の UI 反映）
+    expect(screen.getByText('このプロバイダーの対応機能')).toBeInTheDocument()
+    expect(screen.getByText('ツール呼び出し')).toBeInTheDocument()
+    expect(screen.getByText('文脈 200K tok')).toBeInTheDocument()
   })
 
   it('refetches models when the provider changes and resets the model selection', async () => {

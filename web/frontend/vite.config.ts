@@ -14,6 +14,16 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'xterm': ['@xterm/xterm', '@xterm/addon-fit'],
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'charts': ['recharts'],
+        },
+      },
+    },
   },
   server: {
     proxy: {

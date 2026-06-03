@@ -10,19 +10,50 @@ RepoCorp AI - LLM Provider Package
 
 from .anthropic_provider import AnthropicProvider
 from .base import LLMConfig, LLMMessage, LLMProvider, LLMResponse
+from .capabilities import ProviderCapabilities, all_capabilities, get_capabilities
+from .client import (
+    LLMClient,
+    get_configured_llm_provider,
+    get_default_llm_client,
+    reset_provider_cache,
+    resolve_default_model,
+    resolve_default_provider,
+    resolve_provider_api_key,
+)
 from .gemini_provider import GeminiProvider
 from .github_models_provider import GitHubModelsProvider
+from .json_extract import extract_json, extract_json_object
 from .openai_provider import OpenAIProvider
+from .retry import LLMError, call_with_retry, classify_exception
+from .usage import get_usage_tracker, record_usage, reset_usage
 
 __all__ = [
     "LLMProvider",
     "LLMMessage",
     "LLMResponse",
     "LLMConfig",
+    "LLMClient",
     "AnthropicProvider",
     "OpenAIProvider",
     "GitHubModelsProvider",
     "GeminiProvider",
+    "get_default_llm_client",
+    "get_configured_llm_provider",
+    "reset_provider_cache",
+    "resolve_default_provider",
+    "resolve_provider_api_key",
+    "resolve_default_model",
+    "extract_json_object",
+    "extract_json",
+    "ProviderCapabilities",
+    "get_capabilities",
+    "all_capabilities",
+    "LLMError",
+    "call_with_retry",
+    "classify_exception",
+    "get_usage_tracker",
+    "record_usage",
+    "reset_usage",
 ]
 
 

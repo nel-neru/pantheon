@@ -3,11 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
-
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +109,10 @@ async def cmd_platform_status(args: argparse.Namespace, *, get_psm: Any) -> None
 
 async def cmd_platform_run_all(args: argparse.Namespace, *, get_psm: Any) -> None:
     """全 Organization の改善サイクルを優先度順に実行する"""
-    from core.metrics.balanced_growth import calculate_organization_metrics, get_improvement_priority_score
+    from core.metrics.balanced_growth import (
+        calculate_organization_metrics,
+        get_improvement_priority_score,
+    )
     from core.quality.self_improvement_loop import SelfImprovementLoop
 
     psm = get_psm()
@@ -378,7 +380,11 @@ def register(subparsers: Any) -> None:
     restore_parser.set_defaults(handler_name="cmd_platform_restore")
 
     serve_parser = subparsers.add_parser("serve", help="Web GUI を起動する")
-    serve_parser.add_argument("--host", default="0.0.0.0", help="バインドホスト (default: 0.0.0.0)")
+    serve_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="バインドホスト (default: 127.0.0.1 = localhost のみ。LAN 公開は --host 0.0.0.0)",
+    )
     serve_parser.add_argument("--port", type=int, default=7860, help="ポート番号 (default: 7860)")
     serve_parser.set_defaults(handler_name="cmd_serve")
 

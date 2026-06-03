@@ -10,9 +10,17 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from core.io_utils import atomic_write_text
 from core.models.organization import is_active_improvement_proposal_status
+
+if TYPE_CHECKING:
+    from core.models.organization import (
+        ImprovementProposal,
+        Organization,
+        QualityReview,
+    )
 
 
 class RepoStateManager:
@@ -46,8 +54,7 @@ class RepoStateManager:
         """現在の全体状態を保存"""
         payload = dict(state)
         payload["last_updated"] = datetime.now(timezone.utc).isoformat()
-        with open(self.current_state_file, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+        atomic_write_text(self.current_state_file, json.dumps(payload, ensure_ascii=False, indent=2))
 
     def load_current_state(self) -> Dict[str, Any]:
         if self.current_state_file.exists():
@@ -73,8 +80,7 @@ class RepoStateManager:
             "tags": tags or [],
         }
         path = self.decisions_dir / f"{decision_id}.json"
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(decision, f, ensure_ascii=False, indent=2)
+        atomic_write_text(path, json.dumps(decision, ensure_ascii=False, indent=2))
         return path
 
     def get_recent_decisions(self, limit: int = 10) -> list[Dict[str, Any]]:
@@ -102,8 +108,7 @@ class RepoStateManager:
         reviews_dir = self.state_dir / "reviews"
         reviews_dir.mkdir(exist_ok=True)
         path = reviews_dir / f"{review.id}.json"
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(review.model_dump_json(indent=2))
+        atomic_write_text(path, review.model_dump_json(indent=2))
         return path
 
     def save_improvement_proposal(self, proposal: "ImprovementProposal") -> Path:
@@ -111,8 +116,7 @@ class RepoStateManager:
         improvements_dir = self.state_dir / "improvements"
         improvements_dir.mkdir(exist_ok=True)
         path = improvements_dir / f"{proposal.id}.json"
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(proposal.model_dump_json(indent=2))
+        atomic_write_text(path, proposal.model_dump_json(indent=2))
         return path
 
     def get_pending_improvement_proposals(self, limit: int = 20) -> list[Dict[str, Any]]:
@@ -158,8 +162,7 @@ class RepoStateManager:
                     data = json.load(fp)
                 data.update(updates)
                 data["last_updated"] = datetime.now(timezone.utc).isoformat()
-                with open(f, "w", encoding="utf-8") as fp:
-                    json.dump(data, fp, ensure_ascii=False, indent=2)
+                atomic_write_text(f, json.dumps(data, ensure_ascii=False, indent=2))
                 return True
         return False
 
@@ -174,7 +177,7 @@ class RepoStateManager:
     def save_organization(self, org: "Organization") -> Path:
         """Organization を .repocorp/organizations/<id>.json に保存"""
         path = self.organizations_dir / f"{org.id}.json"
-        path.write_text(org.model_dump_json(indent=2), encoding="utf-8")
+        atomic_write_text(path, org.model_dump_json(indent=2))
         return path
 
     def load_organizations(self) -> list["Organization"]:
@@ -201,8 +204,7 @@ class RepoStateManager:
         payload = dict(context)
         payload["session_id"] = session_id
         payload["saved_at"] = datetime.now(timezone.utc).isoformat()
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+        atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
 
     def load_session_context(self, session_id: str) -> Dict[str, Any] | None:
         """セッション間コンテキストを読み込む。"""

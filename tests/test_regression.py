@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import yaml
 
 from core.goals.abstract_goal_pipeline import AbstractGoalPipeline

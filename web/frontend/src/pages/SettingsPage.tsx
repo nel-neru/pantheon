@@ -18,6 +18,8 @@ type SettingsData = {
   groq_api_key_set: boolean
   github_models_api_key_set: boolean
   gemini_api_key_set: boolean
+  execution_mode: string
+  cli_tool: string
   daemon_interval: number
   daemon_max_files: number
   model_configurations: Record<string, unknown>
@@ -27,10 +29,43 @@ type SettingsData = {
   has_llm: boolean
 }
 
+type CliToolInfo = {
+  id: string
+  label: string
+  resolved_command: string
+  available: boolean
+  install_hint: string
+}
+
+type UsageTotals = {
+  calls: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+}
+
+type UsageSnapshot = {
+  totals: UsageTotals
+  by_provider: Record<string, UsageTotals>
+}
+
+type ProviderCapabilities = {
+  provider: string
+  supports_tools: boolean
+  supports_json_mode: boolean
+  supports_streaming: boolean
+  supports_streaming_tools: boolean
+  supports_reasoning_effort: boolean
+  supports_system_prompt: boolean
+  max_context_tokens: number
+  notes: string
+}
+
 type ModelsResponse = {
   provider: string
   models: string[]
   source: string
+  capabilities?: ProviderCapabilities
 }
 
 type StorageEntry = {
@@ -72,6 +107,8 @@ const DEFAULT_SETTINGS_DATA: SettingsData = {
   github_models_api_key_set: false,
   gemini_api_key_set: false,
   daemon_interval: 3600,
+  execution_mode: 'api',
+  cli_tool: 'claude',
   daemon_max_files: 10,
   model_configurations: {
     default: { temperature: 0.2, max_tokens: 4096, fallback_model: '' },
@@ -151,6 +188,47 @@ function ApiKeyField({
   )
 }
 
+function formatContextTokens(tokens: number): string {
+  if (!tokens) return '不明'
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 1_000_000)}M`
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`
+  return String(tokens)
+}
+
+function CapabilityChip({ on, label }: { on: boolean; label: string }) {
+  return (
+    <span
+      className={`badge text-xs ${on ? 'badge-green' : 'badge-neutral'}`}
+      title={on ? '対応' : '非対応'}
+      data-on={on}
+    >
+      {on ? <Check size={10} /> : null}
+      {label}
+    </span>
+  )
+}
+
+function ProviderCapabilityRow({ capabilities }: { capabilities: ProviderCapabilities }) {
+  return (
+    <div className="input-group">
+      <div className="input-label">このプロバイダーの対応機能</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <CapabilityChip on={capabilities.supports_tools} label="ツール呼び出し" />
+        <CapabilityChip on={capabilities.supports_json_mode} label="JSONモード" />
+        <CapabilityChip on={capabilities.supports_streaming} label="ストリーミング" />
+        <CapabilityChip on={capabilities.supports_reasoning_effort} label="推論強度" />
+        <span className="badge badge-neutral text-xs" title="最大文脈長(トークン)">
+          文脈 {formatContextTokens(capabilities.max_context_tokens)} tok
+        </span>
+      </div>
+      {capabilities.notes ? <p className="settings-hint">{capabilities.notes}</p> : null}
+      <p className="settings-hint">
+        APIキーさえあればプロバイダーを問わず全機能が動作します。未対応の項目は内部で安全に代替されます。
+      </p>
+    </div>
+  )
+}
+
 function prettyJson(value: Record<string, unknown>) {
   return JSON.stringify(value, null, 2)
 }
@@ -182,6 +260,11 @@ export function SettingsPage() {
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsSource, setModelsSource] = useState<ModelsSource>(null)
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [executionMode, setExecutionMode] = useState('api')
+  const [cliTool, setCliTool] = useState('claude')
+  const [cliTools, setCliTools] = useState<CliToolInfo[]>([])
+  const [usage, setUsage] = useState<UsageSnapshot | null>(null)
+  const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
   const [anthropicKey, setAnthropicKey] = useState('')
   const [openaiKey, setOpenaiKey] = useState('')
   const [groqKey, setGroqKey] = useState('')
@@ -213,6 +296,8 @@ export function SettingsPage() {
       setModel(s.llm_model)
       setDaemonInterval(s.daemon_interval)
       setDaemonMaxFiles(s.daemon_max_files)
+      setExecutionMode(s.execution_mode || 'api')
+      setCliTool(s.cli_tool || 'claude')
       setModelConfigurationsText(prettyJson(s.model_configurations))
       setPromptTemplatesText(prettyJson(s.prompt_templates as Record<string, unknown>))
       setPolicyRulesText(prettyJson(s.policy_rules))
@@ -231,6 +316,32 @@ export function SettingsPage() {
     void load()
   }, [load])
 
+  useEffect(() => {
+    api<{ cli_tools: CliToolInfo[] }>('GET', '/api/execution/modes')
+      .then((info) => setCliTools(info.cli_tools ?? []))
+      .catch(() => setCliTools([]))
+  }, [])
+
+  const loadUsage = useCallback(() => {
+    api<UsageSnapshot>('GET', '/api/usage')
+      .then(setUsage)
+      .catch(() => setUsage(null))
+  }, [])
+
+  useEffect(() => {
+    loadUsage()
+  }, [loadUsage])
+
+  const resetUsage = async () => {
+    try {
+      await api('DELETE', '/api/usage')
+      loadUsage()
+      toast.success('使用量カウンタをリセットしました。')
+    } catch {
+      toast.error('リセットに失敗しました。')
+    }
+  }
+
   const fetchModels = useCallback(async (selectedProvider: string) => {
     setModelsLoading(true)
     setModelsError(null)
@@ -242,6 +353,7 @@ export function SettingsPage() {
           : null
       setAvailableModels(result.models)
       setModelsSource(normalizedSource)
+      setCapabilities(result.capabilities ?? null)
       setModelsError(null)
       setModel((currentModel) => {
         if (result.models.length > 0 && !result.models.includes(currentModel)) {
@@ -252,6 +364,7 @@ export function SettingsPage() {
     } catch (error) {
       setAvailableModels([])
       setModelsSource(null)
+      setCapabilities(null)
       setModelsError(error instanceof Error ? error.message : 'モデル一覧の取得に失敗しました。')
     } finally {
       setModelsLoading(false)
@@ -307,6 +420,8 @@ export function SettingsPage() {
       const body: Record<string, unknown> = {
         llm_provider: provider,
         llm_model: model,
+        execution_mode: executionMode,
+        cli_tool: cliTool,
         daemon_interval: daemonInterval,
         daemon_max_files: daemonMaxFiles,
         model_configurations: modelConfigurations,
@@ -483,6 +598,8 @@ export function SettingsPage() {
                   </div>
                 </div>
 
+                {capabilities ? <ProviderCapabilityRow capabilities={capabilities} /> : null}
+
                 <ApiKeyField
                   id="anthropic-key"
                   label="Anthropic API キー"
@@ -534,6 +651,57 @@ export function SettingsPage() {
                   onChange={setGeminiKey}
                   help="aistudio.google.com/app/apikey で取得できます。無料枠あり。"
                 />
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">実行モード (API / CLI)</div>
+                  <div className="card-description">
+                    エージェント実行を内蔵API経由にするか、外部コーディングCLI経由にするか選びます。
+                    CLI モードは「ターミナル」画面のワークスペースで該当 CLI を起動します。
+                  </div>
+                </div>
+              </div>
+              <div className="card-body flex flex-col gap-4">
+                <div className="settings-row-2">
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="execution-mode">実行モード</label>
+                    <select
+                      id="execution-mode"
+                      className="select"
+                      value={executionMode}
+                      onChange={(e) => setExecutionMode(e.target.value)}
+                    >
+                      <option value="api">API（内蔵・プロバイダー非依存）</option>
+                      <option value="cli">CLI（外部コーディングCLIをターミナルで起動）</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="cli-tool">既定 CLI ツール</label>
+                    <select
+                      id="cli-tool"
+                      className="select"
+                      value={cliTool}
+                      onChange={(e) => setCliTool(e.target.value)}
+                      disabled={executionMode !== 'cli' || cliTools.length === 0}
+                    >
+                      {cliTools.length === 0 ? <option value={cliTool}>{cliTool}</option> : null}
+                      {cliTools.map((tool) => (
+                        <option key={tool.id} value={tool.id}>
+                          {tool.label}
+                          {tool.available ? '' : '（未検出）'}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="settings-hint">
+                      {executionMode === 'cli'
+                        ? '選択した CLI をターミナルのワークスペースで起動できます。未検出の CLI は導入が必要です。'
+                        : 'API モードでは内蔵エージェントが core/llm 経由で実行します。'}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -631,6 +799,40 @@ export function SettingsPage() {
                 </div>
               </div>
             </div>
+
+            {usage && usage.totals.calls > 0 ? (
+              <div className="card">
+                <div className="card-header">
+                  <div>
+                    <div className="card-title">トークン使用量</div>
+                    <div className="card-description">セッション中の LLM 呼び出し数とトークン消費（provider 別）。</div>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => void resetUsage()}>
+                    リセット
+                  </button>
+                </div>
+                <div className="card-body flex flex-col gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="badge badge-neutral">呼び出し {usage.totals.calls}</span>
+                    <span className="badge badge-neutral">合計 {usage.totals.total_tokens.toLocaleString()} tok</span>
+                    <span className="text-xs text-muted">
+                      (入力 {usage.totals.prompt_tokens.toLocaleString()} / 出力 {usage.totals.completion_tokens.toLocaleString()})
+                    </span>
+                  </div>
+                  <div className="storage-table">
+                    {Object.entries(usage.by_provider).map(([provider, totals]) => (
+                      <div key={provider} className="storage-row">
+                        <div className="storage-label">{PROVIDER_LABELS[provider] ?? provider}</div>
+                        <div className="storage-meta">
+                          <span className="text-xs text-muted">{totals.calls} 回</span>
+                          <span className="text-xs text-muted">{totals.total_tokens.toLocaleString()} tok</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {storageInfo ? (
               <div className="card">

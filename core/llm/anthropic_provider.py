@@ -8,6 +8,9 @@ import os
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from .base import LLMConfig, LLMMessage, LLMProvider, LLMResponse
+from .retry import call_with_retry
+from .tool_schema import to_anthropic_tool_choice, to_anthropic_tools
+from .usage import record_usage
 
 
 class AnthropicProvider(LLMProvider):
@@ -47,8 +50,12 @@ class AnthropicProvider(LLMProvider):
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str] = None,
+        json_mode: bool = False,
         **kwargs: Any,
     ) -> LLMResponse:
+        # Anthropic にはネイティブ response_format が無いため json_mode は受理のみ（無視）。
+        # 構造化出力は generate_json 側の堅牢抽出にフォールバックする（tool 強制は後続）。
+        _ = json_mode
         client = self._get_client()
         model_name = model or self.get_model_name()
 
@@ -64,15 +71,18 @@ class AnthropicProvider(LLMProvider):
                     "content": msg.content
                 })
 
-        response = await client.messages.create(
-            model=model_name,
-            max_tokens=max_tokens or self.config.max_tokens,
-            temperature=temperature,
-            system=system_prompt,
-            messages=anthropic_messages,
-            tools=tools,
-            tool_choice={"type": tool_choice} if tool_choice else None,
-            **kwargs,
+        response = await call_with_retry(
+            lambda: client.messages.create(
+                model=model_name,
+                max_tokens=max_tokens or self.config.max_tokens,
+                temperature=temperature,
+                system=system_prompt,
+                messages=anthropic_messages,
+                tools=to_anthropic_tools(tools),
+                tool_choice=to_anthropic_tool_choice(tool_choice),
+                **kwargs,
+            ),
+            provider="anthropic",
         )
 
         content = ""
@@ -90,7 +100,7 @@ class AnthropicProvider(LLMProvider):
                         "input": block.input,
                     })
 
-        return LLMResponse(
+        result = LLMResponse(
             content=content,
             model=response.model,
             usage={
@@ -101,6 +111,8 @@ class AnthropicProvider(LLMProvider):
             finish_reason=response.stop_reason,
             tool_calls=tool_calls,
         )
+        record_usage("anthropic", result.model, result.usage)
+        return result
 
     async def stream(
         self,

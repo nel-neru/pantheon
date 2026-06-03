@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional
 
 from core.models.organization import Organization, OrganizationStatus
 from core.org_factory import create_organization_from_template
+
+if TYPE_CHECKING:
+    from core.platform.state import PlatformStateManager
 
 logger = logging.getLogger(__name__)
 

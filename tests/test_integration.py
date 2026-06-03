@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -12,18 +10,22 @@ from agents.base import AgentResult, AgentTask
 from agents.code_review_agent import CodeImprovementSuggestion, CodeReviewAgent
 from agents.conversation_agent import ConversationAgent
 from agents.improvement_executor_agent import ImprovementExecutorAgent
+from core.events.detector import DetectedEvent, EventType
 from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
 from core.goals.goal_decomposer import GoalDecomposer
 from core.goals.goal_parser import GoalParser, GoalType
 from core.goals.org_instantiator import OrgInstantiator
 from core.hierarchy.org_designer import OrganizationDesigner
-from core.events.detector import DetectedEvent, EventType
 from core.intelligence.capability_registry import CapabilityEntry, CapabilityRegistry
 from core.models.organization import AgentSkill, ImprovementProposal, Organization, SpecialistAgent
 from core.monitoring.proactive_notifier import ProactiveNotifier
 from core.orchestration.dynamic_agent_spawner import DynamicAgentSpawner, SpawnRequest
 from core.orchestration.orchestration_pattern_store import OrchestrationPatternStore
-from core.orchestration.pre_task_orchestrator import OrchestrationPattern, PreTaskOrchestrator, TaskAnalysis
+from core.orchestration.pre_task_orchestrator import (
+    OrchestrationPattern,
+    PreTaskOrchestrator,
+    TaskAnalysis,
+)
 from core.orchestration.task_router import TaskRouter
 from core.policy.engine import ApprovalDecision, PolicyEngine
 from core.scheduler import AutonomousScheduler

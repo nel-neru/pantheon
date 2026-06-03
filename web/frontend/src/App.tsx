@@ -16,12 +16,13 @@ import {
   Settings,
   Sun,
   Target,
+  TerminalSquare,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
 
+import { GlobalSearch } from '@/components/GlobalSearch'
 import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
-import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { AgentsPage } from '@/pages/AgentsPage'
 import { AnalyzePage } from '@/pages/AnalyzePage'
@@ -33,21 +34,12 @@ import { HelpPage } from '@/pages/HelpPage'
 import { OrgsPage } from '@/pages/OrgsPage'
 import { ProposalsPage } from '@/pages/ProposalsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { TerminalPage } from '@/pages/TerminalPage'
 
 type NavItem = {
   to: string
   label: string
   icon: typeof MessageSquare
-}
-
-type SearchResult = {
-  id: string
-  type: string
-  title: string
-  subtitle: string
-  route: string
-  org_name?: string | null
-  status?: string | null
 }
 
 const navItems: NavItem[] = [
@@ -57,6 +49,7 @@ const navItems: NavItem[] = [
   { to: '/goals', label: 'ゴール', icon: Target },
   { to: '/proposals', label: '改善提案', icon: Lightbulb },
   { to: '/agents', label: 'エージェント', icon: Bot },
+  { to: '/terminal', label: 'ターミナル', icon: TerminalSquare },
   { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
   { to: '/data', label: 'データ管理', icon: Database },
   { to: '/settings', label: '設定', icon: Settings },
@@ -77,14 +70,6 @@ function LogoMark() {
   )
 }
 
-function resultTypeLabel(type: string) {
-  if (type === 'organization') return '組織'
-  if (type === 'agent') return 'エージェント'
-  if (type === 'proposal') return '提案'
-  if (type === 'goal') return 'ゴール'
-  return '検索結果'
-}
-
 function AppShell() {
   const navigate = useNavigate()
   const [mobileView, setMobileView] = useState(() => {
@@ -101,12 +86,7 @@ function AppShell() {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
     return stored === 'light' ? 'light' : 'dark'
   })
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchLoading, setSearchLoading] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const searchRef = useRef<HTMLDivElement | null>(null)
   const notificationsRef = useRef<HTMLDivElement | null>(null)
   const notifiedIds = useRef<Set<string>>(new Set())
   const { connected: updatesConnected, events } = usePlatformUpdates()
@@ -141,9 +121,6 @@ function AppShell() {
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setSearchOpen(false)
-      }
       if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
         setNotificationsOpen(false)
       }
@@ -152,31 +129,6 @@ function AppShell() {
     document.addEventListener('mousedown', handlePointerDown)
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [])
-
-  useEffect(() => {
-    const query = searchQuery.trim()
-    if (query.length < 2) {
-      setSearchResults([])
-      setSearchLoading(false)
-      setSearchOpen(false)
-      return undefined
-    }
-
-    setSearchLoading(true)
-    const timer = window.setTimeout(async () => {
-      try {
-        const results = await api<SearchResult[]>('GET', `/api/search?q=${encodeURIComponent(query)}&limit=12`)
-        setSearchResults(results)
-        setSearchOpen(true)
-      } catch {
-        setSearchResults([])
-      } finally {
-        setSearchLoading(false)
-      }
-    }, 180)
-
-    return () => window.clearTimeout(timer)
-  }, [searchQuery])
 
   useEffect(() => {
     for (const event of events.slice(0, 5).reverse()) {
@@ -197,14 +149,6 @@ function AppShell() {
   }, [events])
 
   const visibleNotifications = useMemo(() => events.filter((event) => event.type !== 'status').slice(0, 8), [events])
-
-  const handleSelectResult = (result: SearchResult) => {
-    navigate(result.route)
-    setSearchQuery('')
-    setSearchResults([])
-    setSearchOpen(false)
-    setMobileOpen(false)
-  }
 
   const toggleSidebar = () => {
     if (mobileView) {
@@ -284,44 +228,7 @@ function AppShell() {
                 <Menu size={16} />
               </button>
 
-              <div className="workspace-search" ref={searchRef}>
-                <Search className="workspace-search-icon" size={15} aria-hidden="true" />
-                <input
-                  className="workspace-search-input"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onFocus={() => {
-                    if (searchResults.length > 0) {
-                      setSearchOpen(true)
-                    }
-                  }}
-                  placeholder="組織・エージェント・提案・ゴールを検索"
-                  aria-label="全体検索"
-                />
-                {searchLoading ? <span className="workspace-search-meta">検索中…</span> : null}
-                {searchOpen ? (
-                  <div className="search-dropdown" role="listbox" aria-label="検索結果">
-                    {searchResults.length === 0 ? (
-                      <div className="search-empty">一致する結果がありません。</div>
-                    ) : (
-                      searchResults.map((result) => (
-                        <button
-                          key={result.id}
-                          type="button"
-                          className="search-result"
-                          onClick={() => handleSelectResult(result)}
-                        >
-                          <span className="badge badge-neutral">{resultTypeLabel(result.type)}</span>
-                          <div className="search-result-body">
-                            <div className="search-result-title">{result.title}</div>
-                            <div className="search-result-subtitle">{result.subtitle || result.org_name || '—'}</div>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                ) : null}
-              </div>
+              <GlobalSearch onNavigate={() => setMobileOpen(false)} />
             </div>
 
             <div className="workspace-toolbar-actions">
@@ -402,6 +309,7 @@ export default function App() {
         <Route path="/analyze" element={<AnalyzePage />} />
         <Route path="/goals" element={<GoalsPage />} />
         <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/data" element={<DataPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/help" element={<HelpPage />} />

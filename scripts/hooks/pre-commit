@@ -1,6 +1,23 @@
 #!/bin/sh
 # RepoCorp AI - pre-commit hook
-# GUI ページが変更された場合、対応するテストファイルの存在を確認する
+# 1) ステージされた .py を ruff で lint (H2)
+# 2) GUI ページが変更された場合、対応するテストファイルの存在を確認する
+
+# --- ruff lint (H2) ---
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep "\.py$" || true)
+if [ -n "$STAGED_PY" ]; then
+    if command -v ruff >/dev/null 2>&1; then
+        echo "ruff check (ステージされた .py)..."
+        # shellcheck disable=SC2086
+        if ! ruff check $STAGED_PY; then
+            echo ""
+            echo "ruff の指摘があります。'ruff check --fix .' で修正してから再コミットしてください。"
+            exit 1
+        fi
+    else
+        echo "⚠  ruff が見つからないため Python lint をスキップします (pip install ruff)。"
+    fi
+fi
 
 STAGED_PAGES=$(git diff --cached --name-only | grep "web/frontend/src/pages/.*\.tsx$" | grep -v "__tests__" || true)
 

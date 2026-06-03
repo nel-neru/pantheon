@@ -16,13 +16,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from core.models.organization import GroupHQState, Organization, OrganizationMetrics
 from core.metrics.balanced_growth import (
     calculate_group_metrics,
     calculate_organization_metrics,
     get_improvement_priority_score,
 )
 from core.metrics.score_updater import ExecutionOutcome, ScoreUpdater
+from core.models.organization import GroupHQState, Organization, OrganizationMetrics
 from core.quality.self_improvement_graph import run_improvement_for_organization
 from core.state.manager import RepoStateManager
 

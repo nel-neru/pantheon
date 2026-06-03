@@ -14,8 +14,6 @@ CapabilityRegistry — システム能力レジストリ (L-03)
 
 from __future__ import annotations
 
-import importlib
-import inspect
 import json
 import logging
 from dataclasses import dataclass, field

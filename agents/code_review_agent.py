@@ -123,9 +123,13 @@ class CodeReviewAgent(BaseAgent):
         specialist: SpecialistAgent,
         provider_name: str = "anthropic",
         knowledge_manager: Optional[Any] = None,
+        llm_provider: Optional[Any] = None,
     ):
         super().__init__(specialist)
         self._provider_name = provider_name
+        # llm_provider が渡されればそれを使う（GUI保存キーで構成済みのプロバイダー等）。
+        # 未指定なら provider_name から従来どおり環境変数ベースで構築する。
+        self._llm_provider = llm_provider
         self._knowledge = knowledge_manager
         self.knowledge_manager = knowledge_manager
 
@@ -280,7 +284,7 @@ class CodeReviewAgent(BaseAgent):
     async def _generate_suggestions(
         self, code_context: str, repo_name: str, prior_knowledge: str = ""
     ) -> List[CodeImprovementSuggestion]:
-        provider = get_llm_provider(self._provider_name)
+        provider = self._llm_provider or get_llm_provider(self._provider_name)
 
         system_prompt = self.apply_skills_to_prompt(REVIEW_SYSTEM_PROMPT)
         knowledge_section = f"\n\n{prior_knowledge}\n" if prior_knowledge else ""

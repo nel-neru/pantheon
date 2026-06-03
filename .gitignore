@@ -49,6 +49,10 @@ web/frontend/.vite/
 
 # RepoCorp runtime state (per-repo)
 .repocorp/
+scratch_dot_repocorp/
+
+# Local editor / agent config (machine-specific)
+.claude/
 
 # Misc
 *.log

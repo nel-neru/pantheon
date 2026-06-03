@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import os
 
-
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "ja": {
       "status_healthy": "健康",

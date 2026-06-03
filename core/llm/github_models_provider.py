@@ -8,6 +8,10 @@ import os
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from .base import LLMConfig, LLMMessage, LLMProvider, LLMResponse
+from .json_mode import OPENAI_JSON_RESPONSE_FORMAT, ensure_json_keyword
+from .retry import call_with_retry
+from .tool_schema import parse_openai_tool_calls, to_openai_tool_choice, to_openai_tools
+from .usage import record_usage
 
 
 class GitHubModelsProvider(LLMProvider):
@@ -48,6 +52,7 @@ class GitHubModelsProvider(LLMProvider):
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str] = None,
+        json_mode: bool = False,
         **kwargs: Any,
     ) -> LLMResponse:
         client = self._get_client()
@@ -57,35 +62,34 @@ class GitHubModelsProvider(LLMProvider):
             {"role": message.role, "content": message.content} for message in messages
         ]
 
-        response = await client.chat.completions.create(
-            model=model_name,
-            messages=openai_messages,
-            temperature=temperature,
-            max_tokens=max_tokens or self.config.max_tokens,
-            tools=tools,
-            tool_choice=tool_choice,
+        create_kwargs: Dict[str, Any] = {
+            "model": model_name,
+            "messages": openai_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or self.config.max_tokens,
+            "tools": to_openai_tools(tools),
+            "tool_choice": to_openai_tool_choice(tool_choice),
             **kwargs,
+        }
+        if json_mode:
+            create_kwargs["messages"] = ensure_json_keyword(openai_messages)
+            create_kwargs["response_format"] = dict(OPENAI_JSON_RESPONSE_FORMAT)
+
+        response = await call_with_retry(
+            lambda: client.chat.completions.create(**create_kwargs),
+            provider="github_models",
         )
 
         choice = response.choices[0]
-        tool_calls = None
-        if choice.message.tool_calls:
-            tool_calls = [
-                {
-                    "id": tool_call.id,
-                    "name": tool_call.function.name,
-                    "input": tool_call.function.arguments,
-                }
-                for tool_call in choice.message.tool_calls
-            ]
-
-        return LLMResponse(
+        result = LLMResponse(
             content=choice.message.content or "",
             model=response.model,
             usage=response.usage.model_dump() if response.usage else None,
             finish_reason=choice.finish_reason,
-            tool_calls=tool_calls,
+            tool_calls=parse_openai_tool_calls(choice.message),
         )
+        record_usage("github_models", result.model, result.usage)
+        return result
 
     async def stream(
         self,

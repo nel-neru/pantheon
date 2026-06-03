@@ -24,11 +24,11 @@ from pathlib import Path
 
 from commands import build_parser
 from commands.chat import cmd_chat as _cmd_chat_impl
+from commands.doctor import cmd_doctor as _cmd_doctor_impl
 from commands.goal import cmd_goal_run as _cmd_goal_run_impl
 from commands.goal import cmd_goal_status as _cmd_goal_status_impl
-from commands.doctor import cmd_doctor as _cmd_doctor_impl
-from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
 from commands.orchestration import cmd_agent_list as _cmd_agent_list_impl
+from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
 from commands.orchestration import (
     cmd_orchestration_analyze as _cmd_orchestration_analyze_impl,
 )
@@ -44,8 +44,8 @@ from commands.org import cmd_approve as _cmd_approve_impl
 from commands.org import cmd_init as _cmd_init_impl
 from commands.org import cmd_org_add as _cmd_org_add_impl
 from commands.org import cmd_org_list as _cmd_org_list_impl
-from commands.org import cmd_org_show as _cmd_org_show_impl
 from commands.org import cmd_org_remove as _cmd_org_remove_impl
+from commands.org import cmd_org_show as _cmd_org_show_impl
 from commands.org import cmd_proposal_apply as _cmd_proposal_apply_impl
 from commands.org import cmd_proposal_reject as _cmd_proposal_reject_impl
 from commands.org import cmd_proposal_show as _cmd_proposal_show_impl
@@ -58,9 +58,9 @@ from commands.platform import cmd_platform_backup as _cmd_platform_backup_impl
 from commands.platform import cmd_platform_config as _cmd_platform_config_impl
 from commands.platform import cmd_platform_config_set as _cmd_platform_config_set_impl
 from commands.platform import cmd_platform_logs as _cmd_platform_logs_impl
+from commands.platform import cmd_platform_restore as _cmd_platform_restore_impl
 from commands.platform import cmd_platform_run_all as _cmd_platform_run_all_impl
 from commands.platform import cmd_platform_status as _cmd_platform_status_impl
-from commands.platform import cmd_platform_restore as _cmd_platform_restore_impl
 from commands.platform import cmd_serve as _cmd_serve_impl
 from commands.version import cmd_version as _cmd_version_impl
 from core.platform.state import PlatformStateManager
@@ -83,10 +83,14 @@ def _get_orchestrator():
     OrchestratorAgent を返す。
     CLI はすべてのタスクをこのエージェント経由で実行する。
     OrchestratorAgent が PreTaskOrchestrator で分析し、最適な専門エージェントに委任する。
+
+    既定 LLM クライアント（GUI設定/環境変数から解決）を注入する。これにより
+    プロバイダー非依存で、APIキーが設定されていればスタブに落ちず実 LLM で動作する。
     """
     from agents.orchestrator_agent import OrchestratorAgent
+    from core.llm import get_default_llm_client
 
-    return OrchestratorAgent.create()
+    return OrchestratorAgent.create(llm_client=get_default_llm_client())
 
 
 def _filter_proficiency_data_by_org(data: dict, org_name: str) -> dict:

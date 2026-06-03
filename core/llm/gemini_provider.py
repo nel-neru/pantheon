@@ -10,6 +10,9 @@ import warnings
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from .base import LLMConfig, LLMMessage, LLMProvider, LLMResponse
+from .json_mode import GEMINI_JSON_MIME_TYPE
+from .retry import call_with_retry
+from .usage import record_usage
 
 
 class GeminiProvider(LLMProvider):
@@ -177,6 +180,7 @@ class GeminiProvider(LLMProvider):
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str | Dict[str, Any]] = None,
+        json_mode: bool = False,
         **kwargs: Any,
     ) -> LLMResponse:
         genai = self._get_genai()
@@ -188,33 +192,39 @@ class GeminiProvider(LLMProvider):
             tools=self._normalize_tools(tools),
         )
 
-        request_kwargs: Dict[str, Any] = {
-            "generation_config": {
-                "temperature": temperature,
-                "max_output_tokens": max_tokens or self.config.max_tokens,
-            }
+        generation_config: Dict[str, Any] = {
+            "temperature": temperature,
+            "max_output_tokens": max_tokens or self.config.max_tokens,
         }
+        if json_mode:
+            generation_config["response_mime_type"] = GEMINI_JSON_MIME_TYPE
+        request_kwargs: Dict[str, Any] = {"generation_config": generation_config}
         tool_config = self._normalize_tool_choice(tool_choice)
         if tool_config:
             request_kwargs["tool_config"] = tool_config
         request_kwargs.update(kwargs)
 
-        response = await asyncio.to_thread(
-            gemini_model.generate_content,
-            content_messages,
-            **request_kwargs,
+        response = await call_with_retry(
+            lambda: asyncio.to_thread(
+                gemini_model.generate_content,
+                content_messages,
+                **request_kwargs,
+            ),
+            provider="gemini",
         )
         content, tool_calls = self._extract_content_and_tool_calls(response)
         candidates = getattr(response, "candidates", []) or []
         finish_reason = str(getattr(candidates[0], "finish_reason", "")) if candidates else None
 
-        return LLMResponse(
+        result = LLMResponse(
             content=content,
             model=model_name,
             usage=self._extract_usage(response),
             finish_reason=finish_reason or None,
             tool_calls=tool_calls,
         )
+        record_usage("gemini", result.model, result.usage)
+        return result
 
     async def stream(
         self,

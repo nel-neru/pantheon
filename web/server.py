@@ -6,12 +6,14 @@ PlatformStateManager を使ってプラットフォーム全体を管理する F
 
 from __future__ import annotations
 
-import base64
 import asyncio
+import atexit
+import base64
 import colorsys
+import contextlib
 import hashlib
+import hmac
 import json
-from copy import deepcopy
 import logging
 import os
 import signal
@@ -19,26 +21,73 @@ import stat
 import subprocess
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from core.execution.cli_registry import (
+    DEFAULT_CLI_TOOL,
+    DEFAULT_EXECUTION_MODE,
+    EXECUTION_MODES,
+    all_cli_tools,
+)
+from core.llm.capabilities import all_capabilities, get_capabilities
+from core.llm.model_registry import FALLBACK_MODELS
+from core.logging_config import (
+    SecretRedactingFilter,
+    configure_logging,
+    redact_secrets,
+    request_id_var,
+)
+from core.metrics.request_metrics import get_request_metrics
 from core.models.organization import ImprovementProposal, is_active_improvement_proposal_status
 from core.platform.state import PlatformStateManager, get_platform_home
-from core.policy.engine import DEFAULT_POLICY
+from core.policy.engine import DEFAULT_POLICY, PolicyEngine
+
+# Core 自己改善などの承認ルーティング判定に使う共有エンジン（既定ポリシー）。
+DEFAULT_POLICY_ENGINE = PolicyEngine()
+
+# 埋め込みターミナル(PTY)のセッション管理（cmux 風ワークスペース）。既定 cwd は RepoCorp リポジトリ。
+from web.terminal import TerminalManager, is_allowed_origin, is_loopback_host  # noqa: E402
+
+_terminal_manager = TerminalManager(default_cwd=Path(__file__).resolve().parent.parent)
+# サーバ終了時に PTY 子プロセスを確実に終了する（グレースフルシャットダウン）。
+atexit.register(_terminal_manager.shutdown)
 
 logger = logging.getLogger(__name__)
+
+# 秘匿値マスキング（A6）/構造化ログ（J2）/相関ID（J3）は core/logging_config に集約。
+# 後方互換のため server 名前空間にもエイリアスを残す（既存テスト・参照を壊さない）。
+_redact_secrets = redact_secrets
+_SecretRedactingFilter = SecretRedactingFilter
+logging.getLogger().addFilter(_SecretRedactingFilter())
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """原子的書き込み（共有実装 core.io_utils.atomic_write_text に委譲, D4/D5）。"""
+    from core.io_utils import atomic_write_text
+
+    atomic_write_text(path, text)
+
+
 app = FastAPI(title="RepoCorp AI Platform", version="2.0.0")
 
-STATIC_DIR = Path(__file__).parent / "static"
-DIST_DIR = Path(__file__).parent / "dist"
+DIST_DIR = Path(__file__).parent / "dist"  # React build output (唯一の正典 UI)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 KNOWLEDGE_DIR = Path(__file__).parent.parent / "knowledge"
 SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "RepoCorp Core", "meta-improvement"}
@@ -53,50 +102,7 @@ _PROVIDER_KEY_MAPPING = {
     "github_models": ("github_models_api_key", "GITHUB_TOKEN"),
     "gemini": ("gemini_api_key", "GOOGLE_API_KEY"),
 }
-FALLBACK_MODELS = {
-    "anthropic": [
-        "claude-opus-4-5",
-        "claude-sonnet-4-5",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku-20241022",
-        "claude-3-opus-20240229",
-        "claude-3-haiku-20240307",
-    ],
-    "openai": [
-        "gpt-4o",
-        "gpt-4o-mini",
-        "gpt-4-turbo",
-        "gpt-4",
-        "gpt-3.5-turbo",
-        "o1",
-        "o1-mini",
-        "o3-mini",
-    ],
-    "groq": [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-70b-versatile",
-        "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it",
-    ],
-    "github_models": [
-        "gpt-4o",
-        "gpt-4o-mini",
-        "claude-3-5-sonnet",
-        "meta-llama-3-70b-instruct",
-        "mistral-large",
-        "phi-3-medium-instruct-128k",
-        "ai21-jamba-instruct",
-    ],
-    "gemini": [
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-pro-exp",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b",
-    ],
-}
+# モデル一覧は core/llm/model_registry.py を唯一の正典とする（上部 import 参照）。
 DEFAULT_MODEL_CONFIGURATIONS = {
     "default": {
         "temperature": 0.2,
@@ -128,6 +134,9 @@ def _default_gui_settings() -> Dict[str, Any]:
         "groq_api_key": "",
         "github_models_api_key": "",
         "gemini_api_key": "",
+        "execution_mode": DEFAULT_EXECUTION_MODE,
+        "cli_tool": DEFAULT_CLI_TOOL,
+        "cli_commands": {},
         "daemon_interval": 3600,
         "daemon_max_files": 10,
         "model_configurations": deepcopy(DEFAULT_MODEL_CONFIGURATIONS),
@@ -149,17 +158,159 @@ def _cors_allowed_origins() -> list[str]:
     return list(DEFAULT_CORS_ORIGINS)
 
 
+def _trusted_hosts() -> list[str]:
+    """Host ヘッダ許可リスト（DNS リバインディング対策, A4）。
+
+    既定は localhost 系のみ。LAN 公開時は REPOCORP_ALLOWED_HOSTS で明示追加する。
+    'testclient' は Starlette TestClient 用（ネットワーク到達不可）。
+    """
+    # 'testserver' は Starlette TestClient の既定 Host ヘッダ、'testclient' は client アドレス。
+    hosts = {"localhost", "127.0.0.1", "::1", "[::1]", "testserver", "testclient"}
+    raw = os.getenv("REPOCORP_ALLOWED_HOSTS", "")
+    for host in raw.split(","):
+        host = host.strip()
+        if host:
+            hosts.add(host)
+    return sorted(hosts)
+
+
+# Host ヘッダ検証（DNS リバインディング / 0.0.0.0 経由攻撃の緩和）。CORS より先に評価させる。
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts())
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_allowed_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-RepoCorp-Token"],
 )
 
-# Serve React build (dist/) when available, fallback to legacy static/
-_serve_dir = DIST_DIR if DIST_DIR.is_dir() else STATIC_DIR
-app.mount("/assets", StaticFiles(directory=_serve_dir / "assets" if (DIST_DIR / "assets").is_dir() else STATIC_DIR), name="assets")
+
+@app.middleware("http")
+async def _cache_hashed_assets(request: Request, call_next):
+    """Vite がハッシュ付きファイル名で出力する /assets/* は長期 immutable キャッシュ可（E10）。"""
+    response = await call_next(request)
+    if request.url.path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
+
+_DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB
+
+
+def _max_body_bytes() -> int:
+    """リクエストボディの上限バイト数（A8）。REPOCORP_MAX_BODY_BYTES で上書き可。"""
+    raw = os.getenv("REPOCORP_MAX_BODY_BYTES", "").strip()
+    if raw:
+        try:
+            value = int(raw)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+    return _DEFAULT_MAX_BODY_BYTES
+
+
+def _resolve_api_token() -> str:
+    """任意のローカル API トークンを解決する（A2）。
+
+    REPOCORP_API_TOKEN（環境変数）> gui_settings.api_auth_token の順。いずれも
+    未設定なら空文字を返し、認証は無効（＝既定の挙動は不変）。
+    """
+    token = os.getenv("REPOCORP_API_TOKEN", "").strip()
+    if token:
+        return token
+    try:
+        return str(_load_gui_settings().get("api_auth_token") or "").strip()
+    except Exception:
+        return ""
+
+
+@app.middleware("http")
+async def _enforce_body_size_limit(request: Request, call_next):
+    """リクエストボディのサイズ上限（A8, DoS/メモリ枯渇の緩和）。
+
+    Content-Length ヘッダで判定し、上限超過は 413 を返す（本文を読み込む前に拒否）。
+    """
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
+        if declared > _max_body_bytes():
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def _enforce_api_token(request: Request, call_next):
+    """任意のローカル API トークン認証（A2, 既定は無効）。
+
+    REPOCORP_API_TOKEN もしくは gui_settings.api_auth_token が設定されている時のみ、
+    `/api/*`（`/api/health` を除く）に `X-RepoCorp-Token` か `Authorization: Bearer`
+    での一致を要求する。未設定時は素通り＝既存の挙動を変えない。
+    """
+    token = _resolve_api_token()
+    if token and request.method != "OPTIONS":
+        path = request.url.path
+        if path.startswith("/api/") and path != "/api/health":
+            provided = request.headers.get("x-repocorp-token", "")
+            if not provided:
+                auth = request.headers.get("authorization", "")
+                if auth.lower().startswith("bearer "):
+                    provided = auth[7:].strip()
+            if not hmac.compare_digest(provided, token):
+                return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def _request_context(request: Request, call_next):
+    """相関ID（J3）の付与とリクエストメトリクス（J4）の記録。
+
+    受信 `X-Request-ID` を尊重し、無ければ生成する。contextvar に載せてログへ自動付与し、
+    応答に `X-Request-ID` を返す。処理時間/件数/ステータスを `RequestMetrics` に集計する。
+    最外周（最後に定義）に置き、全ミドルウェア/ハンドラを計測対象にする。
+    """
+    request_id = request.headers.get("x-request-id") or uuid4().hex
+    token = request_id_var.set(request_id)
+    start = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        request_id_var.reset(token)
+        get_request_metrics().record(status_code, (time.perf_counter() - start) * 1000.0)
+
+# React build (dist/) を唯一の正典 UI として配信する。
+# 旧来の単一HTML UI は web/legacy/ にアーカイブ済みで配信しない。
+# ビルド成果物が無い場合は import を壊さず、案内ページ(503)を返す。
+_ASSETS_DIR = DIST_DIR / "assets"
+if _ASSETS_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
+
+_FRONTEND_NOT_BUILT_HTML = """<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>RepoCorp AI</title>
+<style>body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;display:flex;
+min-height:100vh;align-items:center;justify-content:center;margin:0}.card{max-width:560px;
+padding:32px;background:#161b22;border:1px solid #30363d;border-radius:16px}code{background:#0d1117;
+padding:2px 6px;border-radius:6px;color:#58a6ff}h1{margin-top:0;font-size:20px}</style></head>
+<body><div class="card"><h1>フロントエンドが未ビルドです</h1>
+<p>React UI の成果物 (<code>web/dist</code>) が見つかりません。次を実行してビルドしてください:</p>
+<p><code>npm --prefix web/frontend install &amp;&amp; npm --prefix web/frontend run build</code></p>
+<p>API は <code>/docs</code> で利用できます。</p></div></body></html>"""
+
+
+def _spa_index_response() -> Response:
+    """React SPA の index.html を返す。未ビルドなら案内ページ(503)。"""
+    index = DIST_DIR / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return HTMLResponse(_FRONTEND_NOT_BUILT_HTML, status_code=503)
 
 
 def _warn_if_settings_permissions_too_open(path: Path) -> None:
@@ -210,7 +361,7 @@ def _load_gui_settings() -> Dict[str, Any]:
 
 def _save_gui_settings(data: Dict[str, Any]) -> None:
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _atomic_write_text(SETTINGS_FILE, json.dumps(data, ensure_ascii=False, indent=2))
     _set_settings_file_permissions(SETTINGS_FILE)
 
 
@@ -422,6 +573,47 @@ class GoalRunRequest(ApiRequestModel):
 
 
 
+class CoreImproveRequest(ApiRequestModel):
+    instruction: str = Field(min_length=1, max_length=4000)
+    file_path: str = Field(min_length=1, max_length=512)
+    files: list[str] | None = Field(default=None, max_length=20)
+    org_name: str | None = Field(default=None, max_length=120)
+    max_iterations: int = Field(default=3, ge=1, le=6)
+
+    @field_validator("file_path")
+    @classmethod
+    def validate_file_path(cls, value: str) -> str:
+        normalized = _normalize_request_path(value, "file_path", allow_empty=False)
+        if Path(normalized).is_absolute():
+            raise ValueError("file_path はリポジトリ相対パスで指定してください")
+        return normalized
+
+    @field_validator("files")
+    @classmethod
+    def validate_files(cls, value: list[str] | None) -> list[str] | None:
+        if not value:
+            return value
+        normalized: list[str] = []
+        for item in value:
+            norm = _normalize_request_path(item, "files", allow_empty=False)
+            if Path(norm).is_absolute():
+                raise ValueError("files はリポジトリ相対パスで指定してください")
+            normalized.append(norm)
+        return normalized
+
+
+
+class TerminalCreateRequest(ApiRequestModel):
+    name: str | None = Field(default=None, max_length=80)
+    cwd: str | None = Field(default=None, max_length=4096)
+    command: str | None = Field(default=None, max_length=2000)
+    cli_tool: str | None = Field(default=None, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class TerminalRenameRequest(ApiRequestModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
 class DaemonStartRequest(ApiRequestModel):
     interval: int = Field(default=3600, ge=1)
     max_files: int = Field(default=10, ge=1, le=1000)
@@ -554,11 +746,14 @@ class SettingsResponse(BaseModel):
     groq_api_key_set: bool
     github_models_api_key_set: bool
     gemini_api_key_set: bool
+    execution_mode: str = DEFAULT_EXECUTION_MODE
+    cli_tool: str = DEFAULT_CLI_TOOL
     daemon_interval: int
     daemon_max_files: int
     model_configurations: dict[str, Any] = Field(default_factory=dict)
     prompt_templates: dict[str, str] = Field(default_factory=dict)
     policy_rules: dict[str, Any] = Field(default_factory=dict)
+    provider_capabilities: dict[str, Any] = Field(default_factory=dict)
     settings_file: str
     has_llm: bool
 
@@ -567,6 +762,7 @@ class ProviderModelsResponse(BaseModel):
     provider: str
     models: list[str] = Field(default_factory=list)
     source: str
+    capabilities: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExecutionHistoryItemResponse(BaseModel):
@@ -576,6 +772,7 @@ class ExecutionHistoryItemResponse(BaseModel):
     status: str
     title: str
     details: str = ""
+    actor: str = "system"
     org_name: str | None = None
     entity_type: str | None = None
     entity_id: str | None = None
@@ -709,15 +906,36 @@ SEARCH_RESULT_EXAMPLE = {
 }
 
 
+def _ws_max_connections() -> int:
+    """/ws/updates の同時接続上限（A9）。0 で無制限。REPOCORP_WS_MAX_CONNECTIONS で上書き。"""
+    raw = os.getenv("REPOCORP_WS_MAX_CONNECTIONS", "").strip()
+    if raw:
+        try:
+            value = int(raw)
+            if value >= 0:
+                return value
+        except ValueError:
+            pass
+    return 50
+
+
 class UpdateHub:
-    def __init__(self) -> None:
+    def __init__(self, max_connections: int | None = None) -> None:
         self._connections: set[WebSocket] = set()
         self._lock = asyncio.Lock()
+        self._max_connections = _ws_max_connections() if max_connections is None else max_connections
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket) -> bool:
+        """接続を受理する。上限超過なら 1013 で拒否し False を返す（A9）。"""
+        async with self._lock:
+            at_capacity = bool(self._max_connections) and len(self._connections) >= self._max_connections
+        if at_capacity:
+            await websocket.close(code=1013)  # try again later
+            return False
         await websocket.accept()
         async with self._lock:
             self._connections.add(websocket)
+        return True
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
@@ -818,10 +1036,7 @@ def _load_goal_history() -> list[dict[str, Any]]:
 
 def _save_goal_history(record: dict[str, Any], keep: int = 12) -> None:
     history = [_normalize_goal_history_item(record), *_load_goal_history()][:keep]
-    _goal_history_path().write_text(
-        json.dumps(history, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    _atomic_write_text(_goal_history_path(), json.dumps(history, ensure_ascii=False, indent=2))
 
 
 
@@ -840,6 +1055,7 @@ def _normalize_execution_history_item(item: dict[str, Any]) -> dict[str, Any]:
         "status": str(item.get("status") or "info"),
         "title": str(item.get("title") or "RepoCorp event"),
         "details": str(item.get("details") or ""),
+        "actor": str(item.get("actor") or "system"),
         "org_name": item.get("org_name"),
         "entity_type": item.get("entity_type"),
         "entity_id": str(item.get("entity_id")) if item.get("entity_id") is not None else None,
@@ -865,10 +1081,7 @@ def _load_execution_history() -> list[dict[str, Any]]:
 
 def _save_execution_history(records: list[dict[str, Any]], keep: int = 200) -> None:
     normalized = [_normalize_execution_history_item(record) for record in records][:keep]
-    _execution_history_path().write_text(
-        json.dumps(normalized, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    _atomic_write_text(_execution_history_path(), json.dumps(normalized, ensure_ascii=False, indent=2))
 
 
 
@@ -969,6 +1182,7 @@ async def _record_execution_event(
     *,
     status: str = "success",
     details: str = "",
+    actor: str = "system",
     org_name: str | None = None,
     entity_type: str | None = None,
     entity_id: str | None = None,
@@ -981,6 +1195,7 @@ async def _record_execution_event(
         "status": status,
         "title": title,
         "details": details,
+        "actor": actor,
         "org_name": org_name,
         "entity_type": entity_type,
         "entity_id": entity_id,
@@ -1123,6 +1338,7 @@ def _stream_error_message(exc: Exception) -> str:
 async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
     from agents.base import AgentTask
     from agents.code_review_agent import CodeReviewAgent
+    from core.llm import get_configured_llm_provider, resolve_default_provider
     from core.models.organization import AgentSkill, SpecialistAgent
 
     psm = _psm()
@@ -1135,7 +1351,13 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
         name="CodeReviewer",
         skills=[AgentSkill.DEEP_RESEARCH, AgentSkill.PERFORMANCE_ANALYSIS],
     )
-    agent = CodeReviewAgent(specialist)
+    # GUI設定/環境変数で選ばれたプロバイダーとキーで構成（どのプロバイダーでも動く）。
+    settings = _load_gui_settings()
+    agent = CodeReviewAgent(
+        specialist,
+        provider_name=resolve_default_provider(settings),
+        llm_provider=get_configured_llm_provider(settings=settings),
+    )
     task = AgentTask(
         task_type="code_review",
         description=f"{org.name} のコードレビューと改善提案生成",
@@ -1197,8 +1419,9 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
 
 async def _perform_goal_run(req: GoalRunRequest) -> dict[str, Any]:
     from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
+    from core.llm import get_default_llm_client
 
-    pipeline = AbstractGoalPipeline()
+    pipeline = AbstractGoalPipeline(llm_client=get_default_llm_client(settings=_load_gui_settings()))
     result = await pipeline.run(req.goal_text)
     record = _goal_record(req, result)
     _save_goal_history(record)
@@ -1214,6 +1437,179 @@ async def _perform_goal_run(req: GoalRunRequest) -> dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
     return record
+
+
+
+def _resolve_self_improvement_org(psm: PlatformStateManager, preferred: str | None = None):
+    """Core 自己改善提案の保存先 Organization を解決する。
+
+    優先: 指定名 > RepoCorp-Self > システム組織 > メタ組織 > 先頭。
+    """
+    orgs = psm.load_organizations()
+    if not orgs:
+        raise HTTPException(status_code=404, detail="Organization がありません。先に作成してください。")
+
+    by_name = {org.name: org for org in orgs}
+    if preferred and preferred in by_name:
+        return by_name[preferred]
+    for name in ("RepoCorp-Self", *SYSTEM_ORG_NAMES):
+        if name in by_name:
+            return by_name[name]
+    meta_id = psm.load_platform_config().get("meta_improvement_org_id")
+    if meta_id:
+        for org in orgs:
+            if str(org.id) == str(meta_id):
+                return org
+    return orgs[0]
+
+
+def _validated_changes_path(sm: Any, proposal_id: str) -> Path:
+    return sm.state_dir / "improvements" / f"{proposal_id}.changes.json"
+
+
+def _save_validated_changes(sm: Any, proposal_id: str, changes: list[dict[str, Any]], change_summary: str) -> None:
+    """CoreImprovementAgent が検証した {file_path, new_content} をサイドカー保存する。"""
+    files = [
+        {"file_path": str(c.get("file_path")), "new_content": str(c.get("new_content"))}
+        for c in changes
+        if isinstance(c, dict) and c.get("file_path") and isinstance(c.get("new_content"), str)
+    ]
+    if not files:
+        return
+    path = _validated_changes_path(sm, proposal_id)
+    _atomic_write_text(
+        path,
+        json.dumps({"files": files, "change_summary": change_summary}, ensure_ascii=False, indent=2),
+    )
+
+
+def _load_validated_changes(sm: Any, proposal_id: str) -> list[dict[str, Any]]:
+    """サイドカーから検証済み変更を読み込む（無ければ空）。"""
+    path = _validated_changes_path(sm, proposal_id)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    files = data.get("files") if isinstance(data, dict) else None
+    return files if isinstance(files, list) else []
+
+
+async def _perform_core_improve(req: CoreImproveRequest) -> dict[str, Any]:
+    """RepoCorp 自身(Core)の改善を内蔵エージェントで検証し、人間承認用の提案にする。
+
+    流れ: CoreImprovementAgent が LLM で編集→テスト検証(反復)→検証済み差分 →
+    PolicyEngine で判定 → ImprovementProposal 化(既定で人間承認待ち)。
+    本エンドポイントは作業ツリーへ自動適用しない（validate_only）。
+    """
+    from agents.base import AgentTask
+    from agents.core_improvement_agent import CoreImprovementAgent
+    from core.llm import get_default_llm_client
+
+    psm = _psm()
+    org = _resolve_self_improvement_org(psm, req.org_name)
+
+    llm_client = get_default_llm_client(settings=_load_gui_settings())
+    agent = CoreImprovementAgent(
+        llm_client=llm_client,
+        project_root=PROJECT_ROOT,
+        max_iterations=req.max_iterations,
+    )
+    task = AgentTask(
+        task_type="core_improvement",
+        description=f"Core 改善: {req.instruction[:80]}",
+        input={
+            "instruction": req.instruction,
+            "file_path": req.file_path,
+            "files": req.files or None,
+            "max_iterations": req.max_iterations,
+            "auto_apply": False,
+        },
+    )
+    result = await agent.run(task)
+
+    if not result.success:
+        await _record_execution_event(
+            "core_improvement_failed",
+            f"Core 改善の検証に失敗: {req.file_path}",
+            status="error",
+            details=str(result.error or ""),
+            org_name=org.name,
+            entity_type="core_improvement",
+            route="/proposals",
+            metadata={"file_path": req.file_path},
+        )
+        raise HTTPException(status_code=422, detail=result.error or "Core 改善の検証に失敗しました。")
+
+    output = result.output or {}
+    change_summary = str(output.get("change_summary") or "")
+    diff = str(output.get("diff") or "")
+    attempts = int(output.get("attempts") or 1)
+
+    description = (
+        f"【自己改善指示】\n{req.instruction}\n\n"
+        f"【変更概要】\n{change_summary}\n\n"
+        f"【検証】既存テストが緑であることを確認済み（{attempts} 回の試行）。\n\n"
+        f"【検証済み差分】\n{diff[:8000]}"
+    )
+
+    proposal = ImprovementProposal(
+        review_id=uuid4(),
+        priority="high",
+        category="core_self_improvement",
+        title=f"Core 改善: {change_summary or req.instruction[:60]}",
+        description=description,
+        file_path=req.file_path,
+        expected_impact="RepoCorp 自身のコード品質/機能の改善",
+        implementation_difficulty="medium",
+        status="proposed",
+    )
+
+    verdict = DEFAULT_POLICY_ENGINE.evaluate({
+        "priority": proposal.priority,
+        "category": proposal.category,
+        "file_path": proposal.file_path,
+    })
+
+    sm = psm.get_org_state_manager(org)
+    sm.save_improvement_proposal(proposal)
+
+    # 検証済みの変更内容をサイドカー保存 → 承認時に LLM 再生成せず直接適用する。
+    changes = output.get("changes") if isinstance(output.get("changes"), list) else []
+    _save_validated_changes(sm, str(proposal.id), changes, change_summary)
+
+    await _record_execution_event(
+        "core_improvement_proposed",
+        proposal.title,
+        status="pending",
+        actor="user",
+        details=change_summary or req.instruction,
+        org_name=org.name,
+        entity_type="proposal",
+        entity_id=str(proposal.id),
+        route=f"/proposals?org={org.name}",
+        metadata={
+            "file_path": req.file_path,
+            "policy_decision": verdict.decision.value,
+            "validated": True,
+            "attempts": attempts,
+        },
+    )
+
+    return {
+        "validated": True,
+        "applied": False,
+        "file_path": req.file_path,
+        "files": output.get("files") or [req.file_path],
+        "change_summary": change_summary,
+        "diff": diff,
+        "attempts": attempts,
+        "proposal_id": str(proposal.id),
+        "org_name": org.name,
+        "policy_decision": verdict.decision.value,
+        "policy_reason": verdict.reason,
+    }
 
 
 
@@ -1297,7 +1693,11 @@ def _pending_proposals_for(org_name: str) -> tuple[Any, Any, list[dict[str, Any]
 
 def _find_pending_proposal(org_name: str, proposal_id: str) -> tuple[Any, Any, dict[str, Any]]:
     psm, sm, proposals = _pending_proposals_for(org_name)
+    # 完全一致を優先し、無ければ前方一致（短縮ID）にフォールバックする（D8: 誤マッチ低減）。
     target = next(
+        (p for p in proposals if str(p.get("id", "")) == proposal_id),
+        None,
+    ) or next(
         (p for p in proposals if str(p.get("id", "")).startswith(proposal_id)),
         None,
     )
@@ -1310,9 +1710,35 @@ def _find_pending_proposal(org_name: str, proposal_id: str) -> tuple[Any, Any, d
 
 
 
+# 全提案の横断ロードはコストが高い（全org・全ファイル read+parse, E3）。
+# (org名, 件数, 最大mtime) のシグネチャでキャッシュし、追加/削除/上書きを検出して無効化する。
+_proposals_cache: dict[str, Any] = {"signature": None, "data": None}
+
+
+def _proposals_signature(psm: Any) -> tuple:
+    parts: list[tuple[str, int, float]] = []
+    for org in psm.load_organizations():
+        sm = psm.get_org_state_manager(org)
+        improvements_dir = sm.state_dir / "improvements"
+        if not improvements_dir.exists():
+            continue
+        mtimes = [p.stat().st_mtime for p in improvements_dir.glob("*.json")]
+        parts.append((org.name, len(mtimes), max(mtimes, default=0.0)))
+    return tuple(parts)
+
+
+def _invalidate_proposals_cache() -> None:
+    _proposals_cache["signature"] = None
+    _proposals_cache["data"] = None
+
+
 def _load_all_proposals() -> list[dict[str, Any]]:
-    proposals: list[dict[str, Any]] = []
     psm = _psm()
+    signature = _proposals_signature(psm)
+    if _proposals_cache["data"] is not None and _proposals_cache["signature"] == signature:
+        return _proposals_cache["data"]
+
+    proposals: list[dict[str, Any]] = []
     for org in psm.load_organizations():
         sm = psm.get_org_state_manager(org)
         improvements_dir = sm.state_dir / "improvements"
@@ -1327,11 +1753,14 @@ def _load_all_proposals() -> list[dict[str, Any]]:
                 continue
             proposal["org_name"] = org.name
             proposals.append(proposal)
-    return sorted(
+    result = sorted(
         proposals,
         key=lambda item: str(item.get("last_updated") or item.get("created_at") or ""),
         reverse=True,
     )
+    _proposals_cache["signature"] = signature
+    _proposals_cache["data"] = result
+    return result
 
 
 
@@ -1865,6 +2294,9 @@ class SettingsUpdateRequest(ApiRequestModel):
     groq_api_key: str | None = Field(default=None, max_length=512)
     github_models_api_key: str | None = Field(default=None, max_length=512)
     gemini_api_key: str | None = Field(default=None, max_length=512)
+    execution_mode: str | None = Field(default=None, pattern=r"^(api|cli)$")
+    cli_tool: str | None = Field(default=None, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
+    cli_commands: dict[str, str] | None = None
     daemon_interval: int | None = Field(default=None, ge=1)
     daemon_max_files: int | None = Field(default=None, ge=1, le=1000)
     model_configurations: dict[str, Any] | None = None
@@ -1894,11 +2326,14 @@ async def api_get_settings() -> Dict[str, Any]:
         "groq_api_key_set": bool(s.get("groq_api_key") or os.getenv("GROQ_API_KEY")),
         "github_models_api_key_set": bool(s.get("github_models_api_key") or os.getenv("GITHUB_TOKEN")),
         "gemini_api_key_set": bool(s.get("gemini_api_key") or os.getenv("GOOGLE_API_KEY")),
+        "execution_mode": s.get("execution_mode", DEFAULT_EXECUTION_MODE),
+        "cli_tool": s.get("cli_tool", DEFAULT_CLI_TOOL),
         "daemon_interval": s.get("daemon_interval", 3600),
         "daemon_max_files": s.get("daemon_max_files", 10),
         "model_configurations": s.get("model_configurations", deepcopy(DEFAULT_MODEL_CONFIGURATIONS)),
         "prompt_templates": s.get("prompt_templates", deepcopy(DEFAULT_PROMPT_TEMPLATES)),
         "policy_rules": s.get("policy_rules", deepcopy(DEFAULT_POLICY)),
+        "provider_capabilities": all_capabilities(),
         "settings_file": str(SETTINGS_FILE),
         "has_llm": _has_llm(s),
     }
@@ -1998,6 +2433,12 @@ async def api_update_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     if req.gemini_api_key is not None and req.gemini_api_key != "":
         s["gemini_api_key"] = req.gemini_api_key
         os.environ["GOOGLE_API_KEY"] = req.gemini_api_key
+    if req.execution_mode is not None:
+        s["execution_mode"] = req.execution_mode
+    if req.cli_tool is not None:
+        s["cli_tool"] = req.cli_tool
+    if req.cli_commands is not None:
+        s["cli_commands"] = req.cli_commands
     if req.daemon_interval is not None:
         s["daemon_interval"] = req.daemon_interval
     if req.daemon_max_files is not None:
@@ -2013,6 +2454,67 @@ async def api_update_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     return {"status": "saved", "has_llm": _has_llm(s)}
 
 
+@app.get("/api/execution/modes", tags=["settings"])
+async def api_execution_modes() -> Dict[str, Any]:
+    """実行モード(API/CLI)と利用可能な外部CLIツール一覧を返す。
+
+    各CLIツールには解決済みコマンドと PATH 上の可用性(available)が付く。
+    """
+    s = _load_gui_settings()
+    return {
+        "modes": EXECUTION_MODES,
+        "default_mode": DEFAULT_EXECUTION_MODE,
+        "current": {
+            "execution_mode": s.get("execution_mode", DEFAULT_EXECUTION_MODE),
+            "cli_tool": s.get("cli_tool", DEFAULT_CLI_TOOL),
+        },
+        "cli_tools": all_cli_tools(s),
+    }
+
+
+@app.get("/api/health", tags=["system"])
+async def api_health() -> Dict[str, Any]:
+    """liveness/readiness 用の軽量ヘルスチェック（J1）。"""
+    running_terminals = sum(1 for s in _terminal_manager.list() if s.get("status") == "running")
+    return {
+        "status": "ok",
+        "version": app.version,
+        "has_llm": _has_llm(),
+        "frontend_built": (DIST_DIR / "index.html").exists(),
+        "terminal_sessions": running_terminals,
+    }
+
+
+@app.get("/api/usage", tags=["system"])
+async def api_usage() -> Dict[str, Any]:
+    """LLM トークン使用量の集計（provider/model 別 + 合計, B7）。"""
+    from core.llm import get_usage_tracker
+
+    return get_usage_tracker().snapshot()
+
+
+@app.delete("/api/usage", tags=["system"])
+async def api_reset_usage() -> Dict[str, Any]:
+    """使用量カウンタをリセットする。"""
+    from core.llm import reset_usage
+
+    reset_usage()
+    return {"status": "reset"}
+
+
+@app.get("/api/metrics", tags=["system"])
+async def api_metrics() -> Dict[str, Any]:
+    """HTTP リクエストメトリクス（件数/エラー/平均処理時間/ステータス別, J4）。"""
+    return get_request_metrics().snapshot()
+
+
+@app.delete("/api/metrics", tags=["system"])
+async def api_reset_metrics() -> Dict[str, Any]:
+    """リクエストメトリクスをリセットする。"""
+    get_request_metrics().reset()
+    return {"status": "reset"}
+
+
 @app.get(
     "/api/providers/{provider}/models",
     response_model=ProviderModelsResponse,
@@ -2020,13 +2522,14 @@ async def api_update_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     responses={200: {"content": {"application/json": {"example": PROVIDER_MODELS_EXAMPLE}}}},
 )
 async def get_provider_models(provider: str) -> Dict[str, Any]:
-    """プロバイダーから利用可能なモデル一覧を取得する。"""
+    """プロバイダーから利用可能なモデル一覧と能力記述を取得する。"""
+    capabilities = get_capabilities(provider).to_dict()
     cached = _get_cached_models(provider)
     if cached is not None:
-        return {"provider": provider, "models": cached, "source": "cache"}
+        return {"provider": provider, "models": cached, "source": "cache", "capabilities": capabilities}
 
     if provider not in FALLBACK_MODELS:
-        return {"provider": provider, "models": [], "source": "unknown"}
+        return {"provider": provider, "models": [], "source": "unknown", "capabilities": capabilities}
 
     settings = _load_gui_settings()
     models: list[str] | None = None
@@ -2039,7 +2542,7 @@ async def get_provider_models(provider: str) -> Dict[str, Any]:
                 import anthropic
 
                 client = anthropic.Anthropic(api_key=api_key)
-                response = client.models.list(limit=100)
+                response = await asyncio.to_thread(client.models.list, limit=100)
                 models = sorted(model.id for model in response.data if getattr(model, "id", ""))
                 source = "api"
 
@@ -2049,7 +2552,7 @@ async def get_provider_models(provider: str) -> Dict[str, Any]:
                 from openai import OpenAI
 
                 client = OpenAI(api_key=api_key)
-                response = client.models.list()
+                response = await asyncio.to_thread(client.models.list)
                 models = sorted(
                     model.id
                     for model in response.data
@@ -2066,7 +2569,7 @@ async def get_provider_models(provider: str) -> Dict[str, Any]:
                 from openai import OpenAI
 
                 client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
-                response = client.models.list()
+                response = await asyncio.to_thread(client.models.list)
                 models = sorted(model.id for model in response.data if getattr(model, "id", ""))
                 source = "api"
 
@@ -2075,10 +2578,12 @@ async def get_provider_models(provider: str) -> Dict[str, Any]:
             if github_token:
                 import httpx
 
-                response = httpx.get(
-                    "https://models.inference.ai.azure.com/models",
-                    headers={"Authorization": f"Bearer {github_token}"},
-                    timeout=10,
+                response = await asyncio.to_thread(
+                    lambda: httpx.get(
+                        "https://models.inference.ai.azure.com/models",
+                        headers={"Authorization": f"Bearer {github_token}"},
+                        timeout=10,
+                    )
                 )
                 if response.status_code == 200:
                     data = response.json()
@@ -2095,7 +2600,7 @@ async def get_provider_models(provider: str) -> Dict[str, Any]:
             if api_key:
                 from core.llm.gemini_provider import GeminiProvider
 
-                fetched = GeminiProvider.list_models(api_key)
+                fetched = await asyncio.to_thread(GeminiProvider.list_models, api_key)
                 if fetched:
                     models = fetched
                     source = "api"
@@ -2108,7 +2613,7 @@ async def get_provider_models(provider: str) -> Dict[str, Any]:
         source = "fallback"
 
     _set_cached_models(provider, models)
-    return {"provider": provider, "models": models, "source": source}
+    return {"provider": provider, "models": models, "source": source, "capabilities": capabilities}
 
 
 @app.get("/api/organizations")
@@ -2157,6 +2662,7 @@ async def api_create_organization(req: OrgCreateRequest) -> Dict[str, Any]:
     await _record_execution_event(
         "organization_created",
         f"{org.name} を作成しました",
+        actor="user",
         org_name=org.name,
         entity_type="organization",
         entity_id=str(org.id),
@@ -2186,6 +2692,7 @@ async def api_delete_organization(org_name: str) -> Dict[str, Any]:
     await _record_execution_event(
         "organization_deleted",
         f"{org_name} を削除しました",
+        actor="user",
         org_name=org_name,
         entity_type="organization",
         entity_id=str(org.id),
@@ -2352,6 +2859,7 @@ async def _approve_proposal_internal(
 ) -> Dict[str, Any]:
     from agents.base import AgentTask
     from agents.orchestrator_agent import OrchestratorAgent
+    from core.llm import get_default_llm_client
 
     psm, sm, target = _find_pending_proposal(org_name, proposal_id)
     if not target.get("file_path"):
@@ -2364,6 +2872,15 @@ async def _approve_proposal_internal(
 
     org = _find_org(org_name)
     repo_path = Path(org.target_repo_path) if org.target_repo_path else psm.platform_home
+
+    # 検証済み変更(サイドカー)があれば添付し、LLM 再生成せず直接適用する。
+    # Core 自己改善の検証済み変更は RepoCorp リポジトリ自身を対象にする。
+    validated_changes = _load_validated_changes(sm, str(target.get("id", "")))
+    if validated_changes:
+        target["validated_changes"] = validated_changes
+        if str(target.get("category") or "") == "core_self_improvement":
+            repo_path = PROJECT_ROOT
+
     sm.update_proposal_status(str(target.get("id", "")), "in_progress")
     await _record_execution_event(
         "proposal_started",
@@ -2386,7 +2903,8 @@ async def _approve_proposal_internal(
             "github_token": os.getenv("GITHUB_TOKEN"),
         },
     )
-    result = await OrchestratorAgent.create().run(task)
+    orchestrator = OrchestratorAgent.create(llm_client=get_default_llm_client(settings=_load_gui_settings()))
+    result = await orchestrator.run(task)
     if not result.success:
         sm.update_proposal_status(str(target.get("id", "")), "failed")
         await _record_execution_event(
@@ -2418,6 +2936,7 @@ async def _approve_proposal_internal(
         "proposal_approved",
         str(target.get("title") or "改善提案を承認"),
         status="success",
+        actor="user",
         details=result.output.get("change_summary", "") or str(target.get("description") or ""),
         org_name=org_name,
         entity_type="proposal",
@@ -2455,6 +2974,7 @@ async def _reject_proposal_internal(org_name: str, proposal_id: str) -> Dict[str
         "proposal_rejected",
         str(target.get("title") or "改善提案を却下"),
         status="success",
+        actor="user",
         details=str(target.get("description") or ""),
         org_name=org_name,
         entity_type="proposal",
@@ -2628,6 +3148,17 @@ async def api_goals_stream(req: GoalRunRequest) -> StreamingResponse:
             await asyncio.sleep(0)
 
     return _stream_response(event_generator())
+
+
+@app.post("/api/core/improve", tags=["core"])
+async def api_core_improve(req: CoreImproveRequest) -> Dict[str, Any]:
+    """WebGUI から RepoCorp 自身(Core)の改善を依頼する。
+
+    内蔵のプロバイダー非依存エージェントが LLM で編集→テスト検証(反復)し、
+    検証済みの変更を人間承認待ちの ImprovementProposal として登録する
+    （作業ツリーへは自動適用しない）。承認は既存の提案承認フローで行う。
+    """
+    return await _perform_core_improve(req)
 
 
 @app.get(
@@ -2905,7 +3436,8 @@ async def ws_chat(websocket: WebSocket) -> None:
 
 @app.websocket("/ws/updates")
 async def ws_updates(websocket: WebSocket) -> None:
-    await _updates_hub.connect(websocket)
+    if not await _updates_hub.connect(websocket):
+        return  # 接続上限（A9）
     await websocket.send_json({
         "type": "status",
         "status": "connected",
@@ -2922,25 +3454,166 @@ async def ws_updates(websocket: WebSocket) -> None:
 
 
 
-def run_server(host: str = "0.0.0.0", port: int = 7860) -> None:
+def _require_localhost(request: Request) -> None:
+    """ターミナル系エンドポイントは localhost 限定。"""
+    client_host = request.client.host if request.client else None
+    if not is_loopback_host(client_host):
+        raise HTTPException(status_code=403, detail="ターミナルは localhost からのみ利用できます。")
+
+
+@app.get("/api/terminal/sessions", tags=["terminal"])
+async def api_list_terminal_sessions(request: Request) -> Dict[str, Any]:
+    """埋め込みターミナルのワークスペース一覧（cmux 縦タブ用）。"""
+    _require_localhost(request)
+    return {"sessions": _terminal_manager.list()}
+
+
+@app.post("/api/terminal/sessions", tags=["terminal"])
+async def api_create_terminal_session(request: Request, body: TerminalCreateRequest) -> Dict[str, Any]:
+    """ターミナルのワークスペースを作成する。
+
+    cli_tool を指定すると CLI 実行モードとして外部コーディングCLIを起動する。
+    command 未指定なら既定シェルを起動する。cwd 既定は RepoCorp リポジトリ。
+    """
+    _require_localhost(request)
+    try:
+        session = _terminal_manager.create(
+            name=body.name,
+            cwd=body.cwd,
+            command=body.command,
+            cli_tool=body.cli_tool,
+            settings=_load_gui_settings(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"ターミナル起動に失敗しました: {exc}") from exc
+    return session.meta()
+
+
+@app.patch("/api/terminal/sessions/{session_id}", tags=["terminal"])
+async def api_rename_terminal_session(
+    request: Request, session_id: str, body: TerminalRenameRequest
+) -> Dict[str, Any]:
+    """ターミナルのワークスペース名を変更する（C11）。"""
+    _require_localhost(request)
+    if not _terminal_manager.rename(session_id, body.name):
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    session = _terminal_manager.get(session_id)
+    return session.meta() if session else {"status": "renamed", "session_id": session_id}
+
+
+@app.delete("/api/terminal/sessions/{session_id}", tags=["terminal"])
+async def api_kill_terminal_session(request: Request, session_id: str) -> Dict[str, Any]:
+    """ターミナルのワークスペースを終了する。"""
+    _require_localhost(request)
+    killed = _terminal_manager.kill(session_id)
+    if not killed:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    return {"status": "killed", "session_id": session_id}
+
+
+@app.websocket("/ws/terminal/{session_id}")
+async def ws_terminal(websocket: WebSocket, session_id: str) -> None:
+    """PTY とブラウザ(xterm.js)を双方向接続する。localhost 限定 + Origin 検証。"""
+    client_host = websocket.client.host if websocket.client else None
+    origin = websocket.headers.get("origin")
+    if not is_loopback_host(client_host) or not is_allowed_origin(origin):
+        await websocket.close(code=4403)
+        return
+
+    session = _terminal_manager.get(session_id)
+    if session is None:
+        await websocket.accept()
+        await websocket.send_json({"type": "error", "message": "session not found"})
+        await websocket.close()
+        return
+
+    await websocket.accept()
+    loop = asyncio.get_running_loop()
+    session.start_reader(loop)
+    queue = session.subscribe()
+
+    if session.scrollback:
+        await websocket.send_bytes(bytes(session.scrollback))
+    if session.status == "exited":
+        await websocket.send_json({"type": "exit", "exit_code": session.exit_code})
+
+    async def _pump_output() -> None:
+        while True:
+            kind, payload = await queue.get()
+            if kind == "data":
+                await websocket.send_bytes(payload)
+            elif kind == "exit":
+                await websocket.send_json({"type": "exit", "exit_code": payload})
+
+    output_task = asyncio.create_task(_pump_output())
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            text = message.get("text")
+            if text is not None:
+                handled = False
+                if text.startswith("{"):
+                    try:
+                        control = json.loads(text)
+                        if control.get("type") == "resize":
+                            session.resize(int(control.get("rows", 24)), int(control.get("cols", 80)))
+                            handled = True
+                        elif control.get("type") == "input":
+                            session.write(str(control.get("data", "")))
+                            handled = True
+                    except (json.JSONDecodeError, ValueError, TypeError):
+                        handled = False
+                if not handled:
+                    session.write(text)
+            elif message.get("bytes") is not None:
+                session.write(message["bytes"].decode("utf-8", "ignore"))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        output_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await output_task
+        session.unsubscribe(queue)
+
+
+def run_server(host: str | None = None, port: int = 7860) -> None:
     import uvicorn
+
+    # 構造化ログ/レベルを環境変数に応じて設定（J2。REPOCORP_LOG_FORMAT=json 等）。
+    configure_logging()
+
+    # 既定は localhost のみ（A1）。環境変数 REPOCORP_HOST で上書き可。
+    resolved_host = host or os.environ.get("REPOCORP_HOST") or "127.0.0.1"
 
     print("\nRepoCorp AI Web GUI を起動しています...")
     print(f"   URL: http://localhost:{port}")
     print(f"   プラットフォーム: {PlatformStateManager().platform_home}")
-    uvicorn.run(app, host=host, port=port)
+    if resolved_host not in {"127.0.0.1", "localhost", "::1"}:
+        print(
+            f"   [警告] {resolved_host} で全インターフェースに公開します。"
+            "埋め込みターミナル(実シェル)も到達可能になるため、信頼できるネットワークでのみ使用してください。"
+        )
+    uvicorn.run(app, host=resolved_host, port=port)
 
 
 # --- SPA routes (must be last so API routes take precedence) ---
 
 @app.get("/")
 async def root():
-    index = _serve_dir / "index.html"
-    return FileResponse(index if index.exists() else STATIC_DIR / "index.html")
+    return _spa_index_response()
 
 
 @app.get("/{full_path:path}")
 async def spa_fallback(full_path: str):
-    """Serve React SPA for all non-API client-side routes."""
-    index = _serve_dir / "index.html"
-    return FileResponse(index if index.exists() else STATIC_DIR / "index.html")
+    """非APIのクライアントサイドルートに React SPA を返す。
+
+    未知の /api/* ・ /ws/* はSPAで握りつぶさず 404(JSON) を返す
+    （API の 404 挙動を正しく保つ）。
+    """
+    if full_path == "api" or full_path.startswith(("api/", "ws/")):
+        raise HTTPException(status_code=404, detail="Not Found")
+    return _spa_index_response()

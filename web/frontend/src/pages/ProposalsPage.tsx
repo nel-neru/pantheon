@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle, FileDiff, Lightbulb, MessageSquareText, XCi
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
+import { CoreImprovePanel } from '@/components/CoreImprovePanel'
 import { api } from '@/lib/api'
 import { priorityBadge } from '@/lib/utils'
 
@@ -276,6 +277,14 @@ export function ProposalsPage() {
       </header>
 
       <div className="page-content flex flex-col gap-4">
+        <CoreImprovePanel
+          onProposed={(orgName) => {
+            setSelectedOrg(orgName)
+            void loadOrganizations()
+            void loadProposals(orgName)
+          }}
+        />
+
         {loading ? (
           <div className="card">
             <div className="card-body flex items-center gap-3">

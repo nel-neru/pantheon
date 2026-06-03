@@ -153,6 +153,7 @@ def test_cmd_approve_requires_confirmation(monkeypatch, tmp_path, capsys):
 
 def test_main_import_does_not_create_event_loop(monkeypatch):
     import asyncio as asyncio_module
+
     import main
 
     calls: list[object] = []
@@ -169,9 +170,10 @@ def test_main_import_does_not_create_event_loop(monkeypatch):
 
 
 def test_cmd_daemon_start_closes_log_handle(monkeypatch, tmp_path, capsys):
-    from main import cmd_daemon_start
-    import core.platform.state as platform_state_module
     import subprocess as subprocess_module
+
+    import core.platform.state as platform_state_module
+    from main import cmd_daemon_start
 
     captured: dict[str, object] = {}
 

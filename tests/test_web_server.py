@@ -10,10 +10,9 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+import web.server as server
 from core.models.organization import ImprovementProposal
 from core.org_factory import create_default_organization
-import web.server as server
-
 
 client = TestClient(server.app)
 

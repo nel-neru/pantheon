@@ -1,7 +1,7 @@
 """Tests for EventDetector"""
 
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from core.events.detector import EventDetector, EventType
 
@@ -17,8 +17,8 @@ def test_no_orgs_returns_empty(detector):
 
 
 def test_health_drop_detected(tmp_path):
-    from core.platform.state import PlatformStateManager
     from core.org_factory import create_default_organization
+    from core.platform.state import PlatformStateManager
 
     psm = PlatformStateManager(tmp_path)
     org = create_default_organization("LowHealthOrg", "テスト")
@@ -33,10 +33,11 @@ def test_health_drop_detected(tmp_path):
 
 
 def test_pending_spike_detected(tmp_path):
-    from core.platform.state import PlatformStateManager
-    from core.org_factory import create_default_organization
-    from core.models.organization import ImprovementProposal
     from uuid import uuid4
+
+    from core.models.organization import ImprovementProposal
+    from core.org_factory import create_default_organization
+    from core.platform.state import PlatformStateManager
 
     psm = PlatformStateManager(tmp_path)
     org = create_default_organization("SpikeOrg", "テスト")
@@ -60,8 +61,8 @@ def test_pending_spike_detected(tmp_path):
 
 
 def test_commit_cache_saves(tmp_path):
-    from core.platform.state import PlatformStateManager
     from core.org_factory import create_default_organization
+    from core.platform.state import PlatformStateManager
 
     psm = PlatformStateManager(tmp_path)
     org = create_default_organization("RepoOrg", "テスト")

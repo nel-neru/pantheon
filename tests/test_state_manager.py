@@ -1,12 +1,10 @@
 """Unit tests for RepoStateManager"""
 import json
-import tempfile
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
-from core.models.organization import ImprovementProposal, Organization, OrganizationStatus
+from core.models.organization import ImprovementProposal, Organization
 from core.state.manager import RepoStateManager
 
 
@@ -17,7 +15,7 @@ def state_manager(tmp_path):
 
 class TestRepoStateManager:
     def test_dirs_created(self, tmp_path):
-        sm = RepoStateManager(tmp_path, "Org")
+        RepoStateManager(tmp_path, "Org")
         assert (tmp_path / ".repocorp").exists()
         assert (tmp_path / ".repocorp" / "improvements").exists() or True  # created lazily
         assert (tmp_path / ".repocorp" / "organizations").exists()

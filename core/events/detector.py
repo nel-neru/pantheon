@@ -94,8 +94,8 @@ class EventDetector:
 
     def detect_all(self) -> List[DetectedEvent]:
         """全 Organization を走査してイベント一覧を返す"""
-        from core.platform.state import PlatformStateManager
         from core.metrics.balanced_growth import calculate_organization_metrics
+        from core.platform.state import PlatformStateManager
 
         psm = PlatformStateManager(self._platform_home)
         orgs = psm.load_organizations()

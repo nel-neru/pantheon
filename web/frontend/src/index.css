@@ -2532,6 +2532,7 @@ summary:focus-visible {
 }
 
 .search-result:hover,
+.search-result.active,
 .notification-item:hover {
   background: var(--color-surface-2);
 }
@@ -2945,3 +2946,150 @@ summary:focus-visible {
     width: 100vw;
   }
 }
+
+/* ===== 埋め込みターミナル（cmux 風ワークスペース） ===== */
+.terminal-page {
+  display: flex;
+  gap: 12px;
+  height: calc(100vh - var(--header-height) - 96px);
+  min-height: 420px;
+}
+.terminal-tabs {
+  width: 248px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+.terminal-tabs-empty {
+  padding: 12px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-fg);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.terminal-tab:hover { background: var(--color-surface-2); }
+.terminal-tab.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+.terminal-tab.waiting {
+  box-shadow: 0 0 0 2px var(--color-accent);
+  animation: terminal-ring 1.6s ease-in-out infinite;
+}
+@keyframes terminal-ring {
+  0%, 100% { box-shadow: 0 0 0 2px var(--color-accent); }
+  50% { box-shadow: 0 0 0 4px var(--color-accent-subtle); }
+}
+.terminal-tab-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.terminal-tab-name {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.terminal-tab-meta {
+  font-size: 11px;
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.terminal-tab-branch { display: inline-flex; align-items: center; gap: 3px; }
+.terminal-tab-close {
+  opacity: 0.45;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 6px;
+  color: var(--color-muted);
+}
+.terminal-tab-close:hover { opacity: 1; background: var(--color-surface-3); color: var(--color-fg); }
+.terminal-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #0d1117;
+}
+.terminal-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.terminal-pane-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.terminal-pane-title .mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50vw; }
+.terminal-host { flex: 1; min-height: 0; padding: 6px 8px; }
+.terminal-host .xterm { height: 100%; }
+.terminal-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--color-fg-2);
+}
+.terminal-create { position: relative; }
+.terminal-create-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 220px;
+  padding: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+.terminal-create-label { font-size: 11px; color: var(--color-muted); padding: 8px 8px 4px; }
+.terminal-create-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-fg);
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+}
+.terminal-create-item:hover:not(:disabled) { background: var(--color-surface-2); }
+.terminal-create-item:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* アクセシビリティ: モーション低減設定を尊重（G5） */
+@media (prefers-reduced-motion: reduce) {
+  .terminal-tab.waiting {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--color-accent);
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
