@@ -11,18 +11,34 @@
 
 ## インストール
 
-```bash
+リポジトリ直下で **仮想環境 (venv)** を作って依存をインストールします。
+有効化すると `python` / `pip` / `pantheon` がそのまま使えます。
+
+Windows (PowerShell):
+
+```powershell
 git clone https://github.com/nel-neru/pantheon.git
 cd pantheon
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1          # 以後 python / pantheon が使えます
+                                       # 実行を拒否される場合: Set-ExecutionPolicy -Scope Process RemoteSigned
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev,web]"
 ```
 
-`requirements.txt` を使う場合は次でも可です。
+macOS / Linux:
 
 ```bash
-python -m pip install -r requirements.txt
+git clone https://github.com/nel-neru/pantheon.git
+cd pantheon
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev,web]"
 ```
+
+> venv を有効化しない場合は、実体パスで呼べます（例: `.\.venv\Scripts\pantheon.exe --help`、`.\.venv\Scripts\python.exe -m pytest`）。
+> `requirements.txt` を使う場合は `python -m pip install -r requirements.txt` でも可です。
 
 ## 初期設定
 
@@ -44,14 +60,22 @@ cp .env.example .env
 
 ## クイックスタート
 
-```bash
-bash scripts/install_hooks.sh
-python scripts/validate_config.py
-pantheon init
-pantheon org add --name "MyApp" --repo /absolute/path/to/app --purpose "ECサイト改善"
+> **venv を有効化済み・リポジトリ直下にいる前提**です（上の「インストール」参照）。
+> 有効化していない場合は `pantheon` を `.\.venv\Scripts\pantheon.exe`、`python` を `.\.venv\Scripts\python.exe` に読み替えてください。
+
+```powershell
+python scripts\validate_config.py     # 設定の検証（任意）
+pantheon init                          # 初回セットアップ（1回だけ）
+pantheon org add --name "MyApp" --repo C:\path\to\app --purpose "ECサイト改善"
 pantheon analyze --org-name "MyApp"
 pantheon proposals --org-name "MyApp"
-pantheon serve
+pantheon serve                         # Web UI を起動
+```
+
+git の pre-commit フックも入れる場合（任意・POSIX シェルが必要。Windows では **Git Bash / WSL** で実行）:
+
+```bash
+bash scripts/install_hooks.sh
 ```
 
 - CLI は `pantheon --help` で確認できます
@@ -60,7 +84,7 @@ pantheon serve
 
 ## pre-commit フック
 
-`bash scripts/install_hooks.sh` で `git commit` 時の pre-commit フックを `.git/hooks/pre-commit` に配置します。
+`bash scripts/install_hooks.sh` で `git commit` 時の pre-commit フックを `.git/hooks/pre-commit` に配置します（POSIX シェル製のため、Windows では **Git Bash / WSL** から実行してください。PowerShell の `bash` 単体では動きません）。
 
 このフックでは主に次をチェックします。
 
@@ -77,6 +101,16 @@ pantheon serve
 
 ## 検証
 
+venv を有効化していれば:
+
 ```bash
 python -m pytest tests/ -q --tb=short
 ```
+
+未有効化なら実体パスで（Windows）:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\ -q --tb=short
+```
+
+> Windows では path-separator と `chmod` 由来の **6 件が既知の失敗**（回帰ではありません）。詳細は `CLAUDE.md` / `AGENTS.md` を参照。
