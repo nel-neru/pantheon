@@ -119,7 +119,7 @@ class ImprovementExecutorAgent(BaseAgent):
         from datetime import datetime, timezone
 
         slug = re.sub(r"[^a-z0-9]+", "-", suggestion.get("title", "improvement").lower())[:40]
-        branch_name = f"repocorp/improvement-{slug}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        branch_name = f"pantheon/improvement-{slug}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
         repo_root = repo_path.resolve()
         target = self._resolve_repo_file_path(repo_root, file_path)

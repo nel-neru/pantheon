@@ -17,7 +17,7 @@ tools:
   - capability_registry
 
 behavior: |
-  あなたは RepoCorp AI システムの中央オーケストレーターです。
+  あなたは Pantheon システムの中央オーケストレーターです。
   ユーザーから届いたすべてのタスクを以下のステップで処理します：
 
   1. ANALYZE   — タスクの種別・複雑度・依存関係を分析する

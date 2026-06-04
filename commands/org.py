@@ -57,13 +57,13 @@ async def cmd_init(args: argparse.Namespace, *, get_psm: Any, get_platform_home:
         print("[OK] プラットフォームはすでに初期化されています")
         print(f"   場所    : {psm.platform_home}")
         print(f"   子会社数 : {len(orgs)} 個")
-        print('\n次のステップ: repocorp org add --name "MyApp" --repo /path/to/app')
+        print('\n次のステップ: pantheon org add --name "MyApp" --repo /path/to/app')
         return
 
     bootstrap_platform()
-    print("\n[OK] RepoCorp AI プラットフォームを初期化しました")
+    print("\n[OK] Pantheon プラットフォームを初期化しました")
     print(f"   場所: {get_platform_home()}")
-    print('\n次のステップ: repocorp org add --name "MyApp" --repo /path/to/app')
+    print('\n次のステップ: pantheon org add --name "MyApp" --repo /path/to/app')
 
 
 async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: Path) -> None:
@@ -105,7 +105,7 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
     for agent in agents:
         skills = " / ".join(getattr(skill, "value", skill) for skill in agent.skills)
         print(f"    • {agent.name} [{skills}]")
-    print(f'\n次のステップ: repocorp analyze --org-name "{org.name}"')
+    print(f'\n次のステップ: pantheon analyze --org-name "{org.name}"')
 
 
 async def cmd_org_list(args: argparse.Namespace, *, get_psm: Any) -> None:
@@ -115,7 +115,7 @@ async def cmd_org_list(args: argparse.Namespace, *, get_psm: Any) -> None:
 
     if not orgs:
         print("Organization が登録されていません。")
-        print("\nヒント: repocorp org add --name MyApp --repo /path/to/app")
+        print("\nヒント: pantheon org add --name MyApp --repo /path/to/app")
         return
 
     print(f"\nOrganization 一覧 ({len(orgs)} 件)\n")
@@ -169,7 +169,7 @@ async def cmd_analyze(args: argparse.Namespace, *, get_orchestrator: Any, get_ps
     org = psm.load_organization_by_name(args.org_name)
     if not org:
         print(f"[ERROR] Organization '{args.org_name}' が見つかりません。")
-        print("   repocorp org list で登録済みの一覧を確認してください。")
+        print("   pantheon org list で登録済みの一覧を確認してください。")
         sys.exit(1)
 
     repo_path = Path(org.target_repo_path) if org.target_repo_path else Path(".")
@@ -212,7 +212,7 @@ async def cmd_analyze(args: argparse.Namespace, *, get_orchestrator: Any, get_ps
         print()
 
     print(f"[OK] {len(suggestions)} 件を保存しました。")
-    print(f'\n次のステップ: repocorp proposals --org-name "{org.name}"')
+    print(f'\n次のステップ: pantheon proposals --org-name "{org.name}"')
 
 
 async def cmd_proposals(args: argparse.Namespace, *, get_psm: Any) -> None:
@@ -228,7 +228,7 @@ async def cmd_proposals(args: argparse.Namespace, *, get_psm: Any) -> None:
 
     if not proposals:
         print("未対応の改善提案はありません。")
-        print(f'\nヒント: repocorp analyze --org-name "{org.name}"')
+        print(f'\nヒント: pantheon analyze --org-name "{org.name}"')
         return
 
     executable = [proposal for proposal in proposals if proposal.get("file_path")]
@@ -244,7 +244,7 @@ async def cmd_proposals(args: argparse.Namespace, *, get_psm: Any) -> None:
         for proposal in meta:
             _print_proposal(proposal)
 
-    print(f'承認: repocorp approve <ID の最初の8文字> --org-name "{org.name}"')
+    print(f'承認: pantheon approve <ID の最初の8文字> --org-name "{org.name}"')
 
 
 async def cmd_proposal_show(args: argparse.Namespace, *, get_psm: Any) -> None:
@@ -301,7 +301,7 @@ async def cmd_proposal_apply(
 ) -> None:
     from agents.base import AgentTask
 
-    require_api_key("repocorp approve")
+    require_api_key("pantheon approve")
     psm = get_psm()
     org = psm.load_organization_by_name(args.org_name)
     if not org:

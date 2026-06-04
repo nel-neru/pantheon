@@ -224,7 +224,7 @@ class GoalVerifier:
         if skipped:
             recs.append(
                 f"{len(skipped)} 件のタスクがエージェント能力不足でスキップされました。"
-                f"repocorp orchestration capabilities でギャップを確認してください。"
+                f"pantheon orchestration capabilities でギャップを確認してください。"
             )
 
         if not recs:

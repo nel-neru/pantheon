@@ -104,7 +104,7 @@ def test_growth_reporter_monthly_report(tmp_path):
     reporter = GrowthReporter(platform_home=tmp_path)
 
     report = reporter.generate_monthly_report(
-        org_name="RepoCorp AI",
+        org_name="Pantheon",
         current_score=78.0,
         prev_score=70.0,
         accepted_count=3,
@@ -154,14 +154,14 @@ def test_developer_goal_priority_categories(tmp_path):
 
 
 def test_multi_user_default_user(monkeypatch):
-    monkeypatch.delenv("REPOCORP_USER", raising=False)
+    monkeypatch.delenv("PANTHEON_USER", raising=False)
     manager = MultiUserManager()
 
     assert manager.get_current_user() == "default"
 
 
 def test_multi_user_env_override(monkeypatch, tmp_path):
-    monkeypatch.setenv("REPOCORP_USER", "alice")
+    monkeypatch.setenv("PANTHEON_USER", "alice")
     manager = MultiUserManager()
 
     assert manager.get_current_user() == "alice"
@@ -280,9 +280,9 @@ def test_cross_org_collaborator_request_and_accept():
 def test_org_goal_manager_set_and_weights(tmp_path):
     manager = OrgGoalManager(platform_home=tmp_path)
 
-    goal = manager.set_goal("RepoCorp", "Improve security posture", "security")
-    active = manager.get_active_goals("RepoCorp")
-    weights = manager.get_category_weights("RepoCorp")
+    goal = manager.set_goal("Pantheon", "Improve security posture", "security")
+    active = manager.get_active_goals("Pantheon")
+    weights = manager.get_category_weights("Pantheon")
 
     assert active[0].goal_id == goal.goal_id
     assert weights["security"] == 2.0
@@ -293,7 +293,7 @@ def test_org_diagnostics_strengths_weaknesses():
     diagnostics = OrgSelfDiagnostics()
 
     report = diagnostics.diagnose(
-        org_name="RepoCorp",
+        org_name="Pantheon",
         health_score=45.0,
         accepted_count=1,
         rejected_count=4,

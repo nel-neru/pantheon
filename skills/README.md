@@ -1,6 +1,6 @@
 # Skills Manifest
 
-RepoCorp AI で利用できるスキル一覧です。
+Pantheon で利用できるスキル一覧です。
 
 | Skill ID | Description | Compatible agent types | Recommended combinations |
 | --- | --- | --- | --- |

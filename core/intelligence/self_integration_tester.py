@@ -104,10 +104,10 @@ class SelfIntegrationTester:
 
     def test_import(self, code_output: CodeOutput, project_root: Path) -> ImportTestResult:
         """生成コードを一時ファイルとして import し、基本 import 可否を検証する。"""
-        validation_dir = project_root / ".repocorp" / "self_validation"
+        validation_dir = project_root / ".pantheon" / "self_validation"
         validation_dir.mkdir(parents=True, exist_ok=True)
 
-        module_name = f"_repocorp_validation_{code_output.output_id.replace(':', '_').replace('-', '_')}"
+        module_name = f"_pantheon_validation_{code_output.output_id.replace(':', '_').replace('-', '_')}"
         temp_file = validation_dir / f"{module_name}.py"
         sys_path_entries = [str(project_root), str(validation_dir)]
 

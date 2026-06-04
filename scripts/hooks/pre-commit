@@ -1,5 +1,5 @@
 #!/bin/sh
-# RepoCorp AI - pre-commit hook
+# Pantheon - pre-commit hook
 # GUI ページが変更された場合、対応するテストファイルの存在を確認する
 
 STAGED_PAGES=$(git diff --cached --name-only | grep "web/frontend/src/pages/.*\.tsx$" | grep -v "__tests__" || true)

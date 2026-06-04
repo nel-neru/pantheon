@@ -1,4 +1,4 @@
-"""RepoCorp AI - Knowledge Management Package"""
+"""Pantheon - Knowledge Management Package"""
 from .manager import KnowledgeManager
 
 __all__ = ["KnowledgeManager"]

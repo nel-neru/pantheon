@@ -197,7 +197,7 @@ class CodeReviewAgent(BaseAgent):
             "build",
             ".mypy_cache",
             ".pytest_cache",
-            ".repocorp",
+            ".pantheon",
         }
         code_exts = {".py", ".ts", ".js", ".go", ".rs", ".java", ".rb", ".cpp", ".c"}
         repo_root = repo_path.resolve()

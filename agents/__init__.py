@@ -1,4 +1,4 @@
-"""RepoCorp AI - Agents Package"""
+"""Pantheon - Agents Package"""
 
 from .base import AgentResult, AgentTask, BaseAgent
 from .chat_agent import ChatSession

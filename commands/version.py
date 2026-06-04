@@ -7,10 +7,10 @@ from typing import Any
 
 def get_version_string() -> str:
     try:
-        current = package_version("repocorp-ai")
+        current = package_version("pantheon")
     except PackageNotFoundError:
         current = "0.1.0"
-    return f"RepoCorp AI {current}"
+    return f"Pantheon {current}"
 
 
 async def cmd_version(args: argparse.Namespace) -> None:

@@ -223,7 +223,7 @@ class TestCodeReviewToProposalFlow:
                 success=True,
                 output={
                     "change_summary": "Applied comment cleanup",
-                    "branch": "repocorp/improvement-comment-cleanup",
+                    "branch": "pantheon/improvement-comment-cleanup",
                     "pr_url": "https://example.com/pr/42",
                 },
             )
@@ -239,7 +239,7 @@ class TestCodeReviewToProposalFlow:
         )
 
         saved_proposals = scheduler._psm.get_org_state_manager(org).get_pending_improvement_proposals(limit=10)
-        proposal_files = list((repo_path / ".repocorp" / "improvements").glob("*.json"))
+        proposal_files = list((repo_path / ".pantheon" / "improvements").glob("*.json"))
 
         assert result == {
             "org": "PDCA Org",
@@ -358,7 +358,7 @@ class TestConversationMonitoringAndUI:
         response = agent.ask("危険な問題はある？", context={"known_issue_count": 3})
 
         assert "3件" in response.answer
-        assert "repocorp analyze" in response.suggested_actions[0]
+        assert "pantheon analyze" in response.suggested_actions[0]
         assert agent.get_conversation_history()[0]["question"] == "危険な問題はある？"
 
     def test_proactive_notifier_persists_notifications(self, tmp_path):

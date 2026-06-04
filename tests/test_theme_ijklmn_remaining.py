@@ -79,12 +79,12 @@ def test_doc_generator_extract_docstrings(tmp_path):
 
 
 def test_i18n_japanese_default(monkeypatch):
-    monkeypatch.delenv("REPOCORP_LANG", raising=False)
+    monkeypatch.delenv("PANTHEON_LANG", raising=False)
     assert I18n().t("status_healthy") == "健康"
 
 
 def test_i18n_english_via_env(monkeypatch):
-    monkeypatch.setenv("REPOCORP_LANG", "en")
+    monkeypatch.setenv("PANTHEON_LANG", "en")
     assert I18n().t("status_healthy") == "Healthy"
 
 
@@ -226,7 +226,7 @@ def test_health_report_cli_format():
 
 
 def test_setup_wizard_format_cli(monkeypatch, tmp_path):
-    monkeypatch.setenv("REPOCORP_HOME", str(tmp_path))
+    monkeypatch.setenv("PANTHEON_HOME", str(tmp_path))
     text = SetupWizard().format_wizard_cli()
     assert "セットアップウィザード" in text
 

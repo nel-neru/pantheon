@@ -36,7 +36,7 @@ async def cmd_orchestration_history(args: argparse.Namespace) -> None:
 
     if not records:
         print("\n[INFO] 実行履歴がまだありません。")
-        print("   repocorp analyze --org-name <name> で分析を実行してください。")
+        print("   pantheon analyze --org-name <name> で分析を実行してください。")
         return
 
     stats: dict[str, dict[str, Any]] = defaultdict(
@@ -151,7 +151,7 @@ async def cmd_orchestration_self_review(args: argparse.Namespace) -> None:
         print("     → このパターンの見直しを推奨します")
 
     print("\n  次のアクション:")
-    print("     repocorp orchestration analyze <task_type> で計画を再確認してください")
+    print("     pantheon orchestration analyze <task_type> で計画を再確認してください")
     print(f"{'═' * 60}\n")
 
 

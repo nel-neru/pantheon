@@ -1,5 +1,5 @@
 """
-RepoCorp AI - Event Detector
+Pantheon - Event Detector
 
 Organization の担当リポジトリを監視してイベントを検知する。
 検知したイベントがスケジューラーに渡され、自律的な改善サイクルのトリガーとなる。

@@ -13,15 +13,15 @@ ERROR_MESSAGES: dict[str, dict] = {
     },
     "ORG_NOT_FOUND": {
         "message": "組織が見つかりません。",
-        "help": "repocorp org add <name> で組織を作成してください。",
+        "help": "pantheon org add <name> で組織を作成してください。",
     },
     "REPO_NOT_FOUND": {
         "message": "リポジトリが見つかりません。",
-        "help": "repocorp org add コマンドでリポジトリパスを正しく指定してください。",
+        "help": "pantheon org add コマンドでリポジトリパスを正しく指定してください。",
     },
     "DB_CORRUPTED": {
         "message": "データベースに問題があります。",
-        "help": "repocorp doctor コマンドで診断・修復を試みてください。",
+        "help": "pantheon doctor コマンドで診断・修復を試みてください。",
     },
 }
 

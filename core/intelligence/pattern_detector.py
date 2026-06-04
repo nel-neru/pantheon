@@ -77,7 +77,7 @@ class OperationPatternDetector:
 
     def __init__(self, repo_path: Optional[Path] = None, platform_home: Optional[Path] = None):
         if repo_path is not None:
-            self._log_path = repo_path / ".repocorp" / OPERATION_LOG_FILE
+            self._log_path = repo_path / ".pantheon" / OPERATION_LOG_FILE
         else:
             from core.platform.state import get_platform_home
             self._log_path = (platform_home or get_platform_home()) / OPERATION_LOG_FILE

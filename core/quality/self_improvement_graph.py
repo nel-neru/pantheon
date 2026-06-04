@@ -256,7 +256,7 @@ def build_self_improvement_graph(
     conn = sqlite3.connect(checkpointer_path, check_same_thread=False)
     checkpointer = SqliteSaver(conn)
     graph = workflow.compile(checkpointer=checkpointer)
-    setattr(graph, "_repocorp_checkpoint_conn", conn)
+    setattr(graph, "_pantheon_checkpoint_conn", conn)
 
     return graph
 

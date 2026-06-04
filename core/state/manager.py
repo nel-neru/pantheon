@@ -1,5 +1,5 @@
 """
-RepoCorp AI - Repo-Centric State Manager
+Pantheon - Repo-Centric State Manager
 
 すべての状態・決定・成果物をOrganizationのリポジトリ内にgit管理で残す。
 これにより、複数のセッション（人間・AI）が非同期で協調可能になる。
@@ -17,14 +17,14 @@ from core.models.organization import is_active_improvement_proposal_status
 
 class RepoStateManager:
     """
-    各OrganizationのリポジトリRoot内に .repocorp/ ディレクトリを作り、
+    各OrganizationのリポジトリRoot内に .pantheon/ ディレクトリを作り、
     状態を永続化する。
     """
 
     def __init__(self, repo_path: Path | str, org_name: str):
         self.repo_path = Path(repo_path)
         self.org_name = org_name
-        self.state_dir = self.repo_path / ".repocorp"
+        self.state_dir = self.repo_path / ".pantheon"
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
         # 主要ディレクトリ
@@ -98,7 +98,7 @@ class RepoStateManager:
     # ============================================================
 
     def save_quality_review(self, review: "QualityReview") -> Path:
-        """QualityReviewを .repocorp/reviews/ に保存"""
+        """QualityReviewを .pantheon/reviews/ に保存"""
         reviews_dir = self.state_dir / "reviews"
         reviews_dir.mkdir(exist_ok=True)
         path = reviews_dir / f"{review.id}.json"
@@ -107,7 +107,7 @@ class RepoStateManager:
         return path
 
     def save_improvement_proposal(self, proposal: "ImprovementProposal") -> Path:
-        """ImprovementProposalを .repocorp/improvements/ に保存"""
+        """ImprovementProposalを .pantheon/improvements/ に保存"""
         improvements_dir = self.state_dir / "improvements"
         improvements_dir.mkdir(exist_ok=True)
         path = improvements_dir / f"{proposal.id}.json"
@@ -172,7 +172,7 @@ class RepoStateManager:
     # ============================================================
 
     def save_organization(self, org: "Organization") -> Path:
-        """Organization を .repocorp/organizations/<id>.json に保存"""
+        """Organization を .pantheon/organizations/<id>.json に保存"""
         path = self.organizations_dir / f"{org.id}.json"
         path.write_text(org.model_dump_json(indent=2), encoding="utf-8")
         return path

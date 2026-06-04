@@ -92,7 +92,7 @@ class RichDashboard:
         return "\n".join(lines)
 
     def print_dashboard(self, orgs: list[dict], proposals: list[dict]) -> None:
-        sections = ["=== RepoCorp Dashboard ==="]
+        sections = ["=== Pantheon Dashboard ==="]
         sections.extend(self.render_org_summary(org) for org in orgs)
         sections.append("")
         sections.append(self.render_proposals_table(proposals))

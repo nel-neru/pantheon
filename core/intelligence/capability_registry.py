@@ -8,7 +8,7 @@ CapabilityRegistry — システム能力レジストリ (L-03)
 - AgentSkill enum の全スキルを登録
 - 追加された新能力を記録
 
-`repocorp capabilities list` コマンドでシステムが自分の
+`pantheon capabilities list` コマンドでシステムが自分の
 持っている能力を把握できる状態を作る。
 """
 

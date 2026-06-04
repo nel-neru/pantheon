@@ -1,5 +1,5 @@
 """
-RepoCorp AI - Codebase Intelligence Layer
+Pantheon - Codebase Intelligence Layer
 
 コードベース知性層。毎回の生ファイル読み込みを廃止し、
 圧縮インデックス・スナップショット・MCPツールを通じて

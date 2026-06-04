@@ -14,7 +14,7 @@ async def cmd_doctor(args: argparse.Namespace) -> None:
         print("[OK] 問題は見つかりませんでした。")
         return
 
-    print("RepoCorp Doctor")
+    print("Pantheon Doctor")
     for issue in issues:
         fixable = "auto-fixable" if issue.auto_fixable else "manual"
         print(f"- [{issue.severity}] {issue.issue_id} ({fixable})")
@@ -24,7 +24,7 @@ async def cmd_doctor(args: argparse.Namespace) -> None:
         fixed = doctor.fix_issues(issues)
         print(f"\n[OK] 自動修復: {fixed} 件")
     elif any(issue.auto_fixable for issue in issues):
-        print("\nヒント: repocorp doctor --fix で自動修復できます。")
+        print("\nヒント: pantheon doctor --fix で自動修復できます。")
 
 
 def register(subparsers: Any) -> None:

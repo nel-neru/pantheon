@@ -43,7 +43,7 @@ async def create_improvement_pr(
     repo = g.get_repo(github_repo)
 
     slug = re.sub(r"[^a-z0-9]+", "-", suggestion.get("title", "improvement").lower())[:40]
-    branch_name = f"repocorp/improvement-{slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    branch_name = f"pantheon/improvement-{slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
     default_branch = repo.get_branch(repo.default_branch)
     if hasattr(repo, "create_git_ref"):
@@ -67,7 +67,7 @@ async def create_improvement_pr(
         )
 
     pr = repo.create_pull(
-        title=f"[RepoCorp AI] {suggestion.get('title', 'Improvement')}",
+        title=f"[Pantheon] {suggestion.get('title', 'Improvement')}",
         body=_build_pr_body(suggestion),
         head=branch_name,
         base=repo.default_branch,
@@ -77,12 +77,12 @@ async def create_improvement_pr(
 
 def _build_pr_body(suggestion: Dict[str, Any]) -> str:
     return (
-        "## 🤖 RepoCorp AI による自動改善\n\n"
+        "## 🤖 Pantheon による自動改善\n\n"
         f"**改善提案**: {suggestion.get('title')}\n\n"
         f"**説明**: {suggestion.get('description')}\n\n"
         f"**期待される効果**: {suggestion.get('expected_impact', '未定義')}\n\n"
         f"**優先度**: {suggestion.get('priority', 'medium')}\n\n"
         f"**カテゴリ**: {suggestion.get('category', 'general')}\n\n"
         "---\n"
-        "*このPRは [RepoCorp AI](https://github.com/) によって自動生成されました。*"
+        "*このPRは [Pantheon](https://github.com/) によって自動生成されました。*"
     )

@@ -19,7 +19,7 @@ const platform = {
   active_organizations: 1,
   weakest_organization: null,
   strongest_organization: 'alpha',
-  platform_home: '/Users/test/repocorp_ai',
+  platform_home: '/Users/test/pantheon',
   initialized: true,
   has_llm: true,
 }

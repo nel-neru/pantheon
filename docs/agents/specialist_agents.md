@@ -1,6 +1,6 @@
 # SpecialistAgent パターン
 
-`SpecialistAgent` は RepoCorp AI の組織モデルにおける最小の専門実行単位です。
+`SpecialistAgent` は Pantheon の組織モデルにおける最小の専門実行単位です。
 `core/models/organization.py` では Pydantic モデルとして定義され、次の制約を持ちます。
 
 - `name: str`

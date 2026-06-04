@@ -58,10 +58,10 @@ def test_require_api_key_uses_gui_settings(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setattr("main.SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("REPOCORP_DEFAULT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("PANTHEON_DEFAULT_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-    _require_api_key("repocorp chat")
+    _require_api_key("pantheon chat")
 
 
 def test_require_api_key_prints_remediation(monkeypatch, tmp_path, capsys):
@@ -69,15 +69,15 @@ def test_require_api_key_prints_remediation(monkeypatch, tmp_path, capsys):
 
     settings_file = tmp_path / "missing.json"
     monkeypatch.setattr("main.SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("REPOCORP_DEFAULT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("PANTHEON_DEFAULT_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     with pytest.raises(SystemExit):
-        _require_api_key("repocorp goal run")
+        _require_api_key("pantheon goal run")
 
     out = capsys.readouterr().out
     assert "ANTHROPIC_API_KEY" in out
-    assert "repocorp serve" in out
+    assert "pantheon serve" in out
 
 
 def test_cmd_org_remove_requires_confirmation(monkeypatch, capsys):

@@ -113,7 +113,7 @@ def test_scheduler_persists_auto_applied_proposals(tmp_path: Path, monkeypatch):
         )
     )
 
-    improvements_dir = repo_path / ".repocorp" / "improvements"
+    improvements_dir = repo_path / ".pantheon" / "improvements"
     saved = [json.loads(path.read_text(encoding="utf-8")) for path in improvements_dir.glob("*.json")]
 
     assert result["auto_applied"] == 1

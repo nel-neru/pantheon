@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RepoCorp AI Platform</title>
+  <title>Pantheon Platform</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
@@ -825,7 +825,7 @@
     <div class="brand">
       <div class="brand-mark">🏢</div>
       <div class="brand-copy">
-        <h1>RepoCorp AI Platform</h1>
+        <h1>Pantheon Platform</h1>
         <p id="platformHome">Platform home を読み込み中...</p>
       </div>
     </div>
@@ -857,7 +857,7 @@
         <div class="chat-topbar">
           <div>
             <div class="section-title">リアルタイム対話</div>
-            <div class="caption">自然言語またはスラッシュコマンドで RepoCorp AI を操作</div>
+            <div class="caption">自然言語またはスラッシュコマンドで Pantheon を操作</div>
           </div>
           <div class="toolbar-group">
             <span class="badge">WebSocket</span>
@@ -1234,7 +1234,7 @@
       function renderMessage(role, content) {
         const wrap = document.createElement('div');
         wrap.className = `message-wrap ${role}`;
-        const label = role === 'user' ? 'You' : 'RepoCorp AI';
+        const label = role === 'user' ? 'You' : 'Pantheon';
         const message = document.createElement('div');
         message.className = `message ${role}`;
         if (role === 'assistant') {
@@ -1254,7 +1254,7 @@
         const wrap = document.createElement('div');
         wrap.className = 'message-wrap assistant';
         wrap.innerHTML = `
-          <div class="message-label">RepoCorp AI</div>
+          <div class="message-label">Pantheon</div>
           <div class="message assistant typing"><span class="spinner-inline"></span>応答を生成しています...</div>
         `;
         state.typingEl = wrap;
@@ -1801,7 +1801,7 @@
       }
 
       function saveGoalToLocalHistory(record) {
-        const key = 'repocorp-goal-history';
+        const key = 'pantheon-goal-history';
         const existing = JSON.parse(localStorage.getItem(key) || '[]');
         const next = [record, ...existing].slice(0, 6);
         localStorage.setItem(key, JSON.stringify(next));
@@ -1809,7 +1809,7 @@
 
       function localGoalHistory() {
         try {
-          return JSON.parse(localStorage.getItem('repocorp-goal-history') || '[]');
+          return JSON.parse(localStorage.getItem('pantheon-goal-history') || '[]');
         } catch {
           return [];
         }

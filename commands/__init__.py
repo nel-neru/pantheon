@@ -8,7 +8,7 @@ from typing import Any
 
 from .version import get_version_string
 
-CLI_DESCRIPTION = "RepoCorp AI — 自己成長型 AI Organization プラットフォーム"
+CLI_DESCRIPTION = "Pantheon — 自己成長型 AI Organization プラットフォーム"
 CLI_EPILOG = """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   使い方ガイド
@@ -16,8 +16,8 @@ CLI_EPILOG = """
 
 【クイックスタート（推奨: chatコマンド）】
   export ANTHROPIC_API_KEY=sk-ant-...   # Claude API キー（初回のみ）
-  repocorp init                          # 初回セットアップ（1回だけ）
-  repocorp chat                          # あとは自然言語で話しかけるだけ！
+  pantheon init                          # 初回セットアップ（1回だけ）
+  pantheon chat                          # あとは自然言語で話しかけるだけ！
 
   チャット例:
     > ECサイトを作りたい
@@ -25,7 +25,7 @@ CLI_EPILOG = """
     > セキュリティの提案を全部承認して
 
 【スラッシュコマンド（APIキー不要）】
-  repocorp chat → /help でコマンド一覧を表示
+  pantheon chat → /help でコマンド一覧を表示
 """
 
 _EXCLUDED_MODULES = {"common"}

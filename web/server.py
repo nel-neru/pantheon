@@ -1,5 +1,5 @@
 """
-RepoCorp AI - Web Server (Platform Level)
+Pantheon - Web Server (Platform Level)
 
 PlatformStateManager を使ってプラットフォーム全体を管理する FastAPI サーバー。
 """
@@ -35,15 +35,15 @@ from core.platform.state import PlatformStateManager, get_platform_home
 from core.policy.engine import DEFAULT_POLICY
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="RepoCorp AI Platform", version="2.0.0")
+app = FastAPI(title="Pantheon Platform", version="2.0.0")
 
 STATIC_DIR = Path(__file__).parent / "static"
 DIST_DIR = Path(__file__).parent / "dist"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 KNOWLEDGE_DIR = Path(__file__).parent.parent / "knowledge"
-SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "RepoCorp Core", "meta-improvement"}
-SETTINGS_FILE = Path.home() / ".repocorp" / "gui_settings.json"
-CHAT_SESSIONS_DIR = Path.home() / ".repocorp" / "chat_sessions"
+SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "Pantheon Core", "meta-improvement"}
+SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
+CHAT_SESSIONS_DIR = Path.home() / ".pantheon" / "chat_sessions"
 DEFAULT_CORS_ORIGINS = ("http://localhost:5173",)
 CHAT_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 _PROVIDER_KEY_MAPPING = {
@@ -121,8 +121,8 @@ DEFAULT_PROMPT_TEMPLATES = {
 
 def _default_gui_settings() -> Dict[str, Any]:
     return {
-        "llm_provider": os.getenv("REPOCORP_DEFAULT_LLM_PROVIDER", "anthropic"),
-        "llm_model": os.getenv("REPOCORP_DEFAULT_MODEL", "claude-3-5-sonnet-20241022"),
+        "llm_provider": os.getenv("PANTHEON_DEFAULT_LLM_PROVIDER", "anthropic"),
+        "llm_model": os.getenv("PANTHEON_DEFAULT_MODEL", "claude-3-5-sonnet-20241022"),
         "anthropic_api_key": "",
         "openai_api_key": "",
         "groq_api_key": "",
@@ -141,7 +141,7 @@ _CACHE_TTL = 300
 
 
 def _cors_allowed_origins() -> list[str]:
-    raw_origins = os.getenv("REPOCORP_CORS_ORIGINS", "")
+    raw_origins = os.getenv("PANTHEON_CORS_ORIGINS", "")
     if raw_origins.strip():
         origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
         if origins:
@@ -601,28 +601,28 @@ PLATFORM_STATUS_EXAMPLE = {
     "active_organizations": 2,
     "weakest_organization": "sandbox",
     "strongest_organization": "platform-core",
-    "platform_home": str(Path.home() / ".repocorp"),
+    "platform_home": str(Path.home() / ".pantheon"),
     "initialized": True,
     "has_llm": True,
 }
 DAEMON_STATUS_EXAMPLE = {
     "running": True,
     "pid": 4321,
-    "log_path": str(Path.home() / ".repocorp" / "daemon.log"),
+    "log_path": str(Path.home() / ".pantheon" / "daemon.log"),
 }
 DAEMON_ACTION_EXAMPLE = {
     "status": "started",
     "message": "デーモンを起動しました。",
     "running": True,
     "pid": 4321,
-    "log_path": str(Path.home() / ".repocorp" / "daemon.log"),
+    "log_path": str(Path.home() / ".pantheon" / "daemon.log"),
     "interval": 3600,
     "max_files": 10,
 }
 INIT_RESPONSE_EXAMPLE = {
     "status": "initialized",
     "message": "プラットフォームを初期化しました。",
-    "platform_home": str(Path.home() / ".repocorp"),
+    "platform_home": str(Path.home() / ".pantheon"),
     "meta_improvement_org": "Meta-Improvement Organization",
     "initialized": True,
 }
@@ -676,7 +676,7 @@ SETTINGS_RESPONSE_EXAMPLE = {
     "gemini_api_key_set": False,
     "daemon_interval": 3600,
     "daemon_max_files": 10,
-    "settings_file": str(Path.home() / ".repocorp" / "gui_settings.json"),
+    "settings_file": str(Path.home() / ".pantheon" / "gui_settings.json"),
     "has_llm": True,
 }
 PROVIDER_MODELS_EXAMPLE = {
@@ -839,7 +839,7 @@ def _normalize_execution_history_item(item: dict[str, Any]) -> dict[str, Any]:
         "timestamp": timestamp,
         "operation": str(item.get("operation") or "event"),
         "status": str(item.get("status") or "info"),
-        "title": str(item.get("title") or "RepoCorp event"),
+        "title": str(item.get("title") or "Pantheon event"),
         "details": str(item.get("details") or ""),
         "org_name": item.get("org_name"),
         "entity_type": item.get("entity_type"),
@@ -1761,7 +1761,7 @@ async def api_create_welcome_data() -> Dict[str, Any]:
     sample_orgs = [
         {
             "name": "Sample Organization",
-            "purpose": "RepoCorp AI のデモ用サンプル組織です。実際のリポジトリを指定して編集してください。",
+            "purpose": "Pantheon のデモ用サンプル組織です。実際のリポジトリを指定して編集してください。",
             "target_repo_path": str(PROJECT_ROOT),
         },
     ]
@@ -2027,7 +2027,7 @@ async def api_get_settings() -> Dict[str, Any]:
 
 @app.get("/api/storage/info")
 async def get_storage_info() -> Dict[str, Any]:
-    """~/.repocorp/ 配下の永続化データ情報を返す"""
+    """~/.pantheon/ 配下の永続化データ情報を返す"""
     platform_home = get_platform_home()
 
     def dir_info(path: Path) -> Dict[str, Any]:
@@ -2100,10 +2100,10 @@ async def api_update_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
 
     if req.llm_provider is not None:
         s["llm_provider"] = req.llm_provider
-        os.environ["REPOCORP_DEFAULT_LLM_PROVIDER"] = req.llm_provider
+        os.environ["PANTHEON_DEFAULT_LLM_PROVIDER"] = req.llm_provider
     if req.llm_model is not None:
         s["llm_model"] = req.llm_model
-        os.environ["REPOCORP_DEFAULT_MODEL"] = req.llm_model
+        os.environ["PANTHEON_DEFAULT_MODEL"] = req.llm_model
     if req.anthropic_api_key is not None and req.anthropic_api_key != "":
         s["anthropic_api_key"] = req.anthropic_api_key
         os.environ["ANTHROPIC_API_KEY"] = req.anthropic_api_key
@@ -2978,7 +2978,7 @@ async def ws_updates(websocket: WebSocket) -> None:
 def run_server(host: str = "0.0.0.0", port: int = 7860) -> None:
     import uvicorn
 
-    print("\nRepoCorp AI Web GUI を起動しています...")
+    print("\nPantheon Web GUI を起動しています...")
     print(f"   URL: http://localhost:{port}")
     print(f"   プラットフォーム: {PlatformStateManager().platform_home}")
     uvicorn.run(app, host=host, port=port)

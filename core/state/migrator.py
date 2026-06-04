@@ -1,6 +1,6 @@
 """
 StateMigrator — JSON→SQLite マイグレーション (G-02)
-既存 .repocorp/{org_name}/ ディレクトリのJSONファイルをSQLiteに移行する。
+既存 .pantheon/{org_name}/ ディレクトリのJSONファイルをSQLiteに移行する。
 """
 
 from __future__ import annotations

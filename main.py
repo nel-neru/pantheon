@@ -1,16 +1,16 @@
 """
-RepoCorp AI CLI
+Pantheon CLI
 
 使用例:
-  repocorp init                                       # グローバルプラットフォーム初期化
-  repocorp org add --name "MyApp" --repo /path/to/app # 子会社を登録
-  repocorp org list                                   # 子会社一覧
-  repocorp analyze --org-name "MyApp"                 # 分析して改善提案を生成
-  repocorp proposals --org-name "MyApp"               # 提案一覧
-  repocorp approve <id> --org-name "MyApp"            # 提案を承認・適用
-  repocorp platform status                            # 全子会社横断ダッシュボード
-  repocorp platform run-all                           # 全 Org の改善サイクルを実行
-  repocorp serve                                      # Web GUI 起動（http://localhost:7860）
+  pantheon init                                       # グローバルプラットフォーム初期化
+  pantheon org add --name "MyApp" --repo /path/to/app # 子会社を登録
+  pantheon org list                                   # 子会社一覧
+  pantheon analyze --org-name "MyApp"                 # 分析して改善提案を生成
+  pantheon proposals --org-name "MyApp"               # 提案一覧
+  pantheon approve <id> --org-name "MyApp"            # 提案を承認・適用
+  pantheon platform status                            # 全子会社横断ダッシュボード
+  pantheon platform run-all                           # 全 Org の改善サイクルを実行
+  pantheon serve                                      # Web GUI 起動（http://localhost:7860）
 """
 
 from __future__ import annotations
@@ -124,7 +124,7 @@ def _filter_proficiency_data_by_org(data: dict, org_name: str) -> dict:
     return filtered if org_aware else data
 
 
-SETTINGS_FILE = Path.home() / ".repocorp" / "gui_settings.json"
+SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
 _PROVIDER_KEY_MAPPING = {
     "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
     "openai": ("openai_api_key", "OPENAI_API_KEY"),
@@ -146,7 +146,7 @@ def _load_gui_settings() -> dict:
 
 def _resolve_llm_provider() -> str:
     settings = _load_gui_settings()
-    provider = os.getenv("REPOCORP_DEFAULT_LLM_PROVIDER") or settings.get("llm_provider", "anthropic")
+    provider = os.getenv("PANTHEON_DEFAULT_LLM_PROVIDER") or settings.get("llm_provider", "anthropic")
     return provider if provider in _PROVIDER_KEY_MAPPING else "anthropic"
 
 
@@ -162,7 +162,7 @@ def _require_api_key(command_name: str) -> None:
     print(f"   現在の LLM プロバイダー: {provider}")
     print("   対応方法:")
     print(f"   1. export {env_var}=your-api-key")
-    print("   2. または repocorp serve で GUI を開き、Settings から API キーを保存")
+    print("   2. または pantheon serve で GUI を開き、Settings から API キーを保存")
     sys.exit(1)
 
 

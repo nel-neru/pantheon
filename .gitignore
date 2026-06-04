@@ -47,8 +47,7 @@ node_modules/
 web/frontend/dist/
 web/frontend/.vite/
 
-# Pantheon / RepoCorp runtime state (per-repo): sessions, indexes, caches
-.repocorp/
+# Pantheon runtime state (per-repo): sessions, indexes, caches
 .pantheon/
 
 # Misc

@@ -598,8 +598,8 @@ def test_welcome_skips_existing_org(tmp_path, monkeypatch):
 def test_get_settings_returns_defaults(tmp_path, monkeypatch):
     """設定ファイルがない場合はデフォルト値を返すこと"""
     monkeypatch.setattr(server, "SETTINGS_FILE", tmp_path / "settings.json")
-    monkeypatch.delenv("REPOCORP_DEFAULT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("REPOCORP_DEFAULT_MODEL", raising=False)
+    monkeypatch.delenv("PANTHEON_DEFAULT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("PANTHEON_DEFAULT_MODEL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
@@ -689,8 +689,8 @@ def test_update_settings_saves_to_file(tmp_path, monkeypatch):
     """設定更新がファイルに保存されること"""
     settings_file = tmp_path / "settings.json"
     monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("REPOCORP_DEFAULT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("REPOCORP_DEFAULT_MODEL", raising=False)
+    monkeypatch.delenv("PANTHEON_DEFAULT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("PANTHEON_DEFAULT_MODEL", raising=False)
 
     response = client.put(
         "/api/settings",

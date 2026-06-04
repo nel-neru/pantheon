@@ -79,7 +79,7 @@ describe('OrgsPage', () => {
 
     request.resolve([])
     await waitFor(() => {
-      expect(screen.getByText('RepoCorp AI へようこそ')).toBeInTheDocument()
+      expect(screen.getByText('Pantheon へようこそ')).toBeInTheDocument()
     })
   })
 
@@ -91,7 +91,7 @@ describe('OrgsPage', () => {
 
     renderWithRouter(<OrgsPage />)
 
-    expect(await screen.findByText('RepoCorp AI へようこそ')).toBeInTheDocument()
+    expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'サンプル組織で始める' })).toBeInTheDocument()
   })
 
@@ -119,7 +119,7 @@ describe('OrgsPage', () => {
     const user = userEvent.setup()
     renderWithRouter(<OrgsPage />)
 
-    expect(await screen.findByText('RepoCorp AI へようこそ')).toBeInTheDocument()
+    expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'サンプル組織で始める' }))
 
     await waitFor(() => {
@@ -149,7 +149,7 @@ describe('OrgsPage', () => {
     const user = userEvent.setup()
     renderWithRouter(<OrgsPage />)
 
-    expect(await screen.findByText('RepoCorp AI へようこそ')).toBeInTheDocument()
+    expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '組織を自分で作成' }))
     await user.type(screen.getByLabelText('名前'), 'beta-team')
     await user.type(screen.getByLabelText('目的'), 'Build a beta product')
@@ -332,6 +332,6 @@ describe('OrgsPage', () => {
     await waitFor(() => {
       expect(mockedToast.success).toHaveBeenCalledWith('組織を削除しました。')
     })
-    expect(await screen.findByText('RepoCorp AI へようこそ')).toBeInTheDocument()
+    expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
   })
 })

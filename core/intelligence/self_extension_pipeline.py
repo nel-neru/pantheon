@@ -5,7 +5,7 @@ CapabilityGap 検出 → ToolDesignAgent 設計 → SelfCodeWriter 実装 →
 SelfIntegrationTester テスト → ImprovementProposal 登録 (HUMAN_REQUIRED)
 のフルフローを管理する。
 
-人間が `repocorp approve <id>` するまで本番には統合されない。
+人間が `pantheon approve <id>` するまで本番には統合されない。
 """
 
 from __future__ import annotations
@@ -152,7 +152,7 @@ def rollback_implementation(proposal_id: str, platform_home: Path = None) -> boo
     from core.platform.state import get_platform_home
 
     root = Path(platform_home) if platform_home else get_platform_home()
-    improvements_dir = root / ".repocorp" / "improvements"
+    improvements_dir = root / ".pantheon" / "improvements"
     proposal_file = None
     if improvements_dir.exists():
         for path in improvements_dir.glob("*.json"):

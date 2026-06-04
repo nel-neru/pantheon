@@ -25,7 +25,7 @@ from core.models.organization import AgentSkill, SpecialistAgent
 
 logger = logging.getLogger(__name__)
 
-CODE_WRITER_SYSTEM_PROMPT = """あなたは RepoCorp AI の Python 実装エージェントです。
+CODE_WRITER_SYSTEM_PROMPT = """あなたは Pantheon の Python 実装エージェントです。
 ImplementationSpec の内容だけを満たす、構文的に正しい Python コードを返してください。"""
 
 
@@ -59,7 +59,7 @@ def _make_default_specialist() -> SpecialistAgent:
     return SpecialistAgent(
         name="SelfCodeWriter",
         skills=[AgentSkill.PROMPT_ENGINEERING, AgentSkill.TOOL_INTEGRATION],
-        description="実装仕様から RepoCorp AI 互換の Python コードを生成する。",
+        description="実装仕様から Pantheon 互換の Python コードを生成する。",
     )
 
 

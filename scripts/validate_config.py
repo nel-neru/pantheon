@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RepoCorp AI の YAML / 設定ファイルを検証するスクリプト。
+Pantheon の YAML / 設定ファイルを検証するスクリプト。
 
 Exit codes:
   0 - validation OK
@@ -212,7 +212,7 @@ def validate_repository(root: Path) -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Validate RepoCorp AI YAML/config files.")
+    parser = argparse.ArgumentParser(description="Validate Pantheon YAML/config files.")
     parser.add_argument(
         "--root",
         type=Path,

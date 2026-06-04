@@ -18,9 +18,9 @@ def state_manager(tmp_path):
 class TestRepoStateManager:
     def test_dirs_created(self, tmp_path):
         sm = RepoStateManager(tmp_path, "Org")
-        assert (tmp_path / ".repocorp").exists()
-        assert (tmp_path / ".repocorp" / "improvements").exists() or True  # created lazily
-        assert (tmp_path / ".repocorp" / "organizations").exists()
+        assert (tmp_path / ".pantheon").exists()
+        assert (tmp_path / ".pantheon" / "improvements").exists() or True  # created lazily
+        assert (tmp_path / ".pantheon" / "organizations").exists()
 
     def test_save_and_load_state(self, state_manager):
         state_manager.save_current_state({"key": "value"})

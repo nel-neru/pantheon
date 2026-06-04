@@ -18,7 +18,7 @@ describe('HelpPage', () => {
 
     expect(screen.getByText('ヘルプ')).toBeInTheDocument()
     expect(screen.getByText('概要')).toBeInTheDocument()
-    expect(screen.getByText('RepoCorp AI とは')).toBeInTheDocument()
+    expect(screen.getByText('Pantheon とは')).toBeInTheDocument()
     expect(screen.getByText(/AI組織が自律的に計画・実行・改善を担うプラットフォーム/)).toBeInTheDocument()
     expect(screen.getByText('一人でも、組織で動く。')).toBeInTheDocument()
   })
@@ -64,7 +64,7 @@ describe('HelpPage', () => {
     const user = userEvent.setup()
     renderWithRouter(<HelpPage />)
 
-    const trigger = screen.getByRole('button', { name: 'RepoCorp AI とは' })
+    const trigger = screen.getByRole('button', { name: 'Pantheon とは' })
     expect(screen.getByText('一人でも、組織で動く。')).toBeInTheDocument()
 
     await user.click(trigger)

@@ -722,7 +722,7 @@ export function OrgsPage() {
                 <div className="welcome-icon">
                   <Sparkles size={22} />
                 </div>
-                <h2 className="welcome-title">RepoCorp AI へようこそ</h2>
+                <h2 className="welcome-title">Pantheon へようこそ</h2>
                 <p className="welcome-desc">
                   AI 組織を作成して、コードの自律的な分析・改善を始めましょう。
                   まずはサンプル組織を作成して使い方を確認するか、独自の組織を新規作成してください。

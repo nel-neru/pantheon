@@ -1,8 +1,8 @@
-# RepoCorp AI アーキテクチャ
+# Pantheon アーキテクチャ
 
  ## システム概要
 
- RepoCorp AI は、開発者の自然言語ゴールや対象リポジトリを入力として、
+ Pantheon は、開発者の自然言語ゴールや対象リポジトリを入力として、
  Organization生成・コード分析・改善提案・承認・自己改善までを扱うマルチレイヤー型のAI支援基盤です。
 
  ## 全体図（text-based）
@@ -10,7 +10,7 @@
  ```text
  Developer / Operator
          │
-         ├─ repocorp CLI (main.py)
+         ├─ pantheon CLI (main.py)
          └─ FastAPI Web UI (web/server.py)
                   │
                   ▼
@@ -30,7 +30,7 @@
             └──────┬────┘
                    ▼
          Repo / State / Integrations
-   (.repocorp, GitHub, LLM providers, config YAML)
+   (.pantheon, GitHub, LLM providers, config YAML)
  ```
 
  ## レイヤー構成
@@ -38,7 +38,7 @@
  ### 1. Interface Layer
 
  - `main.py`
-   - `repocorp` CLI の全サブコマンドを定義
+   - `pantheon` CLI の全サブコマンドを定義
    - Organization管理、分析、承認、goal実行、daemon、orchestration分析を提供
  - `web/server.py`
    - FastAPI によるプラットフォームAPI
@@ -50,9 +50,9 @@
    - 初回起動時に Meta-Improvement Organization を自動作成
    - デフォルトポリシー生成も担当
  - `core/platform/state.py`
-   - `~/.repocorp` 以下に platform 情報と Organization 定義を保存
+   - `~/.pantheon` 以下に platform 情報と Organization 定義を保存
  - `core/state/manager.py`
-   - 各対象リポジトリ内の `.repocorp/` を管理
+   - 各対象リポジトリ内の `.pantheon/` を管理
    - 改善提案、レビュー結果、決定履歴、knowledge を永続化
 
  ### 3. Domain / Organization Layer
@@ -89,7 +89,7 @@
  - `core/intelligence/codebase_snapshot.py`
    - 目的別の最小トークン表現を生成
  - `core/knowledge/manager.py`
-   - 過去実行知識・ベストプラクティスを `.repocorp/knowledge/` に保存
+   - 過去実行知識・ベストプラクティスを `.pantheon/knowledge/` に保存
 
  ### 6. Orchestration Layer
 
@@ -126,21 +126,21 @@
 
  ## 主要データフロー
 
- ### A. `repocorp analyze`
+ ### A. `pantheon analyze`
 
  1. `main.py` が対象Organizationを取得
- 2. `RepoStateManager` で対象リポジトリの `.repocorp` を開く
+ 2. `RepoStateManager` で対象リポジトリの `.pantheon` を開く
  3. `CodeReviewAgent` がコード収集 → LLM分析
- 4. 生成された `ImprovementProposal` を `.repocorp/improvements/` に保存
+ 4. 生成された `ImprovementProposal` を `.pantheon/improvements/` に保存
 
- ### B. `repocorp approve`
+ ### B. `pantheon approve`
 
  1. 未対応提案からID一致の提案を取得
  2. `ImprovementExecutorAgent` が対象ファイルを変更
  3. GitHub token があれば PR、なければローカルブランチ/コミットを作成
  4. 提案ステータスを `done` / `failed` に更新
 
- ### C. `repocorp goal run`
+ ### C. `pantheon goal run`
 
  1. `GoalParser` が自然言語を `StructuredGoal` に変換
  2. `GoalDecomposer` が Epic/Story/Task へ分解
@@ -159,8 +159,8 @@
  ## 主要な設計判断
 
  1. **グローバル状態とリポジトリ状態を分離**
-    - 組織一覧や共有ポリシーは `~/.repocorp`
-    - 対象リポジトリ固有の提案・知識・決定は `<repo>/.repocorp`
+    - 組織一覧や共有ポリシーは `~/.pantheon`
+    - 対象リポジトリ固有の提案・知識・決定は `<repo>/.pantheon`
 
  2. **SpecialistAgent は 2〜3 スキルに限定**
     - ジェネラリスト化を避け、役割を明確にする

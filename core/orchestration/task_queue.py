@@ -12,7 +12,7 @@ from typing import Any, Iterator
 
 from core.platform.state import get_platform_home
 
-QUEUE_FILE = Path.home() / ".repocorp" / "task_queue.json"
+QUEUE_FILE = Path.home() / ".pantheon" / "task_queue.json"
 _FILE_LOCK = threading.RLock()
 
 

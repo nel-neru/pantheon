@@ -26,9 +26,9 @@ class SetupWizard:
     def get_steps(self) -> list[SetupStep]:
         return [
             SetupStep(1, "API キー設定", "ANTHROPIC_API_KEY を .env に設定してください"),
-            SetupStep(2, "初期組織の作成", "repocorp org add <name> コマンドで組織を作成してください"),
+            SetupStep(2, "初期組織の作成", "pantheon org add <name> コマンドで組織を作成してください"),
             SetupStep(3, "リポジトリの登録", "分析対象のリポジトリパスを登録してください"),
-            SetupStep(4, "初回分析の実行", "repocorp analyze コマンドで初回分析を開始してください"),
+            SetupStep(4, "初回分析の実行", "pantheon analyze コマンドで初回分析を開始してください"),
         ]
 
     def check_completion_status(self) -> dict[str, bool]:
@@ -49,7 +49,7 @@ class SetupWizard:
             repo_path = Path(data.get("target_repo_path", "")).expanduser() if data.get("target_repo_path") else None
             if repo_path and str(repo_path):
                 has_repo = has_repo or repo_path.exists()
-                has_analysis = has_analysis or (repo_path / ".repocorp").exists()
+                has_analysis = has_analysis or (repo_path / ".pantheon").exists()
 
         return {
             "API キー設定": has_api_key,
@@ -60,7 +60,7 @@ class SetupWizard:
 
     def format_wizard_cli(self) -> str:
         status = self.check_completion_status()
-        lines = ["RepoCorp AI セットアップウィザード"]
+        lines = ["Pantheon セットアップウィザード"]
         for step in self.get_steps():
             completed = status.get(step.title, False)
             icon = "✅" if completed else "⬜"

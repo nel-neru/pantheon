@@ -41,7 +41,7 @@ type SlashCommand = {
   description: string
 }
 
-const INPUT_PLACEHOLDER = 'プラットフォーム、組織、ゴールについて RepoCorp AI に問い合わせてください'
+const INPUT_PLACEHOLDER = 'プラットフォーム、組織、ゴールについて Pantheon に問い合わせてください'
 
 const slashCommands: SlashCommand[] = [
   { command: 'help', description: '利用可能なコマンドと使い方を表示します。' },
@@ -488,7 +488,7 @@ export function ChatPage() {
 
                 {messages.map((message) => (
                   <div key={message.id} className={`chat-msg ${message.role}`}>
-                    <div className="chat-msg-meta">{message.role === 'user' ? 'あなた' : 'RepoCorp AI'}</div>
+                    <div className="chat-msg-meta">{message.role === 'user' ? 'あなた' : 'Pantheon'}</div>
                     <div className="chat-msg-body">{renderMessage(message.content)}</div>
                   </div>
                 ))}

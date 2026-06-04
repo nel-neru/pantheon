@@ -169,7 +169,7 @@ def test_proposal_apply_updates_status_and_reports_branch(capsys, tmp_path):
     class FakeExecutor:
         async def run(self, task):
             assert task.task_type == "improvement_execution"
-            return SimpleNamespace(success=True, output={"branch": "repocorp/demo", "change_summary": "updated"})
+            return SimpleNamespace(success=True, output={"branch": "pantheon/demo", "change_summary": "updated"})
 
     asyncio.run(
         cmd_proposal_apply(
@@ -191,7 +191,7 @@ def test_proposal_apply_updates_status_and_reports_branch(capsys, tmp_path):
 
 
 def test_platform_config_logs_backup_restore(capsys, tmp_path):
-    platform_home = tmp_path / ".repocorp"
+    platform_home = tmp_path / ".pantheon"
     platform_home.mkdir()
     (platform_home / "daemon.log").write_text("one\ntwo\nthree\n", encoding="utf-8")
     (platform_home / "scheduler_log.jsonl").write_text('{"cycle": 1}\n{"cycle": 2}\n', encoding="utf-8")
@@ -282,7 +282,7 @@ def test_doc_generator_health_report_and_ui_helpers(tmp_path, monkeypatch):
     assert "ORG_NOT_FOUND" not in helper.format_error("ORG_NOT_FOUND")
     assert "nope" in helper.wrap_exception(KeyError("nope"))
 
-    monkeypatch.setenv("REPOCORP_LANG", "en")
+    monkeypatch.setenv("PANTHEON_LANG", "en")
     assert I18n().t("status_healthy") == "Healthy"
 
     dashboard = RichDashboard(use_rich=False)
@@ -293,7 +293,7 @@ def test_doc_generator_health_report_and_ui_helpers(tmp_path, monkeypatch):
     (tmp_path / "organizations").mkdir()
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / ".repocorp").mkdir()
+    (repo / ".pantheon").mkdir()
     (tmp_path / "organizations" / "demo.json").write_text(json.dumps({"target_repo_path": str(repo)}), encoding="utf-8")
     wizard_text = wizard.format_wizard_cli()
     assert "API キー設定" in wizard_text
@@ -362,7 +362,7 @@ def test_pr_creator_updates_existing_file(monkeypatch, tmp_path):
     )
     assert pr_url == "https://example.com/pr/1"
     assert repo.updated and not repo.created
-    assert repo.pull_kwargs["title"].startswith("[RepoCorp AI]")
+    assert repo.pull_kwargs["title"].startswith("[Pantheon]")
 
 
 def test_pr_creator_creates_file_when_missing(monkeypatch, tmp_path):

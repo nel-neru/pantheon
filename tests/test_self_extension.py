@@ -175,7 +175,7 @@ class TestSelfIntegrationTester:
 
         assert result.can_import is True
         assert result.error_message == ""
-        assert not (tmp_path / ".repocorp" / "self_validation").exists()
+        assert not (tmp_path / ".pantheon" / "self_validation").exists()
 
     def test_run_existing_tests_parses_success_output(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         tester = SelfIntegrationTester()

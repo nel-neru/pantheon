@@ -1,5 +1,5 @@
 """
-RepoCorp AI - Autonomous Scheduler
+Pantheon - Autonomous Scheduler
 
 ユーザー指示なしに改善サイクルを自律実行するスケジューラー。
 EventDetector でイベントを検知 → PolicyEngine でルーティング → 自動適用 or 通知 のループを回す。

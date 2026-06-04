@@ -197,7 +197,7 @@ describe('ChatPage', () => {
 
     renderWithRouter(<ChatPage />)
 
-    const input = await screen.findByPlaceholderText('プラットフォーム、組織、ゴールについて RepoCorp AI に問い合わせてください')
+    const input = await screen.findByPlaceholderText('プラットフォーム、組織、ゴールについて Pantheon に問い合わせてください')
     await user.type(input, '/')
 
     expect(screen.getByRole('listbox', { name: 'スラッシュコマンド' })).toBeInTheDocument()
@@ -223,7 +223,7 @@ describe('ChatPage', () => {
 
     renderWithRouter(<ChatPage />)
 
-    const input = await screen.findByPlaceholderText('プラットフォーム、組織、ゴールについて RepoCorp AI に問い合わせてください')
+    const input = await screen.findByPlaceholderText('プラットフォーム、組織、ゴールについて Pantheon に問い合わせてください')
     await user.type(input, 'テストメッセージ')
     await user.click(screen.getByRole('button', { name: '送信' }))
 
@@ -235,7 +235,7 @@ describe('ChatPage', () => {
     })
     expect(await screen.findByText('応答: テストメッセージ')).toBeInTheDocument()
     expect(screen.getByText('あなた')).toBeInTheDocument()
-    expect(screen.getByText('RepoCorp AI')).toBeInTheDocument()
+    expect(screen.getByText('Pantheon')).toBeInTheDocument()
   })
 
   it('loads messages when switching sessions', async () => {

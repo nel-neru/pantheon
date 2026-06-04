@@ -1,6 +1,6 @@
 # Adding New Features
 
-RepoCorp AI に新機能を追加する際の、実際のコード構造に基づく手順です。
+Pantheon に新機能を追加する際の、実際のコード構造に基づく手順です。
 
 ## 0. まず追加先を決める
 
@@ -178,7 +178,7 @@ python -m pytest tests/ -q
 5. `main.py` に必要なら CLI 導線を追加
 6. `tests/` にAgentテストとCLIテストを追加
 
-### 例2: 新しい `repocorp foo` コマンドを追加
+### 例2: 新しい `pantheon foo` コマンドを追加
 
 1. `cmd_foo(args)` を作る
 2. parser に `foo` を追加

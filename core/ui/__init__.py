@@ -1,4 +1,4 @@
-"""UI helpers for RepoCorp AI."""
+"""UI helpers for Pantheon."""
 
 from .rich_dashboard import RICH_AVAILABLE, RichDashboard
 

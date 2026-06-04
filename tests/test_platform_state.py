@@ -66,7 +66,7 @@ def test_get_org_state_manager_with_target_repo(tmp_psm, tmp_path):
     org = create_default_organization("AppOrg", "アプリ Org")
     org.target_repo_path = str(repo)
     sm = tmp_psm.get_org_state_manager(org)
-    assert sm.state_dir == repo / ".repocorp"
+    assert sm.state_dir == repo / ".pantheon"
 
 
 def test_get_org_state_manager_no_target_repo(tmp_psm):

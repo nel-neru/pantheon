@@ -1,8 +1,8 @@
 """
-RepoCorp AI - System Bootstrap
+Pantheon - System Bootstrap
 
 初回起動時に Meta-Improvement Organization を自動作成する。
-Meta-Improvement Organization は RepoCorp AI システム自体の継続的改善を担う。
+Meta-Improvement Organization は Pantheon システム自体の継続的改善を担う。
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from core.org_factory import create_organization_from_template
 logger = logging.getLogger(__name__)
 
 META_ORG_NAME = "Meta-Improvement Organization"
-META_ORG_PURPOSE = "RepoCorp AI システム全体の強化・改善・自己進化を担う中核 Organization"
+META_ORG_PURPOSE = "Pantheon システム全体の強化・改善・自己進化を担う中核 Organization"
 META_TEMPLATE_PATH = Path(__file__).parent.parent / "config" / "departments" / "meta_improvement.yaml"
 
 
@@ -55,7 +55,7 @@ def bootstrap_platform(core_repo_path: Optional[Path] = None) -> "PlatformStateM
     Meta-Improvement Organization を自動作成し、Core リポジトリ自体を担当させる。
 
     Args:
-        core_repo_path: RepoCorp AI リポジトリのパス。
+        core_repo_path: Pantheon リポジトリのパス。
                         None の場合はこのファイルの親ディレクトリを自動検出。
     """
     from core.platform.state import PlatformStateManager

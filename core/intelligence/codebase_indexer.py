@@ -27,8 +27,8 @@ SUPPORTED_EXTENSIONS = {".py", ".ts", ".js", ".go", ".rs", ".java", ".rb", ".cpp
 
 EXCLUDE_DIRS = {
     ".git", "__pycache__", "node_modules", ".venv", "venv",
-    "dist", "build", ".mypy_cache", ".pytest_cache", ".repocorp",
-    "repocorp_ai.egg-info",
+    "dist", "build", ".mypy_cache", ".pytest_cache", ".pantheon",
+    "pantheon.egg-info",
 }
 
 ENTRY_STEMS = {"main", "app", "cli", "__main__", "server", "api", "run", "index"}
@@ -44,7 +44,7 @@ class CodebaseIndexer:
 
     def __init__(self, repo_path: Path | str):
         self.repo_path = Path(repo_path).resolve()
-        self.state_dir = self.repo_path / ".repocorp"
+        self.state_dir = self.repo_path / ".pantheon"
         self.index_path = self.state_dir / "codebase_index.json"
         self.state_dir.mkdir(parents=True, exist_ok=True)
 

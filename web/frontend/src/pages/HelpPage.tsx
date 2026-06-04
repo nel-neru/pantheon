@@ -76,7 +76,7 @@ function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
 const overviewSections: Section[] = [
   {
     id: 'overview',
-    title: 'RepoCorp AI とは',
+    title: 'Pantheon とは',
     content: (
       <div className="help-prose">
         <p>
@@ -98,7 +98,7 @@ const overviewSections: Section[] = [
     title: '主要概念',
     content: (
       <div className="help-prose">
-        <p>RepoCorp AI は階層化された AI 組織として動作します。</p>
+        <p>Pantheon は階層化された AI 組織として動作します。</p>
         <div className="help-concept-grid">
           <div className="help-concept-card">
             <div className="help-concept-label">Core</div>
@@ -295,6 +295,26 @@ const pageSections: Section[] = [
     ),
   },
   {
+    id: 'sessions',
+    title: 'セッション / 作業ボード',
+    content: (
+      <div className="help-prose">
+        <div className="help-page-icon-row">
+          <LayoutDashboard size={16} />
+          <span>AI の動作確認ダッシュボードと、人間用の作業ボードです。</span>
+        </div>
+        <Table
+          headers={['画面', '内容']}
+          rows={[
+            ['セッション (/sessions)', 'wmux 上で動く各エージェント（1エージェント=1タブ）の状態・終了コード・claude 出力ログをライブ確認します。claude/wmux/driver の接続状態も表示します。'],
+            ['作業ボード (/board)', 'キュー / 実行中 / レビュー / 完了 の Kanban で、AI ループの外から人間がタスクを起票・キャンセルできます。'],
+            ['自動再開', 'エージェントが Claude のレート制限に当たると rate_limited 状態になり、リセット時刻に達すると自動的に再開されます。'],
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: 'dashboard',
     title: 'プラットフォーム',
     content: (
@@ -370,7 +390,7 @@ const pageSections: Section[] = [
         <Table
           headers={['タブ', '内容']}
           rows={[
-            ['概要', 'RepoCorp AI の考え方と基本フローをまとめています。'],
+            ['概要', 'Pantheon の考え方と基本フローをまとめています。'],
             ['各画面の使い方', '全 10 ページの用途と操作ポイントを確認できます。'],
             ['設定・CLI・トラブル', 'API キー取得先、CLI コマンド、よくある問題を確認できます。'],
           ]}
@@ -448,7 +468,7 @@ export function HelpPage() {
     <div className="page-content">
       <div className="page-header">
         <h1 className="page-title">ヘルプ</h1>
-        <p className="page-subtitle">現在の画面構成に合わせた RepoCorp AI の操作ガイドです。</p>
+        <p className="page-subtitle">現在の画面構成に合わせた Pantheon の操作ガイドです。</p>
       </div>
 
       <div className="help-tabs">

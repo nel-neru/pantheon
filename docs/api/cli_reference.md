@@ -1,12 +1,12 @@
 # CLI Reference
 
-このドキュメントは `main.py` と実際の `--help` 出力に基づく `repocorp` CLI リファレンスです。
-エントリーポイントは `pyproject.toml` の `repocorp = "main:main"` です。
+このドキュメントは `main.py` と実際の `--help` 出力に基づく `pantheon` CLI リファレンスです。
+エントリーポイントは `pyproject.toml` の `pantheon = "main:main"` です。
 
 ## トップレベルコマンド
 
 ```text
-repocorp {init,org,analyze,proposals,approve,query,platform,goal,serve,daemon,agent,orchestration}
+pantheon {init,org,analyze,proposals,approve,query,platform,goal,serve,daemon,agent,orchestration}
 ```
 
 | Command | 説明 |
@@ -24,22 +24,22 @@ repocorp {init,org,analyze,proposals,approve,query,platform,goal,serve,daemon,ag
 | `agent` | エージェント状態・実績を表示 |
 | `orchestration` | Pre-Task Orchestration の分析・履歴・能力表示 |
 
-## `repocorp init`
+## `pantheon init`
 
 ```bash
-repocorp init
+pantheon init
 ```
 
-- `~/.repocorp` の初期化
+- `~/.pantheon` の初期化
 - Meta-Improvement Organization の作成
 - デフォルトポリシー生成
 
-## `repocorp org`
+## `pantheon org`
 
-### `repocorp org add`
+### `pantheon org add`
 
 ```bash
-repocorp org add --name NAME [--repo REPO] [--purpose PURPOSE] [--template TEMPLATE]
+pantheon org add --name NAME [--repo REPO] [--purpose PURPOSE] [--template TEMPLATE]
 ```
 
 | Option | 説明 |
@@ -49,28 +49,28 @@ repocorp org add --name NAME [--repo REPO] [--purpose PURPOSE] [--template TEMPL
 | `--purpose` | Organization の目的・ゴール |
 | `--template` | テンプレート名（例: `meta_improvement`） |
 
-### `repocorp org list`
+### `pantheon org list`
 
 ```bash
-repocorp org list
+pantheon org list
 ```
 
 登録済み Organization の一覧を表示します。
 
-### `repocorp org remove`
+### `pantheon org remove`
 
 ```bash
-repocorp org remove --name NAME
+pantheon org remove --name NAME
 ```
 
 | Option | 説明 |
 | --- | --- |
 | `--name` | 削除する Organization 名（必須） |
 
-## `repocorp analyze`
+## `pantheon analyze`
 
 ```bash
-repocorp analyze --org-name ORG_NAME [--max-files MAX_FILES]
+pantheon analyze --org-name ORG_NAME [--max-files MAX_FILES]
 ```
 
 | Option | 説明 |
@@ -80,10 +80,10 @@ repocorp analyze --org-name ORG_NAME [--max-files MAX_FILES]
 
 実装: `cmd_analyze()` → `CodeReviewAgent`
 
-## `repocorp proposals`
+## `pantheon proposals`
 
 ```bash
-repocorp proposals --org-name ORG_NAME
+pantheon proposals --org-name ORG_NAME
 ```
 
 | Option | 説明 |
@@ -92,10 +92,10 @@ repocorp proposals --org-name ORG_NAME
 
 未対応提案を `実行可能` / `Meta-level` に分けて表示します。
 
-## `repocorp approve`
+## `pantheon approve`
 
 ```bash
-repocorp approve PROPOSAL_ID --org-name ORG_NAME [--github-repo GITHUB_REPO] [--github-token GITHUB_TOKEN]
+pantheon approve PROPOSAL_ID --org-name ORG_NAME [--github-repo GITHUB_REPO] [--github-token GITHUB_TOKEN]
 ```
 
 | 引数 / Option | 説明 |
@@ -107,10 +107,10 @@ repocorp approve PROPOSAL_ID --org-name ORG_NAME [--github-repo GITHUB_REPO] [--
 
 実装: `cmd_approve()` → `ImprovementExecutorAgent`
 
-## `repocorp query`
+## `pantheon query`
 
 ```bash
-repocorp query [--filter FILTER] [--limit LIMIT] [--db-path DB_PATH]
+pantheon query [--filter FILTER] [--limit LIMIT] [--db-path DB_PATH]
 ```
 
 | Option | 説明 |
@@ -119,20 +119,20 @@ repocorp query [--filter FILTER] [--limit LIMIT] [--db-path DB_PATH]
 | `--limit` | 最大件数（default: `50`） |
 | `--db-path` | 対象 SQLite DB パス |
 
-## `repocorp platform`
+## `pantheon platform`
 
-### `repocorp platform status`
+### `pantheon platform status`
 
 ```bash
-repocorp platform status
+pantheon platform status
 ```
 
 全 Organization 横断の健康度・バランス・未対応提案数を表示します。
 
-### `repocorp platform run-all`
+### `pantheon platform run-all`
 
 ```bash
-repocorp platform run-all [--max-orgs MAX_ORGS]
+pantheon platform run-all [--max-orgs MAX_ORGS]
 ```
 
 | Option | 説明 |
@@ -141,20 +141,20 @@ repocorp platform run-all [--max-orgs MAX_ORGS]
 
 実装: 優先度順に `SelfImprovementLoop` を実行
 
-## `repocorp goal`
+## `pantheon goal`
 
-### `repocorp goal status`
+### `pantheon goal status`
 
 ```bash
-repocorp goal status
+pantheon goal status
 ```
 
 保存されたゴール履歴を表示します。
 
-### `repocorp goal run`
+### `pantheon goal run`
 
 ```bash
-repocorp goal run GOAL_TEXT
+pantheon goal run GOAL_TEXT
 ```
 
 | 引数 | 説明 |
@@ -163,10 +163,10 @@ repocorp goal run GOAL_TEXT
 
 実装: `AbstractGoalPipeline` を実行
 
-## `repocorp serve`
+## `pantheon serve`
 
 ```bash
-repocorp serve [--host HOST] [--port PORT]
+pantheon serve [--host HOST] [--port PORT]
 ```
 
 | Option | 説明 |
@@ -176,12 +176,12 @@ repocorp serve [--host HOST] [--port PORT]
 
 `fastapi` / `uvicorn` が必要です。
 
-## `repocorp daemon`
+## `pantheon daemon`
 
-### `repocorp daemon start`
+### `pantheon daemon start`
 
 ```bash
-repocorp daemon start [--interval INTERVAL] [--max-files MAX_FILES]
+pantheon daemon start [--interval INTERVAL] [--max-files MAX_FILES]
 ```
 
 | Option | 説明 |
@@ -189,26 +189,26 @@ repocorp daemon start [--interval INTERVAL] [--max-files MAX_FILES]
 | `--interval` | 実行間隔（秒, default: `3600`） |
 | `--max-files` | 1 Organization あたり最大分析ファイル数 |
 
-### `repocorp daemon stop`
+### `pantheon daemon stop`
 
 ```bash
-repocorp daemon stop
+pantheon daemon stop
 ```
 
-### `repocorp daemon status`
+### `pantheon daemon status`
 
 ```bash
-repocorp daemon status
+pantheon daemon status
 ```
 
 PID、schedulerログ、起動方法を表示します。
 
-## `repocorp agent`
+## `pantheon agent`
 
-### `repocorp agent status`
+### `pantheon agent status`
 
 ```bash
-repocorp agent status --org-name ORG_NAME
+pantheon agent status --org-name ORG_NAME
 ```
 
 | Option | 説明 |
@@ -217,12 +217,12 @@ repocorp agent status --org-name ORG_NAME
 
 `SkillProficiencyManager` のデータを表形式で表示します。
 
-## `repocorp orchestration`
+## `pantheon orchestration`
 
-### `repocorp orchestration analyze`
+### `pantheon orchestration analyze`
 
 ```bash
-repocorp orchestration analyze TASK_TYPE
+pantheon orchestration analyze TASK_TYPE
 ```
 
 | 引数 | 説明 |
@@ -231,26 +231,26 @@ repocorp orchestration analyze TASK_TYPE
 
 `PreTaskOrchestrator.analyze()` の結果を表示します。
 
-### `repocorp orchestration history`
+### `pantheon orchestration history`
 
 ```bash
-repocorp orchestration history
+pantheon orchestration history
 ```
 
 `OrchestrationPatternStore` の履歴を集計表示します。
 
-### `repocorp orchestration capabilities`
+### `pantheon orchestration capabilities`
 
 ```bash
-repocorp orchestration capabilities
+pantheon orchestration capabilities
 ```
 
 Capability Registry と検出済み能力ギャップを表示します。
 
-### `repocorp orchestration self-review`
+### `pantheon orchestration self-review`
 
 ```bash
-repocorp orchestration self-review
+pantheon orchestration self-review
 ```
 
 実行履歴から失敗率・品質の悪いパターンを検出し、改善必要箇所を表示します。
@@ -258,10 +258,10 @@ repocorp orchestration self-review
 ## 実用例
 
 ```bash
-repocorp init
-repocorp org add --name "MyApp" --repo /path/to/app --purpose "ECサイト開発"
-repocorp proposals --org-name "MyApp"
-repocorp platform status
-repocorp goal run "セキュリティを改善したい"
-repocorp orchestration analyze code_review
+pantheon init
+pantheon org add --name "MyApp" --repo /path/to/app --purpose "ECサイト開発"
+pantheon proposals --org-name "MyApp"
+pantheon platform status
+pantheon goal run "セキュリティを改善したい"
+pantheon orchestration analyze code_review
 ```

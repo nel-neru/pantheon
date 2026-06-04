@@ -1,10 +1,10 @@
 """
 PlatformStateManager
 
-Core（本社）のグローバルストア（~/.repocorp/）を管理する。
+Core（本社）のグローバルストア（~/.pantheon/）を管理する。
 複数の Organization（子会社）を横断的に登録・管理するプラットフォーム層。
 
-ストアの場所は REPOCORP_HOME 環境変数で変更可能（デフォルト: ~/.repocorp/）。
+ストアの場所は PANTHEON_HOME 環境変数で変更可能（デフォルト: ~/.pantheon/）。
 """
 
 from __future__ import annotations
@@ -18,15 +18,36 @@ from typing import Any, Dict, List, Optional
 from core.models.organization import Organization
 
 
+def _migrate_legacy_home(new_home: Path) -> None:
+    """One-time migration from the old ``~/.repocorp`` store to ``~/.pantheon``.
+
+    Copies the legacy directory the first time Pantheon runs after the rename, so
+    existing organizations / settings / history carry over without data loss. The
+    legacy directory is left intact (non-destructive).
+    """
+    if new_home.exists():
+        return
+    legacy = Path.home() / ".repocorp"
+    if legacy.is_dir():
+        import shutil
+        try:
+            shutil.copytree(legacy, new_home)
+        except OSError:
+            pass
+
+
 def get_platform_home() -> Path:
     """
     プラットフォームストアのルートディレクトリを返す。
-    REPOCORP_HOME 環境変数が設定されていればそちらを使う。
+    PANTHEON_HOME 環境変数が設定されていればそちらを使う。
+    旧 ~/.repocorp が存在する場合は初回のみ ~/.pantheon へ自動移行する。
     """
-    env = os.environ.get("REPOCORP_HOME")
+    env = os.environ.get("PANTHEON_HOME")
     if env:
         return Path(env).expanduser().resolve()
-    return Path.home() / ".repocorp"
+    home = Path.home() / ".pantheon"
+    _migrate_legacy_home(home)
+    return home
 
 
 class PlatformStateManager:
@@ -34,7 +55,7 @@ class PlatformStateManager:
     Core（本社）のグローバルプラットフォームストアを管理する。
 
     ディレクトリ構成:
-      ~/.repocorp/
+      ~/.pantheon/
       ├── platform.json          - プラットフォーム設定・メタ情報
       ├── organizations/         - Organization（子会社）の定義
       │   └── <uuid>.json
@@ -135,7 +156,7 @@ class PlatformStateManager:
 
     def get_org_state_manager(self, org: Organization):
         """
-        Org の target_repo_path 内の .repocorp/ を管理する
+        Org の target_repo_path 内の .pantheon/ を管理する
         RepoStateManager を返す。target_repo_path が未設定の場合は platform_home を使う。
         """
         from core.state.manager import RepoStateManager

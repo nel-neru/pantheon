@@ -1,12 +1,12 @@
 # REST API Reference
 
-RepoCorp AI の Web API は `web/server.py` の FastAPI アプリです。
+Pantheon の Web API は `web/server.py` の FastAPI アプリです。
 起動後は `http://localhost:7860/docs` で Swagger UI、`/openapi.json` で OpenAPI を確認できます。
 
 ## 起動
 
 ```bash
-repocorp serve
+pantheon serve
 ```
 
 ## 主要エンドポイント

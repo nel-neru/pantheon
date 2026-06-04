@@ -1,4 +1,4 @@
-"""Monitoring utilities for RepoCorp AI."""
+"""Monitoring utilities for Pantheon."""
 
 from .proactive_notifier import Notification, ProactiveNotifier
 

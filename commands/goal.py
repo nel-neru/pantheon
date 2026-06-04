@@ -5,13 +5,13 @@ from typing import Any
 
 
 async def cmd_goal_status(args: argparse.Namespace, *, get_platform_home: Any) -> None:
-    """repocorp goal status"""
+    """pantheon goal status"""
     from core.goals.goal_library import GoalLibrary
 
     lib = GoalLibrary(platform_home=get_platform_home())
     templates = lib._load_all()
     if not templates:
-        print("ゴールの実行履歴がありません。repocorp goal run <goal_text> を試してください。")
+        print("ゴールの実行履歴がありません。pantheon goal run <goal_text> を試してください。")
         return
     print(f"ゴールライブラリ: {len(templates)}件")
     for template in templates[:10]:
@@ -19,10 +19,10 @@ async def cmd_goal_status(args: argparse.Namespace, *, get_platform_home: Any) -
 
 
 async def cmd_goal_run(args: argparse.Namespace, *, require_api_key: Any) -> None:
-    """repocorp goal run <goal_text>"""
+    """pantheon goal run <goal_text>"""
     from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
 
-    require_api_key("repocorp goal run")
+    require_api_key("pantheon goal run")
     pipeline = AbstractGoalPipeline()
     result = await pipeline.run(args.goal_text)
     summary = result.summary() if callable(getattr(result, "summary", None)) else str(result)

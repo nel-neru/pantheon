@@ -46,7 +46,7 @@ class ChangeResult:
 class SafeChangeExecutor:
     def __init__(self, project_root: Path, backup_dir: Optional[Path] = None):
         self.project_root = Path(project_root).resolve()
-        self.backup_dir = Path(backup_dir) if backup_dir else self.project_root / ".repocorp" / "backups"
+        self.backup_dir = Path(backup_dir) if backup_dir else self.project_root / ".pantheon" / "backups"
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self.manifest_path = self.backup_dir / "manifest.json"
         if not self.manifest_path.exists():

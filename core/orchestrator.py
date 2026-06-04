@@ -1,5 +1,5 @@
 """
-RepoCorp AI - Central Orchestrator (Platform Level)
+Pantheon - Central Orchestrator (Platform Level)
 
 PlatformStateManager を使い、全 Organization（子会社）を横断的に管理する。
 各 Organization はそれぞれの target_repo_path を持ち、自律的に改善サイクルを回す。
@@ -24,7 +24,7 @@ from core.platform.state import PlatformStateManager
 from core.state.manager import RepoStateManager
 
 
-class RepoCorpOrchestrator:
+class PantheonOrchestrator:
     """
     Core（本社）レベルのオーケストレーター
 
@@ -49,7 +49,7 @@ class RepoCorpOrchestrator:
             self._org_state_managers[str(org.id)] = self._psm.get_org_state_manager(org)
 
     @classmethod
-    def from_platform(cls) -> "RepoCorpOrchestrator":
+    def from_platform(cls) -> "PantheonOrchestrator":
         """グローバルプラットフォームからオーケストレーターを初期化する"""
         return cls(PlatformStateManager())
 

@@ -2,7 +2,7 @@
 DeveloperProfileManager — 開発者プロファイル (D-01~D-06)
 
 開発者の好み・スタイル・優先事項を学習して提案を個人化する。
-~/.repocorp/developer_profile.json に永続化する。
+~/.pantheon/developer_profile.json に永続化する。
 """
 
 from __future__ import annotations

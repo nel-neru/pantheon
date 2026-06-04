@@ -1,7 +1,7 @@
 """
-RepoCorp AI - Daemon Runner
+Pantheon - Daemon Runner
 
-`repocorp daemon start` によってサブプロセスとして起動される。
+`pantheon daemon start` によってサブプロセスとして起動される。
 AutonomousScheduler を実行し、定期的に全 Org の改善サイクルを回す。
 """
 
@@ -20,7 +20,7 @@ logging.basicConfig(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="RepoCorp AI Autonomous Daemon")
+    parser = argparse.ArgumentParser(description="Pantheon Autonomous Daemon")
     parser.add_argument("--interval", type=int, default=3600)
     parser.add_argument("--max-files", type=int, default=10)
     args = parser.parse_args()

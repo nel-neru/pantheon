@@ -1,5 +1,5 @@
 """
-ChatAgent — RepoCorp AI 自然言語対話エージェント
+ChatAgent — Pantheon 自然言語対話エージェント
 
 ユーザーは自然言語で話しかけるだけ。
 ChatAgent が意図を解析し、適切なツールを呼び出して作業を実行する。
@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-SETTINGS_FILE = Path.home() / ".repocorp" / "gui_settings.json"
+SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
 DEFAULT_MODEL = ""  # empty => let the `claude` CLI pick its own default model
 
 
@@ -217,7 +217,7 @@ async def _handle_agent_task(user_message: str, config: dict[str, Any], current_
 TOOLS: List[Dict[str, Any]] = [
     {
         "name": "initialize_platform",
-        "description": "RepoCorp AI プラットフォームを初期化する。初回セットアップ時に使用。",
+        "description": "Pantheon プラットフォームを初期化する。初回セットアップ時に使用。",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
@@ -297,7 +297,7 @@ TOOLS: List[Dict[str, Any]] = [
 ]
 
 SYSTEM_PROMPT = """\
-あなたは RepoCorp AI プラットフォームの対話エージェントです。
+あなたは Pantheon プラットフォームの対話エージェントです。
 ユーザーの自然言語の依頼を理解し、適切なツールを呼び出して作業を実行します。
 
 利用可能なツールでできること:
@@ -632,7 +632,7 @@ class ChatSession:
 
 HELP_TEXT = """\
 ╔══════════════════════════════════════════════════════════╗
-║  RepoCorp AI チャットエージェント                          ║
+║  Pantheon チャットエージェント                          ║
 ╠══════════════════════════════════════════════════════════╣
 ║  【自然言語モード（設定済みLLMが必要）】                     ║
 ║   なんでも話しかけてください。例:                           ║
@@ -737,7 +737,7 @@ async def run_chat(initial_message: Optional[str] = None) -> None:
     session.refresh_llm_config()
 
     print("\n" + "═" * 58)
-    print("  🤖 RepoCorp AI チャットエージェント")
+    print("  🤖 Pantheon チャットエージェント")
     print("═" * 58)
     if session.has_llm:
         provider_label = PROVIDER_LABEL_MAP.get(session.config["provider"], session.config["provider"])

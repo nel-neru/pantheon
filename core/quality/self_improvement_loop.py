@@ -23,7 +23,7 @@ class SelfImprovementLoop:
 
     async def pickup_and_prioritize_proposals(self) -> List[dict]:
         """
-        .repocorp/improvements/ から未対応の提案を拾い、優先度付けする
+        .pantheon/improvements/ から未対応の提案を拾い、優先度付けする
         """
         raw_proposals = self.state_manager.get_pending_improvement_proposals(limit=30)
 

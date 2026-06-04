@@ -1,5 +1,5 @@
 """
-RepoCorp AI - Core Data Models (New Terminology)
+Pantheon - Core Data Models (New Terminology)
 
 「会社」比喩を完全に撤廃し、以下のように再定義：
 - Organization: 目的を持った自律的な組織

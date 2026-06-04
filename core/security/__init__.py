@@ -1,4 +1,4 @@
-"""Security helpers for RepoCorp AI."""
+"""Security helpers for Pantheon."""
 
 from .auditor import SecurityAuditor, SecurityIssue
 

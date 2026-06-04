@@ -1,7 +1,7 @@
 """
 Knowledge Manager
 
-Organization 間で共有できる知見を .repocorp/knowledge/ に永続化する。
+Organization 間で共有できる知見を .pantheon/knowledge/ に永続化する。
 学習したパターン・ベストプラクティス・改善ノウハウを蓄積し、
 次回の改善サイクルで活用できるようにする。
 """
@@ -17,12 +17,12 @@ from uuid import uuid4
 
 class KnowledgeManager:
     """
-    .repocorp/knowledge/ に知見を保存・取得する。
+    .pantheon/knowledge/ に知見を保存・取得する。
     タグによる絞り込み・ソース Organization の記録が可能。
     """
 
     def __init__(self, repo_path: Path | str):
-        self.knowledge_dir = Path(repo_path) / ".repocorp" / "knowledge"
+        self.knowledge_dir = Path(repo_path) / ".pantheon" / "knowledge"
         self.knowledge_dir.mkdir(parents=True, exist_ok=True)
 
     def save_insight(

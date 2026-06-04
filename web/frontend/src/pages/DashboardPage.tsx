@@ -334,7 +334,7 @@ export function DashboardPage() {
               <div className="card-header">
                 <div>
                   <div className="card-title">プラットフォーム状態</div>
-                  <div className="card-description">現在の RepoCorp AI 環境とヘルスの概要です。</div>
+                  <div className="card-description">現在の Pantheon 環境とヘルスの概要です。</div>
                 </div>
                 <div className={`badge ${platform.has_llm ? 'badge-green' : 'badge-red'}`}>
                   {platform.has_llm ? 'LLM 準備完了' : 'LLM 未設定'}

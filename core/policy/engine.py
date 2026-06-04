@@ -1,8 +1,8 @@
 """
-RepoCorp AI - Approval Policy Engine
+Pantheon - Approval Policy Engine
 
 改善提案を「自動適用」か「人間承認待ち」かに仕分けするルールエンジン。
-ルールは ~/.repocorp/policy.yaml に YAML で定義する。
+ルールは ~/.pantheon/policy.yaml に YAML で定義する。
 人間起点・AI起点どちらも必ずこのエンジンを通る。
 """
 

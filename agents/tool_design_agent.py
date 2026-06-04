@@ -25,7 +25,7 @@ from core.models.organization import AgentSkill, SpecialistAgent
 
 logger = logging.getLogger(__name__)
 
-DESIGN_SYSTEM_PROMPT = """あなたは RepoCorp AI のアーキテクトです。
+DESIGN_SYSTEM_PROMPT = """あなたは Pantheon のアーキテクトです。
 既存コードの命名規則・責務分割・Agent インターフェースに従って、
 CapabilityGap を解消するための実装仕様を JSON で返してください。"""
 

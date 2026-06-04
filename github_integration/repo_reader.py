@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 
 EXCLUDE_DIRS = {
     ".git", "__pycache__", "node_modules", ".venv", "venv",
-    "dist", "build", ".mypy_cache", ".pytest_cache", ".repocorp",
+    "dist", "build", ".mypy_cache", ".pytest_cache", ".pantheon",
 }
 
 CODE_EXTENSIONS = {".py", ".ts", ".js", ".go", ".rs", ".java", ".rb", ".cpp", ".c", ".h"}

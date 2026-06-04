@@ -109,7 +109,7 @@ def test_apply_local_change_writes_only_inside_repo(tmp_path, monkeypatch, agent
 
     assert target.read_text(encoding="utf-8") == "after"
     assert result["file_path"] == "nested/file.py"
-    assert result["branch"].startswith("repocorp/improvement-safe-change-")
+    assert result["branch"].startswith("pantheon/improvement-safe-change-")
     assert fake_git.repos[0].git.checkout_calls[0][0] == "-b"
     assert fake_git.repos[0].index.add_calls == [["nested/file.py"]]
     assert fake_git.repos[0].index.commit_calls == ["refactor: Safe change"]

@@ -69,8 +69,8 @@ const navItems: NavItem[] = [
   { to: '/help', label: 'ヘルプ', icon: HelpCircle },
 ]
 
-const THEME_STORAGE_KEY = 'repocorp-theme'
-const SIDEBAR_STORAGE_KEY = 'repocorp-sidebar-collapsed'
+const THEME_STORAGE_KEY = 'pantheon-theme'
+const SIDEBAR_STORAGE_KEY = 'pantheon-sidebar-collapsed'
 
 function LogoMark() {
   return (
@@ -237,7 +237,7 @@ function AppShell() {
             <LogoMark />
             {collapsed && !mobileView ? null : (
               <div className="sidebar-brand">
-                RepoCorp <span>AI</span>
+                Pantheon <span>AI</span>
               </div>
             )}
           </div>
@@ -369,7 +369,7 @@ function AppShell() {
                           </span>
                           <div className="notification-item-body">
                             <div className="notification-item-title">{event.title || '更新'}</div>
-                            <div className="notification-item-subtitle">{event.details || event.org_name || 'RepoCorp AI'}</div>
+                            <div className="notification-item-subtitle">{event.details || event.org_name || 'Pantheon'}</div>
                           </div>
                         </button>
                       ))

@@ -30,7 +30,7 @@ def _analysis_reasoning(analysis: Any) -> str:
 
 class OrchestratorAgent(BaseAgent):
     """
-    RepoCorp AI の中央オーケストレーターエージェント。
+    Pantheon の中央オーケストレーターエージェント。
 
     このエージェントは自身でタスクを実行するのではなく、
     PreTaskOrchestrator の分析結果に基づき最適な専門エージェントを
@@ -133,7 +133,7 @@ class OrchestratorAgent(BaseAgent):
     def describe_routing(self, task_type: str, description: str) -> Dict[str, Any]:
         """
         実行せずにルーティング計画だけを返すデバッグ用メソッド。
-        `repocorp orchestration analyze` コマンドで使用。
+        `pantheon orchestration analyze` コマンドで使用。
         """
         orchestrator = self._get_orchestrator()
         analysis = orchestrator.analyze(task_type, description)

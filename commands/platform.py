@@ -67,7 +67,7 @@ async def cmd_platform_status(args: argparse.Namespace, *, get_psm: Any) -> None
 
     if not orgs:
         print("\nOrganization が登録されていません。")
-        print("   repocorp org add --name MyApp --repo /path/to/app")
+        print("   pantheon org add --name MyApp --repo /path/to/app")
         return
 
     hq = GroupHQState()
@@ -82,7 +82,7 @@ async def cmd_platform_status(args: argparse.Namespace, *, get_psm: Any) -> None
     group = calculate_group_metrics(hq, [metric for _, metric, _ in metrics_list])
 
     print(f"\n{'═' * 60}")
-    print("  RepoCorp AI プラットフォーム")
+    print("  Pantheon プラットフォーム")
     print(f"  Core: {psm.platform_home}")
     print(f"{'═' * 60}")
     print(f"  グループ健康度   : {group.group_health_score:5.1f} / 100")
@@ -103,8 +103,8 @@ async def cmd_platform_status(args: argparse.Namespace, *, get_psm: Any) -> None
         print()
 
     print(f"{'═' * 60}")
-    print("  repocorp platform run-all  で全 Org の改善サイクルを実行")
-    print("  repocorp serve             で Web GUI を起動")
+    print("  pantheon platform run-all  で全 Org の改善サイクルを実行")
+    print("  pantheon serve             で Web GUI を起動")
     print(f"{'═' * 60}\n")
 
 
@@ -150,7 +150,7 @@ async def cmd_platform_run_all(args: argparse.Namespace, *, get_psm: Any) -> Non
         print("[WARN] 失敗した Organization:")
         for org_name, message in failures:
             print(f"  - {org_name}: {message}")
-    print("repocorp platform status で結果を確認できます。")
+    print("pantheon platform status で結果を確認できます。")
 
 
 async def cmd_platform_config(args: argparse.Namespace, *, get_psm: Any) -> None:
@@ -236,7 +236,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
         from web.server import run_server
     except ImportError:
         print("[ERROR] Web GUI には fastapi と uvicorn が必要です。")
-        print("   pip install 'repocorp-ai[web]' でインストールしてください。")
+        print("   pip install 'pantheon[web]' でインストールしてください。")
         sys.exit(1)
 
     run_server(host=args.host, port=args.port)
@@ -286,8 +286,8 @@ async def cmd_daemon_start(
     print(f"[OK] デーモンを起動しました (PID: {proc.pid})")
     print(f"   ログ  : {log_file}")
     print(f"   間隔  : {args.interval} 秒ごと")
-    print("\n停止: repocorp daemon stop")
-    print("状態: repocorp daemon status")
+    print("\n停止: pantheon daemon stop")
+    print("状態: pantheon daemon status")
 
 
 def cmd_daemon_stop(args: argparse.Namespace, *, get_platform_home: Any) -> None:
@@ -344,7 +344,7 @@ def cmd_daemon_status(args: argparse.Namespace, *, get_platform_home: Any) -> No
                 except Exception:
                     pass
 
-    print("\n起動: repocorp daemon start [--interval=3600]")
+    print("\n起動: pantheon daemon start [--interval=3600]")
 
 
 def register(subparsers: Any) -> None:

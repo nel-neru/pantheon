@@ -50,30 +50,30 @@ class ConversationAgent:
 
         answer = (
             "データを参照しましたが、具体的な回答を生成できませんでした。"
-            "`repocorp analyze`を実行してみてください。"
+            "`pantheon analyze`を実行してみてください。"
         )
         confidence = 0.3
-        suggested_actions = ["repocorp analyze"]
+        suggested_actions = ["pantheon analyze"]
 
         if any(token in question for token in ("危険", "リスク", "問題")):
             answer = (
                 f"既知の問題は{known_issue_count}件あります。"
-                "追加の状況確認には `repocorp analyze` を実行してください。"
+                "追加の状況確認には `pantheon analyze` を実行してください。"
             )
             confidence = 0.8 if known_issue_count or sources else 0.55
-            suggested_actions = ["repocorp analyze"]
+            suggested_actions = ["pantheon analyze"]
             if "platform:pending_proposals" not in sources and pending_count:
                 sources.append("platform:pending_proposals")
         elif any(token in question for token in ("提案", "改善")):
             answer = f"現在の未処理提案は{pending_count}件です。優先順位を確認して改善を進められます。"
             confidence = 0.85 if pending_count or sources else 0.5
-            suggested_actions = ["repocorp proposals list", "repocorp analyze"]
+            suggested_actions = ["pantheon proposals list", "pantheon analyze"]
             if "platform:pending_proposals" not in sources:
                 sources.append("platform:pending_proposals")
         elif any(token in question for token in ("状態", "健康")):
             answer = health_summary
             confidence = 0.75
-            suggested_actions = ["repocorp analyze"]
+            suggested_actions = ["pantheon analyze"]
             if "platform:organizations" not in sources:
                 sources.append("platform:organizations")
 
@@ -156,7 +156,7 @@ class ConversationAgent:
     def _describe_health(self) -> str:
         orgs = self._load_organizations()
         if not orgs:
-            return "組織状態データはまだ十分ではありません。`repocorp analyze` で状態を更新してください。"
+            return "組織状態データはまだ十分ではありません。`pantheon analyze` で状態を更新してください。"
 
         scores = [float(org.get("autonomy_score", 50.0)) for org in orgs]
         avg_score = sum(scores) / len(scores)
@@ -186,7 +186,7 @@ class ConversationAgent:
     def _iter_pending_proposals(self) -> Iterable[dict[str, Any]]:
         seen_dirs: set[Path] = set()
 
-        direct_dir = self.platform_home / ".repocorp" / "improvements"
+        direct_dir = self.platform_home / ".pantheon" / "improvements"
         if direct_dir.exists():
             seen_dirs.add(direct_dir)
 
@@ -194,7 +194,7 @@ class ConversationAgent:
             repo_path = org.get("target_repo_path")
             if not repo_path:
                 continue
-            improvements_dir = Path(repo_path) / ".repocorp" / "improvements"
+            improvements_dir = Path(repo_path) / ".pantheon" / "improvements"
             if improvements_dir.exists():
                 seen_dirs.add(improvements_dir)
 

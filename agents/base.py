@@ -1,5 +1,5 @@
 """
-RepoCorp AI - Agent Execution Base
+Pantheon - Agent Execution Base
 
 全 SpecialistAgent の実行インターフェース定義。
 

@@ -1,6 +1,6 @@
 """
 I18n — 多言語対応基盤 (I-12)
-REPOCORP_LANG環境変数で日本語/英語切り替え
+PANTHEON_LANG環境変数で日本語/英語切り替え
 """
 
 from __future__ import annotations
@@ -14,14 +14,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
       "status_critical": "危機的",
       "proposals_pending": "未承認の提案",
       "no_orgs": "組織が登録されていません",
-      "run_analyze": "repocorp analyze を実行してください",
+      "run_analyze": "pantheon analyze を実行してください",
     },
     "en": {
       "status_healthy": "Healthy",
       "status_critical": "Critical",
       "proposals_pending": "Pending Proposals",
       "no_orgs": "No organizations registered",
-      "run_analyze": "Run repocorp analyze",
+      "run_analyze": "Run pantheon analyze",
     }
 }
 
@@ -33,7 +33,7 @@ class I18n:
         pass
 
     def get_language(self) -> str:
-        return os.environ.get("REPOCORP_LANG", "ja")
+        return os.environ.get("PANTHEON_LANG", "ja")
 
     def t(self, key: str, **kwargs) -> str:
         lang = self.get_language()

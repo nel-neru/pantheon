@@ -28,7 +28,7 @@ YAML フォーマット（例: agents/definitions/strategic_planner.yaml）:
 新エージェントの追加方法:
     1. agents/definitions/ に新しい YAML ファイルを作成する
     2. name / skills / behavior を記述する
-    3. repocorp で自動的に認識される（コード変更不要）
+    3. pantheon で自動的に認識される（コード変更不要）
 """
 
 from __future__ import annotations

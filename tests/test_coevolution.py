@@ -123,11 +123,11 @@ def test_design_with_testing_purpose(tmp_path):
 
 def test_instantiate_creates_organization(tmp_path):
     designer = OrganizationDesigner(platform_home=tmp_path)
-    spec = designer.design("Improve performance and knowledge sharing", org_name="RepoCorp Ops")
+    spec = designer.design("Improve performance and knowledge sharing", org_name="Pantheon Ops")
 
     organization = designer.instantiate(spec)
 
-    assert organization.name == "RepoCorp Ops"
+    assert organization.name == "Pantheon Ops"
     assert len(organization.divisions) >= 2
     assert len(organization.get_all_agents()) >= 2
     assert all(len(agent.skills) >= 2 for agent in organization.get_all_agents())
