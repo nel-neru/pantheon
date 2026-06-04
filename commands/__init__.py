@@ -15,7 +15,7 @@ CLI_EPILOG = """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 【クイックスタート（推奨: chatコマンド）】
-  export ANTHROPIC_API_KEY=sk-ant-...   # Claude API キー（初回のみ）
+  claude                                 # 一度ログイン（Pantheon は API キー不要・claude CLI を使用）
   pantheon init                          # 初回セットアップ（1回だけ）
   pantheon chat                          # あとは自然言語で話しかけるだけ！
 

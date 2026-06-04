@@ -1,0 +1,84 @@
+@AGENTS.md
+
+<!-- ▲ The line above imports AGENTS.md (project overview, directory map, component
+     responsibilities, dev conventions). Claude Code does NOT read AGENTS.md natively,
+     so this import is the bridge. Keep architecture facts in AGENTS.md; keep
+     Claude-Code-specific operational guidance below. Both load every session. -->
+
+# Claude Code — Pantheon operating guide
+
+Pantheon is a **Python 3.12 CLI + FastAPI backend + React 19 / Vite / TypeScript / Tailwind v4 frontend**.
+All "thinking"/generation runs through the **local `claude` CLI** (`core/runtime/claude_code.py`) —
+there are **NO hosted-LLM API keys** (legacy provider key fields in `main.py` / `web/server.py` are
+vestigial GUI compatibility, not a generation path). Authenticate once with `claude` itself.
+
+## Commands (Windows dev env — `python` & `node` are NOT on PATH by default)
+
+Backend (project venv at `.venv/`):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\ -q              # full backend suite
+.\.venv\Scripts\python.exe -m pytest tests\ --collect-only -q   # collection health only
+.\.venv\Scripts\python.exe -m pytest tests\test_web_server.py -q   # single file
+.\.venv\Scripts\python.exe -m ruff check .                  # lint (rules E,F,I; line-length 100; E501 ignored)
+.\.venv\Scripts\python.exe -m ruff check . --fix            # autofix imports/lint
+.\.venv\Scripts\python.exe -m ruff format .                 # format
+pantheon serve --port 7860                                  # run the app (FastAPI, serves web/dist)
+```
+
+Frontend (`web/frontend/`; Node v24 installed via winget — see `.claude/settings.local.json` `env.PATH`):
+
+```powershell
+npm test            # vitest run (jsdom + Testing Library)
+npm run build       # tsc -b && vite build  -> web/dist
+npm run dev         # vite dev server (proxies /api + /ws -> http://localhost:8000)
+```
+
+Bash-tool equivalents use forward slashes: `.venv/Scripts/python -m pytest tests/ -q`.
+
+## Test baseline — DO NOT treat these as regressions
+
+On Windows the full backend suite has **6 long-standing failures** unrelated to any change
+(verified against a clean tree). Only NEW failures beyond these count:
+
+- Path-separator (`\` vs `/`): `test_apply_local_change_writes_only_inside_repo`,
+  `test_repo_reader_finds_code_files`, `test_save_and_load_organization`, `test_dependency_graph_build`
+- POSIX `chmod 0o600` not honored on Windows: `test_get_settings_warns_on_open_permissions`,
+  `test_update_settings_sets_restrictive_permissions`
+
+Two tests are order-flaky (pass in isolation, fail only in full-suite runs):
+`test_backup_manager_cleanup_old`, `test_get_improvement_history`.
+
+## Git & commits
+
+- A **`Stop` hook auto-commits** the working tree each turn (`.claude/hooks/auto-commit.mjs`):
+  on `main`/`master` it first creates a `work/auto-<timestamp>` branch (never commits onto the
+  default branch), then commits with a `Co-Authored-By: Claude Opus 4.8` trailer and pushes if a
+  remote exists. Pushing/merging to `main` is a deliberate, user-triggered step.
+- When you create a commit yourself, end the message with:
+  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+
+## Non-negotiables (enforced by hooks, not just prose — see `.claude/settings.json`)
+
+- New Python files start with `from __future__ import annotations`.
+- Never `datetime.utcnow()` → use `datetime.now(timezone.utc)` (timezone-aware always).
+- Do not break full-suite collection/execution, and do not break the explicit 404 handling in `web/server.py`.
+- `SpecialistAgent.skills`: min 2, max 3.
+- State location: global → `~/.pantheon`; repo-specific → `<repo>/.pantheon`.
+- A `PreToolUse` guard blocks `rm -rf`, `git push --force`, and edits to `.env`/credential files.
+
+## `.claude/` tooling map (this repo's Claude Code customizations)
+
+> "Pantheon-agent/skill" = the app's *own* in-product framework (`agents/`, `core/intelligence`).
+> "CC-agent/skill/command" = the Claude Code helpers below. They are different things.
+
+- **Subagents** (`.claude/agents/`): `code-reviewer` (Opus, read-only), `test-triage`
+  (runs both suites, separates the 6 known failures from real regressions), `debugger`,
+  `frontend-dev`.
+- **Skills** (`.claude/skills/`): `run-pantheon` (launch recipe), `pantheon-agent`
+  (how to add a Pantheon-agent + skill correctly), `improvement-proposal-flow`,
+  `fastapi-endpoint` (add/modify a FastAPI route + test).
+- **Commands** (`.claude/commands/`): `/add-cli-command`, `/add-web-page`, `/triage-tests`.
+- **Rules** (`.claude/rules/`): path-scoped guidance for `*.py`, frontend, and `web/server.py`.
+- **MCP** (`.mcp.json`): Context7 (version-pinned docs) + Playwright (drive the frontend).
+- Full description: `docs/claude-code-setup.md`.

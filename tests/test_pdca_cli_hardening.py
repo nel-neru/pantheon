@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -43,40 +42,35 @@ def test_cmd_query_rejects_sql_like_filter(tmp_path, capsys):
     manager.close()
 
     with pytest.raises(SystemExit):
-        _run(cmd_query(SimpleNamespace(filter="WHERE priority='high'", limit=10, db_path=str(db_path))))
+        _run(
+            cmd_query(
+                SimpleNamespace(filter="WHERE priority='high'", limit=10, db_path=str(db_path))
+            )
+        )
 
     out = capsys.readouterr().out
     assert "key=value" in out
 
 
-def test_require_api_key_uses_gui_settings(monkeypatch, tmp_path):
+def test_require_api_key_passes_when_claude_available(monkeypatch):
     from main import _require_api_key
 
-    settings_file = tmp_path / "gui_settings.json"
-    settings_file.write_text(
-        json.dumps({"llm_provider": "openai", "openai_api_key": "sk-test"}),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr("main.SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("PANTHEON_DEFAULT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    # Pantheon uses no API keys; the gate now checks the local `claude` CLI backend.
+    monkeypatch.setattr("core.runtime.claude_code.claude_available", lambda: True)
 
-    _require_api_key("pantheon chat")
+    _require_api_key("pantheon chat")  # must not raise when the backend is available
 
 
-def test_require_api_key_prints_remediation(monkeypatch, tmp_path, capsys):
+def test_require_api_key_prints_remediation(monkeypatch, capsys):
     from main import _require_api_key
 
-    settings_file = tmp_path / "missing.json"
-    monkeypatch.setattr("main.SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("PANTHEON_DEFAULT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr("core.runtime.claude_code.claude_available", lambda: False)
 
     with pytest.raises(SystemExit):
         _require_api_key("pantheon goal run")
 
     out = capsys.readouterr().out
-    assert "ANTHROPIC_API_KEY" in out
+    assert "claude" in out.lower()
     assert "pantheon serve" in out
 
 
@@ -131,7 +125,10 @@ def test_cmd_approve_requires_confirmation(monkeypatch, tmp_path, capsys):
 
     monkeypatch.setattr("main._require_api_key", lambda _command: None)
     monkeypatch.setattr("main._get_psm", lambda: FakePSM())
-    monkeypatch.setattr("main._get_orchestrator", lambda: (_ for _ in ()).throw(AssertionError("orchestrator should not run")))
+    monkeypatch.setattr(
+        "main._get_orchestrator",
+        lambda: (_ for _ in ()).throw(AssertionError("orchestrator should not run")),
+    )
     monkeypatch.setattr("builtins.input", lambda _prompt: "n")
 
     _run(
@@ -153,6 +150,7 @@ def test_cmd_approve_requires_confirmation(monkeypatch, tmp_path, capsys):
 
 def test_main_import_does_not_create_event_loop(monkeypatch):
     import asyncio as asyncio_module
+
     import main
 
     calls: list[object] = []
@@ -160,7 +158,9 @@ def test_main_import_does_not_create_event_loop(monkeypatch):
     monkeypatch.setattr(
         asyncio_module,
         "new_event_loop",
-        lambda: (_ for _ in ()).throw(AssertionError("new_event_loop should not be used at import time")),
+        lambda: (_ for _ in ()).throw(
+            AssertionError("new_event_loop should not be used at import time")
+        ),
     )
 
     importlib.reload(main)
@@ -169,9 +169,10 @@ def test_main_import_does_not_create_event_loop(monkeypatch):
 
 
 def test_cmd_daemon_start_closes_log_handle(monkeypatch, tmp_path, capsys):
-    from main import cmd_daemon_start
-    import core.platform.state as platform_state_module
     import subprocess as subprocess_module
+
+    import core.platform.state as platform_state_module
+    from main import cmd_daemon_start
 
     captured: dict[str, object] = {}
 

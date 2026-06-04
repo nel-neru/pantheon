@@ -9,7 +9,7 @@ description = "個人開発者のための自己成長型 AI Organization プラ
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-keywords = ["ai", "agents", "code-review", "self-improvement", "llm"]
+keywords = ["ai", "agents", "code-review", "self-improvement", "claude-code"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -34,6 +34,7 @@ dependencies = [
 dev = [
     "pytest~=8.0",
     "pytest-asyncio~=0.23",
+    "ruff~=0.15",
 ]
 web = [
     "fastapi~=0.111",

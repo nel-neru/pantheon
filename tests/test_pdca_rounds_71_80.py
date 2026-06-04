@@ -5,12 +5,13 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace, ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from commands import build_parser
 from commands.doctor import cmd_doctor
+from commands.orchestration import cmd_agent_list
 from commands.org import cmd_org_show, cmd_proposal_apply, cmd_proposal_reject, cmd_proposal_show
 from commands.platform import (
     cmd_platform_backup,
@@ -19,7 +20,6 @@ from commands.platform import (
     cmd_platform_logs,
     cmd_platform_restore,
 )
-from commands.orchestration import cmd_agent_list
 from commands.version import get_version_string
 from core.ui.doc_generator import DocGenerator
 from core.ui.error_messages import ErrorMessageHelper
@@ -69,7 +69,9 @@ class FakePSM:
     def save_platform_config(self, config):
         self._config = dict(config)
         self.platform_home.mkdir(parents=True, exist_ok=True)
-        (self.platform_home / "platform.json").write_text(json.dumps(self._config), encoding="utf-8")
+        (self.platform_home / "platform.json").write_text(
+            json.dumps(self._config), encoding="utf-8"
+        )
 
 
 @pytest.mark.parametrize(
@@ -117,8 +119,12 @@ def test_org_show_proposal_show_and_reject(capsys, tmp_path):
         name="Planner",
         skills=[SimpleNamespace(value="strategic_planning"), SimpleNamespace(value="org_design")],
     )
-    team = SimpleNamespace(name="Core", division_type=SimpleNamespace(value="org_evolution"), agents=[agent])
-    division = SimpleNamespace(name="Evolution", type=SimpleNamespace(value="org_evolution"), teams=[team])
+    team = SimpleNamespace(
+        name="Core", division_type=SimpleNamespace(value="org_evolution"), agents=[agent]
+    )
+    division = SimpleNamespace(
+        name="Evolution", type=SimpleNamespace(value="org_evolution"), teams=[team]
+    )
     org = SimpleNamespace(
         name="Demo",
         id="org-1",
@@ -138,10 +144,20 @@ def test_org_show_proposal_show_and_reject(capsys, tmp_path):
     asyncio.run(cmd_org_show(SimpleNamespace(name="Demo"), get_psm=lambda: psm))
     assert "Organization 詳細" in capsys.readouterr().out
 
-    asyncio.run(cmd_proposal_show(SimpleNamespace(org_name="Demo", proposal_id="12345678"), get_psm=lambda: psm))
+    asyncio.run(
+        cmd_proposal_show(
+            SimpleNamespace(org_name="Demo", proposal_id="12345678"), get_psm=lambda: psm
+        )
+    )
     assert "提案詳細" in capsys.readouterr().out
 
-    asyncio.run(cmd_proposal_reject(SimpleNamespace(org_name="Demo", proposal_id="12345678", yes=True), confirm_action=lambda *a, **k: True, get_psm=lambda: psm))
+    asyncio.run(
+        cmd_proposal_reject(
+            SimpleNamespace(org_name="Demo", proposal_id="12345678", yes=True),
+            confirm_action=lambda *a, **k: True,
+            get_psm=lambda: psm,
+        )
+    )
     assert state_manager.status_updates[-1][1] == "rejected"
     assert "却下しました" in capsys.readouterr().out
 
@@ -169,7 +185,9 @@ def test_proposal_apply_updates_status_and_reports_branch(capsys, tmp_path):
     class FakeExecutor:
         async def run(self, task):
             assert task.task_type == "improvement_execution"
-            return SimpleNamespace(success=True, output={"branch": "pantheon/demo", "change_summary": "updated"})
+            return SimpleNamespace(
+                success=True, output={"branch": "pantheon/demo", "change_summary": "updated"}
+            )
 
     asyncio.run(
         cmd_proposal_apply(
@@ -194,13 +212,17 @@ def test_platform_config_logs_backup_restore(capsys, tmp_path):
     platform_home = tmp_path / ".pantheon"
     platform_home.mkdir()
     (platform_home / "daemon.log").write_text("one\ntwo\nthree\n", encoding="utf-8")
-    (platform_home / "scheduler_log.jsonl").write_text('{"cycle": 1}\n{"cycle": 2}\n', encoding="utf-8")
+    (platform_home / "scheduler_log.jsonl").write_text(
+        '{"cycle": 1}\n{"cycle": 2}\n', encoding="utf-8"
+    )
     state_file = platform_home / "platform.json"
     state_file.write_text("{}", encoding="utf-8")
     org = SimpleNamespace(name="Demo", target_repo_path=str(tmp_path / "repo"))
     psm = FakePSM(platform_home, org, FakeProposalStateManager([]))
 
-    asyncio.run(cmd_platform_config_set(SimpleNamespace(key="theme", value="dark"), get_psm=lambda: psm))
+    asyncio.run(
+        cmd_platform_config_set(SimpleNamespace(key="theme", value="dark"), get_psm=lambda: psm)
+    )
     asyncio.run(cmd_platform_config(SimpleNamespace(), get_psm=lambda: psm))
     assert "theme" in capsys.readouterr().out
 
@@ -209,7 +231,6 @@ def test_platform_config_logs_backup_restore(capsys, tmp_path):
     assert "three" in logs_output
     assert '{"cycle": 2}' in logs_output
 
-    backup_dir = platform_home / "backups"
     asyncio.run(cmd_platform_backup(SimpleNamespace(), get_psm=lambda: psm))
     state_file.write_text('{"theme": "light"}', encoding="utf-8")
     asyncio.run(cmd_platform_restore(SimpleNamespace(), get_psm=lambda: psm))
@@ -217,7 +238,10 @@ def test_platform_config_logs_backup_restore(capsys, tmp_path):
 
 
 def test_agent_list_and_doctor(capsys, monkeypatch, tmp_path):
-    agent = SimpleNamespace(name="Planner", skills=[SimpleNamespace(value="strategic_planning"), SimpleNamespace(value="org_design")])
+    agent = SimpleNamespace(
+        name="Planner",
+        skills=[SimpleNamespace(value="strategic_planning"), SimpleNamespace(value="org_design")],
+    )
     org = SimpleNamespace(name="Demo", get_all_agents=lambda: [agent])
     psm = FakePSM(tmp_path, org, FakeProposalStateManager([]))
 
@@ -226,7 +250,14 @@ def test_agent_list_and_doctor(capsys, monkeypatch, tmp_path):
 
     class FakeDoctor:
         def diagnose(self):
-            return [SimpleNamespace(issue_id="missing_backups_dir", severity="warning", description="missing", auto_fixable=True)]
+            return [
+                SimpleNamespace(
+                    issue_id="missing_backups_dir",
+                    severity="warning",
+                    description="missing",
+                    auto_fixable=True,
+                )
+            ]
 
         def fix_issues(self, issues):
             return len(issues)
@@ -271,7 +302,10 @@ def test_doc_generator_health_report_and_ui_helpers(tmp_path, monkeypatch):
     markdown = generator.generate_markdown(source)
     assert "# sample.py" in markdown and "function docs" in markdown
 
-    report = HealthReportGenerator().generate_weekly_report("Demo", {"health_score": 80, "proposals_count": 2, "accepted_count": 2, "knowledge_count": 5})
+    report = HealthReportGenerator().generate_weekly_report(
+        "Demo",
+        {"health_score": 80, "proposals_count": 2, "accepted_count": 2, "knowledge_count": 5},
+    )
     assert "Demo" in HealthReportGenerator().format_cli(report)
 
     approver = InteractiveApprover()
@@ -286,7 +320,15 @@ def test_doc_generator_health_report_and_ui_helpers(tmp_path, monkeypatch):
     assert I18n().t("status_healthy") == "Healthy"
 
     dashboard = RichDashboard(use_rich=False)
-    assert "health" in dashboard.render_org_summary({"name": "Demo", "health_score": 91, "proposal_count": 1, "agent_count": 2, "lifecycle_stage": "active"})
+    assert "health" in dashboard.render_org_summary(
+        {
+            "name": "Demo",
+            "health_score": 91,
+            "proposal_count": 1,
+            "agent_count": 2,
+            "lifecycle_stage": "active",
+        }
+    )
 
     wizard = SetupWizard()
     monkeypatch.setattr("core.ui.setup_wizard.get_platform_home", lambda: tmp_path)
@@ -294,9 +336,11 @@ def test_doc_generator_health_report_and_ui_helpers(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".pantheon").mkdir()
-    (tmp_path / "organizations" / "demo.json").write_text(json.dumps({"target_repo_path": str(repo)}), encoding="utf-8")
+    (tmp_path / "organizations" / "demo.json").write_text(
+        json.dumps({"target_repo_path": str(repo)}), encoding="utf-8"
+    )
     wizard_text = wizard.format_wizard_cli()
-    assert "API キー設定" in wizard_text
+    assert "Claude CLI 認証" in wizard_text
 
 
 def test_pr_creator_updates_existing_file(monkeypatch, tmp_path):
@@ -357,7 +401,11 @@ def test_pr_creator_updates_existing_file(monkeypatch, tmp_path):
             github_repo="owner/repo",
             file_path="src/app.py",
             modified_content="print('ok')",
-            suggestion={"title": "Improve cache", "description": "desc", "expected_impact": "faster"},
+            suggestion={
+                "title": "Improve cache",
+                "description": "desc",
+                "expected_impact": "faster",
+            },
         )
     )
     assert pr_url == "https://example.com/pr/1"

@@ -50,6 +50,11 @@ web/frontend/.vite/
 # Pantheon runtime state (per-repo): sessions, indexes, caches
 .pantheon/
 
+# Claude Code — share project config (.claude/settings.json, agents, skills,
+# commands, rules, hooks, .mcp.json) but keep personal/secret bits local.
+.claude/settings.local.json
+.claude/.credentials.json
+
 # Misc
 *.log
 *.bak

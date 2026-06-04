@@ -36,6 +36,6 @@ def register(subparsers: Any) -> None:
     status_parser = goal_sub.add_parser("status", help="達成済みゴールの履歴を表示")
     status_parser.set_defaults(handler_name="cmd_goal_status")
 
-    run_parser = goal_sub.add_parser("run", help="抽象ゴールを自律実行する（ANTHROPIC_API_KEY が必要）")
+    run_parser = goal_sub.add_parser("run", help="抽象ゴールを自律実行する（claude CLI が必要）")
     run_parser.add_argument("goal_text", help="実行するゴール文（例: 'ECサイトを作りたい'）")
     run_parser.set_defaults(handler_name="cmd_goal_run")

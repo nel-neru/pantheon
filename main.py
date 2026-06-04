@@ -24,11 +24,11 @@ from pathlib import Path
 
 from commands import build_parser
 from commands.chat import cmd_chat as _cmd_chat_impl
+from commands.doctor import cmd_doctor as _cmd_doctor_impl
 from commands.goal import cmd_goal_run as _cmd_goal_run_impl
 from commands.goal import cmd_goal_status as _cmd_goal_status_impl
-from commands.doctor import cmd_doctor as _cmd_doctor_impl
-from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
 from commands.orchestration import cmd_agent_list as _cmd_agent_list_impl
+from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
 from commands.orchestration import (
     cmd_orchestration_analyze as _cmd_orchestration_analyze_impl,
 )
@@ -44,8 +44,8 @@ from commands.org import cmd_approve as _cmd_approve_impl
 from commands.org import cmd_init as _cmd_init_impl
 from commands.org import cmd_org_add as _cmd_org_add_impl
 from commands.org import cmd_org_list as _cmd_org_list_impl
-from commands.org import cmd_org_show as _cmd_org_show_impl
 from commands.org import cmd_org_remove as _cmd_org_remove_impl
+from commands.org import cmd_org_show as _cmd_org_show_impl
 from commands.org import cmd_proposal_apply as _cmd_proposal_apply_impl
 from commands.org import cmd_proposal_reject as _cmd_proposal_reject_impl
 from commands.org import cmd_proposal_show as _cmd_proposal_show_impl
@@ -58,9 +58,9 @@ from commands.platform import cmd_platform_backup as _cmd_platform_backup_impl
 from commands.platform import cmd_platform_config as _cmd_platform_config_impl
 from commands.platform import cmd_platform_config_set as _cmd_platform_config_set_impl
 from commands.platform import cmd_platform_logs as _cmd_platform_logs_impl
+from commands.platform import cmd_platform_restore as _cmd_platform_restore_impl
 from commands.platform import cmd_platform_run_all as _cmd_platform_run_all_impl
 from commands.platform import cmd_platform_status as _cmd_platform_status_impl
-from commands.platform import cmd_platform_restore as _cmd_platform_restore_impl
 from commands.platform import cmd_serve as _cmd_serve_impl
 from commands.version import cmd_version as _cmd_version_impl
 from core.platform.state import PlatformStateManager
@@ -91,7 +91,9 @@ def _get_orchestrator():
 
 def _filter_proficiency_data_by_org(data: dict, org_name: str) -> dict:
     org_bucket = data.get(org_name)
-    if isinstance(org_bucket, dict) and all(isinstance(value, dict) for value in org_bucket.values()):
+    if isinstance(org_bucket, dict) and all(
+        isinstance(value, dict) for value in org_bucket.values()
+    ):
         return org_bucket
 
     org_name_cf = org_name.casefold()
@@ -146,23 +148,30 @@ def _load_gui_settings() -> dict:
 
 def _resolve_llm_provider() -> str:
     settings = _load_gui_settings()
-    provider = os.getenv("PANTHEON_DEFAULT_LLM_PROVIDER") or settings.get("llm_provider", "anthropic")
+    provider = os.getenv("PANTHEON_DEFAULT_LLM_PROVIDER") or settings.get(
+        "llm_provider", "anthropic"
+    )
     return provider if provider in _PROVIDER_KEY_MAPPING else "anthropic"
 
 
 def _require_api_key(command_name: str) -> None:
-    provider = _resolve_llm_provider()
-    settings_key, env_var = _PROVIDER_KEY_MAPPING[provider]
-    settings = _load_gui_settings()
-    configured_key = os.getenv(env_var) or settings.get(settings_key, "")
-    if configured_key:
+    """Ensure the local ``claude`` CLI backend is usable.
+
+    Pantheon uses **no hosted-LLM API keys** — all generation runs through the local
+    ``claude`` CLI (``core.runtime.claude_code``). The historical name is kept because
+    call sites pass this as ``require_api_key=``; it now checks the CLI, not an API key.
+    """
+    from core.runtime.claude_code import claude_available
+
+    if claude_available():
         return
 
-    print(f"[ERROR] {command_name} の実行には {env_var} が必要です。")
-    print(f"   現在の LLM プロバイダー: {provider}")
+    print(f"[ERROR] {command_name} の実行には Claude Code CLI が必要です。")
+    print("   Pantheon は API キーを使いません。ローカルの `claude` CLI を利用します。")
     print("   対応方法:")
-    print(f"   1. export {env_var}=your-api-key")
-    print("   2. または pantheon serve で GUI を開き、Settings から API キーを保存")
+    print("   1. `claude` をインストールし、一度 `claude` を実行してログインする")
+    print("   2. または PANTHEON_CLAUDE_BIN で claude バイナリのパスを指定する")
+    print("   3. GUI から確認する場合は pantheon serve を実行する")
     sys.exit(1)
 
 
@@ -181,7 +190,9 @@ def _parse_query_filters(raw_filter: str) -> dict[str, str]:
     if not filter_text:
         return {}
     if any(token in filter_text for token in (";", "--", "/*", "*/")):
-        raise ValueError("--filter には SQL 構文を含められません。key=value[,key=value] 形式を使ってください。")
+        raise ValueError(
+            "--filter には SQL 構文を含められません。key=value[,key=value] 形式を使ってください。"
+        )
 
     filters: dict[str, str] = {}
     for clause in filter_text.split(","):
@@ -257,7 +268,9 @@ async def cmd_proposal_apply(args) -> None:
 
 
 async def cmd_query(args) -> None:
-    await _cmd_query_impl(args, get_platform_home=_get_platform_home, parse_query_filters=_parse_query_filters)
+    await _cmd_query_impl(
+        args, get_platform_home=_get_platform_home, parse_query_filters=_parse_query_filters
+    )
 
 
 async def cmd_approve(args) -> None:
@@ -303,7 +316,9 @@ def cmd_serve(args) -> None:
 
 
 async def cmd_daemon_start(args) -> None:
-    await _cmd_daemon_start_impl(args, get_platform_home=_get_platform_home, project_root=PROJECT_ROOT)
+    await _cmd_daemon_start_impl(
+        args, get_platform_home=_get_platform_home, project_root=PROJECT_ROOT
+    )
 
 
 def cmd_daemon_stop(args) -> None:
@@ -364,31 +379,37 @@ async def cmd_version(args) -> None:
 
 async def cmd_session_start(args) -> None:
     from commands.session import cmd_session_start as _impl
+
     await _impl(args)
 
 
 async def cmd_session_list(args) -> None:
     from commands.session import cmd_session_list as _impl
+
     await _impl(args)
 
 
 async def cmd_session_show(args) -> None:
     from commands.session import cmd_session_show as _impl
+
     await _impl(args)
 
 
 async def cmd_session_stop(args) -> None:
     from commands.session import cmd_session_stop as _impl
+
     await _impl(args)
 
 
 async def cmd_session_resume(args) -> None:
     from commands.session import cmd_session_resume as _impl
+
     await _impl(args)
 
 
 async def cmd_session_doctor(args) -> None:
     from commands.session import cmd_session_doctor as _impl
+
     await _impl(args)
 
 

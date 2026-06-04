@@ -28,7 +28,9 @@ from core.ui.setup_wizard import SetupWizard
 
 def test_interactive_approver_format_list():
     approver = InteractiveApprover()
-    text = approver.list_pending_proposals([{"title": "Fix", "priority": "high", "category": "security"}])
+    text = approver.list_pending_proposals(
+        [{"title": "Fix", "priority": "high", "category": "security"}]
+    )
     assert "1. Fix" in text
 
 
@@ -41,12 +43,15 @@ def test_interactive_approver_parse_reject():
 
 
 def test_health_report_generator_weekly():
-    report = HealthReportGenerator().generate_weekly_report("Org", {
-        "health_score": 60,
-        "proposals_count": 12,
-        "accepted_count": 3,
-        "knowledge_count": 1,
-    })
+    report = HealthReportGenerator().generate_weekly_report(
+        "Org",
+        {
+            "health_score": 60,
+            "proposals_count": 12,
+            "accepted_count": 3,
+            "knowledge_count": 1,
+        },
+    )
     assert report.org_name == "Org"
     assert report.issues
 
@@ -54,12 +59,12 @@ def test_health_report_generator_weekly():
 def test_setup_wizard_get_steps():
     steps = SetupWizard().get_steps()
     assert len(steps) == 4
-    assert steps[0].title == "API キー設定"
+    assert steps[0].title == "Claude CLI 認証"
 
 
 def test_error_message_helper_format():
     text = ErrorMessageHelper().format_error("MISSING_API_KEY")
-    assert "ANTHROPIC_API_KEY" in text
+    assert "claude" in text.lower()
 
 
 def test_error_message_wrap_exception():
@@ -92,7 +97,9 @@ def test_save_100_proposals_performance(tmp_path):
     manager = SQLiteStateManager(tmp_path / "state.db")
     for i in range(100):
         manager.save_improvement_proposal(
-            ImprovementProposal(review_id=uuid4(), title=f"P{i}", description="d", file_path=f"core/{i}.py")
+            ImprovementProposal(
+                review_id=uuid4(), title=f"P{i}", description="d", file_path=f"core/{i}.py"
+            )
         )
     assert len(manager.get_pending_improvement_proposals(limit=100)) == 100
 
@@ -102,12 +109,18 @@ def test_concurrent_writes_sqlite(tmp_path):
 
     async def run_writes():
         loop = asyncio.get_running_loop()
-        await asyncio.gather(*[
-            loop.run_in_executor(None, manager.save_improvement_proposal, ImprovementProposal(
-                review_id=uuid4(), title=f"P{i}", description="d", file_path=f"core/{i}.py"
-            ))
-            for i in range(20)
-        ])
+        await asyncio.gather(
+            *[
+                loop.run_in_executor(
+                    None,
+                    manager.save_improvement_proposal,
+                    ImprovementProposal(
+                        review_id=uuid4(), title=f"P{i}", description="d", file_path=f"core/{i}.py"
+                    ),
+                )
+                for i in range(20)
+            ]
+        )
 
     asyncio.run(run_writes())
     assert len(manager.get_pending_improvement_proposals(limit=30)) == 20
@@ -221,7 +234,10 @@ def test_load_balancer_least_loaded():
 
 
 def test_health_report_cli_format():
-    report = HealthReportGenerator().generate_weekly_report("Org", {"health_score": 90, "proposals_count": 1, "accepted_count": 1, "knowledge_count": 10})
+    report = HealthReportGenerator().generate_weekly_report(
+        "Org",
+        {"health_score": 90, "proposals_count": 1, "accepted_count": 1, "knowledge_count": 10},
+    )
     assert "週次健康診断レポート" in HealthReportGenerator().format_cli(report)
 
 

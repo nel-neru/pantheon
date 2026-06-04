@@ -26,18 +26,21 @@ python -m pip install -r requirements.txt
 
 ## 初期設定
 
+Pantheon は **API キーを使いません**。すべての生成はローカルの `claude` CLI（Claude Code）経由で実行されます。初回のみ `claude` で認証してください。
+
+```bash
+claude        # 初回のみ: ログイン（以後は認証情報が再利用されます）
+```
+
+任意の上書き設定が必要な場合のみ `.env` を作成します（詳細は `.env.example`）。
+
 ```bash
 cp .env.example .env
 ```
 
-`.env` には少なくとも 1 つの LLM プロバイダーのキーを入れてください。
-
-- Anthropic: `ANTHROPIC_API_KEY`
-- OpenAI: `OPENAI_API_KEY`
-- Groq: `GROQ_API_KEY`
-- Gemini: `GOOGLE_API_KEY`
-
-GitHub 連携や PR 作成を使う場合は `GITHUB_TOKEN` も設定します。
+- `PANTHEON_CLAUDE_BIN` — `claude` バイナリのパス/名前の上書き（既定: `claude`）
+- `PANTHEON_DEFAULT_MODEL` — ヘッドレス生成のモデル指定（空なら claude の既定）
+- `GITHUB_TOKEN` — GitHub 連携や PR 作成を使う場合のみ
 
 ## クイックスタート
 

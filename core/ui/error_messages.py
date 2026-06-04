@@ -4,12 +4,11 @@ ErrorMessageHelper — ユーザーフレンドリーエラーメッセージ (I
 
 from __future__ import annotations
 
-
 ERROR_MESSAGES: dict[str, dict] = {
     "MISSING_API_KEY": {
-        "message": "ANTHROPIC_API_KEY が未設定です。",
-        "help": ".env ファイルに ANTHROPIC_API_KEY=sk-... を追加してください。",
-        "docs": "https://console.anthropic.com/ でAPIキーを取得できます。",
+        "message": "Claude Code CLI が見つかりません。",
+        "help": "`claude` をインストールし、一度 `claude` を実行してログインしてください。",
+        "docs": "Pantheon は API キーを使いません（ローカルの claude CLI を使用します）。",
     },
     "ORG_NOT_FOUND": {
         "message": "組織が見つかりません。",
