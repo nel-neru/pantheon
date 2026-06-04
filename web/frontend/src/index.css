@@ -2945,3 +2945,33 @@ summary:focus-visible {
     width: 100vw;
   }
 }
+
+/* Work board (Kanban) */
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.board-column {
+  min-height: 120px;
+}
+.board-card {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--color-surface-2, rgba(255, 255, 255, 0.02));
+}
+.board-card + .board-card {
+  margin-top: 2px;
+}
+@media (max-width: 1024px) {
+  .board-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .board-grid {
+    grid-template-columns: 1fr;
+  }
+}

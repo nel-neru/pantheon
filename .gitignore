@@ -47,8 +47,9 @@ node_modules/
 web/frontend/dist/
 web/frontend/.vite/
 
-# RepoCorp runtime state (per-repo)
+# Pantheon / RepoCorp runtime state (per-repo): sessions, indexes, caches
 .repocorp/
+.pantheon/
 
 # Misc
 *.log

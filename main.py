@@ -362,6 +362,36 @@ async def cmd_version(args) -> None:
     await _cmd_version_impl(args)
 
 
+async def cmd_session_start(args) -> None:
+    from commands.session import cmd_session_start as _impl
+    await _impl(args)
+
+
+async def cmd_session_list(args) -> None:
+    from commands.session import cmd_session_list as _impl
+    await _impl(args)
+
+
+async def cmd_session_show(args) -> None:
+    from commands.session import cmd_session_show as _impl
+    await _impl(args)
+
+
+async def cmd_session_stop(args) -> None:
+    from commands.session import cmd_session_stop as _impl
+    await _impl(args)
+
+
+async def cmd_session_resume(args) -> None:
+    from commands.session import cmd_session_resume as _impl
+    await _impl(args)
+
+
+async def cmd_session_doctor(args) -> None:
+    from commands.session import cmd_session_doctor as _impl
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
@@ -397,6 +427,12 @@ HANDLERS = {
     "cmd_agent_list": cmd_agent_list,
     "cmd_goal_status": cmd_goal_status,
     "cmd_goal_run": cmd_goal_run,
+    "cmd_session_start": cmd_session_start,
+    "cmd_session_list": cmd_session_list,
+    "cmd_session_show": cmd_session_show,
+    "cmd_session_stop": cmd_session_stop,
+    "cmd_session_resume": cmd_session_resume,
+    "cmd_session_doctor": cmd_session_doctor,
 }
 
 

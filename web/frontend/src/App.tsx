@@ -16,6 +16,8 @@ import {
   Settings,
   Sun,
   Target,
+  Boxes,
+  KanbanSquare,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -30,8 +32,10 @@ import { DataPage } from '@/pages/DataPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { GoalsPage } from '@/pages/GoalsPage'
 import { HelpPage } from '@/pages/HelpPage'
+import { BoardPage } from '@/pages/BoardPage'
 import { OrgsPage } from '@/pages/OrgsPage'
 import { ProposalsPage } from '@/pages/ProposalsPage'
+import { SessionsPage } from '@/pages/SessionsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 
 type NavItem = {
@@ -57,6 +61,8 @@ const navItems: NavItem[] = [
   { to: '/goals', label: 'ゴール', icon: Target },
   { to: '/proposals', label: '改善提案', icon: Lightbulb },
   { to: '/agents', label: 'エージェント', icon: Bot },
+  { to: '/sessions', label: 'セッション', icon: Boxes },
+  { to: '/board', label: '作業ボード', icon: KanbanSquare },
   { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
   { to: '/data', label: 'データ管理', icon: Database },
   { to: '/settings', label: '設定', icon: Settings },
@@ -402,6 +408,8 @@ export default function App() {
         <Route path="/analyze" element={<AnalyzePage />} />
         <Route path="/goals" element={<GoalsPage />} />
         <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/sessions" element={<SessionsPage />} />
+        <Route path="/board" element={<BoardPage />} />
         <Route path="/data" element={<DataPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/help" element={<HelpPage />} />

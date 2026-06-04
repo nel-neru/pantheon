@@ -715,22 +715,21 @@ def test_update_settings_saves_to_file(tmp_path, monkeypatch):
     assert isinstance(saved["policy_rules"], dict)
 
 
-def test_update_settings_sets_env_vars(tmp_path, monkeypatch):
-    """設定更新が環境変数にも即時反映されること"""
+def test_update_settings_persists_model(tmp_path, monkeypatch):
+    """設定更新（モデル）が保存されること。Pantheon は Claude Code 前提で API キーは扱わない。"""
     settings_file = tmp_path / "settings.json"
     monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("REPOCORP_DEFAULT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     response = client.put(
         "/api/settings",
-        json={"anthropic_api_key": "secret-key-1234"},
+        json={"llm_model": "claude-opus-4-8"},
     )
 
     assert response.status_code == 200
-    assert response.json() == {"status": "saved", "has_llm": True}
-    assert server.os.environ["ANTHROPIC_API_KEY"] == "secret-key-1234"
-    assert json.loads(settings_file.read_text(encoding="utf-8"))["anthropic_api_key"] == "secret-key-1234"
+    body = response.json()
+    assert body["status"] == "saved"
+    assert "has_llm" in body
+    assert json.loads(settings_file.read_text(encoding="utf-8"))["llm_model"] == "claude-opus-4-8"
 
 
 
@@ -748,34 +747,20 @@ def test_update_settings_sets_restrictive_permissions(tmp_path, monkeypatch):
 
 
 
-def test_settings_github_models_provider(tmp_path, monkeypatch):
-    """github_models プロバイダーが設定に保存・取得できること"""
+def test_settings_roundtrip_is_claude_code_only(tmp_path, monkeypatch):
+    """設定は Claude Code 前提（マルチプロバイダ / API キー UI は廃止）。"""
     settings_file = tmp_path / "settings.json"
     monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
-    response = client.put(
-        "/api/settings",
-        json={
-            "llm_provider": "github_models",
-            "llm_model": "gpt-4o",
-            "github_models_api_key": "ghp_test_token_1234",
-        },
-    )
-
+    response = client.put("/api/settings", json={"llm_model": "claude-sonnet-4-6"})
     assert response.status_code == 200
-    assert response.json() == {"status": "saved", "has_llm": True}
-    assert server.os.environ["GITHUB_TOKEN"] == "ghp_test_token_1234"
 
     get_response = client.get("/api/settings")
     assert get_response.status_code == 200
     data = get_response.json()
-    assert data["llm_provider"] == "github_models"
-    assert data["llm_model"] == "gpt-4o"
-    assert data["github_models_api_key_set"] is True
-    assert data["github_models_api_key_masked"] == "ghp_test...1234"
-    assert json.loads(settings_file.read_text(encoding="utf-8"))["github_models_api_key"] == "ghp_test_token_1234"
+    assert data["llm_model"] == "claude-sonnet-4-6"
+    # has_llm reflects the local claude CLI (disabled in tests via PANTHEON_NO_CLAUDE).
+    assert isinstance(data["has_llm"], bool)
 
 
 
@@ -819,92 +804,16 @@ def test_get_task_not_found(tmp_path, monkeypatch):
 
 
 
-def test_get_provider_models_anthropic_fallback(tmp_path, monkeypatch):
-    """APIキーなしの場合はフォールバックリストが返ることを確認"""
-    _reset_provider_model_state(tmp_path, monkeypatch)
-
-    response = client.get("/api/providers/anthropic/models")
+def test_get_provider_models_returns_claude_models(tmp_path, monkeypatch):
+    """API 排除後はプロバイダに関わらず Claude Code のモデル一覧を返す。"""
+    response = client.get("/api/providers/anything/models")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["provider"] == "anthropic"
+    assert data["provider"] == "claude_code"
     assert len(data["models"]) > 0
-    assert data["source"] in ("fallback", "cache", "api")
-
-
-
-def test_get_provider_models_openai_fallback(tmp_path, monkeypatch):
-    _reset_provider_model_state(tmp_path, monkeypatch)
-
-    response = client.get("/api/providers/openai/models")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["provider"] == "openai"
-    assert len(data["models"]) > 0
-
-
-
-def test_get_provider_models_groq_fallback(tmp_path, monkeypatch):
-    _reset_provider_model_state(tmp_path, monkeypatch)
-
-    response = client.get("/api/providers/groq/models")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["provider"] == "groq"
-    assert len(data["models"]) > 0
-
-
-
-def test_get_provider_models_github_models_fallback(tmp_path, monkeypatch):
-    _reset_provider_model_state(tmp_path, monkeypatch)
-
-    response = client.get("/api/providers/github_models/models")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["provider"] == "github_models"
-    assert len(data["models"]) > 0
-
-
-
-def test_get_provider_models_gemini_fallback(tmp_path, monkeypatch):
-    """APIキーなしの場合はフォールバックリストが返ることを確認"""
-    _reset_provider_model_state(tmp_path, monkeypatch)
-
-    response = client.get("/api/providers/gemini/models")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["provider"] == "gemini"
-    assert len(data["models"]) > 0
-    assert any("gemini" in model for model in data["models"])
-
-
-
-def test_get_provider_models_unknown(tmp_path, monkeypatch):
-    _reset_provider_model_state(tmp_path, monkeypatch)
-
-    response = client.get("/api/providers/unknown_provider/models")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["provider"] == "unknown_provider"
-    assert data["models"] == []
-    assert data["source"] == "unknown"
-
-
-
-def test_get_provider_models_uses_cache(tmp_path, monkeypatch):
-    _reset_provider_model_state(tmp_path, monkeypatch)
-
-    first = client.get("/api/providers/openai/models")
-    second = client.get("/api/providers/openai/models")
-
-    assert first.status_code == 200
-    assert second.status_code == 200
-    assert second.json()["source"] == "cache"
+    assert any("claude" in model for model in data["models"])
+    assert data["source"] in ("claude-code", "unavailable")
 
 
 

@@ -770,9 +770,10 @@ def _task_queue():
 
 
 def _has_llm(settings: Dict[str, Any] | None = None) -> bool:
-    s = settings or _load_gui_settings()
-    provider = s.get("llm_provider", os.getenv("REPOCORP_DEFAULT_LLM_PROVIDER", "anthropic"))
-    return bool(_get_provider_api_key(s, provider))
+    # Pantheon's only execution backend is the local Claude Code CLI.
+    from core.runtime.claude_code import claude_available
+
+    return claude_available()
 
 
 
@@ -1857,6 +1858,126 @@ async def api_cancel_task(task_id: str) -> Dict[str, Any]:
     return {"status": "cancelled", "task_id": task_id}
 
 
+# --------------------------------------------------------------------------- #
+# Sessions — wmux/headless agent orchestration (AI operation dashboard)         #
+# --------------------------------------------------------------------------- #
+def _session_orchestrator(prefer: str | None = None):
+    from core.runtime.session_orchestrator import SessionOrchestrator
+
+    return SessionOrchestrator(repo_root=PROJECT_ROOT, prefer=prefer)
+
+
+class SessionAgentRequest(ApiRequestModel):
+    agent_id: str = Field(max_length=120)
+    title: str = Field(max_length=120)
+    prompt: str = Field(max_length=20000)
+    system_prompt: str | None = Field(default=None, max_length=20000)
+    model: str | None = Field(default=None, max_length=120)
+    role: str = Field(default="agent", max_length=64)
+
+
+class SessionStartRequest(ApiRequestModel):
+    name: str = Field(max_length=120)
+    prefer: Literal["wmux", "cmux", "headless"] | None = None
+    agents: List[SessionAgentRequest] = Field(default_factory=list)
+
+
+@app.get("/api/sessions", tags=["sessions"])
+async def api_list_sessions() -> Dict[str, Any]:
+    """All Pantheon sessions (session = workspace group, agent = surface/tab)."""
+    orch = _session_orchestrator()
+    sessions = [rec.to_dict() for rec in orch.list_sessions()]
+    return {"sessions": sessions, "count": len(sessions)}
+
+
+@app.get("/api/sessions/runtime", tags=["sessions"])
+async def api_sessions_runtime() -> Dict[str, Any]:
+    """Live runtime status: claude CLI + multiplexer (wmux/cmux/headless)."""
+    from core.runtime.claude_code import claude_available, claude_binary
+    from core.runtime.multiplexer import get_driver
+    from core.runtime.multiplexer.wmux_rpc import (
+        WmuxClient, WmuxNotConfirmedError, is_wmux_running,
+    )
+
+    wmux_state = "not-running"
+    if is_wmux_running():
+        try:
+            WmuxClient().verify()
+            wmux_state = "connected"
+        except WmuxNotConfirmedError:
+            wmux_state = "awaiting-approval"
+        except Exception:
+            wmux_state = "error"
+    try:
+        driver_name = get_driver().name
+    except Exception:
+        driver_name = "headless"
+    return {
+        "claude": {"available": claude_available(), "binary": claude_binary()},
+        "wmux": {"running": is_wmux_running(), "state": wmux_state},
+        "driver": driver_name,
+    }
+
+
+@app.get("/api/sessions/{session_id}", tags=["sessions"])
+async def api_get_session(session_id: str) -> Dict[str, Any]:
+    orch = _session_orchestrator()
+    rec = orch.poll_session(session_id) or orch.get_session(session_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    return rec.to_dict()
+
+
+@app.get("/api/sessions/{session_id}/agents/{agent_id}/log", tags=["sessions"])
+async def api_get_session_agent_log(session_id: str, agent_id: str, tail: int = 8000) -> Dict[str, Any]:
+    orch = _session_orchestrator()
+    rec = orch.get_session(session_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    return {"session_id": session_id, "agent_id": agent_id,
+            "log": orch.agent_log(session_id, agent_id, tail=tail)}
+
+
+@app.post("/api/sessions", tags=["sessions"])
+async def api_start_session(body: SessionStartRequest) -> Dict[str, Any]:
+    from core.runtime.session_orchestrator import AgentTask, demo_tasks
+
+    orch = _session_orchestrator(prefer=body.prefer)
+    if body.agents:
+        tasks = [AgentTask(agent_id=a.agent_id, title=a.title, prompt=a.prompt,
+                           system_prompt=a.system_prompt, model=a.model, role=a.role)
+                 for a in body.agents]
+    else:
+        tasks = demo_tasks()
+    rec = await asyncio.to_thread(orch.start_session, body.name, tasks)
+    await _updates_hub.broadcast({
+        "type": "session_started", "session_id": rec.id, "name": rec.name,
+        "driver": rec.driver, "agents": len(rec.surfaces),
+    })
+    return rec.to_dict()
+
+
+@app.post("/api/sessions/{session_id}/stop", tags=["sessions"])
+async def api_stop_session(session_id: str) -> Dict[str, Any]:
+    orch = _session_orchestrator()
+    rec = await asyncio.to_thread(orch.stop_session, session_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    await _updates_hub.broadcast({"type": "session_stopped", "session_id": session_id})
+    return rec.to_dict()
+
+
+@app.post("/api/sessions/{session_id}/resume", tags=["sessions"])
+async def api_resume_session(session_id: str, force: bool = False) -> Dict[str, Any]:
+    """Resume agents that hit a Claude usage limit (auto when the window reopens)."""
+    orch = _session_orchestrator()
+    rec = await asyncio.to_thread(orch.resume_session, session_id, force=force)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    await _updates_hub.broadcast({"type": "session_resumed", "session_id": session_id})
+    return rec.to_dict()
+
+
 class SettingsUpdateRequest(ApiRequestModel):
     llm_provider: str | None = Field(default=None, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
     llm_model: str | None = Field(default=None, max_length=120)
@@ -2013,102 +2134,34 @@ async def api_update_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     return {"status": "saved", "has_llm": _has_llm(s)}
 
 
+#: Claude model ids the local Claude Code CLI can target (Pantheon is
+#: Claude-Code-only; there are no hosted-provider model lists).
+CLAUDE_MODELS = [
+    "claude-opus-4-8",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+]
+
+
 @app.get(
     "/api/providers/{provider}/models",
     response_model=ProviderModelsResponse,
     tags=["settings"],
-    responses={200: {"content": {"application/json": {"example": PROVIDER_MODELS_EXAMPLE}}}},
 )
 async def get_provider_models(provider: str) -> Dict[str, Any]:
-    """プロバイダーから利用可能なモデル一覧を取得する。"""
-    cached = _get_cached_models(provider)
-    if cached is not None:
-        return {"provider": provider, "models": cached, "source": "cache"}
+    """Pantheon runs exclusively through the local Claude Code CLI, so there are
+    no hosted-provider model lists. Return the Claude models the CLI can target."""
+    from core.runtime.claude_code import claude_available
 
-    if provider not in FALLBACK_MODELS:
-        return {"provider": provider, "models": [], "source": "unknown"}
-
-    settings = _load_gui_settings()
-    models: list[str] | None = None
-    source = "fallback"
-
-    try:
-        if provider == "anthropic":
-            api_key = _get_provider_api_key(settings, provider)
-            if api_key:
-                import anthropic
-
-                client = anthropic.Anthropic(api_key=api_key)
-                response = client.models.list(limit=100)
-                models = sorted(model.id for model in response.data if getattr(model, "id", ""))
-                source = "api"
-
-        elif provider == "openai":
-            api_key = _get_provider_api_key(settings, provider)
-            if api_key:
-                from openai import OpenAI
-
-                client = OpenAI(api_key=api_key)
-                response = client.models.list()
-                models = sorted(
-                    model.id
-                    for model in response.data
-                    if getattr(model, "id", "").startswith(("gpt-", "o1", "o3", "o4"))
-                    and "instruct" not in model.id
-                    and "audio" not in model.id
-                    and "vision" not in model.id
-                )
-                source = "api"
-
-        elif provider == "groq":
-            api_key = _get_provider_api_key(settings, provider)
-            if api_key:
-                from openai import OpenAI
-
-                client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
-                response = client.models.list()
-                models = sorted(model.id for model in response.data if getattr(model, "id", ""))
-                source = "api"
-
-        elif provider == "github_models":
-            github_token = _get_provider_api_key(settings, provider)
-            if github_token:
-                import httpx
-
-                response = httpx.get(
-                    "https://models.inference.ai.azure.com/models",
-                    headers={"Authorization": f"Bearer {github_token}"},
-                    timeout=10,
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    items = data if isinstance(data, list) else data.get("data", [])
-                    models = sorted(
-                        item.get("id", item.get("name", ""))
-                        for item in items
-                        if isinstance(item, dict) and (item.get("id") or item.get("name"))
-                    )
-                    source = "api"
-
-        elif provider == "gemini":
-            api_key = _get_provider_api_key(settings, provider)
-            if api_key:
-                from core.llm.gemini_provider import GeminiProvider
-
-                fetched = GeminiProvider.list_models(api_key)
-                if fetched:
-                    models = fetched
-                    source = "api"
-
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to fetch models for %s: %s", provider, exc)
-
-    if not models:
-        models = list(FALLBACK_MODELS.get(provider, []))
-        source = "fallback"
-
-    _set_cached_models(provider, models)
-    return {"provider": provider, "models": models, "source": source}
+    models = list(CLAUDE_MODELS)
+    default = os.getenv("PANTHEON_DEFAULT_MODEL")
+    if default and default not in models:
+        models.insert(0, default)
+    return {
+        "provider": "claude_code",
+        "models": models,
+        "source": "claude-code" if claude_available() else "unavailable",
+    }
 
 
 @app.get("/api/organizations")
