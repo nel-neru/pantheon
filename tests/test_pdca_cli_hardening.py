@@ -114,9 +114,14 @@ def test_cmd_approve_requires_confirmation(monkeypatch, tmp_path, capsys):
         def update_proposal_status(self, proposal_id, status):
             status_updates.append((proposal_id, status))
 
-    fake_org = SimpleNamespace(name="DemoOrg", target_repo_path=str(tmp_path))
+        def update_proposal_fields(self, proposal_id, **updates):
+            return True
+
+    fake_org = SimpleNamespace(name="DemoOrg", target_repo_path=str(tmp_path), github_repo=None)
 
     class FakePSM:
+        platform_home = tmp_path
+
         def load_organization_by_name(self, name):
             return fake_org
 

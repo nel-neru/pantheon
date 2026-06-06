@@ -6,12 +6,11 @@ PlatformStateManager を使ってプラットフォーム全体を管理する F
 
 from __future__ import annotations
 
-import base64
 import asyncio
+import base64
 import colorsys
 import hashlib
 import json
-from copy import deepcopy
 import logging
 import os
 import signal
@@ -19,6 +18,7 @@ import stat
 import subprocess
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Literal
@@ -32,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.models.organization import ImprovementProposal, is_active_improvement_proposal_status
 from core.platform.state import PlatformStateManager, get_platform_home
-from core.policy.engine import DEFAULT_POLICY
+from core.policy.engine import DEFAULT_POLICY, ApprovalDecision, PolicyEngine
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Pantheon Platform", version="2.0.0")
@@ -159,7 +159,11 @@ app.add_middleware(
 
 # Serve React build (dist/) when available, fallback to legacy static/
 _serve_dir = DIST_DIR if DIST_DIR.is_dir() else STATIC_DIR
-app.mount("/assets", StaticFiles(directory=_serve_dir / "assets" if (DIST_DIR / "assets").is_dir() else STATIC_DIR), name="assets")
+app.mount(
+    "/assets",
+    StaticFiles(directory=_serve_dir / "assets" if (DIST_DIR / "assets").is_dir() else STATIC_DIR),
+    name="assets",
+)
 
 
 def _warn_if_settings_permissions_too_open(path: Path) -> None:
@@ -177,7 +181,6 @@ def _warn_if_settings_permissions_too_open(path: Path) -> None:
         )
 
 
-
 def _set_settings_file_permissions(path: Path) -> None:
     if os.name == "nt" or not path.exists():
         return
@@ -185,7 +188,6 @@ def _set_settings_file_permissions(path: Path) -> None:
         path.chmod(0o600)
     except OSError as exc:
         logger.warning("Failed to set restrictive permissions on %s: %s", path, exc)
-
 
 
 def _load_gui_settings() -> Dict[str, Any]:
@@ -197,7 +199,13 @@ def _load_gui_settings() -> Dict[str, Any]:
             loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
             if isinstance(loaded, dict):
                 merged = deepcopy(defaults)
-                merged.update({k: v for k, v in loaded.items() if k not in {"model_configurations", "prompt_templates", "policy_rules"}})
+                merged.update(
+                    {
+                        k: v
+                        for k, v in loaded.items()
+                        if k not in {"model_configurations", "prompt_templates", "policy_rules"}
+                    }
+                )
                 for key in ("model_configurations", "prompt_templates", "policy_rules"):
                     value = loaded.get(key)
                     if isinstance(value, dict):
@@ -214,10 +222,8 @@ def _save_gui_settings(data: Dict[str, Any]) -> None:
     _set_settings_file_permissions(SETTINGS_FILE)
 
 
-
 def _ensure_chat_sessions_dir() -> None:
     CHAT_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-
 
 
 def _get_session_path(session_id: str) -> Path:
@@ -230,14 +236,12 @@ def _get_session_path(session_id: str) -> Path:
     return path
 
 
-
 def _load_session(session_id: str) -> dict[str, Any] | None:
     path = _get_session_path(session_id)
     if not path.exists():
         return None
     with path.open(encoding="utf-8") as f:
         return json.load(f)
-
 
 
 def _save_session(session: dict[str, Any]) -> None:
@@ -248,11 +252,12 @@ def _save_session(session: dict[str, Any]) -> None:
         json.dump(session, f, ensure_ascii=False, indent=2)
 
 
-
 def _list_sessions() -> list[dict[str, Any]]:
     _ensure_chat_sessions_dir()
     sessions = []
-    for path in sorted(CHAT_SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for path in sorted(
+        CHAT_SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+    ):
         try:
             with path.open(encoding="utf-8") as f:
                 session = json.load(f)
@@ -268,7 +273,6 @@ def _list_sessions() -> list[dict[str, Any]]:
         except Exception:
             continue
     return sessions
-
 
 
 def _infer_current_org(messages: list[dict[str, Any]] | None) -> str | None:
@@ -292,7 +296,6 @@ def _infer_current_org(messages: list[dict[str, Any]] | None) -> str | None:
     return current_org
 
 
-
 def _restore_chat_session(chat_session: Any, session_context: list[dict[str, Any]] | None) -> None:
     chat_session.history = [
         {"role": message["role"], "content": message["content"]}
@@ -300,7 +303,6 @@ def _restore_chat_session(chat_session: Any, session_context: list[dict[str, Any
         if message.get("role") in {"user", "assistant"} and isinstance(message.get("content"), str)
     ]
     chat_session.current_org = _infer_current_org(session_context)
-
 
 
 async def _dispatch_chat_message(chat_session: Any, message: str, allow_exit: bool = False) -> str:
@@ -323,13 +325,14 @@ async def _dispatch_chat_message(chat_session: Any, message: str, allow_exit: bo
         return f"[ERROR] エラーが発生しました: {exc}"
 
 
-async def _process_chat_message(message: str, session_context: list[dict[str, Any]] | None = None) -> str:
+async def _process_chat_message(
+    message: str, session_context: list[dict[str, Any]] | None = None
+) -> str:
     from agents.chat_agent import ChatSession
 
     chat_session = ChatSession(has_llm=_has_llm())
     _restore_chat_session(chat_session, session_context)
     return await _dispatch_chat_message(chat_session, message)
-
 
 
 def _mask_key(key: str) -> str:
@@ -360,7 +363,6 @@ def _get_provider_api_key(settings: Dict[str, Any], provider: str) -> str:
     return str(api_keys.get(provider) or settings.get(setting_key) or os.getenv(env_key, ""))
 
 
-
 def _normalize_request_path(
     value: str,
     field_name: str,
@@ -383,10 +385,8 @@ def _normalize_request_path(
     return str(normalized)
 
 
-
 class ApiRequestModel(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
-
 
 
 class OrgCreateRequest(ApiRequestModel):
@@ -400,10 +400,8 @@ class OrgCreateRequest(ApiRequestModel):
         return _normalize_request_path(value, "target_repo_path")
 
 
-
 class OrgIconRequest(ApiRequestModel):
     icon_data: str = Field(max_length=512 * 1024)
-
 
 
 class AnalyzeRequest(ApiRequestModel):
@@ -411,21 +409,17 @@ class AnalyzeRequest(ApiRequestModel):
     max_files: int = Field(default=15, ge=1, le=50)
 
 
-
 class ProposalApproveRequest(ApiRequestModel):
     approval_notes: str | None = Field(default=None, max_length=2000)
-
 
 
 class GoalRunRequest(ApiRequestModel):
     goal_text: str = Field(min_length=1, max_length=4000)
 
 
-
 class DaemonStartRequest(ApiRequestModel):
     interval: int = Field(default=3600, ge=1)
     max_files: int = Field(default=10, ge=1, le=1000)
-
 
 
 class TaskQueueRequest(ApiRequestModel):
@@ -436,10 +430,8 @@ class TaskQueueRequest(ApiRequestModel):
     priority: int = Field(default=5, ge=1, le=10)
 
 
-
 class ChatPayload(ApiRequestModel):
     message: str = Field(max_length=4000)
-
 
 
 class ChatRequest(ApiRequestModel):
@@ -447,15 +439,12 @@ class ChatRequest(ApiRequestModel):
     session_context: list[dict[str, Any]] = Field(default_factory=list)
 
 
-
 class ChatSessionCreate(ApiRequestModel):
     name: str = Field(default="", max_length=120)
 
 
-
 class ChatSessionUpdate(ApiRequestModel):
     name: str = Field(max_length=120)
-
 
 
 class ChatMessageCreate(ApiRequestModel):
@@ -463,10 +452,8 @@ class ChatMessageCreate(ApiRequestModel):
     role: Literal["user"] = "user"
 
 
-
 class KnowledgeFileUpdate(ApiRequestModel):
     content: str = Field(max_length=200000)
-
 
 
 class KnowledgeFileCreate(ApiRequestModel):
@@ -748,11 +735,12 @@ def _migrate_system_orgs(psm: PlatformStateManager | None = None) -> None:
     meta_org_id = state_manager.load_platform_config().get("meta_improvement_org_id")
 
     for org in state_manager.load_organizations():
-        should_protect = org.name in SYSTEM_ORG_NAMES or (meta_org_id and str(org.id) == meta_org_id)
+        should_protect = org.name in SYSTEM_ORG_NAMES or (
+            meta_org_id and str(org.id) == meta_org_id
+        )
         if should_protect and not org.is_system:
             org.is_system = True
             state_manager.save_organization(org)
-
 
 
 def _psm() -> PlatformStateManager:
@@ -761,12 +749,10 @@ def _psm() -> PlatformStateManager:
     return psm
 
 
-
 def _task_queue():
     from core.orchestration.task_queue import TaskQueue
 
     return TaskQueue()
-
 
 
 def _has_llm(settings: Dict[str, Any] | None = None) -> bool:
@@ -776,10 +762,8 @@ def _has_llm(settings: Dict[str, Any] | None = None) -> bool:
     return claude_available()
 
 
-
 def _goal_history_path() -> Path:
     return _psm().platform_home / "goal_history.json"
-
 
 
 def _normalize_goal_history_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -788,19 +772,22 @@ def _normalize_goal_history_item(item: dict[str, Any]) -> dict[str, Any]:
     timestamp = str(item.get("timestamp") or item.get("created_at") or "")
     org_name = item.get("org_name") or item.get("organization")
     normalized = dict(item)
-    normalized.update({
-        "goal": goal,
-        "goal_text": str(item.get("goal_text") or goal),
-        "result": result,
-        "summary": str(item.get("summary") or result),
-        "timestamp": timestamp,
-        "created_at": str(item.get("created_at") or timestamp),
-        "org_name": org_name,
-        "organization": item.get("organization") or org_name,
-        "recommendations": item.get("recommendations") if isinstance(item.get("recommendations"), list) else [],
-    })
+    normalized.update(
+        {
+            "goal": goal,
+            "goal_text": str(item.get("goal_text") or goal),
+            "result": result,
+            "summary": str(item.get("summary") or result),
+            "timestamp": timestamp,
+            "created_at": str(item.get("created_at") or timestamp),
+            "org_name": org_name,
+            "organization": item.get("organization") or org_name,
+            "recommendations": item.get("recommendations")
+            if isinstance(item.get("recommendations"), list)
+            else [],
+        }
+    )
     return normalized
-
 
 
 def _load_goal_history() -> list[dict[str, Any]]:
@@ -816,7 +803,6 @@ def _load_goal_history() -> list[dict[str, Any]]:
     return [_normalize_goal_history_item(item) for item in data if isinstance(item, dict)]
 
 
-
 def _save_goal_history(record: dict[str, Any], keep: int = 12) -> None:
     history = [_normalize_goal_history_item(record), *_load_goal_history()][:keep]
     _goal_history_path().write_text(
@@ -825,10 +811,8 @@ def _save_goal_history(record: dict[str, Any], keep: int = 12) -> None:
     )
 
 
-
 def _execution_history_path() -> Path:
     return _psm().platform_home / "execution_history.json"
-
 
 
 def _normalize_execution_history_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -849,7 +833,6 @@ def _normalize_execution_history_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-
 def _load_execution_history() -> list[dict[str, Any]]:
     path = _execution_history_path()
     if not path.exists():
@@ -863,7 +846,6 @@ def _load_execution_history() -> list[dict[str, Any]]:
     return [_normalize_execution_history_item(item) for item in data if isinstance(item, dict)]
 
 
-
 def _save_execution_history(records: list[dict[str, Any]], keep: int = 200) -> None:
     normalized = [_normalize_execution_history_item(record) for record in records][:keep]
     _execution_history_path().write_text(
@@ -872,44 +854,46 @@ def _save_execution_history(records: list[dict[str, Any]], keep: int = 200) -> N
     )
 
 
-
 def _append_execution_history(record: dict[str, Any], keep: int = 200) -> dict[str, Any]:
     normalized = _normalize_execution_history_item(record)
     _save_execution_history([normalized, *_load_execution_history()], keep=keep)
     return normalized
 
 
-
 def _matches_search_text(query: str, *values: Any) -> bool:
     needle = query.strip().lower()
     if not needle:
         return True
-    return any(needle in str(value).lower() for value in values if value is not None and value != "")
-
+    return any(
+        needle in str(value).lower() for value in values if value is not None and value != ""
+    )
 
 
 def _goal_history_execution_items() -> list[dict[str, Any]]:
     items = []
     for goal in _load_goal_history():
-        items.append(_normalize_execution_history_item({
-            "id": f"goal-{goal.get('id') or hashlib.sha1(json.dumps(goal, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]}",
-            "timestamp": goal.get("timestamp") or goal.get("created_at"),
-            "operation": "goal_completed",
-            "status": "success" if goal.get("success", True) else "error",
-            "title": goal.get("goal") or goal.get("goal_text") or "Goal run",
-            "details": goal.get("result") or goal.get("summary") or "",
-            "org_name": goal.get("org_name") or goal.get("organization"),
-            "entity_type": "goal",
-            "entity_id": goal.get("id") or goal.get("goal_text"),
-            "route": "/data",
-            "metadata": {
-                "success": goal.get("success"),
-                "goal_type": goal.get("goal_type"),
-                "scale": goal.get("scale"),
-            },
-        }))
+        items.append(
+            _normalize_execution_history_item(
+                {
+                    "id": f"goal-{goal.get('id') or hashlib.sha1(json.dumps(goal, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]}",
+                    "timestamp": goal.get("timestamp") or goal.get("created_at"),
+                    "operation": "goal_completed",
+                    "status": "success" if goal.get("success", True) else "error",
+                    "title": goal.get("goal") or goal.get("goal_text") or "Goal run",
+                    "details": goal.get("result") or goal.get("summary") or "",
+                    "org_name": goal.get("org_name") or goal.get("organization"),
+                    "entity_type": "goal",
+                    "entity_id": goal.get("id") or goal.get("goal_text"),
+                    "route": "/data",
+                    "metadata": {
+                        "success": goal.get("success"),
+                        "goal_type": goal.get("goal_type"),
+                        "scale": goal.get("scale"),
+                    },
+                }
+            )
+        )
     return items
-
 
 
 def _task_execution_items() -> list[dict[str, Any]]:
@@ -917,29 +901,42 @@ def _task_execution_items() -> list[dict[str, Any]]:
     for task in _task_queue().list_tasks(limit=None):
         timestamp = task.get("completed_at") or task.get("started_at") or task.get("created_at")
         status = str(task.get("status") or "pending")
-        items.append(_normalize_execution_history_item({
-            "id": f"task-{task.get('id')}",
-            "timestamp": timestamp,
-            "operation": f"task_{status}",
-            "status": "error" if status == "failed" else "success" if status in {"done", "cancelled"} else "pending",
-            "title": task.get("description") or "Task update",
-            "details": task.get("error") or "",
-            "org_name": task.get("org_name"),
-            "entity_type": "task",
-            "entity_id": task.get("id"),
-            "route": "/dashboard",
-            "metadata": {
-                "task_type": task.get("type"),
-                "status": status,
-                "result": task.get("result"),
-            },
-        }))
+        items.append(
+            _normalize_execution_history_item(
+                {
+                    "id": f"task-{task.get('id')}",
+                    "timestamp": timestamp,
+                    "operation": f"task_{status}",
+                    "status": "error"
+                    if status == "failed"
+                    else "success"
+                    if status in {"done", "cancelled"}
+                    else "pending",
+                    "title": task.get("description") or "Task update",
+                    "details": task.get("error") or "",
+                    "org_name": task.get("org_name"),
+                    "entity_type": "task",
+                    "entity_id": task.get("id"),
+                    "route": "/dashboard",
+                    "metadata": {
+                        "task_type": task.get("type"),
+                        "status": status,
+                        "result": task.get("result"),
+                    },
+                }
+            )
+        )
     return items
 
 
-
-def _combined_execution_history(search: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
-    records = [*_load_execution_history(), *_goal_history_execution_items(), *_task_execution_items()]
+def _combined_execution_history(
+    search: str | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    records = [
+        *_load_execution_history(),
+        *_goal_history_execution_items(),
+        *_task_execution_items(),
+    ]
     seen: set[str] = set()
     deduped: list[dict[str, Any]] = []
     for record in sorted(records, key=lambda item: item.get("timestamp", ""), reverse=True):
@@ -963,7 +960,6 @@ def _combined_execution_history(search: str | None = None, limit: int = 100) -> 
     return deduped
 
 
-
 async def _record_execution_event(
     operation: str,
     title: str,
@@ -976,21 +972,22 @@ async def _record_execution_event(
     route: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    record = _append_execution_history({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "operation": operation,
-        "status": status,
-        "title": title,
-        "details": details,
-        "org_name": org_name,
-        "entity_type": entity_type,
-        "entity_id": entity_id,
-        "route": route,
-        "metadata": metadata or {},
-    })
+    record = _append_execution_history(
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "operation": operation,
+            "status": status,
+            "title": title,
+            "details": details,
+            "org_name": org_name,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "route": route,
+            "metadata": metadata or {},
+        }
+    )
     await _updates_hub.broadcast({"type": operation, **record})
     return record
-
 
 
 def _resolve_knowledge_path(file_path: str) -> Path:
@@ -1006,10 +1003,8 @@ def _resolve_knowledge_path(file_path: str) -> Path:
     return resolved
 
 
-
 def _format_sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
 
 
 def _stream_response(generator) -> StreamingResponse:
@@ -1023,11 +1018,9 @@ def _stream_response(generator) -> StreamingResponse:
     )
 
 
-
 def _daemon_paths() -> tuple[Path, Path]:
     platform_home = get_platform_home()
     return platform_home / "daemon.pid", platform_home / "daemon.log"
-
 
 
 def _read_daemon_pid(pid_file: Path) -> int | None:
@@ -1039,14 +1032,12 @@ def _read_daemon_pid(pid_file: Path) -> int | None:
         return None
 
 
-
 def _is_process_running(pid: int) -> bool:
     try:
         os.kill(pid, 0)
         return True
     except OSError:
         return False
-
 
 
 def _daemon_status_payload() -> dict[str, Any]:
@@ -1057,7 +1048,6 @@ def _daemon_status_payload() -> dict[str, Any]:
         "pid": pid,
         "log_path": str(log_file),
     }
-
 
 
 def _daemon_action_message(status: str) -> str:
@@ -1071,14 +1061,12 @@ def _daemon_action_message(status: str) -> str:
     return messages.get(status, "デーモンの操作が完了しました。")
 
 
-
 def _init_message(already_initialized: bool, meta_name: str | None) -> str:
     if already_initialized:
         return "プラットフォームはすでに初期化されています。"
     if meta_name:
         return f"プラットフォームを初期化しました。メタ組織: {meta_name}"
     return "プラットフォームを初期化しました。"
-
 
 
 def _serialize_generated_proposal(proposal: ImprovementProposal) -> dict[str, Any]:
@@ -1094,24 +1082,24 @@ def _serialize_generated_proposal(proposal: ImprovementProposal) -> dict[str, An
     }
 
 
-
 def _goal_record(req: GoalRunRequest, result: Any) -> dict[str, Any]:
     summary = result.summary() if callable(getattr(result, "summary", None)) else str(result)
-    return _normalize_goal_history_item({
-        "goal_text": req.goal_text,
-        "summary": summary,
-        "success": result.success,
-        "goal_type": result.goal.goal_type,
-        "scale": result.goal.scale,
-        "organization": result.org_result.organization.name,
-        "done_count": result.execution_progress.done_count,
-        "total": result.execution_progress.total,
-        "failed_count": result.execution_progress.failed_count,
-        "achievement_pct": result.verification.achievement_pct,
-        "recommendations": result.verification.recommendations,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-
+    return _normalize_goal_history_item(
+        {
+            "goal_text": req.goal_text,
+            "summary": summary,
+            "success": result.success,
+            "goal_type": result.goal.goal_type,
+            "scale": result.goal.scale,
+            "organization": result.org_result.organization.name,
+            "done_count": result.execution_progress.done_count,
+            "total": result.execution_progress.total,
+            "failed_count": result.execution_progress.failed_count,
+            "achievement_pct": result.verification.achievement_pct,
+            "recommendations": result.verification.recommendations,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
 
 def _stream_error_message(exc: Exception) -> str:
@@ -1120,30 +1108,27 @@ def _stream_error_message(exc: Exception) -> str:
     return str(exc)
 
 
-
 async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
     from agents.base import AgentTask
-    from agents.code_review_agent import CodeReviewAgent
-    from core.models.organization import AgentSkill, SpecialistAgent
+    from agents.orchestrator_agent import OrchestratorAgent
 
     psm = _psm()
     org = psm.load_organization_by_name(req.org_name)
     if not org:
-        raise HTTPException(status_code=404, detail=f"Organization '{req.org_name}' が見つかりません")
+        raise HTTPException(
+            status_code=404, detail=f"Organization '{req.org_name}' が見つかりません"
+        )
 
     repo_path = Path(org.target_repo_path) if org.target_repo_path else Path(".")
-    specialist = SpecialistAgent(
-        name="CodeReviewer",
-        skills=[AgentSkill.DEEP_RESEARCH, AgentSkill.PERFORMANCE_ANALYSIS],
-    )
-    agent = CodeReviewAgent(specialist)
+    # 直接 CodeReviewAgent を生成せず、中央 OrchestratorAgent（=PreTaskOrchestrator）
+    # 経由でルーティング・実行する。これによりパターン学習が蓄積される。
     task = AgentTask(
         task_type="code_review",
         description=f"{org.name} のコードレビューと改善提案生成",
         input={"repo_path": str(repo_path), "max_files": req.max_files},
     )
 
-    result = await agent.run(task)
+    result = await OrchestratorAgent.create().run(task)
     if not result.success:
         status_code = 422 if result.error and "found" in result.error.lower() else 500
         raise HTTPException(status_code=status_code, detail=result.error)
@@ -1184,7 +1169,10 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
         entity_type="organization",
         entity_id=str(org.id),
         route="/orgs",
-        metadata={"files_reviewed": result.output.get("files_reviewed", 0), "proposals_generated": len(generated_proposals)},
+        metadata={
+            "files_reviewed": result.output.get("files_reviewed", 0),
+            "proposals_generated": len(generated_proposals),
+        },
     )
 
     return {
@@ -1195,7 +1183,6 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
     }
 
 
-
 async def _perform_goal_run(req: GoalRunRequest) -> dict[str, Any]:
     from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
 
@@ -1203,19 +1190,20 @@ async def _perform_goal_run(req: GoalRunRequest) -> dict[str, Any]:
     result = await pipeline.run(req.goal_text)
     record = _goal_record(req, result)
     _save_goal_history(record)
-    await _updates_hub.broadcast({
-        "type": "goal_completed",
-        "status": "success" if record.get("success", True) else "error",
-        "title": record.get("goal") or req.goal_text,
-        "details": record.get("result") or record.get("summary") or "",
-        "org_name": record.get("org_name") or record.get("organization"),
-        "entity_type": "goal",
-        "entity_id": record.get("id"),
-        "route": "/data",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await _updates_hub.broadcast(
+        {
+            "type": "goal_completed",
+            "status": "success" if record.get("success", True) else "error",
+            "title": record.get("goal") or req.goal_text,
+            "details": record.get("result") or record.get("summary") or "",
+            "org_name": record.get("org_name") or record.get("organization"),
+            "entity_type": "goal",
+            "entity_id": record.get("id"),
+            "route": "/data",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
     return record
-
 
 
 def _find_org(org_name: str):
@@ -1228,7 +1216,7 @@ def _find_org(org_name: str):
 def _generate_pixel_art_svg(seed_text: str, size: int = 8) -> str:
     """組織名から決定論的なピクセルアートSVGを生成する。"""
     h = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
-    nums = [int(h[i:i + 2], 16) for i in range(0, 64, 2)]
+    nums = [int(h[i : i + 2], 16) for i in range(0, 64, 2)]
 
     hue1 = nums[0] * 360 // 256
     hue2 = (hue1 + 120 + nums[1] * 60 // 256) % 360
@@ -1281,10 +1269,9 @@ def _generate_pixel_art_svg(seed_text: str, size: int = 8) -> str:
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {total} {total}" width="{total}" height="{total}">\n'
         f'  <rect width="{total}" height="{total}" fill="{bg_color}" rx="2"/>\n'
-        f'  {cells_str}\n'
+        f"  {cells_str}\n"
         "</svg>"
     )
-
 
 
 def _pending_proposals_for(org_name: str) -> tuple[Any, Any, list[dict[str, Any]]]:
@@ -1293,7 +1280,6 @@ def _pending_proposals_for(org_name: str) -> tuple[Any, Any, list[dict[str, Any]
     sm = psm.get_org_state_manager(org)
     proposals = sm.get_pending_improvement_proposals(limit=100)
     return psm, sm, proposals
-
 
 
 def _find_pending_proposal(org_name: str, proposal_id: str) -> tuple[Any, Any, dict[str, Any]]:
@@ -1308,7 +1294,6 @@ def _find_pending_proposal(org_name: str, proposal_id: str) -> tuple[Any, Any, d
             detail=f"ID '{proposal_id}' に一致する未対応提案が見つかりません",
         )
     return psm, sm, target
-
 
 
 def _load_all_proposals() -> list[dict[str, Any]]:
@@ -1335,39 +1320,45 @@ def _load_all_proposals() -> list[dict[str, Any]]:
     )
 
 
-
 def _serialize_org_structure(org: Any) -> list[dict[str, Any]]:
     divisions: list[dict[str, Any]] = []
     for division_index, division in enumerate(org.divisions):
         teams: list[dict[str, Any]] = []
         previous_team_name: str | None = None
-        previous_division_name = org.divisions[division_index - 1].name if division_index > 0 else None
+        previous_division_name = (
+            org.divisions[division_index - 1].name if division_index > 0 else None
+        )
         for team in division.teams:
-            teams.append({
-                "id": str(team.id),
-                "name": team.name,
-                "mission": team.mission,
-                "depends_on": previous_team_name or previous_division_name,
-                "agents": [
-                    {
-                        "id": str(agent.id),
-                        "name": agent.name,
-                        "description": agent.description,
-                        "skills": [str(skill) for skill in agent.skills],
-                    }
-                    for agent in team.agents
-                ],
-            })
+            teams.append(
+                {
+                    "id": str(team.id),
+                    "name": team.name,
+                    "mission": team.mission,
+                    "depends_on": previous_team_name or previous_division_name,
+                    "agents": [
+                        {
+                            "id": str(agent.id),
+                            "name": agent.name,
+                            "description": agent.description,
+                            "skills": [str(skill) for skill in agent.skills],
+                        }
+                        for agent in team.agents
+                    ],
+                }
+            )
             previous_team_name = team.name
-        divisions.append({
-            "id": str(division.id),
-            "name": division.name,
-            "type": str(division.type.value if hasattr(division.type, "value") else division.type),
-            "mission": division.mission,
-            "teams": teams,
-        })
+        divisions.append(
+            {
+                "id": str(division.id),
+                "name": division.name,
+                "type": str(
+                    division.type.value if hasattr(division.type, "value") else division.type
+                ),
+                "mission": division.mission,
+                "teams": teams,
+            }
+        )
     return divisions
-
 
 
 def _search_results(query: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -1376,32 +1367,50 @@ def _search_results(query: str, limit: int = 20) -> list[dict[str, Any]]:
     organizations = psm.load_organizations()
 
     for org in organizations:
-        if _matches_search_text(query, org.name, org.purpose, org.target_repo_path, org.status.value):
-            results.append({
-                "id": f"organization:{org.id}",
-                "type": "organization",
-                "title": org.name,
-                "subtitle": org.purpose,
-                "route": "/orgs",
-                "org_name": org.name,
-                "status": org.status.value,
-                "metadata": {"target_repo_path": org.target_repo_path},
-            })
+        if _matches_search_text(
+            query, org.name, org.purpose, org.target_repo_path, org.status.value
+        ):
+            results.append(
+                {
+                    "id": f"organization:{org.id}",
+                    "type": "organization",
+                    "title": org.name,
+                    "subtitle": org.purpose,
+                    "route": "/orgs",
+                    "org_name": org.name,
+                    "status": org.status.value,
+                    "metadata": {"target_repo_path": org.target_repo_path},
+                }
+            )
         for division in org.divisions:
             for team in division.teams:
                 for agent in team.agents:
                     skills = [str(skill) for skill in agent.skills]
-                    if _matches_search_text(query, agent.name, agent.description, *skills, team.name, division.name, org.name):
-                        results.append({
-                            "id": f"agent:{agent.id}",
-                            "type": "agent",
-                            "title": agent.name,
-                            "subtitle": f"{org.name} / {team.name}",
-                            "route": "/agents",
-                            "org_name": org.name,
-                            "status": None,
-                            "metadata": {"team": team.name, "division": division.name, "skills": skills},
-                        })
+                    if _matches_search_text(
+                        query,
+                        agent.name,
+                        agent.description,
+                        *skills,
+                        team.name,
+                        division.name,
+                        org.name,
+                    ):
+                        results.append(
+                            {
+                                "id": f"agent:{agent.id}",
+                                "type": "agent",
+                                "title": agent.name,
+                                "subtitle": f"{org.name} / {team.name}",
+                                "route": "/agents",
+                                "org_name": org.name,
+                                "status": None,
+                                "metadata": {
+                                    "team": team.name,
+                                    "division": division.name,
+                                    "skills": skills,
+                                },
+                            }
+                        )
 
     for proposal in _load_all_proposals():
         if _matches_search_text(
@@ -1414,33 +1423,44 @@ def _search_results(query: str, limit: int = 20) -> list[dict[str, Any]]:
             proposal.get("status"),
         ):
             org_name = str(proposal.get("org_name") or "")
-            results.append({
-                "id": f"proposal:{proposal.get('id')}",
-                "type": "proposal",
-                "title": str(proposal.get("title") or "改善提案"),
-                "subtitle": str(proposal.get("description") or proposal.get("file_path") or ""),
-                "route": f"/proposals?org={org_name}",
-                "org_name": org_name or None,
-                "status": proposal.get("status"),
-                "metadata": {
-                    "file_path": proposal.get("file_path"),
-                    "priority": proposal.get("priority"),
-                    "category": proposal.get("category"),
-                },
-            })
+            results.append(
+                {
+                    "id": f"proposal:{proposal.get('id')}",
+                    "type": "proposal",
+                    "title": str(proposal.get("title") or "改善提案"),
+                    "subtitle": str(proposal.get("description") or proposal.get("file_path") or ""),
+                    "route": f"/proposals?org={org_name}",
+                    "org_name": org_name or None,
+                    "status": proposal.get("status"),
+                    "metadata": {
+                        "file_path": proposal.get("file_path"),
+                        "priority": proposal.get("priority"),
+                        "category": proposal.get("category"),
+                    },
+                }
+            )
 
     for goal in _load_goal_history():
-        if _matches_search_text(query, goal.get("goal"), goal.get("goal_text"), goal.get("result"), goal.get("summary"), goal.get("org_name")):
-            results.append({
-                "id": f"goal:{goal.get('id') or hashlib.sha1(json.dumps(goal, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]}",
-                "type": "goal",
-                "title": str(goal.get("goal") or goal.get("goal_text") or "Goal"),
-                "subtitle": str(goal.get("result") or goal.get("summary") or ""),
-                "route": "/data",
-                "org_name": goal.get("org_name") or goal.get("organization"),
-                "status": "success" if goal.get("success", True) else "error",
-                "metadata": {"goal_type": goal.get("goal_type"), "scale": goal.get("scale")},
-            })
+        if _matches_search_text(
+            query,
+            goal.get("goal"),
+            goal.get("goal_text"),
+            goal.get("result"),
+            goal.get("summary"),
+            goal.get("org_name"),
+        ):
+            results.append(
+                {
+                    "id": f"goal:{goal.get('id') or hashlib.sha1(json.dumps(goal, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]}",
+                    "type": "goal",
+                    "title": str(goal.get("goal") or goal.get("goal_text") or "Goal"),
+                    "subtitle": str(goal.get("result") or goal.get("summary") or ""),
+                    "route": "/data",
+                    "org_name": goal.get("org_name") or goal.get("organization"),
+                    "status": "success" if goal.get("success", True) else "error",
+                    "metadata": {"goal_type": goal.get("goal_type"), "scale": goal.get("scale")},
+                }
+            )
 
     deduped: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -1453,7 +1473,6 @@ def _search_results(query: str, limit: int = 20) -> list[dict[str, Any]]:
         if len(deduped) >= limit:
             break
     return deduped
-
 
 
 def _serialize_agent(defn) -> dict[str, Any]:
@@ -1474,7 +1493,6 @@ def _serialize_agent(defn) -> dict[str, Any]:
             "behavior": getattr(defn, "behavior", ""),
         },
     }
-
 
 
 def _serialize_skill(defn) -> dict[str, Any]:
@@ -1509,7 +1527,10 @@ def _serialize_org_tree(org: Any) -> list[dict[str, Any]]:
                             {
                                 "id": str(agent.id),
                                 "name": agent.name,
-                                "skills": [getattr(skill, "value", skill) for skill in getattr(agent, "skills", [])],
+                                "skills": [
+                                    getattr(skill, "value", skill)
+                                    for skill in getattr(agent, "skills", [])
+                                ],
                                 "performance_score": getattr(agent, "performance_score", 0.0),
                                 "current_task": getattr(agent, "current_task", None),
                             }
@@ -1536,7 +1557,10 @@ def _collect_runtime_agents() -> list[dict[str, Any]]:
                             "organization": org.name,
                             "division": division.name,
                             "team": team.name,
-                            "skills": [getattr(skill, "value", skill) for skill in getattr(agent, "skills", [])],
+                            "skills": [
+                                getattr(skill, "value", skill)
+                                for skill in getattr(agent, "skills", [])
+                            ],
                             "status": "running" if getattr(agent, "current_task", None) else "idle",
                             "current_task": getattr(agent, "current_task", None),
                             "proficiency": float(getattr(agent, "performance_score", 0.0)),
@@ -1544,7 +1568,10 @@ def _collect_runtime_agents() -> list[dict[str, Any]]:
                                 "organization": org.name,
                                 "division": division.name,
                                 "team": team.name,
-                                "skills": [getattr(skill, "value", skill) for skill in getattr(agent, "skills", [])],
+                                "skills": [
+                                    getattr(skill, "value", skill)
+                                    for skill in getattr(agent, "skills", [])
+                                ],
                                 "description": getattr(agent, "description", ""),
                                 "performance_score": getattr(agent, "performance_score", 0.0),
                                 "current_task": getattr(agent, "current_task", None),
@@ -1691,7 +1718,15 @@ async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, A
     response_model=DaemonStatusResponse,
     response_model_exclude_none=True,
     tags=["platform"],
-    responses={200: {"content": {"application/json": {"example": {**DAEMON_ACTION_EXAMPLE, "status": "stopped", "running": False}}}}},
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {**DAEMON_ACTION_EXAMPLE, "status": "stopped", "running": False}
+                }
+            }
+        }
+    },
 )
 async def api_daemon_stop() -> Dict[str, Any]:
     pid_file, log_file = _daemon_paths()
@@ -1783,11 +1818,16 @@ async def api_create_welcome_data() -> Dict[str, Any]:
                 metadata={"source": "welcome", "target_repo_path": s["target_repo_path"]},
             )
 
-    return {"created": created, "skipped": [s["name"] for s in sample_orgs if s["name"] not in created]}
+    return {
+        "created": created,
+        "skipped": [s["name"] for s in sample_orgs if s["name"] not in created],
+    }
 
 
 @app.get("/api/tasks")
-async def api_list_tasks(org_name: str | None = None, status: str | None = None, limit: int = 50) -> Dict[str, Any]:
+async def api_list_tasks(
+    org_name: str | None = None, status: str | None = None, limit: int = 50
+) -> Dict[str, Any]:
     """タスクキューの一覧を返す"""
     queue = _task_queue()
     tasks = queue.list_tasks(org_name=org_name, status=status, limit=limit)
@@ -1843,7 +1883,9 @@ async def api_cancel_task(task_id: str) -> Dict[str, Any]:
     queue = _task_queue()
     task = queue.get_task(task_id)
     if not queue.cancel_task(task_id):
-        raise HTTPException(status_code=400, detail="タスクをキャンセルできません（実行中または存在しない）")
+        raise HTTPException(
+            status_code=400, detail="タスクをキャンセルできません（実行中または存在しない）"
+        )
     await _record_execution_event(
         "task_cancelled",
         str(task.get("description") if task else "Task cancelled"),
@@ -1896,7 +1938,9 @@ async def api_sessions_runtime() -> Dict[str, Any]:
     from core.runtime.claude_code import claude_available, claude_binary
     from core.runtime.multiplexer import get_driver
     from core.runtime.multiplexer.wmux_rpc import (
-        WmuxClient, WmuxNotConfirmedError, is_wmux_running,
+        WmuxClient,
+        WmuxNotConfirmedError,
+        is_wmux_running,
     )
 
     wmux_state = "not-running"
@@ -1929,13 +1973,18 @@ async def api_get_session(session_id: str) -> Dict[str, Any]:
 
 
 @app.get("/api/sessions/{session_id}/agents/{agent_id}/log", tags=["sessions"])
-async def api_get_session_agent_log(session_id: str, agent_id: str, tail: int = 8000) -> Dict[str, Any]:
+async def api_get_session_agent_log(
+    session_id: str, agent_id: str, tail: int = 8000
+) -> Dict[str, Any]:
     orch = _session_orchestrator()
     rec = orch.get_session(session_id)
     if rec is None:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
-    return {"session_id": session_id, "agent_id": agent_id,
-            "log": orch.agent_log(session_id, agent_id, tail=tail)}
+    return {
+        "session_id": session_id,
+        "agent_id": agent_id,
+        "log": orch.agent_log(session_id, agent_id, tail=tail),
+    }
 
 
 @app.post("/api/sessions", tags=["sessions"])
@@ -1944,16 +1993,29 @@ async def api_start_session(body: SessionStartRequest) -> Dict[str, Any]:
 
     orch = _session_orchestrator(prefer=body.prefer)
     if body.agents:
-        tasks = [AgentTask(agent_id=a.agent_id, title=a.title, prompt=a.prompt,
-                           system_prompt=a.system_prompt, model=a.model, role=a.role)
-                 for a in body.agents]
+        tasks = [
+            AgentTask(
+                agent_id=a.agent_id,
+                title=a.title,
+                prompt=a.prompt,
+                system_prompt=a.system_prompt,
+                model=a.model,
+                role=a.role,
+            )
+            for a in body.agents
+        ]
     else:
         tasks = demo_tasks()
     rec = await asyncio.to_thread(orch.start_session, body.name, tasks)
-    await _updates_hub.broadcast({
-        "type": "session_started", "session_id": rec.id, "name": rec.name,
-        "driver": rec.driver, "agents": len(rec.surfaces),
-    })
+    await _updates_hub.broadcast(
+        {
+            "type": "session_started",
+            "session_id": rec.id,
+            "name": rec.name,
+            "driver": rec.driver,
+            "agents": len(rec.surfaces),
+        }
+    )
     return rec.to_dict()
 
 
@@ -2005,19 +2067,31 @@ async def api_get_settings() -> Dict[str, Any]:
     return {
         "llm_provider": s.get("llm_provider", "anthropic"),
         "llm_model": s.get("llm_model", "claude-3-5-sonnet-20241022"),
-        "anthropic_api_key_masked": _mask_key(s.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY", "")),
-        "openai_api_key_masked": _mask_key(s.get("openai_api_key") or os.getenv("OPENAI_API_KEY", "")),
+        "anthropic_api_key_masked": _mask_key(
+            s.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY", "")
+        ),
+        "openai_api_key_masked": _mask_key(
+            s.get("openai_api_key") or os.getenv("OPENAI_API_KEY", "")
+        ),
         "groq_api_key_masked": _mask_key(s.get("groq_api_key") or os.getenv("GROQ_API_KEY", "")),
-        "github_models_api_key_masked": _mask_key(s.get("github_models_api_key") or os.getenv("GITHUB_TOKEN", "")),
-        "gemini_api_key_masked": _mask_key(s.get("gemini_api_key") or os.getenv("GOOGLE_API_KEY", "")),
+        "github_models_api_key_masked": _mask_key(
+            s.get("github_models_api_key") or os.getenv("GITHUB_TOKEN", "")
+        ),
+        "gemini_api_key_masked": _mask_key(
+            s.get("gemini_api_key") or os.getenv("GOOGLE_API_KEY", "")
+        ),
         "anthropic_api_key_set": bool(s.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY")),
         "openai_api_key_set": bool(s.get("openai_api_key") or os.getenv("OPENAI_API_KEY")),
         "groq_api_key_set": bool(s.get("groq_api_key") or os.getenv("GROQ_API_KEY")),
-        "github_models_api_key_set": bool(s.get("github_models_api_key") or os.getenv("GITHUB_TOKEN")),
+        "github_models_api_key_set": bool(
+            s.get("github_models_api_key") or os.getenv("GITHUB_TOKEN")
+        ),
         "gemini_api_key_set": bool(s.get("gemini_api_key") or os.getenv("GOOGLE_API_KEY")),
         "daemon_interval": s.get("daemon_interval", 3600),
         "daemon_max_files": s.get("daemon_max_files", 10),
-        "model_configurations": s.get("model_configurations", deepcopy(DEFAULT_MODEL_CONFIGURATIONS)),
+        "model_configurations": s.get(
+            "model_configurations", deepcopy(DEFAULT_MODEL_CONFIGURATIONS)
+        ),
         "prompt_templates": s.get("prompt_templates", deepcopy(DEFAULT_PROMPT_TEMPLATES)),
         "policy_rules": s.get("policy_rules", deepcopy(DEFAULT_POLICY)),
         "settings_file": str(SETTINGS_FILE),
@@ -2052,7 +2126,9 @@ async def get_storage_info() -> Dict[str, Any]:
             "exists": True,
             "file_count": len(file_paths),
             "size_bytes": size_bytes,
-            "last_modified": datetime.fromtimestamp(last_modified, tz=timezone.utc).isoformat() if last_modified else None,
+            "last_modified": datetime.fromtimestamp(last_modified, tz=timezone.utc).isoformat()
+            if last_modified
+            else None,
         }
 
     return {
@@ -2176,20 +2252,22 @@ async def api_list_organizations() -> List[Dict[str, Any]]:
         sm = psm.get_org_state_manager(org)
         pending = len(sm.get_pending_improvement_proposals(limit=100))
         m = calculate_organization_metrics(org, pending_proposals_count=pending)
-        result.append({
-            "id": str(org.id),
-            "name": org.name,
-            "purpose": org.purpose,
-            "target_repo_path": org.target_repo_path,
-            "status": org.status.value,
-            "health_score": m.health_score,
-            "autonomy_score": org.autonomy_score,
-            "total_agents": len(org.get_all_agents()),
-            "pending_proposals": pending,
-            "last_active": org.last_active.isoformat(),
-            "is_system": org.is_system,
-            "icon_data": org.icon_data,
-        })
+        result.append(
+            {
+                "id": str(org.id),
+                "name": org.name,
+                "purpose": org.purpose,
+                "target_repo_path": org.target_repo_path,
+                "status": org.status.value,
+                "health_score": m.health_score,
+                "autonomy_score": org.autonomy_score,
+                "total_agents": len(org.get_all_agents()),
+                "pending_proposals": pending,
+                "last_active": org.last_active.isoformat(),
+                "is_system": org.is_system,
+                "icon_data": org.icon_data,
+            }
+        )
     return result
 
 
@@ -2343,7 +2421,9 @@ async def api_get_org_icon(org_name: str) -> Response:
                 return Response(content=icon_data, media_type="image/svg+xml")
             if stripped.startswith("data:") and "," in stripped:
                 header, data = stripped.split(",", 1)
-                media_type = header.split(";", 1)[0].removeprefix("data:") or "application/octet-stream"
+                media_type = (
+                    header.split(";", 1)[0].removeprefix("data:") or "application/octet-stream"
+                )
                 return Response(content=base64.b64decode(data), media_type=media_type)
     except HTTPException:
         pass
@@ -2387,7 +2467,11 @@ async def api_clear_goal_history() -> Dict[str, Any]:
 async def api_list_proposals(org_name: str) -> List[Dict[str, Any]]:
     """Organization の未完了改善提案一覧"""
     _, _, proposals = _pending_proposals_for(org_name)
-    active_proposals = [proposal for proposal in proposals if is_active_improvement_proposal_status(proposal.get("status"))]
+    active_proposals = [
+        proposal
+        for proposal in proposals
+        if is_active_improvement_proposal_status(proposal.get("status"))
+    ]
     return [
         {
             **proposal,
@@ -2396,6 +2480,59 @@ async def api_list_proposals(org_name: str) -> List[Dict[str, Any]]:
         }
         for proposal in active_proposals
     ]
+
+
+def _policy_engine() -> PolicyEngine:
+    """承認ポリシーエンジン。bootstrap が書く <platform_home>/policy.yaml を読む。
+
+    リクエストごとに ``_psm()`` の platform_home を基準にするので、テストでの
+    monkeypatch（tmp_path）とも一貫する。ファイルが無ければ DEFAULT_POLICY。
+    """
+    policy_path = _psm().platform_home / "policy.yaml"
+    return PolicyEngine(policy_path if policy_path.exists() else None)
+
+
+def _git_remote_github_repo(repo_path: Path) -> str | None:
+    """target_repo の origin リモートから owner/repo を推定する（best-effort）。"""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_path), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:  # noqa: BLE001 - git 不在/非リポジトリ等は推定不能として扱う
+        return None
+    url = (result.stdout or "").strip()
+    if not url or "github.com" not in url:
+        return None
+    tail = url.removesuffix(".git").split("github.com", 1)[-1].lstrip(":/")
+    parts = [segment for segment in tail.split("/") if segment]
+    if len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}"
+    return None
+
+
+def _resolve_github_repo(org: Any, repo_path: Path) -> str | None:
+    """PR 作成用 GitHub リポジトリ (owner/repo) を解決する。
+
+    優先順位: Organization.github_repo > 環境変数 GITHUB_REPO > target_repo の git remote。
+    """
+    explicit = getattr(org, "github_repo", None)
+    if explicit:
+        return str(explicit)
+    env_repo = os.getenv("GITHUB_REPO")
+    if env_repo:
+        return env_repo
+    return _git_remote_github_repo(repo_path)
+
+
+def _policy_payload(verdict: Any) -> Dict[str, Any]:
+    return {
+        "decision": verdict.decision.value,
+        "reason": verdict.reason,
+        "rule": verdict.rule_name,
+    }
 
 
 async def _approve_proposal_internal(
@@ -2407,16 +2544,31 @@ async def _approve_proposal_internal(
     from agents.orchestrator_agent import OrchestratorAgent
 
     psm, sm, target = _find_pending_proposal(org_name, proposal_id)
-    if not target.get("file_path"):
-        raise HTTPException(status_code=400, detail="この提案は file_path がないため承認できません")
 
-    approval_notes = str(req.approval_notes).strip() if req and req.approval_notes is not None else ""
+    # すべての承認は PolicyEngine を必ず通す（人間起点・AI起点ともに）。
+    verdict = _policy_engine().evaluate(target)
+    sm.update_proposal_fields(
+        str(target.get("id", "")),
+        policy_decision=verdict.decision.value,
+        policy_reason=verdict.reason,
+        policy_rule=verdict.rule_name,
+    )
+    if verdict.decision == ApprovalDecision.REJECT:
+        # 空 file_path（meta-level）や無効化カテゴリはポリシーで自動棄却される。
+        raise HTTPException(
+            status_code=409, detail=f"ポリシーにより承認できません: {verdict.reason}"
+        )
+
+    approval_notes = (
+        str(req.approval_notes).strip() if req and req.approval_notes is not None else ""
+    )
     if approval_notes:
         sm.update_proposal_fields(str(target.get("id", "")), approval_notes=approval_notes)
         target["approval_notes"] = approval_notes
 
     org = _find_org(org_name)
     repo_path = Path(org.target_repo_path) if org.target_repo_path else psm.platform_home
+    github_repo = await asyncio.to_thread(_resolve_github_repo, org, repo_path)
     sm.update_proposal_status(str(target.get("id", "")), "in_progress")
     await _record_execution_event(
         "proposal_started",
@@ -2437,6 +2589,7 @@ async def _approve_proposal_internal(
             "repo_path": str(repo_path),
             "suggestion": target,
             "github_token": os.getenv("GITHUB_TOKEN"),
+            "github_repo": github_repo,
         },
     )
     result = await OrchestratorAgent.create().run(task)
@@ -2466,6 +2619,7 @@ async def _approve_proposal_internal(
         "branch": result.output.get("branch"),
         "pr_url": result.output.get("pr_url"),
         "output": result.output,
+        "policy": _policy_payload(verdict),
     }
     await _record_execution_event(
         "proposal_approved",
@@ -2482,27 +2636,39 @@ async def _approve_proposal_internal(
             "pr_url": result.output.get("pr_url"),
         },
     )
-    await _updates_hub.broadcast({
-        "type": "task_complete",
-        "status": "success",
-        "title": str(target.get("title") or "改善提案を承認"),
-        "details": result.output.get("change_summary", "") or str(target.get("description") or ""),
-        "org_name": org_name,
-        "entity_type": "proposal",
-        "entity_id": str(target.get("id", "")),
-        "route": f"/proposals?org={org_name}",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await _updates_hub.broadcast(
+        {
+            "type": "task_complete",
+            "status": "success",
+            "title": str(target.get("title") or "改善提案を承認"),
+            "details": result.output.get("change_summary", "")
+            or str(target.get("description") or ""),
+            "org_name": org_name,
+            "entity_type": "proposal",
+            "entity_id": str(target.get("id", "")),
+            "route": f"/proposals?org={org_name}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
     return payload
 
 
 async def _reject_proposal_internal(org_name: str, proposal_id: str) -> Dict[str, Any]:
     _, sm, target = _find_pending_proposal(org_name, proposal_id)
+    # 却下も PolicyEngine を通して判定を監査記録する（却下自体は常に許可）。
+    verdict = _policy_engine().evaluate(target)
+    sm.update_proposal_fields(
+        str(target.get("id", "")),
+        policy_decision=verdict.decision.value,
+        policy_reason=verdict.reason,
+        policy_rule=verdict.rule_name,
+    )
     sm.update_proposal_status(str(target.get("id", "")), "rejected")
     payload = {
         "status": "rejected",
         "proposal_id": str(target.get("id", "")),
         "title": target.get("title"),
+        "policy": _policy_payload(verdict),
     }
     await _record_execution_event(
         "proposal_rejected",
@@ -2571,38 +2737,62 @@ async def api_analyze(req: AnalyzeRequest) -> Dict[str, Any]:
 async def api_analyze_stream(req: AnalyzeRequest) -> StreamingResponse:
     async def event_generator():
         try:
-            yield _format_sse({
-                "type": "start",
-                "org": req.org_name,
-                "org_name": req.org_name,
-                "content": f"{req.org_name} の分析を開始します",
-            })
+            yield _format_sse(
+                {
+                    "type": "start",
+                    "org": req.org_name,
+                    "org_name": req.org_name,
+                    "content": f"{req.org_name} の分析を開始します",
+                }
+            )
             await asyncio.sleep(0)
-            yield _format_sse({"type": "progress", "message": "Loading organization...", "content": "Loading organization..."})
+            yield _format_sse(
+                {
+                    "type": "progress",
+                    "message": "Loading organization...",
+                    "content": "Loading organization...",
+                }
+            )
             await asyncio.sleep(0)
-            yield _format_sse({"type": "progress", "message": "Running code review...", "content": "Running code review..."})
+            yield _format_sse(
+                {
+                    "type": "progress",
+                    "message": "Running code review...",
+                    "content": "Running code review...",
+                }
+            )
             await asyncio.sleep(0)
             result = await _perform_analyze(req)
-            yield _format_sse({"type": "progress", "message": "Saving generated proposals...", "content": "Saving generated proposals..."})
+            yield _format_sse(
+                {
+                    "type": "progress",
+                    "message": "Saving generated proposals...",
+                    "content": "Saving generated proposals...",
+                }
+            )
             await asyncio.sleep(0)
             for proposal in result["generated_proposals"]:
-                yield _format_sse({
-                    "type": "proposal",
-                    "org_name": result["org_name"],
-                    "title": proposal.get("title"),
-                    "file_path": proposal.get("file_path"),
-                    "content": proposal.get("title") or "改善提案を生成しました",
-                    "data": proposal,
-                })
+                yield _format_sse(
+                    {
+                        "type": "proposal",
+                        "org_name": result["org_name"],
+                        "title": proposal.get("title"),
+                        "file_path": proposal.get("file_path"),
+                        "content": proposal.get("title") or "改善提案を生成しました",
+                        "data": proposal,
+                    }
+                )
                 await asyncio.sleep(0)
-            yield _format_sse({
-                "type": "done",
-                "org_name": result["org_name"],
-                "files_reviewed": result["files_reviewed"],
-                "proposals_generated": result["proposals_generated"],
-                "count": result["proposals_generated"],
-                "content": f"{result['files_reviewed']} 件のファイルを確認し、{result['proposals_generated']} 件の提案を生成しました",
-            })
+            yield _format_sse(
+                {
+                    "type": "done",
+                    "org_name": result["org_name"],
+                    "files_reviewed": result["files_reviewed"],
+                    "proposals_generated": result["proposals_generated"],
+                    "count": result["proposals_generated"],
+                    "content": f"{result['files_reviewed']} 件のファイルを確認し、{result['proposals_generated']} 件の提案を生成しました",
+                }
+            )
             await asyncio.sleep(0)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Analyze stream failed", exc_info=exc)
@@ -2645,35 +2835,53 @@ async def api_run_goal(req: GoalRunRequest) -> Dict[str, Any]:
 async def api_goals_stream(req: GoalRunRequest) -> StreamingResponse:
     async def event_generator():
         try:
-            yield _format_sse({
-                "type": "start",
-                "goal": req.goal_text,
-                "org_name": getattr(req, "org_name", None),
-            })
+            yield _format_sse(
+                {
+                    "type": "start",
+                    "goal": req.goal_text,
+                    "org_name": getattr(req, "org_name", None),
+                }
+            )
             await asyncio.sleep(0)
-            yield _format_sse({"type": "progress", "message": "Planning goal execution...", "content": "Planning goal execution..."})
+            yield _format_sse(
+                {
+                    "type": "progress",
+                    "message": "Planning goal execution...",
+                    "content": "Planning goal execution...",
+                }
+            )
             await asyncio.sleep(0)
             result = await _perform_goal_run(req)
-            yield _format_sse({"type": "progress", "message": "Saving goal history...", "content": "Saving goal history..."})
+            yield _format_sse(
+                {
+                    "type": "progress",
+                    "message": "Saving goal history...",
+                    "content": "Saving goal history...",
+                }
+            )
             await asyncio.sleep(0)
             result_text = str(result.get("result") or result.get("summary") or "")
-            yield _format_sse({
-                "type": "result",
-                "goal": result.get("goal") or req.goal_text,
-                "org_name": result.get("org_name") or result.get("organization"),
-                "result": result_text,
-                "summary": result.get("summary") or result_text,
-                "content": result_text,
-                "data": result,
-            })
+            yield _format_sse(
+                {
+                    "type": "result",
+                    "goal": result.get("goal") or req.goal_text,
+                    "org_name": result.get("org_name") or result.get("organization"),
+                    "result": result_text,
+                    "summary": result.get("summary") or result_text,
+                    "content": result_text,
+                    "data": result,
+                }
+            )
             await asyncio.sleep(0)
-            yield _format_sse({
-                "type": "done",
-                "goal": result.get("goal") or req.goal_text,
-                "org_name": result.get("org_name") or result.get("organization"),
-                "result": result_text,
-                "content": "ゴール実行が完了しました",
-            })
+            yield _format_sse(
+                {
+                    "type": "done",
+                    "goal": result.get("goal") or req.goal_text,
+                    "org_name": result.get("org_name") or result.get("organization"),
+                    "result": result_text,
+                    "content": "ゴール実行が完了しました",
+                }
+            )
             await asyncio.sleep(0)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Goal stream failed", exc_info=exc)
@@ -2951,7 +3159,9 @@ async def ws_chat(websocket: WebSocket) -> None:
                 return
 
             if response:
-                await websocket.send_json({"type": "message", "role": "assistant", "content": response})
+                await websocket.send_json(
+                    {"type": "message", "role": "assistant", "content": response}
+                )
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")
 
@@ -2959,12 +3169,14 @@ async def ws_chat(websocket: WebSocket) -> None:
 @app.websocket("/ws/updates")
 async def ws_updates(websocket: WebSocket) -> None:
     await _updates_hub.connect(websocket)
-    await websocket.send_json({
-        "type": "status",
-        "status": "connected",
-        "title": "リアルタイム更新に接続しました",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await websocket.send_json(
+        {
+            "type": "status",
+            "status": "connected",
+            "title": "リアルタイム更新に接続しました",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
     try:
         while True:
@@ -2972,7 +3184,6 @@ async def ws_updates(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         await _updates_hub.disconnect(websocket)
         logger.info("Updates WebSocket client disconnected")
-
 
 
 def run_server(host: str = "0.0.0.0", port: int = 7860) -> None:
@@ -2984,7 +3195,21 @@ def run_server(host: str = "0.0.0.0", port: int = 7860) -> None:
     uvicorn.run(app, host=host, port=port)
 
 
+@app.get("/api/atlas", tags=["atlas"])
+async def api_atlas() -> dict:
+    """Repository Atlas モデルを返す。
+
+    使用フローカタログ・モジュール依存グラフ・CLI コマンド木・FastAPI ルートマップ・
+    サブシステム在庫を、読み取り専用イントロスペクションで集約する（生成系に非依存）。
+    重い静的解析を含むため event loop をブロックしないよう別スレッドで実行する。
+    """
+    from core.atlas import build_atlas
+
+    return await asyncio.to_thread(build_atlas)
+
+
 # --- SPA routes (must be last so API routes take precedence) ---
+
 
 @app.get("/")
 async def root():
@@ -2994,6 +3219,17 @@ async def root():
 
 @app.get("/{full_path:path}")
 async def spa_fallback(full_path: str):
-    """Serve React SPA for all non-API client-side routes."""
+    """Serve React SPA for all non-API client-side routes.
+
+    未マッチの ``/api/...`` ``/ws/...`` パスは SPA の index.html(200) で握り潰さず、
+    明示的に JSON 404 を返す（明示的 404 ハンドリングの非交渉ルール）。
+    """
+    if (
+        full_path == "api"
+        or full_path.startswith("api/")
+        or full_path == "ws"
+        or full_path.startswith("ws/")
+    ):
+        raise HTTPException(status_code=404, detail=f"Not Found: /{full_path}")
     index = _serve_dir / "index.html"
     return FileResponse(index if index.exists() else STATIC_DIR / "index.html")

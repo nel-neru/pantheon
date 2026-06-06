@@ -46,6 +46,12 @@ class FakeProposalStateManager:
             if str(proposal["id"]).startswith(proposal_id):
                 proposal["status"] = status
 
+    def update_proposal_fields(self, proposal_id: str, **updates) -> bool:
+        for proposal in self.proposals:
+            if str(proposal["id"]).startswith(proposal_id):
+                proposal.update(updates)
+        return True
+
 
 class FakePSM:
     def __init__(self, platform_home: Path, org, state_manager: FakeProposalStateManager):

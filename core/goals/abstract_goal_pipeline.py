@@ -76,6 +76,20 @@ class AbstractGoalPipeline:
         self._parser = parser or GoalParser()
         self._decomposer = decomposer or GoalDecomposer()
         self._instantiator = instantiator or OrgInstantiator()
+        # 既定で pattern_store 付き PreTaskOrchestrator を配線し、ゴール実行が
+        # パターン学習として蓄積されるようにする（明示注入があればそれを優先）。
+        if pre_task_orchestrator is None:
+            try:
+                from core.orchestration.orchestration_pattern_store import (
+                    OrchestrationPatternStore,
+                )
+                from core.orchestration.pre_task_orchestrator import PreTaskOrchestrator
+
+                pre_task_orchestrator = PreTaskOrchestrator(
+                    pattern_store=OrchestrationPatternStore()
+                )
+            except Exception:  # noqa: BLE001 - 最小環境では従来どおり None で続行
+                pre_task_orchestrator = None
         self._coordinator = coordinator or ExecutionCoordinator(
             pre_task_orchestrator=pre_task_orchestrator
         )

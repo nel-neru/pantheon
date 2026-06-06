@@ -20,8 +20,13 @@ def _print_proposal(proposal: dict[str, Any]) -> None:
     print()
 
 
-def _find_pending_proposal(proposals: list[dict[str, Any]], proposal_id: str) -> dict[str, Any] | None:
-    return next((proposal for proposal in proposals if str(proposal.get("id", "")).startswith(proposal_id)), None)
+def _find_pending_proposal(
+    proposals: list[dict[str, Any]], proposal_id: str
+) -> dict[str, Any] | None:
+    return next(
+        (proposal for proposal in proposals if str(proposal.get("id", "")).startswith(proposal_id)),
+        None,
+    )
 
 
 def _print_org(org, pending_count: int) -> None:
@@ -40,7 +45,9 @@ def _print_org(org, pending_count: int) -> None:
     for division in org.divisions:
         print(f"  - Division: {division.name} [{division.type.value}]")
         for team in division.teams:
-            print(f"    • Team: {team.name} [{team.division_type.value}] ({len(team.agents)} agents)")
+            print(
+                f"    • Team: {team.name} [{team.division_type.value}] ({len(team.agents)} agents)"
+            )
             for agent in team.agents:
                 skills = " / ".join(getattr(skill, "value", skill) for skill in agent.skills)
                 print(f"      - {agent.name} [{skills}]")
@@ -150,6 +157,10 @@ async def cmd_org_remove(args: argparse.Namespace, *, confirm_action: Any, get_p
     if not org:
         print(f"[ERROR] Organization '{args.name}' が見つかりません。")
         sys.exit(1)
+    if getattr(org, "is_system", False) and not getattr(args, "force", False):
+        print(f"[ERROR] '{args.name}' はシステム Organization のため削除できません。")
+        print("   どうしても削除する場合は --force を指定してください。")
+        sys.exit(1)
     if not confirm_action(
         f"Organization '{args.name}' を削除します。関連する設定参照が使えなくなる可能性があります。続行しますか?",
         assume_yes=getattr(args, "yes", False),
@@ -204,7 +215,13 @@ async def cmd_analyze(args: argparse.Namespace, *, get_orchestrator: Any, get_ps
             expected_impact=suggestion.get("expected_impact", ""),
         )
         state_manager.save_improvement_proposal(proposal)
-        badge = "[HIGH]" if proposal.priority == "high" else "[MEDIUM]" if proposal.priority == "medium" else "[LOW]"
+        badge = (
+            "[HIGH]"
+            if proposal.priority == "high"
+            else "[MEDIUM]"
+            if proposal.priority == "medium"
+            else "[LOW]"
+        )
         print(f"  {badge} [{proposal.priority.upper():6}] {proposal.title}")
         if proposal.file_path:
             print(f"           ファイル: {proposal.file_path}")
@@ -255,13 +272,25 @@ async def cmd_proposal_show(args: argparse.Namespace, *, get_psm: Any) -> None:
         sys.exit(1)
 
     state_manager = psm.get_org_state_manager(org)
-    proposal = _find_pending_proposal(state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id)
+    proposal = _find_pending_proposal(
+        state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id
+    )
     if not proposal:
         print(f"[ERROR] ID '{args.proposal_id}' に一致する未対応提案が見つかりません。")
         sys.exit(1)
 
     print(f"\n提案詳細 — {org.name}\n")
-    for key in ("id", "title", "status", "priority", "category", "file_path", "expected_impact", "implementation_difficulty", "created_at"):
+    for key in (
+        "id",
+        "title",
+        "status",
+        "priority",
+        "category",
+        "file_path",
+        "expected_impact",
+        "implementation_difficulty",
+        "created_at",
+    ):
         value = proposal.get(key, "")
         if key == "file_path" and not value:
             value = "(なし)"
@@ -270,7 +299,9 @@ async def cmd_proposal_show(args: argparse.Namespace, *, get_psm: Any) -> None:
     print()
 
 
-async def cmd_proposal_reject(args: argparse.Namespace, *, confirm_action: Any, get_psm: Any) -> None:
+async def cmd_proposal_reject(
+    args: argparse.Namespace, *, confirm_action: Any, get_psm: Any
+) -> None:
     psm = get_psm()
     org = psm.load_organization_by_name(args.org_name)
     if not org:
@@ -278,12 +309,16 @@ async def cmd_proposal_reject(args: argparse.Namespace, *, confirm_action: Any, 
         sys.exit(1)
 
     state_manager = psm.get_org_state_manager(org)
-    proposal = _find_pending_proposal(state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id)
+    proposal = _find_pending_proposal(
+        state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id
+    )
     if not proposal:
         print(f"[ERROR] ID '{args.proposal_id}' に一致する未対応提案が見つかりません。")
         sys.exit(1)
 
-    if not confirm_action(f"提案 '{proposal.get('title')}' を却下しますか?", assume_yes=getattr(args, "yes", False)):
+    if not confirm_action(
+        f"提案 '{proposal.get('title')}' を却下しますか?", assume_yes=getattr(args, "yes", False)
+    ):
         print("[INFO] 却下を中止しました。")
         return
 
@@ -309,9 +344,27 @@ async def cmd_proposal_apply(
         sys.exit(1)
 
     state_manager = psm.get_org_state_manager(org)
-    proposal = _find_pending_proposal(state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id)
+    proposal = _find_pending_proposal(
+        state_manager.get_pending_improvement_proposals(limit=100), args.proposal_id
+    )
     if not proposal:
         print(f"[ERROR] ID '{args.proposal_id}' に一致する未対応提案が見つかりません。")
+        sys.exit(1)
+
+    # 承認は人間起点でも必ず PolicyEngine を通す（Web と同じ非交渉ルール）。
+    from core.policy.engine import ApprovalDecision, PolicyEngine
+
+    policy_path = psm.platform_home / "policy.yaml"
+    verdict = PolicyEngine(policy_path if policy_path.exists() else None).evaluate(proposal)
+    state_manager.update_proposal_fields(
+        str(proposal.get("id", "")),
+        policy_decision=verdict.decision.value,
+        policy_reason=verdict.reason,
+        policy_rule=verdict.rule_name,
+    )
+    if verdict.decision == ApprovalDecision.REJECT:
+        print(f"[ERROR] ポリシーにより承認できません: {verdict.reason}")
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "rejected")
         sys.exit(1)
 
     file_path = proposal.get("file_path", "")
@@ -335,6 +388,10 @@ async def cmd_proposal_apply(
     state_manager.update_proposal_status(str(proposal.get("id", "")), "in_progress")
     github_token = args.github_token or os.getenv("GITHUB_TOKEN")
 
+    from github_integration.repo_resolver import resolve_github_repo
+
+    github_repo = resolve_github_repo(getattr(args, "github_repo", None), org, repo_path)
+
     executor = get_orchestrator()
     task = AgentTask(
         task_type="improvement_execution",
@@ -343,7 +400,7 @@ async def cmd_proposal_apply(
             "repo_path": str(repo_path),
             "suggestion": proposal,
             "github_token": github_token,
-            "github_repo": args.github_repo,
+            "github_repo": github_repo,
         },
     )
 
@@ -368,27 +425,54 @@ async def cmd_query(
     *,
     get_platform_home: Any,
     parse_query_filters: Any,
+    get_psm: Any = None,
 ) -> None:
-    """SQLite proposals table を簡易検索する"""
-    from core.state.sqlite_manager import SQLiteStateManager
+    """改善提案を検索する。
 
-    db_path = (
-        Path(args.db_path).expanduser().resolve()
-        if getattr(args, "db_path", None)
-        else get_platform_home() / "state.db"
-    )
-    manager = SQLiteStateManager(db_path)
+    ストアの主従:
+      - 正準（source of truth）: 各リポジトリ内 JSON（RepoStateManager / <repo>/.pantheon/improvements）。
+        ``--org-name`` 指定時はこちらを読む。
+      - 副（任意のクエリ用ミラー）: グローバル SQLite（StateMigrator で投入）。
+        ``--org-name`` を付けない、または ``--db-path`` 指定時はこちらを読む。
+    """
     try:
         field_filters = parse_query_filters(getattr(args, "filter", ""))
-        rows = manager.query_proposals(
-            field_filters=field_filters,
-            limit=getattr(args, "limit", 50),
-        )
     except ValueError as exc:
         print(f"[ERROR] {exc}")
         sys.exit(1)
-    finally:
-        manager.close()
+
+    limit = getattr(args, "limit", 50)
+    org_name = getattr(args, "org_name", None)
+
+    if org_name and not getattr(args, "db_path", None):
+        # 正準 JSON ストアを読む
+        if get_psm is None:
+            print("[ERROR] 内部エラー: get_psm が利用できません。")
+            sys.exit(1)
+        psm = get_psm()
+        org = psm.load_organization_by_name(org_name)
+        if not org:
+            print(f"[ERROR] Organization '{org_name}' が見つかりません。")
+            sys.exit(1)
+        sm = psm.get_org_state_manager(org)
+        rows = sm.get_pending_improvement_proposals(limit=max(limit, 100))
+        for key, value in field_filters.items():
+            rows = [r for r in rows if str(r.get(key, "")) == value]
+        rows = rows[:limit]
+    else:
+        # 副 SQLite ミラーを読む（後方互換）
+        from core.state.sqlite_manager import SQLiteStateManager
+
+        db_path = (
+            Path(args.db_path).expanduser().resolve()
+            if getattr(args, "db_path", None)
+            else get_platform_home() / "state.db"
+        )
+        manager = SQLiteStateManager(db_path)
+        try:
+            rows = manager.query_proposals(field_filters=field_filters, limit=limit)
+        finally:
+            manager.close()
 
     if not rows:
         print("条件に一致する提案はありません。")
@@ -434,7 +518,9 @@ def register(subparsers: Any) -> None:
     add_parser.add_argument("--name", required=True, help="Organization 名")
     add_parser.add_argument("--repo", default=None, help="担当リポジトリの絶対パス")
     add_parser.add_argument("--purpose", default="", help="Organization の目的・ゴール")
-    add_parser.add_argument("--template", default=None, help="テンプレート名（例: meta_improvement）")
+    add_parser.add_argument(
+        "--template", default=None, help="テンプレート名（例: meta_improvement）"
+    )
     add_parser.set_defaults(handler_name="cmd_org_add")
 
     list_parser = org_sub.add_parser("list", help="Organization の一覧を表示する")
@@ -447,6 +533,11 @@ def register(subparsers: Any) -> None:
     remove_parser = org_sub.add_parser("remove", help="Organization を削除する")
     remove_parser.add_argument("--name", required=True, help="削除する Organization 名")
     remove_parser.add_argument("--yes", action="store_true", help="確認を省略して削除する")
+    remove_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="システム Organization（Meta-Improvement 等）でも強制的に削除する",
+    )
     remove_parser.set_defaults(handler_name="cmd_org_remove")
 
     analyze_parser = subparsers.add_parser("analyze", help="担当リポジトリを分析して改善提案を生成")
@@ -475,7 +566,9 @@ def register(subparsers: Any) -> None:
     proposal_apply = proposal_sub.add_parser("apply", help="改善提案を適用")
     proposal_apply.add_argument("proposal_id", help="提案 ID（先頭一致可）")
     proposal_apply.add_argument("--org-name", required=True, help="対象 Organization 名")
-    proposal_apply.add_argument("--github-repo", default=None, help="GitHub リポジトリ (owner/repo)")
+    proposal_apply.add_argument(
+        "--github-repo", default=None, help="GitHub リポジトリ (owner/repo)"
+    )
     proposal_apply.add_argument("--github-token", default=None, help="GitHub トークン")
     proposal_apply.add_argument("--yes", action="store_true", help="確認を省略して適用する")
     proposal_apply.set_defaults(handler_name="cmd_proposal_apply")
@@ -483,13 +576,22 @@ def register(subparsers: Any) -> None:
     approve_parser = subparsers.add_parser("approve", help="改善提案を承認してコードに適用")
     approve_parser.add_argument("proposal_id", help="承認する提案の ID（先頭 8 文字以上）")
     approve_parser.add_argument("--org-name", required=True, help="対象 Organization 名")
-    approve_parser.add_argument("--github-repo", default=None, help="GitHub リポジトリ (owner/repo)")
+    approve_parser.add_argument(
+        "--github-repo", default=None, help="GitHub リポジトリ (owner/repo)"
+    )
     approve_parser.add_argument("--github-token", default=None, help="GitHub トークン")
     approve_parser.add_argument("--yes", action="store_true", help="確認を省略して適用する")
     approve_parser.set_defaults(handler_name="cmd_approve")
 
-    query_parser = subparsers.add_parser("query", help="SQLite proposals を条件付きで検索")
-    query_parser.add_argument("--filter", default="", help="安全な filter 条件 (例: priority=high,status=proposed)")
+    query_parser = subparsers.add_parser(
+        "query", help="改善提案を検索（--org-name で正準 JSON / 省略時は SQLite ミラー）"
+    )
+    query_parser.add_argument(
+        "--filter", default="", help="安全な filter 条件 (例: priority=high,status=proposed)"
+    )
     query_parser.add_argument("--limit", type=int, default=50, help="最大件数")
-    query_parser.add_argument("--db-path", default=None, help="対象 SQLite DB パス")
+    query_parser.add_argument(
+        "--org-name", default=None, help="対象 Organization（指定時は正準 JSON ストアを読む）"
+    )
+    query_parser.add_argument("--db-path", default=None, help="対象 SQLite DB パス（ミラー）")
     query_parser.set_defaults(handler_name="cmd_query")

@@ -19,7 +19,13 @@ from core.models.organization import ACTIVE_IMPROVEMENT_PROPOSAL_STATUSES, Impro
 
 
 class SQLiteStateManager:
-    """SQLite-backed state manager for improvement proposals and decisions."""
+    """SQLite-backed state manager for improvement proposals and decisions.
+
+    注意: これは **副（secondary）クエリ用ミラー** であり source of truth ではない。
+    ImprovementProposal の正準ストアは `core.state.manager.RepoStateManager`（各リポジトリ内 JSON）。
+    この SQLite ストアは `StateMigrator` 経由でオンデマンドに投入され、`pantheon query --db-path`
+    で読まれるだけで、analyze / approve / reject / apply からは書き込まれない。
+    """
 
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
@@ -187,7 +193,20 @@ class SQLiteStateManager:
         filter_clause = (sql_filter or "").strip()
         if filter_clause:
             upper = filter_clause.upper()
-            forbidden = ("INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "ATTACH", "DETACH", "PRAGMA", ";", "--", "/*")
+            forbidden = (
+                "INSERT",
+                "UPDATE",
+                "DELETE",
+                "DROP",
+                "ALTER",
+                "CREATE",
+                "ATTACH",
+                "DETACH",
+                "PRAGMA",
+                ";",
+                "--",
+                "/*",
+            )
             if any(token in upper for token in forbidden):
                 raise ValueError("Unsafe SQL filter.")
             if not (upper.startswith("WHERE ") or upper.startswith("ORDER BY ")):

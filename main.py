@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 from commands import build_parser
+from commands.atlas import cmd_atlas as _cmd_atlas_impl
 from commands.chat import cmd_chat as _cmd_chat_impl
 from commands.doctor import cmd_doctor as _cmd_doctor_impl
 from commands.goal import cmd_goal_run as _cmd_goal_run_impl
@@ -269,7 +270,10 @@ async def cmd_proposal_apply(args) -> None:
 
 async def cmd_query(args) -> None:
     await _cmd_query_impl(
-        args, get_platform_home=_get_platform_home, parse_query_filters=_parse_query_filters
+        args,
+        get_platform_home=_get_platform_home,
+        parse_query_filters=_parse_query_filters,
+        get_psm=_get_psm,
     )
 
 
@@ -331,6 +335,10 @@ def cmd_daemon_status(args) -> None:
 
 def cmd_chat(args) -> None:
     _cmd_chat_impl(args, require_api_key=_require_api_key)
+
+
+def cmd_atlas(args) -> None:
+    _cmd_atlas_impl(args)
 
 
 async def cmd_orchestration_analyze(args) -> None:
@@ -438,6 +446,7 @@ HANDLERS = {
     "cmd_daemon_stop": cmd_daemon_stop,
     "cmd_daemon_status": cmd_daemon_status,
     "cmd_chat": cmd_chat,
+    "cmd_atlas": cmd_atlas,
     "cmd_version": cmd_version,
     "cmd_doctor": cmd_doctor,
     "cmd_orchestration_analyze": cmd_orchestration_analyze,

@@ -13,15 +13,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # ============================================================
 # Quality Review Models
 # ============================================================
+
 
 class QualityDimension(str, Enum):
     THINKING_QUALITY = "thinking_quality"
@@ -61,6 +61,12 @@ class ImprovementProposal(BaseModel):
     expected_impact: str = ""
     implementation_difficulty: str = "medium"
     status: str = "proposed"  # "proposed" | "pending" | "in_progress" | "done" | "rejected" | "failed" | "cancelled"
+    is_meta: bool = Field(
+        False, description="Atlas/システムレベルの meta 提案（空 file_path をポリシーが許容しうる）"
+    )
+    dedupe_key: str = Field(
+        "", description="再生成をまたいで同一性を保つ安定ハッシュ（重複排除用）"
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -75,6 +81,7 @@ def is_active_improvement_proposal_status(status: str | None) -> bool:
 # ============================================================
 # Organization Status / Types
 # ============================================================
+
 
 class OrganizationStatus(str, Enum):
     ACTIVE = "active"
@@ -108,6 +115,7 @@ class AgentSkill(str, Enum):
 
 class SpecialistAgent(BaseModel):
     """2〜3個の専門スキルを抱えたSpecialist Agent"""
+
     id: UUID = Field(default_factory=uuid4)
     name: str
     skills: List[AgentSkill] = Field(..., min_length=2, max_length=3)
@@ -126,6 +134,7 @@ class SpecialistAgent(BaseModel):
 
 class Team(BaseModel):
     """Team（Division内の実行単位）"""
+
     id: UUID = Field(default_factory=uuid4)
     name: str
     division_type: DivisionType
@@ -136,6 +145,7 @@ class Team(BaseModel):
 
 class Division(BaseModel):
     """Division（組織内の機能別グループ）"""
+
     id: UUID = Field(default_factory=uuid4)
     name: str
     type: DivisionType
@@ -149,10 +159,14 @@ class Division(BaseModel):
 
 class Organization(BaseModel):
     """Organization（目的を持った自律的な組織 / 子会社）"""
+
     id: UUID = Field(default_factory=uuid4)
     name: str
     purpose: str  # この組織が達成したい目的
     target_repo_path: str | None = None  # 担当するリポジトリの絶対パス
+    github_repo: str | None = Field(
+        None, description="GitHub リポジトリ (owner/repo) — 改善提案の PR 作成に使用"
+    )
     divisions: List[Division] = Field(default_factory=list)
     status: OrganizationStatus = OrganizationStatus.INCUBATING
     autonomy_score: float = Field(40.0, ge=0, le=100)
@@ -184,6 +198,7 @@ class Organization(BaseModel):
 
 class OrganizationMetrics(BaseModel):
     """個別Organizationの成長指標"""
+
     organization_id: str
     name: str
     autonomy_score: float
@@ -196,6 +211,7 @@ class OrganizationMetrics(BaseModel):
 
 class GroupHQState(BaseModel):
     """Core（中核）の状態"""
+
     version: str = "0.3.0-reorg"
     organizations: Dict[UUID, Organization] = Field(default_factory=dict)
     total_agents: int = 0

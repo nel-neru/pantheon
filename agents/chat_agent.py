@@ -36,6 +36,16 @@ logger = logging.getLogger(__name__)
 SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
 DEFAULT_MODEL = ""  # empty => let the `claude` CLI pick its own default model
 
+# run_chat() の LLM 接続表示ラベル。F1 以降、生成経路はローカル ``claude`` CLI のみ。
+# 不明な provider 値はそのまま表示する（.get(provider, provider)）。
+PROVIDER_LABEL_MAP = {
+    "claude": "Claude Code CLI",
+    "claude_code": "Claude Code CLI",
+    "claude-code": "Claude Code CLI",
+    "anthropic": "Claude Code CLI",
+    "local": "Claude Code CLI",
+}
+
 
 def _load_llm_config() -> dict[str, Any]:
     """Resolve Pantheon's only execution backend: the local ``claude`` CLI.
@@ -123,7 +133,9 @@ def _classify_agent_task(user_message: str) -> Optional[str]:
     return None
 
 
-async def _generate_llm_response(messages: List[Dict[str, Any]], config: dict[str, Any]) -> Dict[str, Any]:
+async def _generate_llm_response(
+    messages: List[Dict[str, Any]], config: dict[str, Any]
+) -> Dict[str, Any]:
     """Generate a conversational reply via Claude Code (the local ``claude`` CLI).
 
     Claude Code manages its own tools, so Pantheon no longer runs a manual
@@ -135,13 +147,17 @@ async def _generate_llm_response(messages: List[Dict[str, Any]], config: dict[st
 
     provider = get_llm_provider()
     response = await provider.generate(
-        messages=[LLMMessage(role=message["role"], content=message["content"]) for message in messages],
+        messages=[
+            LLMMessage(role=message["role"], content=message["content"]) for message in messages
+        ],
         model=config.get("model") or None,
     )
     return {"content": response.content, "tool_calls": []}
 
 
-async def _handle_agent_task(user_message: str, config: dict[str, Any], current_org: Optional[str] = None) -> str:
+async def _handle_agent_task(
+    user_message: str, config: dict[str, Any], current_org: Optional[str] = None
+) -> str:
     """自然言語タスクをバックエンドのPythonエージェントシステムで実行する。"""
     if not _has_llm_config(config):
         return _missing_api_key_message(config)
@@ -153,7 +169,9 @@ async def _handle_agent_task(user_message: str, config: dict[str, Any], current_
     try:
         from agents.agent_factory import AgentFactory
         from agents.base import AgentTask
+        from core.intelligence.capability_registry import CapabilityRegistry
         from core.llm import get_llm_provider
+        from core.orchestration.orchestration_pattern_store import OrchestrationPatternStore
         from core.orchestration.pre_task_orchestrator import PreTaskOrchestrator
     except ImportError:
         return "エージェントシステムが利用できません。requirements.txt を確認してください。"
@@ -171,7 +189,19 @@ async def _handle_agent_task(user_message: str, config: dict[str, Any], current_
 
     task = AgentTask(task_type=task_type, description=user_message, input=task_input)
     agent_factory = AgentFactory(llm_client=llm_provider)
-    orchestrator = PreTaskOrchestrator(llm_client=llm_provider, agent_factory=agent_factory)
+    # CapabilityRegistry を配線してルーティングを機能させ、pattern_store で学習を蓄積する。
+    registry = CapabilityRegistry()
+    try:
+        if not registry.list_all():
+            registry.scan_and_register_all()
+    except Exception:  # noqa: BLE001 - スキャン不能でも分析は継続
+        pass
+    orchestrator = PreTaskOrchestrator(
+        llm_client=llm_provider,
+        agent_factory=agent_factory,
+        capability_registry=registry,
+        pattern_store=OrchestrationPatternStore(),
+    )
     analysis = orchestrator.analyze(task_type, user_message, context=task_input)
     result = await orchestrator.execute(task, analysis, agent_factory=agent_factory.create)
 
@@ -193,7 +223,7 @@ async def _handle_agent_task(user_message: str, config: dict[str, Any], current_
         for suggestion in suggestions[:5]:
             lines.append(
                 f"- [{suggestion.get('priority', 'medium')}] {suggestion.get('title', '改善提案')}"
-                + (f" ({suggestion.get('file_path')})" if suggestion.get('file_path') else "")
+                + (f" ({suggestion.get('file_path')})" if suggestion.get("file_path") else "")
             )
         if len(suggestions) > 5:
             lines.append(f"- ...他 {len(suggestions) - 5} 件")
@@ -227,7 +257,10 @@ TOOLS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Organization の名前"},
-                "repo": {"type": "string", "description": "担当リポジトリのパス（省略時はカレントディレクトリ）"},
+                "repo": {
+                    "type": "string",
+                    "description": "担当リポジトリのパス（省略時はカレントディレクトリ）",
+                },
                 "purpose": {"type": "string", "description": "Organizationの目的・ゴール"},
             },
             "required": ["name"],
@@ -262,7 +295,10 @@ TOOLS: List[Dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "proposal_id": {"type": "string", "description": "承認する提案のID（先頭数文字でも可）"},
+                "proposal_id": {
+                    "type": "string",
+                    "description": "承認する提案のID（先頭数文字でも可）",
+                },
                 "org_name": {"type": "string", "description": "対象 Organization 名"},
             },
             "required": ["proposal_id", "org_name"],
@@ -274,7 +310,10 @@ TOOLS: List[Dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "goal_text": {"type": "string", "description": "実行したいゴールの自然言語テキスト"},
+                "goal_text": {
+                    "type": "string",
+                    "description": "実行したいゴールの自然言語テキスト",
+                },
             },
             "required": ["goal_text"],
         },
@@ -319,9 +358,11 @@ SYSTEM_PROMPT = """\
 # ツール実行（各ツールの実装）                            #
 # ───────────────────────────────────────────────────── #
 
+
 async def _tool_initialize_platform(_input: Dict) -> str:
     from core.bootstrap import bootstrap_platform
     from core.platform.state import PlatformStateManager, get_platform_home
+
     psm = PlatformStateManager()
     if psm.is_initialized():
         return f"✅ プラットフォームはすでに初期化されています（{psm.platform_home}）"
@@ -404,11 +445,11 @@ async def _tool_analyze_organization(inp: Dict) -> str:
     return (
         f"✅ {files} ファイルを分析し、{len(suggestions)} 件の改善提案を生成しました\n"
         + "\n".join(
-            f"  {'🔴' if s.get('priority')=='high' else '🟡' if s.get('priority')=='medium' else '🟢'}"
-            f" [{s.get('priority','?').upper():6}] {s.get('title','')}"
+            f"  {'🔴' if s.get('priority') == 'high' else '🟡' if s.get('priority') == 'medium' else '🟢'}"
+            f" [{s.get('priority', '?').upper():6}] {s.get('title', '')}"
             for s in suggestions[:5]
         )
-        + (f"\n  ...他 {len(suggestions)-5} 件" if len(suggestions) > 5 else "")
+        + (f"\n  ...他 {len(suggestions) - 5} 件" if len(suggestions) > 5 else "")
     )
 
 
@@ -428,9 +469,11 @@ async def _tool_list_proposals(inp: Dict) -> str:
 
     lines = [f"📋 '{org_name}' の未対応提案 ({len(proposals)} 件):\n"]
     for p in proposals:
-        badge = "🔴" if p.get("priority") == "high" else "🟡" if p.get("priority") == "medium" else "🟢"
+        badge = (
+            "🔴" if p.get("priority") == "high" else "🟡" if p.get("priority") == "medium" else "🟢"
+        )
         pid = str(p.get("id", ""))[:8]
-        lines.append(f"  {badge} [{pid}] {p.get('title', '?')}  ({p.get('priority','?')})")
+        lines.append(f"  {badge} [{pid}] {p.get('title', '?')}  ({p.get('priority', '?')})")
     return "\n".join(lines)
 
 
@@ -559,12 +602,14 @@ TOOL_HANDLERS: Dict[str, Any] = {
 # ChatSession                                           #
 # ───────────────────────────────────────────────────── #
 
+
 @dataclass
 class ChatSession:
     """
     対話セッション。会話履歴・現在のOrg等のコンテキストを保持する。
     LLMがあれば自然言語→ツール呼び出し、なければスラッシュコマンドのみ。
     """
+
     history: List[Dict[str, Any]] = field(default_factory=list)
     current_org: Optional[str] = None
     has_llm: bool = False
@@ -595,7 +640,9 @@ class ChatSession:
             return agent_result
 
         if not self.has_llm:
-            return _missing_api_key_message(self.config) + "\n/help でコマンド一覧を確認してください。"
+            return (
+                _missing_api_key_message(self.config) + "\n/help でコマンド一覧を確認してください。"
+            )
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, *self.history]
         response = await _generate_llm_response(messages, self.config)
@@ -728,6 +775,7 @@ async def handle_slash_command(cmd: str, session: ChatSession) -> Optional[str]:
 # メインループ                                           #
 # ───────────────────────────────────────────────────── #
 
+
 async def run_chat(initial_message: Optional[str] = None) -> None:
     """
     対話ループのエントリーポイント。
@@ -740,7 +788,9 @@ async def run_chat(initial_message: Optional[str] = None) -> None:
     print("  🤖 Pantheon チャットエージェント")
     print("═" * 58)
     if session.has_llm:
-        provider_label = PROVIDER_LABEL_MAP.get(session.config["provider"], session.config["provider"])
+        provider_label = PROVIDER_LABEL_MAP.get(
+            session.config["provider"], session.config["provider"]
+        )
         print(f"  ✅ LLM接続: {provider_label} ({session.config['model']})")
         print("  🧠 自然言語の依頼は必要に応じて PreTaskOrchestrator 経由で実行されます")
     else:

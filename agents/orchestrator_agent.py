@@ -69,14 +69,29 @@ class OrchestratorAgent(BaseAgent):
         return cls(llm_client=llm_client)
 
     def _get_orchestrator(self):
-        """PreTaskOrchestrator の遅延取得。"""
+        """PreTaskOrchestrator の遅延取得。
+
+        CapabilityRegistry を配線しないと TaskRouter がエージェントを選べず
+        「No main agent」で失敗するため、スキャン済みレジストリを必ず渡す。
+        レジストリが空のときだけスキャンする（以降はディスク上の
+        capability_registry.json から読み込まれるので再スキャンは不要）。
+        """
         if self._orchestrator is None:
+            from core.intelligence.capability_registry import CapabilityRegistry
             from core.orchestration.orchestration_pattern_store import OrchestrationPatternStore
             from core.orchestration.pre_task_orchestrator import PreTaskOrchestrator
+
+            registry = CapabilityRegistry()
+            try:
+                if not registry.list_all():
+                    registry.scan_and_register_all()
+            except Exception as exc:  # noqa: BLE001 - スキャン不能でも分析は継続
+                logger.debug("Capability scan failed: %s", exc)
 
             store = OrchestrationPatternStore()
             self._orchestrator = PreTaskOrchestrator(
                 llm_client=self._llm_client,
+                capability_registry=registry,
                 pattern_store=store,
             )
         return self._orchestrator
@@ -93,9 +108,7 @@ class OrchestratorAgent(BaseAgent):
         """
         orchestrator = self._get_orchestrator()
 
-        logger.info(
-            "OrchestratorAgent: analyzing task_type=%s", task.task_type
-        )
+        logger.info("OrchestratorAgent: analyzing task_type=%s", task.task_type)
 
         analysis = orchestrator.analyze(task.task_type, task.description)
 

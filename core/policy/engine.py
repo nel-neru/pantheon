@@ -8,9 +8,8 @@ Pantheon - Approval Policy Engine
 
 from __future__ import annotations
 
-import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -19,10 +18,11 @@ logger = logging.getLogger(__name__)
 
 # ---------- 判定結果 ----------
 
+
 class ApprovalDecision(str, Enum):
-    AUTO_APPROVE = "auto_approve"   # AIが自動適用してOK
+    AUTO_APPROVE = "auto_approve"  # AIが自動適用してOK
     HUMAN_REQUIRED = "human_required"  # 人間の承認を待つ
-    REJECT = "reject"               # 自動棄却
+    REJECT = "reject"  # 自動棄却
 
 
 @dataclass
@@ -40,41 +40,57 @@ DEFAULT_POLICY: Dict[str, Any] = {
     "auto_approve": {
         # この条件を全て満たす提案は自動適用
         "conditions": {
-            "max_priority": "low",           # low優先度のみ
-            "allowed_categories": [          # 許可カテゴリ
-                "style", "documentation", "comment", "formatting",
+            "max_priority": "low",  # low優先度のみ
+            "allowed_categories": [  # 許可カテゴリ
+                "style",
+                "documentation",
+                "comment",
+                "formatting",
             ],
-            "forbidden_patterns": [          # ファイルパスに含まれてはいけない文字列
-                "__init__.py", "pyproject.toml", "requirements",
-                ".yaml", ".yml", ".env", "Dockerfile",
+            "forbidden_patterns": [  # ファイルパスに含まれてはいけない文字列
+                "__init__.py",
+                "pyproject.toml",
+                "requirements",
+                ".yaml",
+                ".yml",
+                ".env",
+                "Dockerfile",
             ],
-            "max_file_size_kb": 100,         # 対象ファイルが100KB以下
+            "max_file_size_kb": 100,  # 対象ファイルが100KB以下
         }
     },
     "human_required": {
         # この条件のいずれかに該当したら人間承認必須
         "conditions": {
-            "min_priority": "high",          # high優先度
-            "categories": [                  # 常に人間確認が必要なカテゴリ
-                "security", "architecture", "database", "auth",
+            "min_priority": "high",  # high優先度
+            "categories": [  # 常に人間確認が必要なカテゴリ
+                "security",
+                "architecture",
+                "database",
+                "auth",
+                "meta",
             ],
-            "file_patterns": [               # 変更に慎重を要するファイル
-                "main.py", "core/models", "core/platform",
-                "tests/", "pyproject.toml",
+            "file_patterns": [  # 変更に慎重を要するファイル
+                "main.py",
+                "core/models",
+                "core/platform",
+                "tests/",
+                "pyproject.toml",
             ],
         }
     },
     "auto_reject": {
         # この条件で自動棄却
         "conditions": {
-            "empty_file_path": True,         # file_pathなし（meta提案）は棄却
-            "disabled_categories": [],       # 明示的に無効化されたカテゴリ
+            "empty_file_path": True,  # file_pathなし（meta提案）は棄却
+            "disabled_categories": [],  # 明示的に無効化されたカテゴリ
         }
-    }
+    },
 }
 
 
 # ---------- エンジン本体 ----------
+
 
 class PolicyEngine:
     """
@@ -90,6 +106,7 @@ class PolicyEngine:
         if self._policy_path and self._policy_path.exists():
             try:
                 import yaml
+
                 with open(self._policy_path, encoding="utf-8") as f:
                     loaded = yaml.safe_load(f)
                     if loaded:
@@ -132,21 +149,19 @@ class PolicyEngine:
         """複数提案をまとめて評価する"""
         return [(p, self.evaluate(p)) for p in proposals]
 
-    def get_auto_approvable(
-        self, proposals: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def get_auto_approvable(self, proposals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """自動適用可能な提案のみ返す"""
         return [
-            p for p, v in self.evaluate_batch(proposals)
+            p
+            for p, v in self.evaluate_batch(proposals)
             if v.decision == ApprovalDecision.AUTO_APPROVE
         ]
 
-    def get_human_required(
-        self, proposals: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def get_human_required(self, proposals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """人間承認が必要な提案のみ返す"""
         return [
-            p for p, v in self.evaluate_batch(proposals)
+            p
+            for p, v in self.evaluate_batch(proposals)
             if v.decision == ApprovalDecision.HUMAN_REQUIRED
         ]
 
@@ -154,6 +169,10 @@ class PolicyEngine:
 
     def _check_auto_reject(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
         cond = self._policy.get("auto_reject", {}).get("conditions", {})
+        # meta 提案（Atlas/システムレベル）は file_path が空でも自動棄却せず、
+        # human_required にフォールスルーさせる（人間/Meta-Improvement Org が判断する）。
+        if p.get("is_meta") and not p.get("file_path"):
+            return None
         if cond.get("empty_file_path") and not p.get("file_path"):
             return PolicyVerdict(
                 decision=ApprovalDecision.REJECT,
@@ -225,7 +244,12 @@ class PolicyEngine:
         for changed_file in proposal.get("changed_files", []):
             if not isinstance(changed_file, dict):
                 continue
-            path = str(changed_file.get("file_path") or changed_file.get("path") or file_path or "<unknown>")
+            path = str(
+                changed_file.get("file_path")
+                or changed_file.get("path")
+                or file_path
+                or "<unknown>"
+            )
             append_size(path, changed_file.get("file_size_kb"))
             append_size(path, changed_file.get("size_kb"))
             append_size(path, changed_file.get("size_bytes"), divide_by_1024=True)
@@ -274,6 +298,7 @@ class PolicyEngine:
     def save_default_policy(self, path: Path) -> None:
         """デフォルトポリシーを YAML ファイルとして保存する"""
         import yaml
+
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(DEFAULT_POLICY, f, allow_unicode=True, default_flow_style=False)

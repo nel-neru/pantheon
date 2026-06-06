@@ -3,6 +3,12 @@ Pantheon - Repo-Centric State Manager
 
 すべての状態・決定・成果物をOrganizationのリポジトリ内にgit管理で残す。
 これにより、複数のセッション（人間・AI）が非同期で協調可能になる。
+
+ImprovementProposal の **source of truth（正準ストア）はこの RepoStateManager**
+（各リポジトリ内 `<repo>/.pantheon/improvements/<uuid>.json`）である。
+analyze / approve / reject / apply・自己改善ループ・スケジューラはすべてここに書き込む。
+`core.state.sqlite_manager.SQLiteStateManager` は任意のクエリ用ミラーに過ぎず、
+本番の書き込み経路では使われない（`StateMigrator` で投入し `pantheon query` で読むのみ）。
 """
 
 from __future__ import annotations
@@ -10,9 +16,12 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from core.models.organization import is_active_improvement_proposal_status
+
+if TYPE_CHECKING:
+    from core.models.organization import ImprovementProposal, Organization, QualityReview
 
 
 class RepoStateManager:
@@ -37,8 +46,12 @@ class RepoStateManager:
         self.sessions_dir = self.state_dir / "sessions"
 
         for d in [
-            self.decisions_dir, self.workflows_dir, self.knowledge_dir,
-            self.artifacts_dir, self.organizations_dir, self.sessions_dir,
+            self.decisions_dir,
+            self.workflows_dir,
+            self.knowledge_dir,
+            self.artifacts_dir,
+            self.organizations_dir,
+            self.sessions_dir,
         ]:
             d.mkdir(exist_ok=True)
 
@@ -180,6 +193,7 @@ class RepoStateManager:
     def load_organizations(self) -> list["Organization"]:
         """保存済みの全 Organization を読み込む"""
         from core.models.organization import Organization
+
         result = []
         for f in sorted(self.organizations_dir.glob("*.json")):
             try:
@@ -215,15 +229,19 @@ class RepoStateManager:
     def list_session_contexts(self) -> list[Dict[str, Any]]:
         """保存済みセッションコンテキストの一覧を返す。"""
         results = []
-        for path in sorted(self.sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        for path in sorted(
+            self.sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+        ):
             try:
                 with open(path, encoding="utf-8") as f:
                     ctx = json.load(f)
-                results.append({
-                    "session_id": ctx.get("session_id", path.stem),
-                    "saved_at": ctx.get("saved_at", ""),
-                    "summary": ctx.get("summary", ""),
-                })
+                results.append(
+                    {
+                        "session_id": ctx.get("session_id", path.stem),
+                        "saved_at": ctx.get("saved_at", ""),
+                        "summary": ctx.get("summary", ""),
+                    }
+                )
             except Exception:
                 continue
         return results

@@ -1,0 +1,297 @@
+{
+  "_comment": "Canonical end-to-end usage-flow catalog for Pantheon. Curated from a full subsystem map (core/atlas/data/subsystem_maps.json) + repo knowledge. `status` is honest flow health; `known_issues` reference findings from the subsystem analysis. Served read-only by /api/atlas and `pantheon atlas`.",
+  "flows": [
+    {
+      "id": "onboarding-init",
+      "name": "オンボーディング / 初期化",
+      "summary": "プラットフォームを初めて初期化し、グローバル状態・Meta-Improvement Organization・デフォルトポリシーを作成する。",
+      "trigger": { "kind": "cli", "name": "pantheon init" },
+      "steps": [
+        { "component": "commands/org.py:cmd_init", "action": "初期化済みか確認し、未初期化なら bootstrap を実行" },
+        { "component": "core/bootstrap.py:bootstrap_platform", "action": "~/.pantheon を作成し Meta-Improvement Organization とデフォルトポリシーを生成" },
+        { "component": "core/platform/state.py:PlatformStateManager", "action": "Organization 定義と policy.yaml を ~/.pantheon に永続化" }
+      ],
+      "surfaces": ["pantheon init", "POST /api/welcome", "core/ui/setup_wizard.py"],
+      "state": ["~/.pantheon/", "~/.pantheon/policy.yaml"],
+      "verification": ["tests/test_platform_state.py", "tests/test_integration.py"],
+      "status": "solid",
+      "known_issues": []
+    },
+    {
+      "id": "register-org",
+      "name": "Organization 登録 / 組織設計",
+      "summary": "担当リポジトリ付きの Organization（子会社）を登録し、Division/Team/SpecialistAgent 構成を生成する。",
+      "trigger": { "kind": "cli", "name": "pantheon org add" },
+      "steps": [
+        { "component": "commands/org.py:cmd_org_add", "action": "name/repo/purpose/template を受け取り Organization を構築" },
+        { "component": "core/models/organization.py", "action": "Division→Team→SpecialistAgent 階層を生成（skills は 2〜3 個）" },
+        { "component": "core/platform/state.py:PlatformStateManager.save_organization", "action": "~/.pantheon に Organization を保存" }
+      ],
+      "surfaces": ["pantheon org add", "pantheon org list", "pantheon org show", "pantheon org remove", "GET/POST/DELETE /api/organizations", "OrgsPage"],
+      "state": ["~/.pantheon/organizations/"],
+      "verification": ["tests/test_platform_state.py", "tests/test_models.py", "tests/test_web_server.py"],
+      "status": "solid",
+      "known_issues": [],
+      "resolved": [
+        { "title": "CLI org remove に is_system ガード + --force を追加（Phase 0）", "file": "commands/org.py" }
+      ]
+    },
+    {
+      "id": "analyze-propose-approve-apply",
+      "name": "分析 → 提案 → 承認 → 適用",
+      "summary": "リポジトリを分析して ImprovementProposal を生成し、HITL ポリシーで承認/却下し、Executor がブランチ/PR で適用する Pantheon の中核フロー。",
+      "trigger": { "kind": "cli", "name": "pantheon analyze / approve" },
+      "steps": [
+        { "component": "agents/code_review_agent.py", "action": "リポジトリを分析し ImprovementProposal 群を生成" },
+        { "component": "core/state/manager.py:RepoStateManager", "action": "<repo>/.pantheon に提案を永続化" },
+        { "component": "core/policy/engine.py:PolicyEngine", "action": "HITL ポリシーで auto-approve / human-required を判定" },
+        { "component": "agents/improvement_executor_agent.py", "action": "承認済み提案をローカル変更として適用し、必要なら GitHub PR を作成" }
+      ],
+      "surfaces": ["pantheon analyze", "pantheon proposals", "pantheon proposal show/reject/apply", "pantheon approve", "pantheon query", "POST /api/analyze", "GET /api/organizations/{org}/proposals", "POST /api/proposals/{org}/{id}/approve|reject", "AnalyzePage", "ProposalsPage"],
+      "state": ["<repo>/.pantheon/improvements/", "<repo>/.pantheon/decisions/", "~/.pantheon/state.db"],
+      "verification": ["tests/test_code_review_agent_hardening.py", "tests/test_improvement_executor_agent.py", "tests/test_policy_engine.py", "tests/test_state_manager.py", "tests/test_policy_gate.py", "tests/test_web_server.py"],
+      "status": "solid",
+      "known_issues": [],
+      "resolved": [
+        { "title": "Web の approve/reject/batch を PolicyEngine 経由に強制（Phase 0）", "file": "web/server.py" },
+        { "title": "github_repo を解決して executor に渡し PR 作成可能に（Phase 0）", "file": "github_integration/repo_resolver.py" },
+        { "title": "pantheon query --org-name が正準 JSON ストアを読む（Phase 4）", "file": "commands/org.py" }
+      ]
+    },
+    {
+      "id": "abstract-goal-pipeline",
+      "name": "抽象ゴール → 計画 → 実行 → 検証",
+      "summary": "自然言語ゴールから Organization を生成し、計画・実行・検証まで自律実行するパイプライン。",
+      "trigger": { "kind": "cli", "name": "pantheon goal run" },
+      "steps": [
+        { "component": "core/goals/goal_parser.py", "action": "ゴールを分類・構造化" },
+        { "component": "core/goals/org_instantiator.py", "action": "ゴールに適した Organization を設計/生成" },
+        { "component": "core/goals/goal_decomposer.py", "action": "計画タスクに分解" },
+        { "component": "core/goals/execution_coordinator.py", "action": "PreTaskOrchestrator 経由でタスクを実行（※現状スタブ）" },
+        { "component": "core/goals/goal_verifier.py", "action": "成功条件を検証し GoalLibrary に記録" }
+      ],
+      "surfaces": ["pantheon goal run", "pantheon goal status", "POST /api/goals/run", "POST /api/goals/stream", "GoalsPage"],
+      "state": ["~/.pantheon/goals/", "<repo>/.pantheon/"],
+      "verification": ["tests/test_abstract_goal_pipeline.py"],
+      "status": "fragile",
+      "known_issues": [
+        { "severity": "high", "title": "ExecutionCoordinator が no-op スタブ — 実作業を実行しない", "detail": "本番呼び出しは実行バックエンドに接続されていない。", "file": "core/goals/execution_coordinator.py" },
+        { "severity": "high", "title": "生成された Organization が永続化されない", "detail": "OrgInstantiator.instantiate() の結果を保存する呼び出し元が無い。", "file": "core/goals/org_instantiator.py" },
+        { "severity": "medium", "title": "SSE 進捗が実 ExecutionProgress でなく固定文言", "detail": "/api/goals/stream は固定メッセージのみ送出。", "file": "web/server.py" }
+      ]
+    },
+    {
+      "id": "chat",
+      "name": "対話制御（チャット）",
+      "summary": "自然言語でプラットフォームを操作する。CLI の対話 REPL と Web チャット、スラッシュコマンドを提供。",
+      "trigger": { "kind": "cli", "name": "pantheon chat" },
+      "steps": [
+        { "component": "agents/chat_agent.py:ChatSession", "action": "メッセージを解釈し、必要に応じてスラッシュコマンド/エージェントへ委任" },
+        { "component": "core/runtime/claude_code.py:ClaudeCodeProvider", "action": "ローカル claude CLI で応答を生成" },
+        { "component": "web/server.py:/api/chat /ws/chat", "action": "Web からのチャットセッション CRUD とストリーミング" }
+      ],
+      "surfaces": ["pantheon chat", "POST /api/chat", "GET/POST /api/chat/sessions", "WS /ws/chat", "ChatPage"],
+      "state": ["~/.pantheon/chat_sessions/"],
+      "verification": ["tests/test_chat_agent.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "medium", "title": "useWebSocket フックと /ws/chat が dead code", "detail": "どのコンポーネントも useWebSocket を import していない。", "file": "web/frontend/src/hooks/useWebSocket.ts" }
+      ],
+      "resolved": [
+        { "title": "run_chat() の PROVIDER_LABEL_MAP NameError を修正（C1）", "file": "agents/chat_agent.py" },
+        { "title": "chat の PreTaskOrchestrator に registry + pattern_store を配線し学習を蓄積（Phase 3）", "file": "agents/chat_agent.py" }
+      ]
+    },
+    {
+      "id": "multi-agent-sessions",
+      "name": "マルチエージェント・セッション",
+      "summary": "wmux/cmux/headless マルチプレクサ上で専門エージェントを起動し、ポーリング・再開・停止する。",
+      "trigger": { "kind": "cli", "name": "pantheon session start" },
+      "steps": [
+        { "component": "core/runtime/session_orchestrator.py", "action": "セッションを起動し各エージェントの surface を管理" },
+        { "component": "core/runtime/multiplexer/*", "action": "wmux/cmux/headless ドライバで claude プロセスを起動・ポーリング" },
+        { "component": "core/runtime/rate_limit.py", "action": "レート制限を検出し自動再開" }
+      ],
+      "surfaces": ["pantheon session start/list/show/stop/resume/doctor", "GET/POST /api/sessions", "POST /api/sessions/{id}/stop|resume", "WS /ws/updates", "SessionsPage"],
+      "state": ["~/.pantheon/sessions/"],
+      "verification": ["tests/test_session_orchestrator.py", "tests/test_multiplexer_factory.py", "tests/test_wmux_rpc.py", "tests/test_rate_limit.py"],
+      "status": "fragile",
+      "known_issues": [
+        { "severity": "high", "title": "Headless プロセスがプロセス跨ぎで孤児化（web 起動セッションを停止できない）", "detail": "Popen ハンドルがメモリ内のみで永続化されない。", "file": "core/runtime/session_orchestrator.py" },
+        { "severity": "high", "title": "Headless poll が exit code 無しに DONE を捏造し失敗を隠す", "detail": "in-memory Popen が無い場合に DONE を返してしまう。", "file": "core/runtime/multiplexer/headless_driver.py" }
+      ]
+    },
+    {
+      "id": "orchestration-routing",
+      "name": "オーケストレーション / ルーティング",
+      "summary": "Pre-Task メタ分析で最適パターンとエージェントを選定し、実行実績を学習する。",
+      "trigger": { "kind": "cli", "name": "pantheon orchestration analyze" },
+      "steps": [
+        { "component": "core/orchestration/pre_task_orchestrator.py", "action": "タスクを分析し実行パターンとエージェント編成を決定" },
+        { "component": "core/orchestration/task_router.py", "action": "タスク種別×スキル重みで専門エージェントを選定" },
+        { "component": "core/orchestration/orchestration_pattern_store.py", "action": "実行実績を永続化し推奨パターンを学習" }
+      ],
+      "surfaces": ["pantheon orchestration analyze/history/capabilities/self-review", "pantheon agent status/list", "GET /api/orchestration/analyze/{task_type}", "GET /api/agents", "GET /api/skills", "AgentsPage"],
+      "state": ["~/.pantheon/orchestration/patterns.json"],
+      "verification": ["tests/test_pre_task_orchestration.py", "tests/test_orchestration_cli.py", "tests/test_agent_factory.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "high", "title": "DynamicAgentSpawner が一度も呼ばれない（dead code）", "detail": "spawn_spec を作るが execute() が spawner を呼ばない。", "file": "core/orchestration/dynamic_agent_spawner.py" }
+      ],
+      "resolved": [
+        { "title": "batch_execute の asyncio NameError を修正（top-level import asyncio）（C1）", "file": "core/orchestration/pre_task_orchestrator.py" },
+        { "title": "実 quality_score / execution_time_ms を PatternRecord に記録（Phase 2）", "file": "core/orchestration/pre_task_orchestrator.py" },
+        { "title": "OrchestratorAgent に CapabilityRegistry を配線しルーティングを機能化（Phase 3）", "file": "agents/orchestrator_agent.py" }
+      ]
+    },
+    {
+      "id": "self-improvement-loop",
+      "name": "自己改善ループ（メタ進化）",
+      "summary": "SelfImprovementLoop と内部コンサルが組織の品質を継続的に改善する。LangGraph ベースの PDCA。",
+      "trigger": { "kind": "cli", "name": "pantheon platform run-all" },
+      "steps": [
+        { "component": "core/quality/self_improvement_graph.py", "action": "提案ピックアップ→実行→次ステップ判定の LangGraph を駆動" },
+        { "component": "core/quality/internal_consultant.py", "action": "厳格レビューと品質ゲートを適用" },
+        { "component": "core/metrics/*", "action": "組織健康度・バランス・成長指標を更新" }
+      ],
+      "surfaces": ["pantheon platform run-all", "pantheon orchestration self-review", "POST /api/analyze/stream"],
+      "state": ["~/.pantheon/", "self_improvement_checkpoints.db"],
+      "verification": ["tests/test_self_improvement.py", "tests/test_langgraph_workflow.py", "tests/test_platform_run_all.py", "tests/test_balanced_growth.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "medium", "title": "H 系自己チューニング層が未配線", "detail": "PolicyOptimizer/ConfigAutoTuner/TemplatePromoter 等が実行スケジュールに繋がっていない。", "file": "core/quality/config_autotuner.py" },
+        { "severity": "low", "title": "LangGraph チェックポイント DB が cwd 相対で接続リーク", "detail": "checkpointer が cwd に作られ ~/.pantheon 外。", "file": "core/quality/self_improvement_graph.py" }
+      ],
+      "resolved": [
+        { "title": "SelfImprovementLoop を agents[0] ハードコードから PreTaskOrchestrator + スキルマッチ選定へ（Phase 2）", "file": "core/quality/self_improvement_loop.py" },
+        { "title": "Atlas known_issues から meta 提案を自動生成し Meta-Improvement Org が拾える（Phase 1）", "file": "core/atlas/proposal_generator.py" }
+      ]
+    },
+    {
+      "id": "platform-ops",
+      "name": "プラットフォーム運用（status / backup / daemon / doctor）",
+      "summary": "全 Organization 横断のダッシュボード、設定、ログ、バックアップ/リストア、デーモン、ヘルスチェック。",
+      "trigger": { "kind": "cli", "name": "pantheon platform status" },
+      "steps": [
+        { "component": "commands/platform.py", "action": "status/config/logs/backup/restore/run-all とデーモン制御を提供" },
+        { "component": "core/platform/state.py", "action": "プラットフォーム状態とバックアップを管理" },
+        { "component": "commands/doctor.py:cmd_doctor", "action": "環境とclaude CLI の健全性を診断" }
+      ],
+      "surfaces": ["pantheon platform status/config/logs/backup/restore/run-all", "pantheon daemon start/stop/status", "pantheon doctor", "pantheon version", "GET /api/storage/info", "GET/PUT /api/settings", "DashboardPage", "SettingsPage"],
+      "state": ["~/.pantheon/backups/", "~/.pantheon/gui_settings.json"],
+      "verification": ["tests/test_platform_state.py", "tests/test_platform_run_all.py", "tests/test_web_server.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "low", "title": "デーモン制御が POSIX 前提で Windows で劣化", "detail": "start_new_session / os.kill(SIGTERM) は Windows で非対応。", "file": "commands/platform.py" }
+      ]
+    },
+    {
+      "id": "web-gui",
+      "name": "Web GUI（プラットフォームコンソール）",
+      "summary": "React 19 SPA。組織・分析・提案・ゴール・エージェント・セッション・ボード・データ・設定・ヘルプを一括操作し、リアルタイム更新を受信。",
+      "trigger": { "kind": "api", "name": "pantheon serve" },
+      "steps": [
+        { "component": "web/server.py:FastAPI app", "action": "REST/WebSocket API を公開し web/dist を配信" },
+        { "component": "web/frontend/src/App.tsx", "action": "ルーティング・全体検索・通知・テーマを管理" },
+        { "component": "web/frontend/src/hooks/usePlatformUpdates.ts", "action": "WS /ws/updates でライブイベントを受信" }
+      ],
+      "surfaces": ["pantheon serve", "GET /", "GET /api/search", "WS /ws/updates", "全 13 ページ"],
+      "state": ["web/dist"],
+      "verification": ["tests/test_web_server.py", "web/frontend (vitest 12 files / 79 tests)"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "medium", "title": "HelpPage/DashboardPage に claude CLI リブランド前のドキュメントドリフト", "detail": "API キー入力やプロバイダ表が残存。", "file": "web/frontend/src/pages/HelpPage.tsx" }
+      ],
+      "resolved": [
+        { "title": "SPA キャッチオールに /api・/ws の明示的 JSON 404 ガードを追加（C1）", "file": "web/server.py" }
+      ]
+    },
+    {
+      "id": "work-board-tasks",
+      "name": "作業ボード / タスクキュー",
+      "summary": "タスクをキューに積み、複数 Organization 横断で並列実行する作業ボード。",
+      "trigger": { "kind": "api", "name": "POST /api/tasks" },
+      "steps": [
+        { "component": "core/orchestration/task_queue.py", "action": "タスクをファイルバック・キューに enqueue" },
+        { "component": "core/orchestration/multi_org_executor.py", "action": "保留タスクを drain し並列実行（※未配線）" },
+        { "component": "web/frontend/src/pages/BoardPage.tsx", "action": "pending/running/review 列でタスクを可視化" }
+      ],
+      "surfaces": ["GET/POST/DELETE /api/tasks", "BoardPage"],
+      "state": ["~/.pantheon/task_queue/"],
+      "verification": ["tests/test_task_queue.py", "tests/test_multi_org_executor.py"],
+      "status": "fragile",
+      "known_issues": [
+        { "severity": "medium", "title": "MultiOrgExecutor がライブキュー/web API に未配線", "detail": "POST /api/tasks で積むが誰も process_pending を呼ばない。", "file": "core/orchestration/multi_org_executor.py" },
+        { "severity": "low", "title": "TaskQueue の fcntl ロックが Windows で no-op", "detail": "クロスプロセスロックが Windows で効かない。", "file": "core/orchestration/task_queue.py" }
+      ]
+    },
+    {
+      "id": "knowledge-curation",
+      "name": "ナレッジ・キュレーション",
+      "summary": "共有知識ファイルを Web から閲覧・編集・作成・削除する。",
+      "trigger": { "kind": "api", "name": "GET /api/knowledge/files" },
+      "steps": [
+        { "component": "web/server.py:/api/knowledge/*", "action": "knowledge/ 配下のファイルを CRUD" },
+        { "component": "web/frontend/src/pages/DataPage.tsx", "action": "ファイルツリーとエディタを提供" }
+      ],
+      "surfaces": ["GET/PUT/DELETE/POST /api/knowledge/files", "DataPage"],
+      "state": ["knowledge/"],
+      "verification": ["tests/test_web_server.py", "tests/test_knowledge_manager.py"],
+      "status": "solid",
+      "known_issues": [
+        { "severity": "low", "title": "DataPage encodeFilePath が '/' のみ分割し Windows パスで破綻", "detail": "バックスラッシュパスが返るとセグメント符号化が誤る。", "file": "web/frontend/src/pages/DataPage.tsx" }
+      ]
+    },
+    {
+      "id": "codebase-exploration",
+      "name": "コードベース探索 / 索引",
+      "summary": "インデックス/スナップショットでリポジトリを省トークン探索する。",
+      "trigger": { "kind": "internal", "name": "CodebaseExplorerAgent" },
+      "steps": [
+        { "component": "agents/codebase_explorer_agent.py", "action": "索引ベースでコードを探索" },
+        { "component": "core/intelligence/codebase_indexer.py", "action": "AST でファイル構造を索引（現状 Python のみ）" }
+      ],
+      "surfaces": ["CodebaseExplorerAgent（orchestrator 経由）"],
+      "state": ["<repo>/.pantheon/index/"],
+      "verification": ["tests/test_base_agent_knowledge.py", "tests/test_theme_ijklmn_remaining.py"],
+      "status": "solid",
+      "known_issues": [
+        { "severity": "low", "title": "CodebaseIndexer は Python 以外を空構造で索引", "detail": "ts/js/go 等は _parse_python が走らず空。", "file": "core/intelligence/codebase_indexer.py" }
+      ]
+    },
+    {
+      "id": "capability-gap-self-extension",
+      "name": "能力ギャップ検出 / 自己拡張",
+      "summary": "現有能力を棚卸しし、不足を検出して新しいエージェント/スキルを自己生成する（設計済み・一部未配線）。",
+      "trigger": { "kind": "cli", "name": "pantheon orchestration capabilities" },
+      "steps": [
+        { "component": "core/intelligence/capability_registry.py", "action": "Agent/Skill 能力を登録・棚卸し" },
+        { "component": "core/intelligence/capability_gap_analyzer.py", "action": "不足能力を検出" },
+        { "component": "agents/tool_design_agent.py / self_code_writer.py", "action": "新能力を設計・実装（self-extension）" }
+      ],
+      "surfaces": ["pantheon orchestration capabilities", "GET /api/agents/runtime"],
+      "state": ["~/.pantheon/capabilities/", "~/.pantheon/gaps/"],
+      "verification": ["tests/test_self_extension.py", "tests/test_agent_skill_engine.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "low", "title": "充足済みギャップを自動で implemented にしない", "detail": "能力が後から存在しても旧ギャップが残る。", "file": "core/intelligence/capability_gap_analyzer.py" }
+      ]
+    },
+    {
+      "id": "atlas-introspection",
+      "name": "Atlas（リポジトリ俯瞰可視化）",
+      "summary": "コードベースを静的・実行時イントロスペクションして、使用フロー・依存グラフ・CLI/API マップ・サブシステム在庫を人間向けに可視化する。",
+      "trigger": { "kind": "api", "name": "GET /api/atlas" },
+      "steps": [
+        { "component": "core/atlas/introspect.py:build_atlas", "action": "CLI パーサ/FastAPI ルート/依存グラフ/在庫/フローを集約" },
+        { "component": "web/server.py:/api/atlas", "action": "Atlas モデルを JSON で配信" },
+        { "component": "web/frontend/src/pages/AtlasPage.tsx", "action": "フロー図・依存グラフ・コマンド/ルート一覧を可視化" }
+      ],
+      "surfaces": ["pantheon atlas", "GET /api/atlas", "AtlasPage"],
+      "state": ["（読み取り専用・永続化なし）"],
+      "verification": ["tests/test_atlas.py", "tests/test_web_server.py"],
+      "status": "solid",
+      "known_issues": []
+    }
+  ]
+}

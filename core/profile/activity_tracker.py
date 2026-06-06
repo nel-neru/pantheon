@@ -15,7 +15,6 @@ from typing import Optional
 
 from core.platform.state import get_platform_home
 
-
 DAY_NAMES = ["月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
 
@@ -34,7 +33,9 @@ class ActivityTracker:
         self.log_path = self.platform_home / "activity_log.jsonl"
 
     def record_activity(self, command: str) -> None:
-        now = datetime.now()
+        # タイムゾーン付き（aware）にしつつ、作業時間パターン学習のためローカル時刻のまま扱う。
+        # astimezone() で naive を local-aware に変換するため hour/weekday の意味は不変。
+        now = datetime.now().astimezone()
         record = ActivityRecord(
             timestamp=now.isoformat(),
             command=command,

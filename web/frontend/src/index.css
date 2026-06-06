@@ -2975,3 +2975,100 @@ summary:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Atlas (repository overview) ------------------------------------- */
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 1024px) {
+  .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 2px;
+}
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tab-btn:hover {
+  color: var(--color-fg);
+  background: var(--color-surface);
+}
+.tab-btn.active {
+  color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  border-color: var(--color-border);
+}
+
+.atlas-graph {
+  width: 100%;
+  height: auto;
+  color: var(--color-accent);
+}
+.atlas-graph-node {
+  cursor: pointer;
+}
+.atlas-graph-node circle {
+  fill: var(--color-accent);
+  transition: fill-opacity 0.15s ease;
+}
+.atlas-graph-label {
+  fill: var(--color-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.atlas-graph-count {
+  fill: var(--color-bg);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.atlas-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  list-style: decimal;
+}
+.atlas-steps li {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.atlas-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: 10px;
+}
+.atlas-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}

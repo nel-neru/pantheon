@@ -9,6 +9,7 @@ import {
   HelpCircle,
   LayoutDashboard,
   Lightbulb,
+  Map as MapIcon,
   Menu,
   MessageSquare,
   Moon,
@@ -27,6 +28,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { AgentsPage } from '@/pages/AgentsPage'
 import { AnalyzePage } from '@/pages/AnalyzePage'
+import { AtlasPage } from '@/pages/AtlasPage'
 import { ChatPage } from '@/pages/ChatPage'
 import { DataPage } from '@/pages/DataPage'
 import { DashboardPage } from '@/pages/DashboardPage'
@@ -61,6 +63,7 @@ const navItems: NavItem[] = [
   { to: '/goals', label: 'ゴール', icon: Target },
   { to: '/proposals', label: '改善提案', icon: Lightbulb },
   { to: '/agents', label: 'エージェント', icon: Bot },
+  { to: '/atlas', label: 'Atlas', icon: MapIcon },
   { to: '/sessions', label: 'セッション', icon: Boxes },
   { to: '/board', label: '作業ボード', icon: KanbanSquare },
   { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
@@ -408,6 +411,7 @@ export default function App() {
         <Route path="/analyze" element={<AnalyzePage />} />
         <Route path="/goals" element={<GoalsPage />} />
         <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/atlas" element={<AtlasPage />} />
         <Route path="/sessions" element={<SessionsPage />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/data" element={<DataPage />} />

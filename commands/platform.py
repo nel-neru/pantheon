@@ -3,11 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
-
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +91,17 @@ async def cmd_platform_status(args: argparse.Namespace, *, get_psm: Any) -> None
     print(f"{'─' * 60}")
     print("  Organizations（子会社）\n")
 
-    for org, metric, pending in sorted(metrics_list, key=lambda item: item[1].health_score, reverse=True):
+    for org, metric, pending in sorted(
+        metrics_list, key=lambda item: item[1].health_score, reverse=True
+    ):
         bar = _health_bar(metric.health_score)
-        badge = "[HEALTHY]" if metric.health_score >= 70 else "[WATCH]" if metric.health_score >= 50 else "[CRITICAL]"
+        badge = (
+            "[HEALTHY]"
+            if metric.health_score >= 70
+            else "[WATCH]"
+            if metric.health_score >= 50
+            else "[CRITICAL]"
+        )
         repo = org.target_repo_path or "(未設定)"
         print(f"  {badge} {org.name}")
         print(f"     リポジトリ : {repo}")
@@ -110,7 +117,10 @@ async def cmd_platform_status(args: argparse.Namespace, *, get_psm: Any) -> None
 
 async def cmd_platform_run_all(args: argparse.Namespace, *, get_psm: Any) -> None:
     """全 Organization の改善サイクルを優先度順に実行する"""
-    from core.metrics.balanced_growth import calculate_organization_metrics, get_improvement_priority_score
+    from core.metrics.balanced_growth import (
+        calculate_organization_metrics,
+        get_improvement_priority_score,
+    )
     from core.quality.self_improvement_loop import SelfImprovementLoop
 
     psm = get_psm()
@@ -120,6 +130,21 @@ async def cmd_platform_run_all(args: argparse.Namespace, *, get_psm: Any) -> Non
         print("Organization が登録されていません。")
         return
 
+    if getattr(args, "from_atlas", False):
+        from core.atlas import build_atlas, generate_atlas_proposals
+        from core.bootstrap import META_ORG_NAME
+
+        meta_org = next((o for o in orgs if o.name == META_ORG_NAME), None)
+        if meta_org is not None:
+            meta_sm = psm.get_org_state_manager(meta_org)
+            result = generate_atlas_proposals(build_atlas(), meta_sm)
+            print(
+                f"[Atlas] known_issues から meta 提案を生成: "
+                f"新規 {len(result['created'])} / 対象 {result['total']} 件"
+            )
+        else:
+            print("[Atlas] Meta-Improvement Organization が無いため --from-atlas をスキップします")
+
     scored = []
     for org in orgs:
         sm = psm.get_org_state_manager(org)
@@ -128,7 +153,7 @@ async def cmd_platform_run_all(args: argparse.Namespace, *, get_psm: Any) -> Non
         scored.append((org, sm, get_improvement_priority_score(metric)))
 
     scored.sort(key=lambda item: item[2], reverse=True)
-    target = scored[:args.max_orgs]
+    target = scored[: args.max_orgs]
 
     print(f"\n改善サイクルを実行します ({len(target)} / {len(orgs)} Organization)\n")
     successes = 0
@@ -355,7 +380,14 @@ def register(subparsers: Any) -> None:
     status_parser.set_defaults(handler_name="cmd_platform_status")
 
     run_all_parser = platform_sub.add_parser("run-all", help="全 Organization の改善サイクルを実行")
-    run_all_parser.add_argument("--max-orgs", type=int, default=5, help="最大実行 Org 数（default: 5）")
+    run_all_parser.add_argument(
+        "--max-orgs", type=int, default=5, help="最大実行 Org 数（default: 5）"
+    )
+    run_all_parser.add_argument(
+        "--from-atlas",
+        action="store_true",
+        help="実行前に Atlas の known_issues から meta 提案を生成し Meta-Improvement Org に投入する",
+    )
     run_all_parser.set_defaults(handler_name="cmd_platform_run_all")
 
     config_parser = platform_sub.add_parser("config", help="プラットフォーム設定を表示・更新")
@@ -386,8 +418,12 @@ def register(subparsers: Any) -> None:
     daemon_sub = daemon_parser.add_subparsers(dest="daemon_command", required=True)
 
     start_parser = daemon_sub.add_parser("start", help="デーモンをバックグラウンドで起動")
-    start_parser.add_argument("--interval", type=int, default=3600, help="実行間隔（秒, default: 3600）")
-    start_parser.add_argument("--max-files", type=int, default=10, help="1 Org あたり最大分析ファイル数")
+    start_parser.add_argument(
+        "--interval", type=int, default=3600, help="実行間隔（秒, default: 3600）"
+    )
+    start_parser.add_argument(
+        "--max-files", type=int, default=10, help="1 Org あたり最大分析ファイル数"
+    )
     start_parser.set_defaults(handler_name="cmd_daemon_start")
 
     stop_parser = daemon_sub.add_parser("stop", help="デーモンを停止")

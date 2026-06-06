@@ -32,7 +32,9 @@
       {
         "matcher": "Write|Edit",
         "hooks": [
-          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format.mjs\"", "async": true, "timeout": 60 }
+          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format.mjs\"", "async": true, "timeout": 60 },
+          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/validate-config.mjs\"", "timeout": 30 },
+          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/check-flows.mjs\"", "timeout": 30 }
         ]
       }
     ],

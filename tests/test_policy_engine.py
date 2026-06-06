@@ -23,6 +23,7 @@ def _proposal(priority="low", category="style", file_path="src/utils.py"):
 
 # ---- auto_reject ----
 
+
 def test_empty_file_path_is_rejected(engine):
     p = _proposal(file_path="")
     v = engine.evaluate(p)
@@ -30,7 +31,17 @@ def test_empty_file_path_is_rejected(engine):
     assert "empty_file_path" in v.rule_name
 
 
+def test_meta_proposal_with_empty_file_path_is_not_rejected(engine):
+    # meta 提案は file_path が空でも auto_reject されず human_required へフォールスルー
+    p = _proposal(category="meta", file_path="")
+    p["is_meta"] = True
+    v = engine.evaluate(p)
+    assert v.decision == ApprovalDecision.HUMAN_REQUIRED
+    assert v.decision != ApprovalDecision.REJECT
+
+
 # ---- human_required ----
+
 
 def test_high_priority_requires_human(engine):
     p = _proposal(priority="high")
@@ -63,6 +74,7 @@ def test_pyproject_requires_human(engine):
 
 
 # ---- auto_approve ----
+
 
 def test_low_priority_style_is_auto_approved(engine):
     p = _proposal(priority="low", category="style", file_path="src/utils.py")
@@ -102,6 +114,7 @@ def test_large_changed_file_entry_is_not_auto_approved(engine):
 
 # ---- batch ----
 
+
 def test_get_auto_approvable(engine):
     proposals = [
         _proposal(priority="low", category="style", file_path="src/a.py"),
@@ -129,6 +142,7 @@ def test_save_default_policy(tmp_path):
     engine.save_default_policy(policy_path)
     assert policy_path.exists()
     import yaml
+
     loaded = yaml.safe_load(policy_path.read_text())
     assert "auto_approve" in loaded
     assert "human_required" in loaded

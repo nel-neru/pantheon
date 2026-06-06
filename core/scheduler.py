@@ -55,9 +55,7 @@ class AutonomousScheduler:
         self._interval = interval_seconds
         self._max_files = max_files_per_org
         self._detector = EventDetector(platform_home=self._psm.platform_home)
-        self._policy = PolicyEngine(
-            policy_path=self._psm.platform_home / "policy.yaml"
-        )
+        self._policy = PolicyEngine(policy_path=self._psm.platform_home / "policy.yaml")
         self._running = False
         self._cycle_count = 0
         self._log_path = self._psm.platform_home / "scheduler_log.jsonl"
@@ -84,7 +82,9 @@ class AutonomousScheduler:
     async def _run_cycle(self) -> Dict[str, Any]:
         self._cycle_count += 1
         cycle_start = datetime.now(timezone.utc)
-        print(f"\n[Scheduler] サイクル #{self._cycle_count} 開始 — {cycle_start.strftime('%H:%M:%S')}")
+        print(
+            f"\n[Scheduler] サイクル #{self._cycle_count} 開始 — {cycle_start.strftime('%H:%M:%S')}"
+        )
 
         events = self._detector.detect_all()
         triggered_orgs = {e.org_name for e in events}
@@ -110,15 +110,13 @@ class AutonomousScheduler:
         self._write_log(summary)
         return summary
 
-    async def _process_org(
-        self, org_name: str, events: List[DetectedEvent]
-    ) -> Dict[str, Any]:
+    async def _process_org(self, org_name: str, events: List[DetectedEvent]) -> Dict[str, Any]:
         """対象 Org を分析して PolicyEngine でルーティングし、自動適用 or 保留を決める"""
         from uuid import uuid4
 
         from agents.base import AgentTask
-        from agents.code_review_agent import CodeReviewAgent
-        from core.models.organization import AgentSkill, ImprovementProposal, SpecialistAgent
+        from agents.orchestrator_agent import OrchestratorAgent
+        from core.models.organization import ImprovementProposal
 
         psm = self._psm
         org = psm.load_organization_by_name(org_name)
@@ -133,11 +131,8 @@ class AutonomousScheduler:
         if not repo_path or not repo_path.exists():
             return {"org": org_name, "status": "no_repo"}
 
-        specialist = SpecialistAgent(
-            name="AutoReviewer",
-            skills=[AgentSkill.DEEP_RESEARCH, AgentSkill.PERFORMANCE_ANALYSIS],
-        )
-        agent = CodeReviewAgent(specialist)
+        # 自律デーモンの分析も中央 OrchestratorAgent（PreTaskOrchestrator）経由にし、
+        # パターン学習を蓄積させる（従来は CodeReviewAgent を直接呼んでいた）。
         task = AgentTask(
             task_type="code_review",
             description=f"[Autonomous] {org_name} のコードレビュー",
@@ -146,7 +141,7 @@ class AutonomousScheduler:
                 "max_files": self._max_files,
             },
         )
-        result = await agent.run(task)
+        result = await OrchestratorAgent.create().run(task)
         if not result.success:
             return {"org": org_name, "status": "analysis_failed", "error": result.error}
 
@@ -191,7 +186,9 @@ class AutonomousScheduler:
                 pending_for_human += 1
                 logger.debug("Pending for human: %s — %s", proposal.title, verdict.reason)
 
-        print(f"  [{org_name}] 自動: {auto_applied} / 人間待ち: {pending_for_human} / 棄却: {rejected}")
+        print(
+            f"  [{org_name}] 自動: {auto_applied} / 人間待ち: {pending_for_human} / 棄却: {rejected}"
+        )
         return {
             "org": org_name,
             "status": "ok",
