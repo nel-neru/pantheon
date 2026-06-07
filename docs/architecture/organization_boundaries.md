@@ -66,8 +66,10 @@ Pantheonは複数のOrganizationを安全に共存させ、それぞれが独立
     （`org_boundary.escape`）。
   - `allowed_path_scope` を宣言していてその接頭辞外を触る → **HUMAN_REQUIRED**
     （`org_boundary.out_of_scope`）。
-  `org_context` を渡さない既存呼び出しは完全に従来挙動（チェック不作動）。承認/適用の各経路
-  （CLI `proposal apply` / Web `approve`）が提案元組織からコンテキストを構築して渡す。
+  `org_context` を渡さない既存呼び出しは完全に従来挙動（チェック不作動）。承認/適用の全経路
+  （CLI `proposal apply` / Web `approve` / 自律スケジューラ `core/scheduler.py` の自動適用）が
+  提案元組織からコンテキストを構築して渡す。特に自律適用は人間確認を挟まないため、ここでの境界ガードが
+  external 組織のワークスペース外脱出を silent に自動適用させない最後の砦になる。
 - この機構は**特定の外部組織（アフィリエイト等）の知識を一切含まず**、すべての external 組織に
   等しく適用される。新しい外部目的Organizationを追加しても同じガードがそのまま効く。
 
@@ -81,9 +83,8 @@ Pantheonは複数のOrganizationを安全に共存させ、それぞれが独立
 
 ## 今後の拡張方向
 
-- 自律ループ（`core/scheduler.py`）の適用経路にも `org_context` を配線し、人間を介さない
-  自動適用でも境界ガードを効かせる
 - `allowed_path_scope` を超えた、知識ネームスペース単位の共有許可/禁止の明示制御
 - 組織横断の知識共有を明示的に許可/禁止する仕組み（原則2の機械的enforce）
+- external 組織の `target_repo_path` 自体の検証（登録時に他組織/coreのパスと重ならないことを保証）
 
 この原則を守ることで、Pantheonは特定のユースケースに最適化されることなく、長期的に拡張可能なプラットフォームであり続けられます。
