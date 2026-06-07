@@ -486,7 +486,13 @@ class PreTaskOrchestrator:
         return last_result
 
     async def _execute_review_loop(self, task, analysis, agent_factory):
-        """実行 → レビュー → (品質不足なら再実行) ループ。"""
+        """メイン実行 + レビューを可能なら並列化する。
+
+        レビューエージェントの結果は返り値に使われず（メインの結果のみ返す）、
+        ``review_target`` もどのエージェントからも読まれない。そのため従来は
+        直列だった 2 つの headless ``claude`` 呼び出しを ``asyncio.gather`` で
+        重ね、wall-clock を短縮する。返り値（メインの出力）は従来と同一。
+        """
         main_agent_id = (
             analysis.recommended_agent_ids[0] if analysis.recommended_agent_ids else None
         )
@@ -499,18 +505,29 @@ class PreTaskOrchestrator:
             from agents.base import AgentResult
 
             return AgentResult(success=False, error=f"Agent not found: {main_agent_id}")
-        result = await agent.run(task)
-        # レビューエージェントがあれば使う（なければそのまま返す）
-        if len(analysis.recommended_agent_ids) > 1:
-            reviewer_id = analysis.recommended_agent_ids[1]
-            reviewer = agent_factory(reviewer_id)
-            if reviewer:
-                import copy
 
-                review_task = copy.deepcopy(task)
-                review_task.input["review_target"] = result.output
-                await reviewer.run(review_task)
-        return result
+        # レビューエージェントがあれば使う（なければメインのみ実行して返す）。
+        reviewer = None
+        if len(analysis.recommended_agent_ids) > 1:
+            reviewer = agent_factory(analysis.recommended_agent_ids[1])
+        if reviewer is None:
+            return await agent.run(task)
+
+        # メインとレビューを同時実行。レビューはメイン出力に依存しない独立評価
+        # （結果は破棄）なので、2 つのコールドスタートを重ねられる。
+        import copy
+
+        review_task = copy.deepcopy(task)
+        main_result, _reviewer_result = await asyncio.gather(
+            agent.run(task),
+            reviewer.run(review_task),
+            return_exceptions=True,
+        )
+        if isinstance(main_result, BaseException):
+            from agents.base import AgentResult
+
+            return AgentResult(success=False, error=f"main agent failed: {main_result}")
+        return main_result
 
     async def _execute_parallel(self, task, analysis, agent_factory):
         """複数エージェントを並列実行して結果を統合する。"""
