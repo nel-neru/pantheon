@@ -28,6 +28,9 @@ import logging
 import os
 import shutil
 import subprocess
+import time
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
 from core.llm.base import LLMMessage, LLMResponse
@@ -37,10 +40,42 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 # Configuration (env-driven, no secrets)                                       #
 # --------------------------------------------------------------------------- #
-DISABLE_ENV = "PANTHEON_NO_CLAUDE"      # truthy => behave as if claude is absent
-BIN_ENV = "PANTHEON_CLAUDE_BIN"          # override path / name of the claude binary
-MODEL_ENV = "PANTHEON_DEFAULT_MODEL"     # optional default model passed to --model
+DISABLE_ENV = "PANTHEON_NO_CLAUDE"  # truthy => behave as if claude is absent
+BIN_ENV = "PANTHEON_CLAUDE_BIN"  # override path / name of the claude binary
+MODEL_ENV = "PANTHEON_DEFAULT_MODEL"  # optional default model passed to --model
 TIMEOUT_ENV = "PANTHEON_CLAUDE_TIMEOUT"  # seconds for a single headless call
+
+# Fast-path: trim per-call cold-start for one-shot generations (no tools/MCP
+# needed). Gated so it can be turned off, and the exact flags overridden once
+# verified against the installed CLI version via ``claude --help``.
+FAST_ENV = "PANTHEON_CLAUDE_FAST"  # truthy (default on) => add fast args
+FAST_ARGS_ENV = "PANTHEON_CLAUDE_FAST_ARGS"  # whitespace-split override of the args
+# Conservative default: suppress project MCP servers (the heaviest startup cost)
+# regardless of cwd/settings. Only well-established flags here so an older CLI
+# won't choke; richer flags (``--bare``, ``--disallowedTools``, ``--max-turns``)
+# can be opted into via FAST_ARGS_ENV after verifying support.
+_DEFAULT_FAST_ARGS = ("--strict-mcp-config", "--mcp-config", "{}")
+# stderr signatures meaning "the CLI rejected our injected fast-path flags or
+# their values" -> retry once without them. Covers both unknown-flag errors and
+# problems specific to the default --mcp-config "{}" value, so the default fast
+# path can never break generation on a CLI version that handles them differently.
+_UNKNOWN_FLAG_SIGNALS = (
+    "unknown option",
+    "unknown argument",
+    "unknown flag",
+    "unexpected argument",
+    "invalid option",
+    "unrecognized",
+    "unrecognised",
+    "no such option",
+    "strict-mcp-config",
+    "mcp-config",
+    "mcp config",
+    "mcpservers",
+)
+
+# Per-call timing log (so slowness is measured, not guessed).
+TIMING_LOG_ENV = "PANTHEON_CLAUDE_TIMING_LOG"  # path override; "" / "off" disables
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -54,6 +89,79 @@ def _default_timeout() -> float:
         return float(os.getenv(TIMEOUT_ENV, "180"))
     except (TypeError, ValueError):
         return 180.0
+
+
+def _fast_enabled() -> bool:
+    """Whether to add one-shot fast-path args (default on)."""
+    return os.getenv(FAST_ENV, "1").strip().lower() in _TRUTHY
+
+
+def _fast_args() -> list[str]:
+    """The extra argv injected for one-shot generations (overridable via env)."""
+    if not _fast_enabled():
+        return []
+    override = os.getenv(FAST_ARGS_ENV)
+    if override is not None:
+        return override.split()
+    return list(_DEFAULT_FAST_ARGS)
+
+
+def _looks_like_flag_error(stderr: str) -> bool:
+    low = (stderr or "").lower()
+    return any(sig in low for sig in _UNKNOWN_FLAG_SIGNALS)
+
+
+def _timing_log_path() -> Optional[str]:
+    """Resolve the per-call timing log path, or ``None`` when disabled."""
+    override = os.getenv(TIMING_LOG_ENV)
+    if override is not None:
+        override = override.strip()
+        if override == "" or override.lower() in {"off", "0", "none", "false"}:
+            return None
+        return override
+    # Default: alongside the global platform state (~/.pantheon).
+    try:
+        from core.platform.state import get_platform_home
+
+        return str(Path(get_platform_home()) / "claude_calls.jsonl")
+    except Exception:  # pragma: no cover - platform state optional
+        return None
+
+
+def _log_call_timing(
+    *,
+    elapsed_ms: int,
+    model: Optional[str],
+    prompt_chars: int,
+    system_chars: int,
+    returncode: Optional[int],
+    timed_out: bool,
+    fast: bool,
+) -> None:
+    """Append one JSONL record of a real ``claude`` call's wall-clock time.
+
+    Best-effort: never let logging failures affect the generation result.
+    """
+    path = _timing_log_path()
+    if not path:
+        return
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "elapsed_ms": elapsed_ms,
+        "model": model or "claude-code",
+        "prompt_chars": prompt_chars,
+        "system_chars": system_chars,
+        "returncode": returncode,
+        "timed_out": timed_out,
+        "fast": fast,
+    }
+    try:
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:  # pragma: no cover - logging must not break calls
+        logger.debug("failed to write claude timing log: %s", exc)
 
 
 def _is_disabled() -> bool:
@@ -159,6 +267,33 @@ def _parse_output(stdout: str) -> str:
 # --------------------------------------------------------------------------- #
 # Core invocation                                                              #
 # --------------------------------------------------------------------------- #
+def _build_cli_args(
+    binary: str,
+    user_text: str,
+    system_text: Optional[str],
+    chosen_model: Optional[str],
+    *,
+    fast: bool = True,
+    extra_args: Optional[Sequence[str]] = None,
+) -> list[str]:
+    """Assemble the argv for a one-shot headless ``claude -p`` call.
+
+    ``fast`` injects :func:`_fast_args` (cold-start trimming for one-shot
+    generations that need no tools/MCP). Pure/deterministic so it is unit-tested
+    directly without spawning the CLI.
+    """
+    args: list[str] = [binary, "-p", user_text, "--output-format", "json"]
+    if system_text:
+        args += ["--append-system-prompt", system_text]
+    if chosen_model:
+        args += ["--model", chosen_model]
+    if fast:
+        args += _fast_args()
+    if extra_args:
+        args += list(extra_args)
+    return args
+
+
 def run_claude_sync(
     messages: MessageLike,
     *,
@@ -176,39 +311,82 @@ def run_claude_sync(
     binary = claude_binary()
     if not binary:
         raise ClaudeUnavailableError(
-            "`claude` CLI is unavailable (not installed or disabled via "
-            f"{DISABLE_ENV}).",
+            f"`claude` CLI is unavailable (not installed or disabled via {DISABLE_ENV}).",
         )
 
     system_text, user_text = _resolve(messages, system)
     if not user_text.strip():
         return LLMResponse(content="", model=model or "claude-code", finish_reason="empty")
 
-    args: list[str] = [binary, "-p", user_text, "--output-format", "json"]
-    if system_text:
-        args += ["--append-system-prompt", system_text]
     chosen_model = model or os.getenv(MODEL_ENV)
-    if chosen_model:
-        args += ["--model", chosen_model]
-    if extra_args:
-        args += list(extra_args)
+    effective_timeout = timeout or _default_timeout()
+    prompt_chars = len(user_text)
+    system_chars = len(system_text or "")
 
-    try:
-        proc = subprocess.run(
-            args,
+    def _invoke(use_fast: bool) -> subprocess.CompletedProcess:
+        cli_args = _build_cli_args(
+            binary,
+            user_text,
+            system_text,
+            chosen_model,
+            fast=use_fast,
+            extra_args=extra_args,
+        )
+        return subprocess.run(
+            cli_args,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=timeout or _default_timeout(),
+            timeout=effective_timeout,
             cwd=str(cwd) if cwd else None,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise ClaudeUnavailableError(
-            f"claude timed out after {timeout or _default_timeout()}s",
-        ) from exc
-    except OSError as exc:
-        raise ClaudeUnavailableError(f"failed to launch claude: {exc}") from exc
+
+    fast = bool(_fast_args())
+    started = time.monotonic()
+    timed_out = False
+    proc: Optional[subprocess.CompletedProcess] = None
+    try:
+        try:
+            proc = _invoke(fast)
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            raise ClaudeUnavailableError(
+                f"claude timed out after {effective_timeout}s",
+            ) from exc
+        except OSError as exc:
+            raise ClaudeUnavailableError(f"failed to launch claude: {exc}") from exc
+
+        # If the installed CLI rejects one of our fast-path flags, retry once
+        # without them so a version mismatch never breaks generation outright.
+        if fast and proc.returncode != 0 and _looks_like_flag_error(proc.stderr or ""):
+            logger.warning(
+                "claude rejected fast-path flags (%s); retrying without them. "
+                "Set %s to override the flags or %s=0 to disable.",
+                (proc.stderr or "").strip()[:200],
+                FAST_ARGS_ENV,
+                FAST_ENV,
+            )
+            fast = False
+            try:
+                proc = _invoke(False)
+            except subprocess.TimeoutExpired as exc:
+                timed_out = True
+                raise ClaudeUnavailableError(
+                    f"claude timed out after {effective_timeout}s",
+                ) from exc
+            except OSError as exc:
+                raise ClaudeUnavailableError(f"failed to launch claude: {exc}") from exc
+    finally:
+        _log_call_timing(
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+            model=chosen_model,
+            prompt_chars=prompt_chars,
+            system_chars=system_chars,
+            returncode=(proc.returncode if proc is not None else None),
+            timed_out=timed_out,
+            fast=fast,
+        )
 
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()[:500]
@@ -251,7 +429,14 @@ class ClaudeCodeProvider:
 
     provider_name = "claude_code"
 
-    def __init__(self, config: Any = None, *, model: Optional[str] = None, cwd: Optional[Any] = None, **_kwargs: Any):
+    def __init__(
+        self,
+        config: Any = None,
+        *,
+        model: Optional[str] = None,
+        cwd: Optional[Any] = None,
+        **_kwargs: Any,
+    ):
         self._config = config
         self._model = model or getattr(config, "default_model", None) or None
         self._cwd = cwd
