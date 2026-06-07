@@ -266,6 +266,19 @@ class Organization(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_active: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     icon_data: str = Field("", description="カスタムアイコン（base64 data URLまたはSVG文字列）")
+    # ---- 組織分離（汎用境界）----
+    # additive・デフォルト付き。既存の永続化済み JSON は新フィールドなしで後方互換ロード可能。
+    # PolicyEngine の組織境界チェック（_check_org_boundary）が参照する単一の分類。
+    isolation_level: str = Field(
+        "standard",
+        description="組織の分離レベル（core=メタ/基盤・全権 / standard=通常 / "
+        "external=外部目的・自ワークスペース外への変更を制限）",
+    )
+    allowed_path_scope: List[str] = Field(
+        default_factory=list,
+        description="external 組織が変更してよいワークスペース相対パス接頭辞（空=ワークスペース全体可、"
+        "ただし外への脱出は不可）",
+    )
 
     @field_validator("target_repo_path")
     @classmethod
@@ -275,6 +288,13 @@ class Organization(BaseModel):
         if not Path(value).is_absolute():
             raise ValueError("target_repo_path must be an absolute path")
         return value
+
+    @field_validator("isolation_level")
+    @classmethod
+    def validate_isolation_level(cls, value: str) -> str:
+        # 不正値はデフォルト（standard）へ寄せ、旧データや手書き JSON を壊さない。
+        allowed = {"core", "standard", "external"}
+        return value if value in allowed else "standard"
 
     def add_division(self, division: Division) -> None:
         self.divisions.append(division)

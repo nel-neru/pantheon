@@ -35,6 +35,7 @@ def _print_org(org, pending_count: int) -> None:
     print(f"  状態      : {org.status.value}")
     print(f"  目的      : {org.purpose}")
     print(f"  リポジトリ: {org.target_repo_path or '(未設定)'}")
+    print(f"  分離レベル: {getattr(org, 'isolation_level', 'standard')}")
     print(f"  作成日時  : {org.created_at.isoformat()}")
     print(f"  最終活動  : {org.last_active.isoformat()}")
     print(f"  自律度    : {org.autonomy_score:.1f}")
@@ -90,6 +91,7 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
         print(f"[ERROR] リポジトリパスが存在しません: {repo_path}")
         sys.exit(1)
 
+    isolation_level = getattr(args, "isolation_level", "standard")
     if args.template:
         template_path = project_root / "config" / "departments" / f"{args.template}.yaml"
         org = create_organization_from_template(
@@ -97,9 +99,15 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
             args.purpose or "",
             template_path,
             repo_path=repo_path,
+            isolation_level=isolation_level,
         )
     else:
-        org = create_default_organization(args.name, args.purpose or "", repo_path=repo_path)
+        org = create_default_organization(
+            args.name,
+            args.purpose or "",
+            repo_path=repo_path,
+            isolation_level=isolation_level,
+        )
     psm.save_organization(org)
 
     agents = org.get_all_agents()
@@ -107,6 +115,7 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
     print(f"  名前      : {org.name}")
     print(f"  目的      : {org.purpose}")
     print(f"  リポジトリ: {org.target_repo_path}")
+    print(f"  分離レベル: {getattr(org, 'isolation_level', 'standard')}")
     print(f"  ID        : {org.id}")
     print(f"  Division  : {len(org.divisions)} 個 / Agent: {len(agents)} 個")
     for agent in agents:
@@ -353,10 +362,16 @@ async def cmd_proposal_apply(
         sys.exit(1)
 
     # 承認は人間起点でも必ず PolicyEngine を通す（Web と同じ非交渉ルール）。
-    from core.policy.engine import ApprovalDecision, PolicyEngine
+    from core.policy.engine import ApprovalDecision, OrgBoundaryContext, PolicyEngine
 
     policy_path = psm.platform_home / "policy.yaml"
-    verdict = PolicyEngine(policy_path if policy_path.exists() else None).evaluate(proposal)
+    org_context = OrgBoundaryContext(
+        isolation_level=getattr(org, "isolation_level", "standard"),
+        allowed_path_scope=getattr(org, "allowed_path_scope", []),
+    )
+    verdict = PolicyEngine(policy_path if policy_path.exists() else None).evaluate(
+        proposal, org_context=org_context
+    )
     state_manager.update_proposal_fields(
         str(proposal.get("id", "")),
         policy_decision=verdict.decision.value,
@@ -586,6 +601,12 @@ def register(subparsers: Any) -> None:
     add_parser.add_argument("--purpose", default="", help="Organization の目的・ゴール")
     add_parser.add_argument(
         "--template", default=None, help="テンプレート名（例: meta_improvement）"
+    )
+    add_parser.add_argument(
+        "--isolation-level",
+        choices=["core", "standard", "external"],
+        default="standard",
+        help="組織の分離レベル（external=外部目的・自ワークスペース外への変更を制限）",
     )
     add_parser.set_defaults(handler_name="cmd_org_add")
 

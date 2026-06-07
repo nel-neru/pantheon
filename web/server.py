@@ -2546,7 +2546,20 @@ async def _approve_proposal_internal(
     psm, sm, target = _find_pending_proposal(org_name, proposal_id)
 
     # すべての承認は PolicyEngine を必ず通す（人間起点・AI起点ともに）。
-    verdict = _policy_engine().evaluate(target)
+    # 提案元 Organization の分離コンテキストを渡し、external 組織の境界逸脱を汎用ガードする
+    # （CLI 経路 cmd_proposal_apply と挙動を揃える）。
+    from core.policy.engine import OrgBoundaryContext
+
+    _src_org = psm.load_organization_by_name(org_name)
+    _org_context = (
+        OrgBoundaryContext(
+            isolation_level=getattr(_src_org, "isolation_level", "standard"),
+            allowed_path_scope=getattr(_src_org, "allowed_path_scope", []),
+        )
+        if _src_org is not None
+        else None
+    )
+    verdict = _policy_engine().evaluate(target, org_context=_org_context)
     sm.update_proposal_fields(
         str(target.get("id", "")),
         policy_decision=verdict.decision.value,

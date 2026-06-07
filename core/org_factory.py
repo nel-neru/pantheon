@@ -26,7 +26,9 @@ from core.models.organization import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TEMPLATE_PATH = Path(__file__).parent.parent / "config" / "departments" / "meta_improvement.yaml"
+DEFAULT_TEMPLATE_PATH = (
+    Path(__file__).parent.parent / "config" / "departments" / "meta_improvement.yaml"
+)
 
 # スキル名文字列 → AgentSkill の安全なマッピング
 _SKILL_MAP: dict[str, AgentSkill] = {s.value: s for s in AgentSkill}
@@ -57,6 +59,8 @@ def create_organization_from_template(
     status: OrganizationStatus = OrganizationStatus.INCUBATING,
     is_system: bool = False,
     repo_path: str | Path | None = None,
+    isolation_level: str = "standard",
+    allowed_path_scope: Optional[List[str]] = None,
 ) -> Organization:
     """
     YAML テンプレートから Organization を作成する。
@@ -66,7 +70,15 @@ def create_organization_from_template(
 
     if not path.exists():
         logger.warning("Template not found: %s. Creating minimal organization.", path)
-        return _create_minimal_organization(name, purpose, status, is_system, repo_path=repo_path)
+        return _create_minimal_organization(
+            name,
+            purpose,
+            status,
+            is_system,
+            repo_path=repo_path,
+            isolation_level=isolation_level,
+            allowed_path_scope=allowed_path_scope,
+        )
 
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
@@ -78,6 +90,8 @@ def create_organization_from_template(
         target_repo_path=_normalize_repo_path(repo_path),
         status=status,
         is_system=is_system,
+        isolation_level=isolation_level,
+        allowed_path_scope=list(allowed_path_scope or []),
     )
 
     for dept in departments:
@@ -93,9 +107,19 @@ def create_default_organization(
     status: OrganizationStatus = OrganizationStatus.INCUBATING,
     is_system: bool = False,
     repo_path: str | Path | None = None,
+    isolation_level: str = "standard",
+    allowed_path_scope: Optional[List[str]] = None,
 ) -> Organization:
     """最小構成の Organization を作成する（テンプレートなし）。"""
-    return _create_minimal_organization(name, purpose, status, is_system, repo_path=repo_path)
+    return _create_minimal_organization(
+        name,
+        purpose,
+        status,
+        is_system,
+        repo_path=repo_path,
+        isolation_level=isolation_level,
+        allowed_path_scope=allowed_path_scope,
+    )
 
 
 def _build_division(dept: dict) -> Division:
@@ -146,6 +170,8 @@ def _create_minimal_organization(
     status: OrganizationStatus,
     is_system: bool = False,
     repo_path: str | Path | None = None,
+    isolation_level: str = "standard",
+    allowed_path_scope: Optional[List[str]] = None,
 ) -> Organization:
     """テンプレートなしの最小構成 Organization。"""
     org = Organization(
@@ -154,6 +180,8 @@ def _create_minimal_organization(
         target_repo_path=_normalize_repo_path(repo_path),
         status=status,
         is_system=is_system,
+        isolation_level=isolation_level,
+        allowed_path_scope=list(allowed_path_scope or []),
     )
     division = Division(
         name="Core Team",

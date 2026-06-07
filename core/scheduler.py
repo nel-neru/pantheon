@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.events.detector import DetectedEvent, EventDetector
-from core.policy.engine import ApprovalDecision, PolicyEngine
+from core.policy.engine import ApprovalDecision, OrgBoundaryContext, PolicyEngine
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +152,13 @@ class AutonomousScheduler:
         pending_for_human = 0
         rejected = 0
 
+        # 自律適用は人間確認を挟まないため、external 組織の境界ガードはここが最重要。
+        # ワークスペース外へ脱出する提案が silent に AUTO_APPROVE 適用されるのを防ぐ。
+        org_context = OrgBoundaryContext(
+            isolation_level=getattr(org, "isolation_level", "standard"),
+            allowed_path_scope=getattr(org, "allowed_path_scope", []),
+        )
+
         for s in suggestions:
             proposal = ImprovementProposal(
                 review_id=uuid4(),
@@ -163,7 +170,7 @@ class AutonomousScheduler:
                 expected_impact=s.get("expected_impact", ""),
             )
             prop_dict = json.loads(proposal.model_dump_json())
-            verdict = self._policy.evaluate(prop_dict)
+            verdict = self._policy.evaluate(prop_dict, org_context=org_context)
 
             if verdict.decision == ApprovalDecision.REJECT:
                 rejected += 1
