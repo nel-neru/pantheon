@@ -50,6 +50,34 @@ def test_approve_blocks_proposal_rejected_by_policy(tmp_path, monkeypatch):
     response = client.post(f"/api/proposals/{org.name}/{str(proposal.id)[:8]}/approve")
     assert response.status_code == 409
     assert "ポリシー" in response.json()["detail"]
+    # REJECT 時はステータスも rejected に落ちる（CLI 経路と一貫）
+    stored = json.loads(
+        (sm.state_dir / "improvements" / f"{proposal.id}.json").read_text(encoding="utf-8")
+    )
+    assert stored["status"] == "rejected"
+
+
+def test_approve_meta_without_file_path_is_blocked_cleanly(tmp_path, monkeypatch):
+    """ポリシーは通る meta 提案でも file_path が無ければ 400 で明示ブロック（500 にしない）。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("MetaOrg", "meta gate")
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    proposal = ImprovementProposal(
+        review_id=uuid4(),
+        title="meta no-file",
+        description="d",
+        priority="low",
+        category="meta",
+        file_path="",
+        is_meta=True,
+    )
+    sm.save_improvement_proposal(proposal)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    response = client.post(f"/api/proposals/{org.name}/{str(proposal.id)[:8]}/approve")
+    assert response.status_code == 400
+    assert "file_path" in response.json()["detail"]
 
 
 def test_approve_passes_github_repo_to_executor(tmp_path, monkeypatch):

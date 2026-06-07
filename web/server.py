@@ -2555,8 +2555,18 @@ async def _approve_proposal_internal(
     )
     if verdict.decision == ApprovalDecision.REJECT:
         # 空 file_path（meta-level）や無効化カテゴリはポリシーで自動棄却される。
+        # CLI 経路と同様にステータスも rejected に落として一貫させる。
+        sm.update_proposal_status(str(target.get("id", "")), "rejected")
         raise HTTPException(
             status_code=409, detail=f"ポリシーにより承認できません: {verdict.reason}"
+        )
+
+    # ポリシーは通ったが file_path が無い提案は直接適用できない（meta 提案は
+    # 自己改善ループ / Meta-Improvement Org が扱う）。executor に渡して 500 になる前に明示ブロック。
+    if not target.get("file_path"):
+        raise HTTPException(
+            status_code=400,
+            detail="この提案は file_path がないため直接適用できません（meta-level 提案は自己改善ループで処理されます）。",
         )
 
     approval_notes = (

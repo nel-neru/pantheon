@@ -81,6 +81,35 @@ def test_cmd_query_json_applies_field_filter(tmp_path, capsys):
     assert "Low style tweak" not in out
 
 
+def test_cmd_query_json_includes_terminal_statuses(tmp_path, capsys):
+    """JSON 経路は pending だけでなく done 等の終端ステータスも検索できる（SQLite とパリティ）。"""
+    psm = _setup(tmp_path)
+    org = psm.load_organization_by_name("QueryOrg")
+    sm = psm.get_org_state_manager(org)
+    done = ImprovementProposal(
+        review_id=uuid4(),
+        title="Done item",
+        description="d",
+        priority="low",
+        category="style",
+        file_path="c.py",
+    )
+    sm.save_improvement_proposal(done)
+    sm.update_proposal_status(str(done.id), "done")
+
+    args = SimpleNamespace(org_name="QueryOrg", db_path=None, filter="status=done", limit=50)
+    asyncio.run(
+        cmd_query(
+            args,
+            get_platform_home=lambda: tmp_path / "home",
+            parse_query_filters=_parse_query_filters,
+            get_psm=lambda: psm,
+        )
+    )
+    out = capsys.readouterr().out
+    assert "Done item" in out
+
+
 def test_cmd_query_unknown_org_exits(tmp_path):
     psm = _setup(tmp_path)
     args = SimpleNamespace(org_name="NoSuchOrg", db_path=None, filter="", limit=50)

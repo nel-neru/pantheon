@@ -455,7 +455,17 @@ async def cmd_query(
             print(f"[ERROR] Organization '{org_name}' が見つかりません。")
             sys.exit(1)
         sm = psm.get_org_state_manager(org)
-        rows = sm.get_pending_improvement_proposals(limit=max(limit, 100))
+        # SQLite ミラーと同様に全ステータスを対象にする（status=done 等の filter も効くように）
+        improvements_dir = sm.state_dir / "improvements"
+        rows = []
+        if improvements_dir.exists():
+            import json as _json
+
+            for path in sorted(improvements_dir.glob("*.json")):
+                try:
+                    rows.append(_json.loads(path.read_text(encoding="utf-8")))
+                except (OSError, ValueError):
+                    continue
         for key, value in field_filters.items():
             rows = [r for r in rows if str(r.get(key, "")) == value]
         rows = rows[:limit]
