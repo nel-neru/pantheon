@@ -28,6 +28,9 @@ from commands.chat import cmd_chat as _cmd_chat_impl
 from commands.doctor import cmd_doctor as _cmd_doctor_impl
 from commands.goal import cmd_goal_run as _cmd_goal_run_impl
 from commands.goal import cmd_goal_status as _cmd_goal_status_impl
+from commands.hq import cmd_hq_apply as _cmd_hq_apply_impl
+from commands.hq import cmd_hq_diagnose as _cmd_hq_diagnose_impl
+from commands.hq import cmd_hq_propose as _cmd_hq_propose_impl
 from commands.orchestration import cmd_agent_list as _cmd_agent_list_impl
 from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
 from commands.orchestration import (
@@ -287,6 +290,23 @@ async def cmd_approve(args) -> None:
     )
 
 
+async def cmd_hq_diagnose(args) -> None:
+    await _cmd_hq_diagnose_impl(args, get_psm=_get_psm)
+
+
+async def cmd_hq_propose(args) -> None:
+    await _cmd_hq_propose_impl(args, get_psm=_get_psm)
+
+
+async def cmd_hq_apply(args) -> None:
+    await _cmd_hq_apply_impl(
+        args,
+        confirm_action=_confirm_action,
+        get_psm=_get_psm,
+        require_api_key=_require_api_key,
+    )
+
+
 async def cmd_platform_status(args) -> None:
     await _cmd_platform_status_impl(args, get_psm=_get_psm)
 
@@ -434,6 +454,9 @@ HANDLERS = {
     "cmd_proposal_apply": cmd_proposal_apply,
     "cmd_query": cmd_query,
     "cmd_approve": cmd_approve,
+    "cmd_hq_diagnose": cmd_hq_diagnose,
+    "cmd_hq_propose": cmd_hq_propose,
+    "cmd_hq_apply": cmd_hq_apply,
     "cmd_platform_status": cmd_platform_status,
     "cmd_platform_config": cmd_platform_config,
     "cmd_platform_config_set": cmd_platform_config_set,

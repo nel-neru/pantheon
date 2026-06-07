@@ -367,6 +367,30 @@ async def cmd_proposal_apply(
         state_manager.update_proposal_status(str(proposal.get("id", "")), "rejected")
         sys.exit(1)
 
+    # cross-org 構造介入は file_path を持たない。empty-file_path 棄却の前に専用 executor へ委任する。
+    from core.models.organization import STRUCTURAL_INTERVENTION_CATEGORY
+
+    if proposal.get("category") == STRUCTURAL_INTERVENTION_CATEGORY or proposal.get(
+        "intervention_type"
+    ):
+        if not confirm_action(
+            f"構造介入 '{proposal.get('title')}' を適用しますか?",
+            assume_yes=getattr(args, "yes", False),
+        ):
+            print("[INFO] 適用を中止しました。")
+            return
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "in_progress")
+        from core.orchestration.structural_intervention import execute_structural_intervention
+
+        result = await execute_structural_intervention(proposal, psm=psm)
+        if not result.success:
+            print(f"[ERROR] 構造介入の適用失敗: {result.error}")
+            state_manager.update_proposal_status(str(proposal.get("id", "")), "failed")
+            sys.exit(1)
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "done")
+        print(f"[OK] 構造介入を適用しました: {result.output}")
+        return
+
     file_path = proposal.get("file_path", "")
     if not file_path:
         print("[ERROR] この提案は file_path がありません（meta-level 提案）。")

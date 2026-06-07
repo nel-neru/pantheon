@@ -50,6 +50,21 @@ class QualityReview(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class StructuralInterventionType(str, Enum):
+    """HQ（Meta-Improvement Organization）が別 Organization に対して行う構造的介入の種別。"""
+
+    ADD_DIVISION = "add_division"
+    ADD_TEAM = "add_team"
+    ADD_AGENT = "add_agent"
+    INJECT_SKILLS = "inject_skills"
+    SET_GOAL = "set_goal"
+
+
+# 構造的介入提案を識別する category。PolicyEngine と適用ディスパッチが参照する。
+STRUCTURAL_INTERVENTION_CATEGORY = "structural_intervention"
+STRUCTURAL_INTERVENTION_TYPES = tuple(t.value for t in StructuralInterventionType)
+
+
 class ImprovementProposal(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     review_id: UUID
@@ -67,7 +82,41 @@ class ImprovementProposal(BaseModel):
     dedupe_key: str = Field(
         "", description="再生成をまたいで同一性を保つ安定ハッシュ（重複排除用）"
     )
+    # ---- Phase 5: HQ → 子 Organization への構造的介入（cross-org）----
+    # すべて Optional + デフォルト付き。既存の永続化済み JSON を model_validate_json で
+    # 読み戻せるよう、後方互換（additive）を厳守する。
+    target_org_id: str | None = Field(
+        None, description="介入対象 Organization の id（cross-org 構造介入用）"
+    )
+    target_org_name: str | None = Field(
+        None, description="介入対象 Organization の名前（id 解決のフォールバック）"
+    )
+    source_org_name: str | None = Field(
+        None, description="提案元 Organization（HQ/Meta 等）— 監査・来歴用"
+    )
+    intervention_type: str | None = Field(
+        None,
+        description="構造介入の種別（add_division / add_team / add_agent / inject_skills / set_goal）",
+    )
+    target_kind: str | None = Field(
+        None, description="介入対象の種類（org_structure / code_file / content_asset 等）"
+    )
+    target_ref: str | None = Field(
+        None, description="介入対象の柔軟な識別子（Division 名・Team 名・skill set 等）"
+    )
+    intervention_spec: Optional[Dict] = Field(
+        None, description="構造介入のペイロード（division/team/agent/skill/goal の仕様）"
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def is_structural_intervention(self) -> bool:
+        """この提案が cross-org 構造介入かどうか（適用経路の分岐に使う）。"""
+        return bool(
+            self.category == STRUCTURAL_INTERVENTION_CATEGORY
+            or self.intervention_type
+            or self.target_org_id
+            or self.target_org_name
+        )
 
 
 ACTIVE_IMPROVEMENT_PROPOSAL_STATUSES = ("proposed", "pending", "in_progress")

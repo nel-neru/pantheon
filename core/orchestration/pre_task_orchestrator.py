@@ -171,6 +171,13 @@ TASK_ORCHESTRATION_PROFILES = {
         "min_agents": 2,
         "notes": "組織設計は: 1)現状分析 → 2)設計案生成 → 3)戦略的検証 の順序が重要。",
     },
+    "structural_intervention": {
+        "complexity": "medium",
+        "pattern": OrchestrationPattern.SINGLE_AGENT,
+        "required_skills": ["org_design", "agent_workflow_design"],
+        "min_agents": 1,
+        "notes": "HQ→子 Organization の構造介入は、承認済み仕様を決定論的に適用する単一エージェントで安全。",
+    },
     "default": {
         "complexity": "medium",
         "pattern": OrchestrationPattern.SINGLE_AGENT,

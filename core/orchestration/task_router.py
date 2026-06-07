@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from core.models.organization import AgentSkill
 
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RoutingDecision:
     """ルーティング判定結果。"""
+
     selected_agent_ids: List[str]
     routing_reason: str
     skill_match_scores: Dict[str, float] = field(default_factory=dict)  # agent_id → score
@@ -70,6 +71,11 @@ TASK_SKILL_REQUIREMENTS: Dict[str, List[Tuple[AgentSkill, float]]] = {
     "performance_analysis": [
         (AgentSkill.PERFORMANCE_ANALYSIS, 1.0),
         (AgentSkill.DEEP_RESEARCH, 0.6),
+    ],
+    "structural_intervention": [
+        (AgentSkill.ORG_DESIGN, 0.95),
+        (AgentSkill.AGENT_WORKFLOW_DESIGN, 0.85),
+        (AgentSkill.STRATEGIC_PLANNING, 0.5),
     ],
 }
 
