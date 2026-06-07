@@ -115,6 +115,36 @@ def test_policy_normal_meta_empty_file_still_human_required():
     assert verdict.rule_name != "intervention.cross_org"
 
 
+def test_policy_disabled_categories_kill_switch_applies_to_intervention(tmp_path):
+    """運用者が structural_intervention を disabled_categories に入れたら、空 file_path の
+    cross-org 介入でも REJECT になる（carve-out は empty_file_path だけを免除し、kill-switch は効かせる）。"""
+    import yaml
+
+    policy_path = tmp_path / "policy.yaml"
+    policy = {
+        "auto_reject": {
+            "conditions": {
+                "empty_file_path": True,
+                "disabled_categories": ["structural_intervention"],
+            }
+        },
+        "human_required": {"conditions": {"categories": ["structural_intervention"]}},
+    }
+    policy_path.write_text(yaml.safe_dump(policy, allow_unicode=True), encoding="utf-8")
+    engine = PolicyEngine(policy_path)
+    verdict = engine.evaluate(
+        {
+            "category": "structural_intervention",
+            "is_meta": True,
+            "file_path": "",
+            "intervention_type": "add_division",
+            "target_org_id": "abc",
+        }
+    )
+    assert verdict.decision == ApprovalDecision.REJECT
+    assert verdict.rule_name == "auto_reject.disabled_categories"
+
+
 # --------------------------------------------------------------------------- #
 # 純粋ミューテーション                                                          #
 # --------------------------------------------------------------------------- #
@@ -213,6 +243,21 @@ def test_apply_unknown_intervention_type_raises():
         apply_intervention_to_org(org, intervention_type="nonsense", intervention_spec={})
 
 
+@pytest.mark.parametrize("skills", [[], ["bogus", "nonsense"], None])
+def test_apply_inject_skills_empty_or_invalid_is_noop(skills):
+    """空/無効なスキル指定は no-op（フォールバックを捏造注入しない）。"""
+    org = create_default_organization("Child", "test")
+    agent = org.get_all_agents()[0]
+    before = list(agent.skills)
+    summary = apply_intervention_to_org(
+        org,
+        intervention_type="inject_skills",
+        intervention_spec={"agent": agent.name, "skills": skills},
+    )
+    assert summary["applied"] is False
+    assert agent.skills == before  # 一切変更されない
+
+
 # --------------------------------------------------------------------------- #
 # I/O ラッパ + 永続化                                                          #
 # --------------------------------------------------------------------------- #
@@ -241,6 +286,27 @@ def test_apply_structural_intervention_persists(tmp_path):
     # グローバルストアから読み直して反映を確認
     reloaded = psm.load_organization_by_id(str(child.id))
     assert any(d.name == "品質保証部" for d in reloaded.divisions)
+
+
+def test_apply_structural_intervention_is_idempotent_across_reload(tmp_path):
+    """I/O ラッパは永続化済み org を再ロードして dedupe し、2 回目は保存もスキップする。"""
+    psm, child = _setup_psm_with_child(tmp_path)
+    proposal = build_intervention_proposal(
+        target_org=child,
+        intervention_type=StructuralInterventionType.ADD_DIVISION.value,
+        title="add QA",
+        description="d",
+        intervention_spec={"division": {"name": "品質保証部", "type": "quality_assurance"}},
+        source_org_name="HQ",
+        target_ref="品質保証部",
+    )
+    first = apply_structural_intervention(proposal, psm=psm)
+    assert first["applied"] is True
+    second = apply_structural_intervention(proposal, psm=psm)
+    assert second["applied"] is False
+    reloaded = psm.load_organization_by_id(str(child.id))
+    matching = [d for d in reloaded.divisions if d.name == "品質保証部"]
+    assert len(matching) == 1  # 二重追加していない
 
 
 def test_apply_structural_intervention_refuses_system_org(tmp_path):
@@ -465,6 +531,50 @@ def test_cli_hq_propose_then_apply(tmp_path, monkeypatch, capsys):
     # ステータスは done に
     done = psm.get_org_state_manager(reloaded).get_pending_improvement_proposals(limit=50)
     assert not any(str(p.get("id")) == str(add_division["id"]) for p in done)
+
+
+def test_cli_proposal_apply_dispatches_structural_intervention(tmp_path, monkeypatch):
+    """汎用 `pantheon proposal apply` も構造介入を専用 executor へ委任する（empty-file_path 棄却の前）。"""
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    from types import SimpleNamespace
+
+    from commands.org import cmd_proposal_apply
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    child = create_default_organization("Child", "child", status=OrganizationStatus.ACTIVE)
+    psm.save_organization(child)
+    proposal = build_intervention_proposal(
+        target_org=child,
+        intervention_type=StructuralInterventionType.ADD_DIVISION.value,
+        title="cli proposal apply add division",
+        description="d",
+        intervention_spec={"division": {"name": "CliAdded", "type": "org_evolution"}},
+        source_org_name="HQ",
+        target_ref="CliAdded",
+    )
+    sm = psm.get_org_state_manager(child)
+    sm.save_improvement_proposal(proposal)
+
+    asyncio.run(
+        cmd_proposal_apply(
+            SimpleNamespace(
+                org_name="Child",
+                proposal_id=str(proposal.id)[:8],
+                yes=True,
+                github_repo=None,
+                github_token=None,
+            ),
+            confirm_action=lambda *a, **k: True,
+            get_orchestrator=lambda: None,  # 構造分岐は使わない（早期 return）
+            get_psm=lambda: psm,
+            require_api_key=lambda *a, **k: None,
+        )
+    )
+    reloaded = psm.load_organization_by_id(str(child.id))
+    assert any(d.name == "CliAdded" for d in reloaded.divisions)
+    # done（empty-file_path で rejected にならず構造分岐が先に走る）
+    pending = psm.get_org_state_manager(reloaded).get_pending_improvement_proposals(limit=50)
+    assert not any(str(p.get("id")) == str(proposal.id) for p in pending)
 
 
 def test_cli_hq_apply_rejects_non_intervention(tmp_path, monkeypatch):

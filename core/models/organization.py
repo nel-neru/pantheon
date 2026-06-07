@@ -65,6 +65,21 @@ STRUCTURAL_INTERVENTION_CATEGORY = "structural_intervention"
 STRUCTURAL_INTERVENTION_TYPES = tuple(t.value for t in StructuralInterventionType)
 
 
+def is_structural_intervention_dict(data: dict) -> bool:
+    """dict 形式の提案が cross-org 構造介入かどうかを判定する単一の真実源。
+
+    モデル（``ImprovementProposal.is_structural_intervention``）・PolicyEngine・
+    承認/適用ディスパッチ（CLI/Web）はすべてこの 4-way 判定に揃える
+    （ディスパッチが policy より狭いと、policy が介入と認めた提案を取りこぼす）。
+    """
+    return bool(
+        data.get("category") == STRUCTURAL_INTERVENTION_CATEGORY
+        or data.get("intervention_type")
+        or data.get("target_org_id")
+        or data.get("target_org_name")
+    )
+
+
 class ImprovementProposal(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     review_id: UUID
@@ -111,11 +126,13 @@ class ImprovementProposal(BaseModel):
 
     def is_structural_intervention(self) -> bool:
         """この提案が cross-org 構造介入かどうか（適用経路の分岐に使う）。"""
-        return bool(
-            self.category == STRUCTURAL_INTERVENTION_CATEGORY
-            or self.intervention_type
-            or self.target_org_id
-            or self.target_org_name
+        return is_structural_intervention_dict(
+            {
+                "category": self.category,
+                "intervention_type": self.intervention_type,
+                "target_org_id": self.target_org_id,
+                "target_org_name": self.target_org_name,
+            }
         )
 
 

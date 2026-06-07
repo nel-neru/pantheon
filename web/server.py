@@ -2563,11 +2563,10 @@ async def _approve_proposal_internal(
 
     # cross-org 構造介入は file_path を持たない。empty-file_path ブロックの前に、
     # 専用の構造介入 executor へ（PolicyEngine 通過後・PreTask 経由で）委任する。
-    from core.models.organization import STRUCTURAL_INTERVENTION_CATEGORY
+    # 判定は PolicyEngine と同じ 4-way 述語に揃える（取りこぼし防止）。
+    from core.models.organization import is_structural_intervention_dict
 
-    if target.get("category") == STRUCTURAL_INTERVENTION_CATEGORY or target.get(
-        "intervention_type"
-    ):
+    if is_structural_intervention_dict(target):
         from core.orchestration.structural_intervention import execute_structural_intervention
 
         sm.update_proposal_status(str(target.get("id", "")), "in_progress")

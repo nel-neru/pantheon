@@ -368,11 +368,10 @@ async def cmd_proposal_apply(
         sys.exit(1)
 
     # cross-org 構造介入は file_path を持たない。empty-file_path 棄却の前に専用 executor へ委任する。
-    from core.models.organization import STRUCTURAL_INTERVENTION_CATEGORY
+    # 判定は PolicyEngine と同じ 4-way 述語に揃える（取りこぼし防止）。
+    from core.models.organization import is_structural_intervention_dict
 
-    if proposal.get("category") == STRUCTURAL_INTERVENTION_CATEGORY or proposal.get(
-        "intervention_type"
-    ):
+    if is_structural_intervention_dict(proposal):
         if not confirm_action(
             f"構造介入 '{proposal.get('title')}' を適用しますか?",
             assume_yes=getattr(args, "yes", False),

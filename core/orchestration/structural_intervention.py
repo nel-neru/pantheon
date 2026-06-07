@@ -62,11 +62,11 @@ def _resolve_division_type(raw_value: str | None) -> DivisionType:
     return DivisionType.ORG_EVOLUTION
 
 
-def _resolve_skills(raw_skills: List[str] | None) -> List[AgentSkill]:
-    """文字列スキル列を 2〜3 個の有効な AgentSkill に正規化する。
+def _match_skills(raw_skills: List[str] | None) -> List[AgentSkill]:
+    """明示的に指定され、有効で、重複しない AgentSkill だけを返す（パディングしない）。
 
-    SpecialistAgent.skills は Field(min_length=2, max_length=3) のため、ここで必ず
-    2〜3 個に収める（不正名は無視し、不足は STRATEGIC_PLANNING / DEEP_RESEARCH で補完）。
+    不正名は無視するだけで、フォールバックは *補完しない*。inject_skills のように
+    「指定されたスキルだけ」を扱う用途に使う（捏造注入を防ぐ）。
     """
     resolved: List[AgentSkill] = []
     for raw_skill in raw_skills or []:
@@ -77,7 +77,17 @@ def _resolve_skills(raw_skills: List[str] | None) -> List[AgentSkill]:
         )
         if match is not None and match not in resolved:
             resolved.append(match)
+    return resolved
 
+
+def _resolve_skills(raw_skills: List[str] | None) -> List[AgentSkill]:
+    """文字列スキル列を 2〜3 個の有効な AgentSkill に正規化する。
+
+    SpecialistAgent.skills は Field(min_length=2, max_length=3) のため、ここで必ず
+    2〜3 個に収める（不正名は無視し、不足は STRATEGIC_PLANNING / DEEP_RESEARCH で補完）。
+    新規 SpecialistAgent 構築専用。inject_skills には使わない（_match_skills を使う）。
+    """
+    resolved = _match_skills(raw_skills)
     if not resolved:
         resolved = [AgentSkill.STRATEGIC_PLANNING, AgentSkill.DEEP_RESEARCH]
     elif len(resolved) == 1:
@@ -253,7 +263,18 @@ def apply_intervention_to_org(
             raise StructuralInterventionError(
                 f"inject_skills: 対象 Agent '{spec.get('agent')}' が見つかりません。"
             )
-        requested = _resolve_skills(spec.get("skills"))
+        # inject_skills は「指定されたスキルだけ」を扱う。_resolve_skills のような
+        # フォールバック補完は使わない（空/不正指定で別 org に捏造スキルを注入しない）。
+        requested = _match_skills(spec.get("skills"))
+        if not requested:
+            return {
+                "applied": False,
+                "intervention_type": itype,
+                "agent": agent.name,
+                "reason": "inject_skills: 有効なスキルが指定されていません。",
+                "skills_added": [],
+                "skills_now": [s.value for s in agent.skills],
+            }
         added: List[str] = []
         skipped: List[str] = []
         for skill in requested:

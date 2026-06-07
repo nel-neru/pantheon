@@ -16,7 +16,7 @@ import argparse
 import sys
 from typing import Any
 
-from core.models.organization import STRUCTURAL_INTERVENTION_CATEGORY
+from core.models.organization import is_structural_intervention_dict
 
 
 def _find_pending_proposal(
@@ -87,13 +87,7 @@ async def cmd_hq_apply(
         print(f"[ERROR] ID '{args.proposal_id}' に一致する未対応提案が見つかりません。")
         sys.exit(1)
 
-    is_intervention = bool(
-        proposal.get("category") == STRUCTURAL_INTERVENTION_CATEGORY
-        or proposal.get("intervention_type")
-        or proposal.get("target_org_id")
-        or proposal.get("target_org_name")
-    )
-    if not is_intervention:
+    if not is_structural_intervention_dict(proposal):
         print(
             "[ERROR] この提案は構造介入ではありません。通常の適用は `pantheon proposal apply` を使ってください。"
         )

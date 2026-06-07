@@ -175,16 +175,17 @@ class PolicyEngine:
 
     def _check_auto_reject(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
         cond = self._policy.get("auto_reject", {}).get("conditions", {})
-        # meta 提案（Atlas/システムレベル）および cross-org 構造介入は file_path が空でも
-        # 自動棄却せず、後続チェック（_check_intervention / human_required）に委ねる。
-        if (
+        is_meta_or_intervention = bool(
             p.get("is_meta")
             or p.get("target_org_id")
             or p.get("target_org_name")
             or p.get("intervention_type")
-        ) and not p.get("file_path"):
-            return None
-        if cond.get("empty_file_path") and not p.get("file_path"):
+        )
+        # empty_file_path ルールは meta 提案／cross-org 構造介入を棄却してはいけない
+        # （ファイルを持たない設計）。これらは後続（_check_intervention / human_required）へ委ねる。
+        # ただし disabled_categories（運用者の kill-switch）はこの carve-out の対象外で、
+        # 介入であっても常に有効にする（auto_reject > human_required の優先順位を守る）。
+        if cond.get("empty_file_path") and not p.get("file_path") and not is_meta_or_intervention:
             return PolicyVerdict(
                 decision=ApprovalDecision.REJECT,
                 reason="file_path が空のため自動棄却（meta-level 提案）",
