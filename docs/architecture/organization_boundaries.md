@@ -30,8 +30,9 @@ Pantheonは複数のOrganizationを安全に共存させ、それぞれが独立
 - 高リスクな変更（coreファイルへの変更）は、PolicyEngineで強制的に人間承認を必須とする
 
 ### 4. ポリシーで境界をenforceする
-- `core/policy/engine.py` を拡張し、組織IDや目的に基づいた境界チェックを将来的に追加可能にする
-- 現在はファイルパスやカテゴリで判定しているが、組織スコープを意識した判定ルールを追加する余地を残す
+- `core/policy/engine.py` を拡張し、組織の**分離レベル**に基づいた境界チェックを行う
+- ファイルパスやカテゴリ判定に加えて、**組織スコープを意識した汎用ガード**を実装済み
+  （`_check_org_boundary` / `OrgBoundaryContext`。下記「実装済みの境界enforce」参照）
 
 ### 5. 状態管理の分離を維持する
 - グローバル状態（`~/.pantheon`）とリポジトリ固有状態（`<repo>/.pantheon`）の分離はすでに良い設計
@@ -50,17 +51,39 @@ Pantheonは複数のOrganizationを安全に共存させ、それぞれが独立
 - 「アフィリエイト組織向けのDivision構成」や「アフィリエイト特化の分離ルール」のような記述は避ける
 - 将来的に他のOrganizationを追加したときも同じ原則が適用できるかを意識する
 
+## 実装済みの境界enforce（汎用）
+
+原則4・5を実コードで担保する**汎用機構**（特定ドメイン非依存）:
+
+- **組織の分離レベル**: `Organization.isolation_level`（`"core" | "standard" | "external"`）と
+  `Organization.allowed_path_scope`（external 組織が変更してよいワークスペース相対パス接頭辞）。
+  いずれも additive・デフォルト付きで、既存の永続化済み JSON を後方互換でロードできる。
+  `pantheon org add --isolation-level external` で外部目的Organizationを external として登録する。
+- **PolicyEngine の境界ガード**: `core/policy/engine.py` の `OrgBoundaryContext` と
+  `_check_org_boundary`。`evaluate(proposal, *, org_context=...)` に提案元組織の分離コンテキストを
+  渡すと、`isolation_level == "external"` の組織についてのみ:
+  - 提案の `file_path` が絶対パス／`..` を含む（ワークスペース外への脱出）→ **REJECT**
+    （`org_boundary.escape`）。
+  - `allowed_path_scope` を宣言していてその接頭辞外を触る → **HUMAN_REQUIRED**
+    （`org_boundary.out_of_scope`）。
+  `org_context` を渡さない既存呼び出しは完全に従来挙動（チェック不作動）。承認/適用の各経路
+  （CLI `proposal apply` / Web `approve`）が提案元組織からコンテキストを構築して渡す。
+- この機構は**特定の外部組織（アフィリエイト等）の知識を一切含まず**、すべての external 組織に
+  等しく適用される。新しい外部目的Organizationを追加しても同じガードがそのまま効く。
+
 ## 関連する既存コンポーネント
 
-- `core/models/organization.py`: `Organization` の `purpose` と `target_repo_path` で外部目的を表現
-- `core/policy/engine.py`: 改善提案の承認判定（将来的に組織境界チェックを追加可能）
+- `core/models/organization.py`: `Organization` の `purpose`/`target_repo_path` で外部目的を表現し、
+  `isolation_level`/`allowed_path_scope` で分離境界を表現
+- `core/policy/engine.py`: 改善提案の承認判定 ＋ 組織分離境界チェック（`_check_org_boundary`）
 - `core/state/manager.py`: リポジトリごとの状態分離
 - `core/platform/state.py`: GroupHQStateによる複数Organization管理
 
 ## 今後の拡張方向
 
-- PolicyEngineに「組織IDに基づく境界ルール」を追加できるようにする
-- Organizationモデルに軽量な `isolation_level` や `allowed_domains` の概念を導入する余地を検討
-- 組織横断の知識共有を明示的に許可/禁止する仕組み
+- 自律ループ（`core/scheduler.py`）の適用経路にも `org_context` を配線し、人間を介さない
+  自動適用でも境界ガードを効かせる
+- `allowed_path_scope` を超えた、知識ネームスペース単位の共有許可/禁止の明示制御
+- 組織横断の知識共有を明示的に許可/禁止する仕組み（原則2の機械的enforce）
 
 この原則を守ることで、Pantheonは特定のユースケースに最適化されることなく、長期的に拡張可能なプラットフォームであり続けられます。

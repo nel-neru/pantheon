@@ -9,6 +9,7 @@ Pantheon - Approval Policy Engine
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -31,6 +32,19 @@ class PolicyVerdict:
     reason: str
     rule_name: str = ""
     confidence: float = 1.0
+
+
+@dataclass
+class OrgBoundaryContext:
+    """提案元 Organization の分離コンテキスト（汎用・特定ドメイン非依存）。
+
+    PolicyEngine.evaluate に任意で渡し、外部目的 Organization（isolation_level=="external"）
+    の提案が自ワークスペース外を変更しようとしていないかを境界チェックする。
+    None を渡せば（デフォルト）境界チェックは一切作動せず、従来挙動と完全一致する。
+    """
+
+    isolation_level: str = "standard"
+    allowed_path_scope: Optional[List[str]] = None
 
 
 # ---------- デフォルトルール定義 ----------
@@ -119,10 +133,19 @@ class PolicyEngine:
                 logger.warning("Failed to load policy file: %s — using defaults", e)
         return DEFAULT_POLICY
 
-    def evaluate(self, proposal: Dict[str, Any]) -> PolicyVerdict:
+    def evaluate(
+        self,
+        proposal: Dict[str, Any],
+        *,
+        org_context: OrgBoundaryContext | None = None,
+    ) -> PolicyVerdict:
         """
         提案を評価して承認判定を返す。
         優先度: auto_reject > human_required > auto_approve > human_required(default)
+
+        org_context（任意）: 提案元 Organization の分離コンテキスト。None（デフォルト）なら
+        境界チェックは作動せず従来挙動と完全一致する。external 組織の提案が自ワークスペース外を
+        触る場合のみ、構造介入/content_asset の専用判定の後に汎用境界ガードを適用する。
         """
         # 1. 自動棄却チェック
         verdict = self._check_auto_reject(proposal)
@@ -136,6 +159,12 @@ class PolicyEngine:
 
         # 1.6 content_asset チェック（dispatch 述語と同じ 2-way。auto_approve に落とさない）
         verdict = self._check_content_asset(proposal)
+        if verdict:
+            return verdict
+
+        # 1.7 組織分離境界チェック（external 組織のワークスペース外脱出を防ぐ汎用ガード）。
+        # 構造介入(1.5)・content_asset(1.6) の専用判定を先に通し、残った通常 code_file 提案にだけ適用する。
+        verdict = self._check_org_boundary(proposal, org_context)
         if verdict:
             return verdict
 
@@ -243,6 +272,56 @@ class PolicyEngine:
                 reason="content_asset（ワークスペース資産・publishing 近接）は人間確認必須",
                 rule_name="human_required.content_asset",
             )
+        return None
+
+    @staticmethod
+    def _path_segments(file_path: str) -> List[str]:
+        """OS 区切りを正規化してパスをセグメント分割する（Windows の `\\` も `/` も扱う）。"""
+        return [seg for seg in file_path.replace("\\", "/").split("/") if seg]
+
+    def _check_org_boundary(
+        self, p: Dict[str, Any], ctx: Optional[OrgBoundaryContext]
+    ) -> Optional[PolicyVerdict]:
+        """external 組織の提案が自ワークスペース外を変更しようとしていないかを汎用的に検査する。
+
+        ctx が None、または external 以外（core/standard）なら完全に no-op（従来挙動）。
+        特定ドメイン（アフィリエイト等）の知識は一切持たず、純粋にパススコープのみで判定する。
+        """
+        if ctx is None or ctx.isolation_level != "external":
+            return None
+
+        file_path = str(p.get("file_path") or "")
+        # 空 file_path（構造介入/meta）は上流で処理済み。境界ガードは作動しない。
+        if not file_path:
+            return None
+
+        normalized = file_path.replace("\\", "/")
+        segments = self._path_segments(file_path)
+
+        # 1) 絶対パス または `..` セグメント = ワークスペース外への脱出 → 強い境界（REJECT）。
+        if os.path.isabs(file_path) or ".." in segments:
+            return PolicyVerdict(
+                decision=ApprovalDecision.REJECT,
+                reason="external 組織は自ワークスペース外（絶対パス/親ディレクトリ）を変更できません",
+                rule_name="org_boundary.escape",
+            )
+
+        # 2) allowed_path_scope が宣言されていれば、その接頭辞配下のみ許可（セグメント境界一致）。
+        scope = ctx.allowed_path_scope or []
+        if scope:
+            in_scope = any(
+                normalized == prefix.replace("\\", "/").rstrip("/")
+                or normalized.startswith(prefix.replace("\\", "/").rstrip("/") + "/")
+                for prefix in scope
+                if prefix
+            )
+            if not in_scope:
+                return PolicyVerdict(
+                    decision=ApprovalDecision.HUMAN_REQUIRED,
+                    reason="external 組織の宣言スコープ（allowed_path_scope）外への変更は人間確認必須",
+                    rule_name="org_boundary.out_of_scope",
+                )
+
         return None
 
     def _check_human_required(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
