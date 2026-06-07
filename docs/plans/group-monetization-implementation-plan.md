@@ -43,6 +43,13 @@ Phases 0-4 directly address the biggest trust, learning, and proposal quality is
 ### Phase 5: Group Governance Activation (Make HQ real)
 **Goal**: Turn "Platform + Meta" into an *active* headquarters that can diagnose, intervene in, and strengthen other Organizations structurally — not just improve Pantheon's own code.
 
+> **STATUS (2026-06): Slice A 実装済み.** 構造的介入提案（モデル拡張 + PolicyEngine
+> `intervention.cross_org` ルール）、`HQInterventionProposer`（診断→提案）、PreTask 経由の
+> 構造介入 executor による安全な org モデル変更 + 永続化、`pantheon hq` CLI、既存 approve/apply
+> （CLI + Web）への自動委任、`hq-intervention` フロー（flows.json）、テスト一式を実装。
+> 詳細は `docs/plans/phase5-kickoff.md` の実装ログ参照。残り（cross-org 学習伝播・group
+> ダッシュボード拡張・LLM ベース介入設計）は後続スライス。
+
 **Key Work**:
 - **Proposal model generalization** (builds directly on Phase 1 meta proposals):
   - Extend `ImprovementProposal` (or introduce parallel `OrgInterventionProposal` / keep one model with new fields):

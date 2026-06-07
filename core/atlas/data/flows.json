@@ -292,6 +292,26 @@
       "verification": ["tests/test_atlas.py", "tests/test_web_server.py"],
       "status": "solid",
       "known_issues": []
+    },
+    {
+      "id": "hq-intervention",
+      "name": "HQ 構造的介入（本社→子 Organization 強化）",
+      "summary": "Meta-Improvement Organization（本社）が子 Organization を診断し、構造的介入提案（Division/Team/Agent 追加・スキル注入・目標設定）を生成。PolicyEngine（cross-org は必ず人間確認）と PreTaskOrchestrator を通して対象 Organization のモデルを安全に変更する（Phase 5）。",
+      "trigger": { "kind": "cli", "name": "pantheon hq diagnose / propose / apply" },
+      "steps": [
+        { "component": "core/hierarchy/hq_interventions.py", "action": "子 org を診断し弱みから構造介入提案を生成・保存（来歴 source_org 付き）" },
+        { "component": "core/policy/engine.py:PolicyEngine", "action": "cross-org 構造介入を必ず human_required に判定（auto_reject/auto_approve させない）" },
+        { "component": "core/orchestration/structural_intervention.py", "action": "承認後に PreTask 経由で対象 org モデルを変更し永続化（冪等・skills 2-3 厳守）" },
+        { "component": "agents/structural_intervention_executor_agent.py", "action": "構造介入を決定論的に適用する専用 executor" },
+        { "component": "core/platform/state.py", "action": "変更した Organization を ~/.pantheon/organizations に保存" }
+      ],
+      "surfaces": ["pantheon hq diagnose", "pantheon hq propose", "pantheon hq apply", "pantheon proposal apply（構造介入を自動委任）", "POST /api/proposals/{org}/{id}/approve（構造介入を自動委任）"],
+      "state": ["~/.pantheon/organizations/", "<target>/.pantheon/improvements/", "~/.pantheon/org_goals.json"],
+      "verification": ["tests/test_hq_intervention.py", "tests/test_policy_engine.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "low", "title": "介入ヒューリスティックは決定論的で限定的", "detail": "弱み→介入の写像は 3 パターンのみ。LLM ベースの設計提案は将来拡張（Phase 6+）。", "file": "core/hierarchy/hq_interventions.py" }
+      ]
     }
   ]
 }

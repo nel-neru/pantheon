@@ -119,3 +119,40 @@ Start. Think. Research. Propose. Build carefully.
 When you have a clear first step or slice ready, describe it and proceed.
 
 Good luck — this is where Pantheon can become something much larger than a personal code-improvement tool.
+
+---
+
+## 実装ログ — Phase 5 Slice A: HQ 構造的介入（実装済み / 2026-06）
+
+「HQ が子 Organization を構造的に強化する」最小スライスを、既存の
+analyze → ImprovementProposal → PolicyEngine → 適用 + 学習 ループの *一般化* として実装した
+（並行システムは作らず、コードファイル変更を「組織モデル変更」へ拡張）。
+
+**追加・変更点**
+- モデル: `ImprovementProposal` に cross-org 介入フィールド（`target_org_id/name`,
+  `source_org_name`, `intervention_type`, `target_kind`, `target_ref`, `intervention_spec`）を
+  *additive・Optional* で追加（既存 JSON は後方互換でロード可）。`StructuralInterventionType`
+  enum / `STRUCTURAL_INTERVENTION_CATEGORY` / `is_structural_intervention()`。
+- ポリシー: `PolicyEngine._check_intervention()` で **cross-org 介入は必ず HUMAN_REQUIRED**
+  （rule `intervention.cross_org`）。auto_reject の carve-out を介入にも拡張し、
+  `structural_intervention` を human_required カテゴリへ。auto_approve には決して落ちない。
+- 適用: `core/orchestration/structural_intervention.py`（純粋・冪等な `apply_intervention_to_org`、
+  ロード→system拒否→変更→永続化の `apply_structural_intervention`、PreTask 経由の
+  `execute_structural_intervention`、安定 dedupe の `build_intervention_proposal`）。
+  専用 `StructuralInterventionExecutorAgent`（LLM 不使用・決定論的）＋ YAML 定義。
+  ルーティング: `structural_intervention` プロファイル + skill 要件を登録。
+- HQ: `core/hierarchy/hq_interventions.py`（`HQInterventionProposer` が子 org を診断 →
+  弱み→介入のヒューリスティックで提案生成 → 子 org の `.pantheon` に保存・dedupe）。
+- 面: CLI `pantheon hq diagnose | propose | apply`。既存の `pantheon proposal apply` と
+  Web `POST /api/proposals/{org}/{id}/approve` は、空 file_path 棄却の **前に** 構造介入を
+  専用 executor へ自動委任（通常提案・通常 meta 提案の挙動は不変）。
+- 可視化/規約: `flows.json` に `hq-intervention` フロー追加（Atlas 自動反映）。
+  **必須デリバラブル**完了: `scripts/check_planning_docs.py` + PostToolUse フック
+  `check-planning-docs.mjs` + `AGENTS.md` の Planning Document Hygiene 規約。
+- テスト: `tests/test_hq_intervention.py`（モデル/ポリシー/純粋変更/永続化/PreTask e2e/
+  HQ プロポーザ/Web・CLI 統合）, `tests/test_check_planning_docs.py`。全バックエンド回帰なし
+  （既知ベースラインのみ）。
+
+**未対応（次スライスの種）**: 弱み→介入の写像は 3 パターンの決定論ヒューリスティックのみ
+（LLM ベースの設計提案は Phase 6+）。収益ドメイン skill / org テンプレート（Phase 6）、
+非コード asset の review/apply（Phase 7）、成果フィードバック（Phase 8）は未着手。

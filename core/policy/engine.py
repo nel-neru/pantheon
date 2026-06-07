@@ -69,6 +69,7 @@ DEFAULT_POLICY: Dict[str, Any] = {
                 "database",
                 "auth",
                 "meta",
+                "structural_intervention",  # 別 Organization への構造的介入（cross-org）
             ],
             "file_patterns": [  # 変更に慎重を要するファイル
                 "main.py",
@@ -126,6 +127,11 @@ class PolicyEngine:
         if verdict:
             return verdict
 
+        # 1.5 cross-org 構造介入チェック（別 Organization を変更する提案は必ず人間確認）
+        verdict = self._check_intervention(proposal)
+        if verdict:
+            return verdict
+
         # 2. 人間必須チェック（high risk）
         verdict = self._check_human_required(proposal)
         if verdict:
@@ -169,11 +175,17 @@ class PolicyEngine:
 
     def _check_auto_reject(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
         cond = self._policy.get("auto_reject", {}).get("conditions", {})
-        # meta 提案（Atlas/システムレベル）は file_path が空でも自動棄却せず、
-        # human_required にフォールスルーさせる（人間/Meta-Improvement Org が判断する）。
-        if p.get("is_meta") and not p.get("file_path"):
-            return None
-        if cond.get("empty_file_path") and not p.get("file_path"):
+        is_meta_or_intervention = bool(
+            p.get("is_meta")
+            or p.get("target_org_id")
+            or p.get("target_org_name")
+            or p.get("intervention_type")
+        )
+        # empty_file_path ルールは meta 提案／cross-org 構造介入を棄却してはいけない
+        # （ファイルを持たない設計）。これらは後続（_check_intervention / human_required）へ委ねる。
+        # ただし disabled_categories（運用者の kill-switch）はこの carve-out の対象外で、
+        # 介入であっても常に有効にする（auto_reject > human_required の優先順位を守る）。
+        if cond.get("empty_file_path") and not p.get("file_path") and not is_meta_or_intervention:
             return PolicyVerdict(
                 decision=ApprovalDecision.REJECT,
                 reason="file_path が空のため自動棄却（meta-level 提案）",
@@ -186,6 +198,26 @@ class PolicyEngine:
                 decision=ApprovalDecision.REJECT,
                 reason=f"カテゴリ '{p.get('category')}' は無効化されているため自動棄却",
                 rule_name="auto_reject.disabled_categories",
+            )
+        return None
+
+    def _check_intervention(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
+        """別 Organization の構造を変更する cross-org 介入は必ず人間確認にする。
+
+        対象 org のモデルを直接変更しうるため、auto_approve には決して落とさない（安全側）。
+        category / intervention_type / target_org_* のいずれかがあれば介入とみなす。
+        """
+        is_intervention = (
+            p.get("category") == "structural_intervention"
+            or p.get("intervention_type")
+            or p.get("target_org_id")
+            or p.get("target_org_name")
+        )
+        if is_intervention:
+            return PolicyVerdict(
+                decision=ApprovalDecision.HUMAN_REQUIRED,
+                reason="別 Organization を変更する構造的介入は人間確認必須",
+                rule_name="intervention.cross_org",
             )
         return None
 

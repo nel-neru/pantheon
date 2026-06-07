@@ -2561,6 +2561,32 @@ async def _approve_proposal_internal(
             status_code=409, detail=f"ポリシーにより承認できません: {verdict.reason}"
         )
 
+    # cross-org 構造介入は file_path を持たない。empty-file_path ブロックの前に、
+    # 専用の構造介入 executor へ（PolicyEngine 通過後・PreTask 経由で）委任する。
+    # 判定は PolicyEngine と同じ 4-way 述語に揃える（取りこぼし防止）。
+    from core.models.organization import is_structural_intervention_dict
+
+    if is_structural_intervention_dict(target):
+        from core.orchestration.structural_intervention import execute_structural_intervention
+
+        sm.update_proposal_status(str(target.get("id", "")), "in_progress")
+        result = await execute_structural_intervention(target, psm=psm)
+        if not result.success:
+            sm.update_proposal_status(str(target.get("id", "")), "failed")
+            raise HTTPException(
+                status_code=500, detail=result.error or "構造介入の適用に失敗しました"
+            )
+        sm.update_proposal_status(str(target.get("id", "")), "done")
+        return {
+            "status": "done",
+            "proposal_id": str(target.get("id", "")),
+            "title": target.get("title"),
+            "intervention_type": target.get("intervention_type"),
+            "target_org_name": target.get("target_org_name"),
+            "output": result.output,
+            "policy": _policy_payload(verdict),
+        }
+
     # ポリシーは通ったが file_path が無い提案は直接適用できない（meta 提案は
     # 自己改善ループ / Meta-Improvement Org が扱う）。executor に渡して 500 になる前に明示ブロック。
     if not target.get("file_path"):

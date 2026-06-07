@@ -1,0 +1,32 @@
+# structural_intervention_executor.yaml
+# 承認済みの cross-org 構造介入を対象 Organization のモデルに適用するエージェント（Phase 5）
+# ImprovementExecutorAgent の兄弟（ファイルではなく組織構造を変更する）
+
+schema_version: "1.0"
+name: StructuralInterventionExecutor
+capability_id: agent:structural_intervention_executor
+description: 承認済みの構造介入（Division/Team/Agent 追加・スキル注入・目標設定）を対象 Organization に適用する
+
+skills:
+  - org_design
+  - agent_workflow_design
+
+tools:
+  - read_state
+  - write_state
+
+behavior: |
+  承認済みの cross-org 構造介入提案のみを対象に、対象 Organization のモデルへ
+  決定論的に変更を適用してください。SpecialistAgent のスキルは必ず 2〜3 個に保ち、
+  同名の Division/Team/Agent が既にある場合は冪等にスキップしてください。
+  system Organization（Meta-Improvement Organization 等）は対象にしないでください。
+
+# Python 専用クラスを使用（組織モデル変更・永続化ロジックが必要）
+implementation: agents.structural_intervention_executor_agent.StructuralInterventionExecutorAgent
+
+response_format:
+  type: json
+  fields:
+    - applied
+    - organization_id
+    - intervention_type
