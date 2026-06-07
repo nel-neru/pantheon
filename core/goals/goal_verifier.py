@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from core.goals.goal_decomposer import GoalPlan
 from core.goals.execution_coordinator import ExecutionProgress, TaskStatus
+from core.goals.goal_decomposer import GoalPlan
 from core.goals.goal_parser import StructuredGoal
 
 logger = logging.getLogger(__name__)

@@ -126,7 +126,7 @@ async def cmd_session_show(args: argparse.Namespace) -> None:
     print(f"  status:    {rec.status}")
     print(f"  created:   {rec.created_at}")
     print(f"  workspace: {rec.workspace.get('name')} ({rec.workspace.get('id')})")
-    print(f"  agents:")
+    print("  agents:")
     for sr in rec.surfaces:
         _print_surface(sr)
     if getattr(args, "log", False):
@@ -160,7 +160,9 @@ async def cmd_session_doctor(args: argparse.Namespace) -> None:
     from core.runtime.claude_code import claude_available, claude_binary
     from core.runtime.multiplexer import get_driver
     from core.runtime.multiplexer.wmux_rpc import (
-        WmuxClient, WmuxNotConfirmedError, is_wmux_running,
+        WmuxClient,
+        WmuxNotConfirmedError,
+        is_wmux_running,
     )
 
     print("Pantheon session doctor")

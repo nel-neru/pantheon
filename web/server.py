@@ -2587,6 +2587,35 @@ async def _approve_proposal_internal(
             "policy": _policy_payload(verdict),
         }
 
+    # content_asset（ワークスペース内資産）は専用 executor で安全に書き込む。
+    # file_path を持つが「既存ファイルの LLM 書換」ではないため、通常 executor の前に分岐。
+    from core.models.organization import is_content_asset_dict
+
+    if is_content_asset_dict(target):
+        org = _find_org(org_name)
+        if not org.target_repo_path:
+            raise HTTPException(
+                status_code=400,
+                detail="content_asset 提案には Organization の target_repo（ワークスペース）が必要です。",
+            )
+        from core.orchestration.asset_application import execute_content_asset
+
+        sm.update_proposal_status(str(target.get("id", "")), "in_progress")
+        result = await execute_content_asset(target, repo_path=org.target_repo_path)
+        if not result.success:
+            sm.update_proposal_status(str(target.get("id", "")), "failed")
+            raise HTTPException(
+                status_code=500, detail=result.error or "コンテンツ資産の適用に失敗しました"
+            )
+        sm.update_proposal_status(str(target.get("id", "")), "done")
+        return {
+            "status": "done",
+            "proposal_id": str(target.get("id", "")),
+            "title": target.get("title"),
+            "output": result.output,
+            "policy": _policy_payload(verdict),
+        }
+
     # ポリシーは通ったが file_path が無い提案は直接適用できない（meta 提案は
     # 自己改善ループ / Meta-Improvement Org が扱う）。executor に渡して 500 になる前に明示ブロック。
     if not target.get("file_path"):

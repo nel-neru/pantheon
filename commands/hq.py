@@ -72,7 +72,7 @@ async def cmd_hq_apply(
     from core.orchestration.structural_intervention import execute_structural_intervention
     from core.policy.engine import ApprovalDecision, PolicyEngine
 
-    require_api_key("pantheon hq apply")
+    # 構造介入は決定論的（claude CLI 不要）。require_api_key は要求しない（Web 経路と一致）。
     psm = get_psm()
     org = psm.load_organization_by_name(args.org_name)
     if not org:
@@ -130,6 +130,43 @@ async def cmd_hq_apply(
     print(f"[OK] 構造介入を適用しました: {result.output}")
 
 
+async def cmd_hq_outcomes(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """成果イベントを記録/一覧する（Phase 8: 経済フィードバック）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = get_psm()
+    store = OutcomeStore(platform_home=psm.platform_home)
+    action = getattr(args, "outcomes_action", None)
+
+    if action == "record":
+        event = store.record(
+            args.org_name,
+            args.metric,
+            args.value,
+            unit=getattr(args, "unit", "") or "",
+            source=getattr(args, "source", "") or "",
+            note=getattr(args, "note", "") or "",
+        )
+        print(
+            f"[OK] 成果を記録しました: {event.org_name} {event.metric}={event.value} {event.unit}"
+        )
+        return
+
+    # list（既定）
+    summary = store.summary_for_org(args.org_name)
+    print(f"\n成果サマリ — {args.org_name}（{summary.event_count} 件）\n")
+    if not summary.by_metric:
+        print(
+            "  記録なし。`pantheon hq outcomes record --org-name X --metric revenue --value 1000` で記録できます。"
+        )
+        return
+    for metric, stats in sorted(summary.by_metric.items()):
+        print(
+            f"  {metric}: 合計 {stats['sum']:.1f} / 件数 {int(stats['count'])} / 直近 {stats['last']:.1f}"
+        )
+    print(f"\n  リーチ計: {summary.total_reach:.0f}  収益計: {summary.total_revenue:.0f}")
+
+
 def register(subparsers: Any) -> None:
     hq_parser = subparsers.add_parser("hq", help="本社（HQ）による子 Organization の診断・構造介入")
     hq_sub = hq_parser.add_subparsers(dest="hq_command", required=True)
@@ -150,3 +187,25 @@ def register(subparsers: Any) -> None:
     )
     apply_parser.add_argument("--yes", action="store_true", help="確認を省略して適用する")
     apply_parser.set_defaults(handler_name="cmd_hq_apply")
+
+    outcomes_parser = hq_sub.add_parser("outcomes", help="成果イベントの記録/一覧（Phase 8）")
+    outcomes_sub = outcomes_parser.add_subparsers(dest="outcomes_action", required=False)
+
+    rec = outcomes_sub.add_parser("record", help="成果イベントを記録する")
+    rec.add_argument("--org-name", required=True, help="対象 Organization 名")
+    rec.add_argument(
+        "--metric", required=True, help="指標名（例: revenue, impressions, conversions）"
+    )
+    rec.add_argument("--value", type=float, required=True, help="値")
+    rec.add_argument("--unit", default="", help="単位（任意）")
+    rec.add_argument("--source", default="", help="出所（任意）")
+    rec.add_argument("--note", default="", help="メモ（任意）")
+    rec.set_defaults(handler_name="cmd_hq_outcomes")
+
+    lst = outcomes_sub.add_parser("list", help="成果サマリを表示する")
+    lst.add_argument("--org-name", required=True, help="対象 Organization 名")
+    lst.set_defaults(handler_name="cmd_hq_outcomes")
+
+    # `hq outcomes --org-name X`（サブコマンド省略時）も list として扱う
+    outcomes_parser.add_argument("--org-name", help="対象 Organization 名（list 既定）")
+    outcomes_parser.set_defaults(handler_name="cmd_hq_outcomes")

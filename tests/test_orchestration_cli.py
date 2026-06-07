@@ -5,11 +5,8 @@ Patches core.platform.state.get_platform_home to use tmp_path.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-
-import pytest
 
 
 def _run(coro):
@@ -74,7 +71,8 @@ class TestOrchestrationHistoryCLI:
     def test_history_with_records(self, capsys, tmp_path):
         """レコードあり → タスク種別と統計が表示される"""
         from core.orchestration.orchestration_pattern_store import (
-            OrchestrationPatternStore, PatternRecord,
+            OrchestrationPatternStore,
+            PatternRecord,
         )
         from main import cmd_orchestration_history
 
@@ -125,7 +123,8 @@ class TestOrchestratorSelfReview:
 
     def test_self_review_detects_high_failure_rate(self, capsys, tmp_path):
         from core.orchestration.orchestration_pattern_store import (
-            OrchestrationPatternStore, PatternRecord,
+            OrchestrationPatternStore,
+            PatternRecord,
         )
         from main import cmd_orchestration_self_review
 
@@ -143,7 +142,8 @@ class TestOrchestratorSelfReview:
 
     def test_self_review_no_issues_all_succeed(self, capsys, tmp_path):
         from core.orchestration.orchestration_pattern_store import (
-            OrchestrationPatternStore, PatternRecord,
+            OrchestrationPatternStore,
+            PatternRecord,
         )
         from main import cmd_orchestration_self_review
 

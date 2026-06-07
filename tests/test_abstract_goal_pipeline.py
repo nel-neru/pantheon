@@ -4,14 +4,13 @@ Tests for Sprint 4: Abstract Goal → Autonomous Execution Pipeline (M-01~M-05)
 from __future__ import annotations
 
 import asyncio
-import pytest
 
-from core.goals.goal_parser import GoalParser, GoalType, GoalScale, StructuredGoal
-from core.goals.goal_decomposer import GoalDecomposer, GoalPlan, TaskSpec
+from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
 from core.goals.execution_coordinator import ExecutionCoordinator, TaskStatus
+from core.goals.goal_decomposer import GoalDecomposer, TaskSpec
+from core.goals.goal_parser import GoalParser, GoalScale, GoalType, StructuredGoal
 from core.goals.goal_verifier import GoalVerifier
 from core.goals.org_instantiator import OrgInstantiator
-from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
 
 
 def _run(coro):
@@ -171,7 +170,8 @@ class TestOrgInstantiator:
 
     def test_instantiate_reuses_existing_org(self, tmp_path):
         from unittest.mock import patch
-        from core.models.organization import Organization, OrganizationStatus
+
+        from core.models.organization import Organization
         existing = Organization(
             name="Security Org",
             purpose="security improvement for the system",

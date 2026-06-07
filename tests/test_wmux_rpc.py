@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import socket
 import threading
-from typing import Optional
 
 import pytest
 

@@ -1,13 +1,10 @@
 """Unit tests for balanced growth metrics"""
-from uuid import uuid4
 
 import pytest
 
 from core.metrics.balanced_growth import (
-    OrganizationMetrics,
-    GroupMetrics,
-    calculate_organization_metrics,
     calculate_group_metrics,
+    calculate_organization_metrics,
     get_improvement_priority_score,
 )
 from core.models.organization import GroupHQState, Organization, OrganizationStatus

@@ -7,8 +7,6 @@ richライブラリを使ったTUI実装。
 
 from __future__ import annotations
 
-from pathlib import Path
-
 try:
     from rich.console import Console
     from rich.table import Table

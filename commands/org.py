@@ -336,7 +336,8 @@ async def cmd_proposal_apply(
 ) -> None:
     from agents.base import AgentTask
 
-    require_api_key("pantheon approve")
+    # NOTE: require_api_key は LLM を使う file ベース適用の直前でのみ行う。
+    # 構造介入 / content_asset は決定論的（claude CLI 不要）で、Web 経路とも挙動を揃える。
     psm = get_psm()
     org = psm.load_organization_by_name(args.org_name)
     if not org:
@@ -390,11 +391,43 @@ async def cmd_proposal_apply(
         print(f"[OK] 構造介入を適用しました: {result.output}")
         return
 
+    # content_asset（ワークスペース内資産）は専用 executor で安全に書き込む。
+    # file_path を持つが「既存ファイルの LLM 書換」ではないため、通常 executor の前に分岐。
+    from core.models.organization import is_content_asset_dict
+
+    if is_content_asset_dict(proposal):
+        if not org.target_repo_path:
+            print(
+                "[ERROR] content_asset 提案には Organization の target_repo（ワークスペース）が必要です。"
+            )
+            state_manager.update_proposal_status(str(proposal.get("id", "")), "failed")
+            sys.exit(1)
+        if not confirm_action(
+            f"コンテンツ資産 '{proposal.get('title')}' を適用しますか?",
+            assume_yes=getattr(args, "yes", False),
+        ):
+            print("[INFO] 適用を中止しました。")
+            return
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "in_progress")
+        from core.orchestration.asset_application import execute_content_asset
+
+        result = await execute_content_asset(proposal, repo_path=org.target_repo_path)
+        if not result.success:
+            print(f"[ERROR] コンテンツ資産の適用失敗: {result.error}")
+            state_manager.update_proposal_status(str(proposal.get("id", "")), "failed")
+            sys.exit(1)
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "done")
+        print(f"[OK] コンテンツ資産を適用しました: {result.output}")
+        return
+
     file_path = proposal.get("file_path", "")
     if not file_path:
         print("[ERROR] この提案は file_path がありません（meta-level 提案）。")
         state_manager.update_proposal_status(str(proposal.get("id", "")), "rejected")
         sys.exit(1)
+
+    # ここから先は LLM（claude CLI）でコードを書き換える経路なので API キー（claude 可用性）を要求する。
+    require_api_key("pantheon approve")
 
     repo_path = Path(org.target_repo_path) if org.target_repo_path else Path(".")
     print(f"\n改善提案を適用します: {proposal.get('title')}")

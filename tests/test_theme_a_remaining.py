@@ -20,7 +20,6 @@ from core.knowledge.manager import KnowledgeManager
 from core.orchestration.task_matcher import TaskMatcher
 from core.orchestration.team_coordinator import TeamCoordinator
 
-
 PERSONAS_DIR = Path(__file__).resolve().parents[1] / "config" / "personas"
 
 

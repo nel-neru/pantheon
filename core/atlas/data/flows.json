@@ -312,6 +312,43 @@
       "known_issues": [
         { "severity": "low", "title": "介入ヒューリスティックは決定論的で限定的", "detail": "弱み→介入の写像は 3 パターンのみ。LLM ベースの設計提案は将来拡張（Phase 6+）。", "file": "core/hierarchy/hq_interventions.py" }
       ]
+    },
+    {
+      "id": "revenue-content-asset",
+      "name": "収益 Organization / コンテンツ資産適用（Phase 6/7）",
+      "summary": "収益ドメインのスキル(content_strategy/audience_growth/performance_marketing)と content_operations テンプレートで非SE Organization を立ち上げ、記事/コピー/スクリプト等を content_asset 提案として PolicyEngine(human_required)+PreTask 経由でワークスペース内に安全適用する(外部投稿はしない)。",
+      "trigger": { "kind": "cli", "name": "pantheon org add --template content_operations / pantheon proposal apply" },
+      "steps": [
+        { "component": "config/departments/content_operations.yaml", "action": "収益 Organization テンプレート(Division/Team/収益スキル)" },
+        { "component": "core/policy/engine.py:PolicyEngine", "action": "content_asset/external_action は必ず human_required(publishing 近接)" },
+        { "component": "core/orchestration/asset_application.py", "action": "承認後に PreTask 経由でワークスペース内へ安全書込(パストラバーサル防止・冪等)" },
+        { "component": "agents/asset_executor_agent.py", "action": "コンテンツ資産を決定論的に適用する専用 executor(外部投稿なし)" }
+      ],
+      "surfaces": ["pantheon org add --template content_operations", "pantheon proposal apply（content_asset を自動委任）", "POST /api/proposals/{org}/{id}/approve（content_asset を自動委任）"],
+      "state": ["<target>/.pantheon/improvements/", "<target_repo ワークスペース>/"],
+      "verification": ["tests/test_revenue_substrate.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "low", "title": "外部投稿/公開アクションは未実装(意図的ゲート)", "detail": "Phase 7 はワークスペース内アーティファクト生成までに限定。実投稿は強い policy+人間ゲートの後に Phase 7 後半で導入予定。", "file": "core/orchestration/asset_application.py" }
+      ]
+    },
+    {
+      "id": "outcome-feedback",
+      "name": "成果フィードバック / 経済フライホイール（Phase 8）",
+      "summary": "収益 org の実成果(インプレッション/クリック/CV/売上等)を軽量 JSON イベントとして記録し、本社(HQ)が『リーチはあるが収益0』等のシグナルから収益化介入を自動提案する。成果→HQ学習→介入→成果 の閉じたループ。",
+      "trigger": { "kind": "cli", "name": "pantheon hq outcomes record / list" },
+      "steps": [
+        { "component": "core/metrics/outcomes.py", "action": "成果イベントを ~/.pantheon/outcomes.json に蓄積・集計(JSON 正準)" },
+        { "component": "core/hierarchy/hq_interventions.py", "action": "成果サマリを第一級シグナルに収益化 SET_GOAL 介入を生成" },
+        { "component": "commands/hq.py", "action": "pantheon hq outcomes で記録/閲覧" }
+      ],
+      "surfaces": ["pantheon hq outcomes record", "pantheon hq outcomes list"],
+      "state": ["~/.pantheon/outcomes.json"],
+      "verification": ["tests/test_revenue_substrate.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "low", "title": "成果は外部から record する前提(自動連携なし)", "detail": "外部分析 API からの自動取り込みは未実装。イベントは手動/スクリプトで record する。", "file": "core/metrics/outcomes.py" }
+      ]
     }
   ]
 }

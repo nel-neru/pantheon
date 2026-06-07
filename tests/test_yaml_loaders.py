@@ -14,9 +14,6 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-import pytest
-
-
 # ────────────────────────────────────────────────────────────────────────────
 # SkillLoader
 # ────────────────────────────────────────────────────────────────────────────
@@ -92,8 +89,9 @@ class TestSkillLoader:
 
     def test_yaml_file_adds_skill(self, tmp_path):
         """tmp_path に YAML を置くと新スキルとして認識される。"""
-        from core.loaders.skill_loader import SkillLoader
         import yaml
+
+        from core.loaders.skill_loader import SkillLoader
 
         skill_yaml = tmp_path / "custom_skill.yaml"
         skill_yaml.write_text(
@@ -114,8 +112,9 @@ class TestSkillLoader:
         assert skill.schema_version == "1.0"
 
     def test_missing_schema_version_logs_warning_for_skill(self, tmp_path, caplog):
-        from core.loaders.skill_loader import SkillLoader
         import yaml
+
+        from core.loaders.skill_loader import SkillLoader
 
         (tmp_path / "legacy_skill.yaml").write_text(
             yaml.dump({"id": "legacy_skill", "persona": "legacy"}),
@@ -129,8 +128,9 @@ class TestSkillLoader:
         assert "missing schema_version" in caplog.text
 
     def test_unsupported_schema_version_logs_warning_for_skill(self, tmp_path, caplog):
-        from core.loaders.skill_loader import SkillLoader
         import yaml
+
+        from core.loaders.skill_loader import SkillLoader
 
         (tmp_path / "future_skill.yaml").write_text(
             yaml.dump({"schema_version": "2.0", "id": "future_skill", "persona": "future"}),
@@ -229,8 +229,9 @@ class TestAgentLoader:
 
     def test_new_yaml_file_creates_new_agent(self, tmp_path):
         """YAML ファイルを追加するだけで新エージェントが認識される（Pythonコード不要）。"""
-        from core.loaders.agent_loader import AgentLoader
         import yaml
+
+        from core.loaders.agent_loader import AgentLoader
 
         # 新エージェント定義を tmp_path に作成
         (tmp_path / "my_new_agent.yaml").write_text(
@@ -253,8 +254,9 @@ class TestAgentLoader:
         assert defn.schema_version == "1.0"
 
     def test_missing_schema_version_logs_warning_for_agent(self, tmp_path, caplog):
-        from core.loaders.agent_loader import AgentLoader
         import yaml
+
+        from core.loaders.agent_loader import AgentLoader
 
         (tmp_path / "legacy_agent.yaml").write_text(
             yaml.dump({"name": "LegacyAgent", "behavior": "legacy behavior"}),
@@ -268,8 +270,9 @@ class TestAgentLoader:
         assert "missing schema_version" in caplog.text
 
     def test_unsupported_schema_version_logs_warning_for_agent(self, tmp_path, caplog):
-        from core.loaders.agent_loader import AgentLoader
         import yaml
+
+        from core.loaders.agent_loader import AgentLoader
 
         (tmp_path / "future_agent.yaml").write_text(
             yaml.dump({"schema_version": "9.9", "name": "FutureAgent", "behavior": "future behavior"}),

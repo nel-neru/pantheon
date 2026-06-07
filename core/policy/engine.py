@@ -70,6 +70,8 @@ DEFAULT_POLICY: Dict[str, Any] = {
                 "auth",
                 "meta",
                 "structural_intervention",  # 別 Organization への構造的介入（cross-org）
+                "content_asset",  # ワークスペース資産（publishing 近接）は人間確認
+                "external_action",  # 外部効果（投稿・課金・アカウント操作）は必ず人間確認（Phase 7 ゲート）
             ],
             "file_patterns": [  # 変更に慎重を要するファイル
                 "main.py",
@@ -129,6 +131,11 @@ class PolicyEngine:
 
         # 1.5 cross-org 構造介入チェック（別 Organization を変更する提案は必ず人間確認）
         verdict = self._check_intervention(proposal)
+        if verdict:
+            return verdict
+
+        # 1.6 content_asset チェック（dispatch 述語と同じ 2-way。auto_approve に落とさない）
+        verdict = self._check_content_asset(proposal)
         if verdict:
             return verdict
 
@@ -218,6 +225,23 @@ class PolicyEngine:
                 decision=ApprovalDecision.HUMAN_REQUIRED,
                 reason="別 Organization を変更する構造的介入は人間確認必須",
                 rule_name="intervention.cross_org",
+            )
+        return None
+
+    def _check_content_asset(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
+        """content_asset（ワークスペース資産）提案は必ず人間確認にする。
+
+        承認/適用ディスパッチ（is_content_asset_dict）は category または target_kind の
+        どちらでも content_asset 判定する。ポリシーがそれより狭い（category だけ）と、
+        target_kind のみの提案が auto_approve をすり抜けるため、同じ述語に揃える。
+        """
+        from core.models.organization import is_content_asset_dict
+
+        if is_content_asset_dict(p):
+            return PolicyVerdict(
+                decision=ApprovalDecision.HUMAN_REQUIRED,
+                reason="content_asset（ワークスペース資産・publishing 近接）は人間確認必須",
+                rule_name="human_required.content_asset",
             )
         return None
 

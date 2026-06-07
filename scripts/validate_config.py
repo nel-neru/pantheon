@@ -17,7 +17,6 @@ from typing import Any
 
 import yaml
 
-
 REQUIRED_SKILL_KEYS = ("schema_version", "id", "name", "persona", "focus", "output_hint")
 REQUIRED_AGENT_KEYS = ("schema_version", "name", "capability_id", "description", "skills", "tools", "behavior", "response_format")
 REQUIRED_DEFAULT_KEYS = ("self_improvement",)

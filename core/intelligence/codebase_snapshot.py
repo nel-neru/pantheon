@@ -11,10 +11,9 @@ CodebaseSnapshot — 目的別最小トークン表現 (K-03)
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from .codebase_indexer import CodebaseIndexer
-
 
 SNAPSHOT_MODES: Dict[str, Dict[str, Any]] = {
     "exploration": {

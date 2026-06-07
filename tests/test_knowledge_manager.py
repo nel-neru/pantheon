@@ -1,6 +1,4 @@
 """Unit tests for KnowledgeManager"""
-import tempfile
-from pathlib import Path
 
 import pytest
 

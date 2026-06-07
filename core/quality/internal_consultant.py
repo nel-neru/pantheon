@@ -11,17 +11,15 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 from config.settings import load_config
+from core.llm import LLMMessage, get_llm_provider
 from core.models.organization import (
     ImprovementProposal,
-    QualityDimension,
+    OrganizationMetrics,
     QualityReview,
     QualityScore,
-    OrganizationMetrics,
 )
-from core.llm import LLMMessage, get_llm_provider
 
 logger = logging.getLogger(__name__)
 

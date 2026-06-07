@@ -15,9 +15,7 @@ from core.profile import activity_tracker as activity_tracker_module
 from core.profile.activity_tracker import ActivityTracker
 from core.profile.developer_growth import DeveloperGrowthTracker
 from core.profile.developer_profile import (
-    ApprovalPattern,
     CommunicationStyle,
-    DeveloperProfile,
     DeveloperProfileManager,
 )
 from core.profile.goal_manager import DeveloperGoalManager
