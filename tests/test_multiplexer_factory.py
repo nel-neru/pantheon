@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from core.runtime.multiplexer import get_driver
+from core.runtime.multiplexer.base import AgentSpec
 from core.runtime.multiplexer.headless_driver import HeadlessDriver
 from core.runtime.multiplexer.wmux_driver import WmuxDriver, shell_command_for
-from core.runtime.multiplexer.base import AgentSpec
 
 
 def test_forced_headless():

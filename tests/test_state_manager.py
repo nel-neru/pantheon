@@ -1,12 +1,10 @@
 """Unit tests for RepoStateManager"""
 import json
-import tempfile
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
-from core.models.organization import ImprovementProposal, Organization, OrganizationStatus
+from core.models.organization import ImprovementProposal, Organization
 from core.state.manager import RepoStateManager
 
 

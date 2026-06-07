@@ -4,8 +4,8 @@
 src/pages/*.tsx（HelpPage以外）が存在する場合、
 HelpPage.tsx でそのページへの言及があるかチェックする。
 """
-from pathlib import Path
 import sys
+from pathlib import Path
 
 FRONTEND_PAGES_DIR = Path(__file__).parent.parent / "web/frontend/src/pages"
 HELP_PAGE = FRONTEND_PAGES_DIR / "HelpPage.tsx"

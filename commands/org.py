@@ -390,6 +390,35 @@ async def cmd_proposal_apply(
         print(f"[OK] 構造介入を適用しました: {result.output}")
         return
 
+    # content_asset（ワークスペース内資産）は専用 executor で安全に書き込む。
+    # file_path を持つが「既存ファイルの LLM 書換」ではないため、通常 executor の前に分岐。
+    from core.models.organization import is_content_asset_dict
+
+    if is_content_asset_dict(proposal):
+        if not org.target_repo_path:
+            print(
+                "[ERROR] content_asset 提案には Organization の target_repo（ワークスペース）が必要です。"
+            )
+            state_manager.update_proposal_status(str(proposal.get("id", "")), "failed")
+            sys.exit(1)
+        if not confirm_action(
+            f"コンテンツ資産 '{proposal.get('title')}' を適用しますか?",
+            assume_yes=getattr(args, "yes", False),
+        ):
+            print("[INFO] 適用を中止しました。")
+            return
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "in_progress")
+        from core.orchestration.asset_application import execute_content_asset
+
+        result = await execute_content_asset(proposal, repo_path=org.target_repo_path)
+        if not result.success:
+            print(f"[ERROR] コンテンツ資産の適用失敗: {result.error}")
+            state_manager.update_proposal_status(str(proposal.get("id", "")), "failed")
+            sys.exit(1)
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "done")
+        print(f"[OK] コンテンツ資産を適用しました: {result.output}")
+        return
+
     file_path = proposal.get("file_path", "")
     if not file_path:
         print("[ERROR] この提案は file_path がありません（meta-level 提案）。")

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 
-from core.org_factory import create_default_organization
 import main
+from core.org_factory import create_default_organization
 
 
 class _FakeStateManager:

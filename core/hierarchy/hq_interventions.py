@@ -98,7 +98,40 @@ class HQInterventionProposer:
             built = self._intervention_for_weakness(org, weakness, report)
             if built is not None:
                 proposals.append(built)
+        # Phase 8: 実成果（OutcomeStore）を第一級シグナルとして介入に反映する。
+        outcome_proposal = self._intervention_from_outcomes(org)
+        if outcome_proposal is not None:
+            proposals.append(outcome_proposal)
         return proposals
+
+    def _intervention_from_outcomes(self, org: Organization) -> Optional[ImprovementProposal]:
+        """成果フィードバックに基づく介入（閉じたフライホイール）。
+
+        リーチ（インプレッション/クリック等）は出ているのに収益（売上/CV）が 0 の収益 org に対し、
+        収益化を組織目標に設定する SET_GOAL 介入を提案する。
+        """
+        from core.metrics.outcomes import OutcomeStore
+
+        summary = OutcomeStore(platform_home=self._psm.platform_home).summary_for_org(org.name)
+        if summary.event_count == 0:
+            return None
+        if summary.total_reach > 0 and summary.total_revenue <= 0:
+            return build_intervention_proposal(
+                target_org=org,
+                intervention_type=StructuralInterventionType.SET_GOAL.value,
+                title=f"[HQ介入] {org.name} の収益化を目標化（成果ベース）",
+                description=(
+                    f"成果分析: リーチ {summary.total_reach:.0f} に対し収益 0。"
+                    "獲得を収益に転換する施策（オファー/アフィリエイト最適化）を組織目標に設定する。"
+                ),
+                intervention_spec={
+                    "goal": "リーチを収益へ転換する（オファー設計・アフィリエイト/CV 最適化）",
+                    "target_category": "performance",
+                },
+                source_org_name=self._source,
+                target_ref="monetization_from_outcomes",
+            )
+        return None
 
     def propose_all(
         self, *, persist: bool = True, dry_run: bool = False

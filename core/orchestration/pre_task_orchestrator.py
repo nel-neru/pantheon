@@ -178,6 +178,13 @@ TASK_ORCHESTRATION_PROFILES = {
         "min_agents": 1,
         "notes": "HQ→子 Organization の構造介入は、承認済み仕様を決定論的に適用する単一エージェントで安全。",
     },
+    "content_asset_application": {
+        "complexity": "low",
+        "pattern": OrchestrationPattern.SINGLE_AGENT,
+        "required_skills": ["content_strategy", "tool_integration"],
+        "min_agents": 1,
+        "notes": "承認済みコンテンツ資産は、ワークスペース内へ安全に書き込む単一エージェントで適用する。",
+    },
     "default": {
         "complexity": "medium",
         "pattern": OrchestrationPattern.SINGLE_AGENT,

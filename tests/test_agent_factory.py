@@ -13,15 +13,12 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from agents.agent_factory import AgentFactory, _skills_from_ids
-from agents.base import AgentResult, AgentTask
+from agents.base import AgentTask
 from agents.generic_skill_agent import GenericSkillAgent
-from core.models.organization import AgentSkill, SpecialistAgent
-
+from core.models.organization import AgentSkill
 
 # ────────────────────────────────────────────────────────────────────────────
 # AgentFactory.create
@@ -238,9 +235,10 @@ class TestCapabilityRegistryWithSkills:
 
     def test_task_router_scores_nonzero_after_scan(self, tmp_path):
         """スキルが登録された後、TaskRouter のスコアが 0 を超える。"""
+        import pathlib
+
         from core.intelligence.capability_registry import CapabilityRegistry
         from core.orchestration.task_router import TaskRouter
-        import pathlib
 
         registry = CapabilityRegistry(
             platform_home=tmp_path,
@@ -269,8 +267,8 @@ class TestPreTaskOrchestratorDefaultFactory:
 
     def test_execute_without_factory_uses_default(self):
         """execute() に agent_factory を渡さなくてもエラーにならない。"""
+        from agents.base import AgentTask
         from core.orchestration.pre_task_orchestrator import PreTaskOrchestrator
-        from agents.base import AgentTask, AgentResult
 
         orch = PreTaskOrchestrator()
         analysis = MagicMock()

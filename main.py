@@ -30,6 +30,7 @@ from commands.goal import cmd_goal_run as _cmd_goal_run_impl
 from commands.goal import cmd_goal_status as _cmd_goal_status_impl
 from commands.hq import cmd_hq_apply as _cmd_hq_apply_impl
 from commands.hq import cmd_hq_diagnose as _cmd_hq_diagnose_impl
+from commands.hq import cmd_hq_outcomes as _cmd_hq_outcomes_impl
 from commands.hq import cmd_hq_propose as _cmd_hq_propose_impl
 from commands.orchestration import cmd_agent_list as _cmd_agent_list_impl
 from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
@@ -307,6 +308,10 @@ async def cmd_hq_apply(args) -> None:
     )
 
 
+async def cmd_hq_outcomes(args) -> None:
+    await _cmd_hq_outcomes_impl(args, get_psm=_get_psm)
+
+
 async def cmd_platform_status(args) -> None:
     await _cmd_platform_status_impl(args, get_psm=_get_psm)
 
@@ -457,6 +462,7 @@ HANDLERS = {
     "cmd_hq_diagnose": cmd_hq_diagnose,
     "cmd_hq_propose": cmd_hq_propose,
     "cmd_hq_apply": cmd_hq_apply,
+    "cmd_hq_outcomes": cmd_hq_outcomes,
     "cmd_platform_status": cmd_platform_status,
     "cmd_platform_config": cmd_platform_config,
     "cmd_platform_config_set": cmd_platform_config_set,

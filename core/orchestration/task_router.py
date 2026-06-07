@@ -77,6 +77,11 @@ TASK_SKILL_REQUIREMENTS: Dict[str, List[Tuple[AgentSkill, float]]] = {
         (AgentSkill.AGENT_WORKFLOW_DESIGN, 0.85),
         (AgentSkill.STRATEGIC_PLANNING, 0.5),
     ],
+    "content_asset_application": [
+        (AgentSkill.CONTENT_STRATEGY, 0.95),
+        (AgentSkill.TOOL_INTEGRATION, 0.8),
+        (AgentSkill.KNOWLEDGE_CURATION, 0.4),
+    ],
 }
 
 

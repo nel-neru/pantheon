@@ -1,0 +1,44 @@
+# content_operations.yaml — 収益（コンテンツ/アフィリエイト）Organization テンプレート（Phase 6）
+#
+# `pantheon org add --name "MyContentOps" --template content_operations --repo <workspace>` で
+# このテンプレートから Division/Team/SpecialistAgent を生成する。target_repo は
+# 記事(markdown)・スクリプト・計測設定を置く git ワークスペースを想定。
+#
+# SE 中心の meta_improvement.yaml とは別に、収益ドメインのスキルで構成する。
+# 注: Organization の name/purpose は CLI 引数で与える（このファイルは departments のみ）。
+
+departments:
+  - name: コンテンツ制作部
+    type: content_production
+    mission: 読者の課題を解決する高品質なコンテンツを継続的に企画・制作する
+    teams:
+      - name: Content Strategy Team
+        mission: ニッチ選定・編集カレンダー・ファネル設計
+        required_skills:
+          - content_strategy
+          - deep_research
+      - name: Editorial Team
+        mission: 記事・コピーの制作と品質管理
+        required_skills:
+          - content_strategy
+          - knowledge_curation
+
+  - name: オーディエンス開発部
+    type: audience_development
+    mission: チャネル横断で読者基盤を持続的に成長させる
+    teams:
+      - name: Growth Team
+        mission: SNS/メディアでの獲得とエンゲージメント
+        required_skills:
+          - audience_growth
+          - performance_marketing
+
+  - name: 収益化部
+    type: monetization
+    mission: 獲得した読者を収益に転換し、単位経済性を最適化する
+    teams:
+      - name: Monetization Team
+        mission: アフィリエイト/オファー最適化・コンバージョン改善
+        required_skills:
+          - performance_marketing
+          - strategic_planning

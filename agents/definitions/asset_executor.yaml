@@ -1,0 +1,31 @@
+# asset_executor.yaml
+# 承認済み content_asset 提案を target_repo ワークスペース内に安全に書き込むエージェント（Phase 6/7）
+# ImprovementExecutorAgent の兄弟（既存コードの LLM 書換ではなく、コンテンツ資産の生成/更新）
+
+schema_version: "1.0"
+name: AssetExecutor
+capability_id: agent:asset_executor
+description: 承認済みのコンテンツ資産（記事/コピー/スクリプト）を target_repo ワークスペース内に安全に生成/更新する
+
+skills:
+  - content_strategy
+  - tool_integration
+
+tools:
+  - read_file
+  - write_file
+
+behavior: |
+  承認済みの content_asset 提案のみを対象に、対象 Organization の target_repo
+  ワークスペース *内部にだけ* ファイルを生成/更新してください。リポジトリルート外への
+  書き込み（絶対パス・..）は禁止です。外部への投稿・公開は一切行いません。
+
+# Python 専用クラスを使用（安全なファイル書込・パスガードが必要）
+implementation: agents.asset_executor_agent.AssetExecutorAgent
+
+response_format:
+  type: json
+  fields:
+    - applied
+    - file_path
+    - mode

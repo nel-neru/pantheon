@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 from core.models.organization import Organization, OrganizationStatus
 from core.org_factory import create_organization_from_template

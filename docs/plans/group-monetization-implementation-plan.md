@@ -87,6 +87,13 @@ Phases 0-4 directly address the biggest trust, learning, and proposal quality is
 ### Phase 6: Revenue Domain Substrate Enablement
 **Goal**: Make it possible to instantiate and run first-class non-SE "monetization Organizations" (affiliate, SNS nurture, Note/content sales, etc.) without the core machinery rejecting them or forcing everything into code-review shape.
 
+> **STATUS (2026-06): Phase 6/7/8 初期スライス実装済み.** 収益 skills(3)+`content_operations`
+> テンプレート+`content_asset` 提案(Phase 6)、ワークスペース内安全適用 `AssetExecutorAgent`+
+> approve ディスパッチ（外部投稿は意図的ゲート）(Phase 7)、`OutcomeStore`+HQ 成果駆動の収益化
+> 介入(Phase 8) を実装。flows.json に `revenue-content-asset` / `outcome-feedback` を追加。
+> 詳細は `docs/plans/phase5-kickoff.md` の実装ログ参照。残り: 介入/収益の LLM 化、実投稿アクション、
+> 外部分析の自動取り込み。
+
 **Key Work**:
 - **Skills expansion** (easy win, high signal):
   - Add to `AgentSkill` enum: `CONTENT_STRATEGY`, `COPYWRITING`, `AUDIENCE_GROWTH`, `PERFORMANCE_MARKETING`, `PUBLISHING`, `CAMPAIGN_OPTIMIZATION`, `AFFILIATE_OPTIMIZATION` (or similar — keep to ~10-12 total).

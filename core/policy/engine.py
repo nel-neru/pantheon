@@ -70,6 +70,8 @@ DEFAULT_POLICY: Dict[str, Any] = {
                 "auth",
                 "meta",
                 "structural_intervention",  # 別 Organization への構造的介入（cross-org）
+                "content_asset",  # ワークスペース資産（publishing 近接）は人間確認
+                "external_action",  # 外部効果（投稿・課金・アカウント操作）は必ず人間確認（Phase 7 ゲート）
             ],
             "file_patterns": [  # 変更に慎重を要するファイル
                 "main.py",

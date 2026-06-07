@@ -3,24 +3,21 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
 
-from agents.base import AgentTask
 from agents.self_code_writer import SelfCodeWriter
 from agents.tool_design_agent import ToolDesignAgent
 from core.execution.safe_executor import ChangeRequest, SafeChangeExecutor
 from core.goals.abstract_goal_pipeline import AbstractGoalPipeline, PipelineResult
 from core.goals.execution_coordinator import ExecutionCoordinator
-from core.goals.goal_decomposer import EpicSpec, GoalPlan, GoalDecomposer, StorySpec, TaskSpec
-from core.goals.goal_parser import GoalParser, GoalType
+from core.goals.goal_decomposer import EpicSpec, GoalPlan, StorySpec, TaskSpec
+from core.goals.goal_parser import GoalType
 from core.goals.org_instantiator import OrgInstantiator
 from core.hierarchy.org_designer import OrganizationDesigner
 from core.intelligence.capability_gap_analyzer import CapabilityGap, CapabilityGapAnalyzer
 from core.intelligence.capability_registry import CapabilityRegistry
 from core.intelligence.self_extension_pipeline import SelfExtensionPipeline
 from core.intelligence.self_integration_tester import SelfIntegrationTester
-from core.orchestration.pre_task_orchestrator import PreTaskOrchestrator
 from core.profile.developer_profile import DeveloperProfileManager
 from core.state.manager import RepoStateManager
 

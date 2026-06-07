@@ -80,6 +80,23 @@ def is_structural_intervention_dict(data: dict) -> bool:
     )
 
 
+# 非コード資産（記事/コピー/スクリプト等）をワークスペース内に安全適用する提案（Phase 6/7）。
+CONTENT_ASSET_CATEGORY = "content_asset"
+CONTENT_ASSET_TARGET_KIND = "content_asset"
+
+
+def is_content_asset_dict(data: dict) -> bool:
+    """dict 形式の提案が「ワークスペース内資産」提案かどうか（適用ディスパッチで共通利用）。
+
+    収益 Organization 等のコンテンツ/スクリプトを target_repo ワークスペース内に
+    安全に生成/更新する提案。コードファイル改善（LLM 書換）とは別経路で適用する。
+    """
+    return bool(
+        data.get("category") == CONTENT_ASSET_CATEGORY
+        or data.get("target_kind") == CONTENT_ASSET_TARGET_KIND
+    )
+
+
 class ImprovementProposal(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     review_id: UUID
@@ -164,6 +181,10 @@ class DivisionType(str, Enum):
     QUALITY_ASSURANCE = "quality_assurance"
     PERFORMANCE_OPTIMIZATION = "performance_optimization"
     KNOWLEDGE_MANAGEMENT = "knowledge_management"
+    # 収益（非SE）Organization向け（Phase 6）
+    CONTENT_PRODUCTION = "content_production"
+    AUDIENCE_DEVELOPMENT = "audience_development"
+    MONETIZATION = "monetization"
 
 
 class AgentSkill(str, Enum):
@@ -177,6 +198,10 @@ class AgentSkill(str, Enum):
     PERFORMANCE_ANALYSIS = "performance_analysis"
     KNOWLEDGE_CURATION = "knowledge_curation"
     CODEBASE_EXPLORATION = "codebase_exploration"
+    # 収益ドメイン（Phase 6）
+    CONTENT_STRATEGY = "content_strategy"
+    AUDIENCE_GROWTH = "audience_growth"
+    PERFORMANCE_MARKETING = "performance_marketing"
 
 
 class SpecialistAgent(BaseModel):

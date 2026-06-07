@@ -55,8 +55,24 @@ Two tests are order-flaky (pass in isolation, fail only in full-suite runs):
   on `main`/`master` it first creates a `work/auto-<timestamp>` branch (never commits onto the
   default branch), then commits with a `Co-Authored-By: Claude Opus 4.8` trailer and pushes if a
   remote exists. Pushing/merging to `main` is a deliberate, user-triggered step.
+- **Branch naming convention** (always under the `work/` prefix; never commit directly to `main`):
+  - `work/<slug>-<YYYYMMDD>` — Claude/human-initiated focused work (`slug` = kebab-case topic,
+    e.g. `work/phase6-8-monetization`). Create with `node scripts/new_work_branch.mjs <slug>`
+    (or `/new-work-branch`), which branches from an up-to-date `main`.
+  - `work/auto-<timestamp>` — the auto-commit hook's fallback (when a turn starts on `main`).
+- **Finished-branch detection**: "done" ≡ **merged into `origin/main`**. Run
+  `node scripts/branch_status.mjs` (or `/branch-status`) to classify every branch as
+  ✅ done (merged → deletable) / 🟡 active (ahead of main) / 💤 stale (active but old).
+  `--prune` deletes done local `work/*` branches.
 - When you create a commit yourself, end the message with:
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- **Merging a completed work branch into `main`** is systematized via
+  `node scripts/merge_to_main.mjs` (or the `/merge-to-main` command). Run it **from the work
+  branch when its work is done**: it gates on the backend tests (only the known baseline
+  failures allowed — no new regressions), fast-forwards `main` to `origin/main`, merges the
+  work branch `--no-ff`, and pushes (never `--force`; aborts cleanly on conflict). Flags:
+  `--no-test`, `--stay`, `--delete-branch`, `--dry-run`. The per-turn auto-commit still only
+  ever touches work branches; promotion to `main` stays this one deliberate step.
 
 ## Non-negotiables (enforced by hooks, not just prose — see `.claude/settings.json`)
 

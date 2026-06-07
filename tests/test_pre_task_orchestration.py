@@ -8,14 +8,9 @@ Tests for Pre-Task Orchestration Layer (Theme N):
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from agents.base import AgentResult, AgentTask
-from core.intelligence.capability_registry import CapabilityEntry
-from core.models.organization import AgentSkill, SpecialistAgent
 from core.orchestration.dynamic_agent_spawner import DynamicAgentSpawner, SpawnRequest
 from core.orchestration.orchestration_pattern_store import (
     OrchestrationPatternStore,
@@ -27,7 +22,6 @@ from core.orchestration.pre_task_orchestrator import (
     TaskAnalysis,
 )
 from core.orchestration.task_router import TaskRouter
-
 
 # ═══════════════════════════════════════════════════════════════
 # TaskRouter テスト
