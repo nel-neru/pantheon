@@ -336,7 +336,8 @@ async def cmd_proposal_apply(
 ) -> None:
     from agents.base import AgentTask
 
-    require_api_key("pantheon approve")
+    # NOTE: require_api_key は LLM を使う file ベース適用の直前でのみ行う。
+    # 構造介入 / content_asset は決定論的（claude CLI 不要）で、Web 経路とも挙動を揃える。
     psm = get_psm()
     org = psm.load_organization_by_name(args.org_name)
     if not org:
@@ -424,6 +425,9 @@ async def cmd_proposal_apply(
         print("[ERROR] この提案は file_path がありません（meta-level 提案）。")
         state_manager.update_proposal_status(str(proposal.get("id", "")), "rejected")
         sys.exit(1)
+
+    # ここから先は LLM（claude CLI）でコードを書き換える経路なので API キー（claude 可用性）を要求する。
+    require_api_key("pantheon approve")
 
     repo_path = Path(org.target_repo_path) if org.target_repo_path else Path(".")
     print(f"\n改善提案を適用します: {proposal.get('title')}")

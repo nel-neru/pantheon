@@ -86,8 +86,8 @@ def apply_content_asset(
     content = spec.get("content")
     mode = str(spec.get("mode") or "create").lower()
 
-    if not file_path:
-        raise AssetApplicationError("content_asset: file_path が必要です。")
+    if not str(file_path).strip():
+        raise AssetApplicationError("content_asset: file_path が空（または空白のみ）です。")
     if content is None:
         raise AssetApplicationError("content_asset: intervention_spec.content が必要です。")
     if mode not in _VALID_MODES:
@@ -97,6 +97,13 @@ def apply_content_asset(
 
     content = str(content)
     target = _resolve_workspace_path(root, file_path)
+    # file_path が "."/空白/既存ディレクトリ名等でディレクトリ（や root 自身）を指すと、
+    # overwrite/append で write_text が IsADirectoryError/PermissionError を投げる。
+    # 先に AssetApplicationError へ正規化して、呼び出し側で graceful に失敗させる。
+    if target == root.resolve() or target.is_dir():
+        raise AssetApplicationError(
+            "content_asset: file_path はディレクトリではなくファイルを指す必要があります。"
+        )
     rel = str(target.relative_to(root.resolve()))
 
     if mode == "create" and target.exists():

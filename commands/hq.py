@@ -72,7 +72,7 @@ async def cmd_hq_apply(
     from core.orchestration.structural_intervention import execute_structural_intervention
     from core.policy.engine import ApprovalDecision, PolicyEngine
 
-    require_api_key("pantheon hq apply")
+    # 構造介入は決定論的（claude CLI 不要）。require_api_key は要求しない（Web 経路と一致）。
     psm = get_psm()
     org = psm.load_organization_by_name(args.org_name)
     if not org:

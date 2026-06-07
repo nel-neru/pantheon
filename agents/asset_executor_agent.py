@@ -43,7 +43,8 @@ class AssetExecutorAgent(BaseAgent):
 
         try:
             summary = apply_content_asset(proposal, repo_root=Path(repo_path))
-        except AssetApplicationError as exc:
+        except (AssetApplicationError, OSError) as exc:
+            # OSError も拾う（万一の IsADirectoryError/PermissionError 等を未捕捉例外にしない）
             return AgentResult(success=False, error=str(exc))
 
         if not summary.get("applied"):

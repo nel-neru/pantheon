@@ -225,3 +225,95 @@ def test_hq_no_outcome_intervention_when_revenue_present(tmp_path):
     proposer = HQInterventionProposer(psm, source_org_name="HQ")
     proposals = proposer.propose_for_org(org)
     assert not [p for p in proposals if p.target_ref == "monetization_from_outcomes"]
+
+
+# --------------------------------------------------------------------------- #
+# レビュー指摘の回帰テスト（堅牢性）                                            #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("bad", ["   ", ".", "sub"])
+def test_content_asset_directory_or_blank_path_is_graceful_error(tmp_path, bad):
+    """dir/空白を指す file_path は未捕捉例外でなく AssetApplicationError にする。"""
+    if bad == "sub":
+        (tmp_path / "sub").mkdir()
+    prop = build_content_asset_proposal(
+        title="x", description="d", file_path=bad, content="X", mode="overwrite"
+    )
+    with pytest.raises(AssetApplicationError):
+        apply_content_asset(prop, repo_root=tmp_path)
+
+
+def test_outcome_store_tolerates_external_string_value_and_mixed_case(tmp_path):
+    """外部ランナーが直接書いた outcomes.json（value 文字列・metric 大文字・不正値）を耐性処理。"""
+    import json
+
+    store = OutcomeStore(platform_home=tmp_path)
+    (tmp_path / "outcomes.json").write_text(
+        json.dumps(
+            [
+                {"org_name": "Ext", "metric": "Impressions", "value": "5000"},
+                {"org_name": "Ext", "metric": "Revenue", "value": "0"},
+                {"org_name": "Ext", "metric": "clicks", "value": "bad"},  # 不正→スキップ
+            ]
+        ),
+        encoding="utf-8",
+    )
+    summary = store.summary_for_org("Ext")
+    assert summary.total_reach == 5000.0  # 文字列→数値化 + Impressions→小文字化で reach 計上
+    assert summary.total_revenue == 0.0
+    assert "clicks" not in summary.by_metric  # 数値化できない event はスキップ（crash しない）
+
+
+def test_policy_content_asset_by_target_kind_only_requires_human():
+    """category が content_asset でなくても target_kind=content_asset なら human_required。"""
+    engine = PolicyEngine()
+    v = engine.evaluate(
+        {
+            "category": "style",
+            "target_kind": "content_asset",
+            "priority": "low",
+            "file_path": "articles/b.md",
+        }
+    )
+    assert v.decision == ApprovalDecision.HUMAN_REQUIRED
+    assert v.rule_name == "human_required.content_asset"
+
+
+def test_cli_proposal_apply_content_asset_without_api_key(tmp_path, monkeypatch):
+    """content_asset は決定論的なので claude CLI 不要（require_api_key を呼ばない）。"""
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path / "home")
+    from types import SimpleNamespace
+
+    from commands.org import cmd_proposal_apply
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    psm = PlatformStateManager(platform_home=tmp_path / "home")
+    org = create_default_organization("CO", "content", status=OrganizationStatus.ACTIVE)
+    org.target_repo_path = str(workspace)
+    psm.save_organization(org)
+    prop = build_content_asset_proposal(
+        title="cli asset", description="d", file_path="a.md", content="hi", mode="create"
+    )
+    psm.get_org_state_manager(org).save_improvement_proposal(prop)
+
+    def boom(*a, **k):  # require_api_key が呼ばれたら即失敗させる
+        raise SystemExit(1)
+
+    asyncio.run(
+        cmd_proposal_apply(
+            SimpleNamespace(
+                org_name="CO",
+                proposal_id=str(prop.id)[:8],
+                yes=True,
+                github_repo=None,
+                github_token=None,
+            ),
+            confirm_action=lambda *a, **k: True,
+            get_orchestrator=lambda: None,
+            get_psm=lambda: psm,
+            require_api_key=boom,
+        )
+    )
+    assert (workspace / "a.md").read_text(encoding="utf-8") == "hi"

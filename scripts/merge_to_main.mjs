@@ -33,16 +33,18 @@ const DRY_RUN = argv.has("--dry-run");
 
 // CLAUDE.md に記載の既知失敗（Windows path-sep / chmod / order-flaky）。
 // これらは回帰ではないので、新規失敗の判定から除外する（テスト関数名で照合）。
+// CLAUDE.md と同期。**ファイル(::クラス)::関数 のフル nodeid** で照合する
+// （関数名だけだと別ファイルの同名テストの回帰を baseline と誤判定するため）。
 const KNOWN_BASELINE_FAILURES = new Set([
-  "test_apply_local_change_writes_only_inside_repo",
-  "test_repo_reader_finds_code_files",
-  "test_save_and_load_organization",
-  "test_dependency_graph_build",
-  "test_get_settings_warns_on_open_permissions",
-  "test_update_settings_sets_restrictive_permissions",
+  "tests/test_improvement_executor_agent.py::test_apply_local_change_writes_only_inside_repo",
+  "tests/test_pdca_rounds_71_80.py::test_repo_reader_finds_code_files",
+  "tests/test_platform_state.py::test_save_and_load_organization",
+  "tests/test_theme_ijklmn_remaining.py::test_dependency_graph_build",
+  "tests/test_web_server.py::test_get_settings_warns_on_open_permissions",
+  "tests/test_web_server.py::test_update_settings_sets_restrictive_permissions",
   // order-flaky（単体では通るが全体実行で稀に落ちる）
-  "test_backup_manager_cleanup_old",
-  "test_get_improvement_history",
+  "tests/test_theme_fgh_remaining.py::test_backup_manager_cleanup_old",
+  "tests/test_self_improvement.py::TestSelfImprovementCycle::test_get_improvement_history",
 ]);
 
 const PROTECTED = new Set(["main", "master"]);
@@ -101,20 +103,48 @@ if (!NO_TEST) {
   const py =
     process.platform === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python";
   let out = "";
+  let code = 0;
   try {
     out = execFileSync(py, ["-m", "pytest", "tests/", "-q"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (e) {
-    // pytest は失敗があると非0で終了する。ベースライン失敗のみなら許容するため出力を解析。
+    // venv python が見つからない等は status が数値にならない → ハード失敗扱い。
+    if (e.code === "ENOENT" || typeof e.status !== "number") {
+      fail(
+        `pytest を実行できませんでした（venv python が見つからない可能性: ${py}）: ${e.message}`,
+      );
+    }
+    code = e.status;
     out = `${e.stdout ?? ""}${e.stderr ?? ""}`;
   }
+
+  // FAILED だけでなく、収集エラー / fixture ERROR / 中断 / 実行0件も「ハード失敗」とみなす。
+  // （FAILED 行ゼロでも壊れているケースをすべて捕捉する）
+  const hasErrorMarkers =
+    /^ERROR\s/m.test(out) ||
+    /errors? during collection/.test(out) ||
+    /Interrupted:/.test(out);
+  const ranSomething = /\d+\s+passed/.test(out);
   const failed = [...out.matchAll(/^FAILED\s+(\S+)/gm)].map((m) => m[1]);
   const newFailures = failed.filter((nodeid) => {
-    const fn = (nodeid.split("::").pop() || "").split("[")[0];
-    return !KNOWN_BASELINE_FAILURES.has(fn);
+    const id = nodeid.split("[")[0].replace(/\\/g, "/"); // パラメタ除去 + パス区切り正規化
+    return !KNOWN_BASELINE_FAILURES.has(id);
   });
+
+  if (code !== 0 && code !== 1) {
+    fail(`pytest が異常終了しました (exit ${code})。収集エラー/使用法エラー等の可能性。`);
+  }
+  if (hasErrorMarkers) {
+    fail(
+      "収集エラー / セットアップ ERROR / 中断 を検出しました（FAILED ではなく ERROR）。" +
+        "テストが壊れています。修正してください。",
+    );
+  }
+  if (!ranSomething) {
+    fail("テストが1件も pass していません（テスト未実行の可能性）。venv とテスト構成を確認してください。");
+  }
   if (newFailures.length > 0) {
     fail(
       `既知ベースライン以外のテスト失敗（新規回帰）が ${newFailures.length} 件あります:\n` +
@@ -123,7 +153,7 @@ if (!NO_TEST) {
     );
   }
   console.log(
-    `[merge_to_main] テストOK（失敗 ${failed.length} 件はすべて既知ベースライン）。`,
+    `[merge_to_main] テストOK（exit ${code} / 失敗 ${failed.length} 件はすべて既知ベースライン）。`,
   );
 }
 

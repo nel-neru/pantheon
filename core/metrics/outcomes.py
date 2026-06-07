@@ -42,6 +42,10 @@ class OutcomeEvent:
     recorded_at: str = ""
 
     def __post_init__(self):
+        # 外部（子 org の自動化/外部ランナー）が書いた outcomes.json も安全に扱えるよう、
+        # record() 経路だけでなくここでも value/metric を正規化する（型ヒント任せにしない）。
+        self.value = float(self.value)
+        self.metric = str(self.metric).strip().lower()
         if not self.event_id:
             self.event_id = f"outcome:{uuid4()}"
         if not self.recorded_at:
@@ -139,7 +143,8 @@ class OutcomeStore:
         for item in payload:
             try:
                 events.append(OutcomeEvent(**item))
-            except TypeError:
+            except (TypeError, ValueError):
+                # 不正な item（未知キー/数値化できない value 等）はスキップして集計を壊さない
                 continue
         return events
 
