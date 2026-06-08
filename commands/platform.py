@@ -264,7 +264,11 @@ def cmd_serve(args: argparse.Namespace) -> None:
         print("   pip install 'pantheon[web]' でインストールしてください。")
         sys.exit(1)
 
-    run_server(host=args.host, port=args.port)
+    run_server(
+        host=args.host,
+        port=args.port,
+        open_browser=not getattr(args, "no_browser", False),
+    )
 
 
 async def cmd_daemon_start(
@@ -291,13 +295,23 @@ async def cmd_daemon_start(
             pid_file.unlink(missing_ok=True)
 
     log_file = platform_home / "daemon.log"
-    cmd = [
-        sys.executable,
-        "-m",
-        "core._daemon_runner",
-        f"--interval={args.interval}",
-        f"--max-files={args.max_files}",
-    ]
+    if getattr(sys, "frozen", False):
+        # exe 化時は `-m core._daemon_runner` が使えないので、自分自身を
+        # `Pantheon.exe --daemon-run ...` として再実行する（main.py 側で捕捉）。
+        cmd = [
+            sys.executable,
+            "--daemon-run",
+            f"--interval={args.interval}",
+            f"--max-files={args.max_files}",
+        ]
+    else:
+        cmd = [
+            sys.executable,
+            "-m",
+            "core._daemon_runner",
+            f"--interval={args.interval}",
+            f"--max-files={args.max_files}",
+        ]
 
     with open(log_file, "a", encoding="utf-8") as log_handle:
         proc = subprocess.Popen(
@@ -412,6 +426,11 @@ def register(subparsers: Any) -> None:
     serve_parser = subparsers.add_parser("serve", help="Web GUI を起動する")
     serve_parser.add_argument("--host", default="0.0.0.0", help="バインドホスト (default: 0.0.0.0)")
     serve_parser.add_argument("--port", type=int, default=7860, help="ポート番号 (default: 7860)")
+    serve_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="起動時にブラウザを自動で開かない（既定は自動で開く）",
+    )
     serve_parser.set_defaults(handler_name="cmd_serve")
 
     daemon_parser = subparsers.add_parser("daemon", help="自律改善デーモンの管理")

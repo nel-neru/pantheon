@@ -31,16 +31,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.models.organization import ImprovementProposal, is_active_improvement_proposal_status
+from core.paths import resource_path, resource_root
 from core.platform.state import PlatformStateManager, get_platform_home
 from core.policy.engine import DEFAULT_POLICY, ApprovalDecision, PolicyEngine
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Pantheon Platform", version="2.0.0")
 
-STATIC_DIR = Path(__file__).parent / "static"
-DIST_DIR = Path(__file__).parent / "dist"
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-KNOWLEDGE_DIR = Path(__file__).parent.parent / "knowledge"
+# 同梱リソースは resource_path 経由で解決する（exe 化時は sys._MEIPASS 配下）。
+STATIC_DIR = resource_path("web", "static")
+DIST_DIR = resource_path("web", "dist")
+PROJECT_ROOT = resource_root()
+KNOWLEDGE_DIR = resource_path("knowledge")
 SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "Pantheon Core", "meta-improvement"}
 SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
 CHAT_SESSIONS_DIR = Path.home() / ".pantheon" / "chat_sessions"
@@ -3264,12 +3266,42 @@ async def ws_updates(websocket: WebSocket) -> None:
         logger.info("Updates WebSocket client disconnected")
 
 
-def run_server(host: str = "0.0.0.0", port: int = 7860) -> None:
+def _open_browser_when_ready(port: int, *, timeout: float = 15.0) -> None:
+    """サーバが listen を開始したらブラウザで GUI を開く（デーモンスレッド）。
+
+    uvicorn.run() はブロッキングなので、別スレッドでポートの listen を待ってから
+    既定ブラウザを開く。exe をダブルクリックした人がそのまま可視化サイトに入れる。
+    """
+    import socket
+    import threading
+    import webbrowser
+
+    url = f"http://localhost:{port}"
+
+    def _wait_and_open() -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                    break
+            except OSError:
+                time.sleep(0.25)
+        try:
+            webbrowser.open(url)
+        except Exception:
+            logger.debug("ブラウザの自動起動に失敗しました: %s", url)
+
+    threading.Thread(target=_wait_and_open, daemon=True).start()
+
+
+def run_server(host: str = "0.0.0.0", port: int = 7860, open_browser: bool = False) -> None:
     import uvicorn
 
     print("\nPantheon Web GUI を起動しています...")
     print(f"   URL: http://localhost:{port}")
     print(f"   プラットフォーム: {PlatformStateManager().platform_home}")
+    if open_browser:
+        _open_browser_when_ready(port)
     uvicorn.run(app, host=host, port=port)
 
 

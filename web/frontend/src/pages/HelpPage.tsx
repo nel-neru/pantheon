@@ -9,10 +9,13 @@ import {
   Info,
   LayoutDashboard,
   Lightbulb,
+  Map as MapIcon,
   MessageSquare,
+  Rocket,
   Search,
   Settings,
   Target,
+  Terminal,
   Wrench,
 } from 'lucide-react'
 
@@ -295,6 +298,28 @@ const pageSections: Section[] = [
     ),
   },
   {
+    id: 'atlas',
+    title: 'Atlas',
+    content: (
+      <div className="help-prose">
+        <div className="help-page-icon-row">
+          <MapIcon size={16} />
+          <span>リポジトリ構造を読み取り専用で可視化します（生成 AI 非依存）。</span>
+        </div>
+        <Table
+          headers={['可視化', '内容']}
+          rows={[
+            ['依存グラフ', 'モジュール間の import 依存関係を図示します。'],
+            ['使用フロー', '主要な操作の流れ（フローカタログ）を確認できます。'],
+            ['CLI コマンド木', 'pantheon の全サブコマンド構造を一覧します。'],
+            ['API ルートマップ', 'FastAPI の REST / WebSocket ルートを確認できます。'],
+            ['サブシステム', 'CLI / Web API / Frontend / Agents などの構成を俯瞰します。'],
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: 'sessions',
     title: 'セッション / 作業ボード',
     content: (
@@ -391,7 +416,7 @@ const pageSections: Section[] = [
           headers={['タブ', '内容']}
           rows={[
             ['概要', 'Pantheon の考え方と基本フローをまとめています。'],
-            ['各画面の使い方', '全 10 ページの用途と操作ポイントを確認できます。'],
+            ['各画面の使い方', '各画面の用途と操作ポイントを確認できます。'],
             ['設定・CLI・トラブル', 'API キー取得先、CLI コマンド、よくある問題を確認できます。'],
           ]}
         />
@@ -401,6 +426,37 @@ const pageSections: Section[] = [
 ]
 
 const advancedSections: Section[] = [
+  {
+    id: 'launch',
+    title: '起動とインストール',
+    content: (
+      <div className="help-prose">
+        <div className="help-page-icon-row">
+          <Rocket size={16} />
+          <span>exe をダブルクリックすれば GUI が起動し、ブラウザが自動で開きます。</span>
+        </div>
+        <p>
+          Pantheon は <CodeBlock>Pantheon.exe</CodeBlock> 一つで GUI も CLI も使えます。引数なしで実行
+          （ダブルクリック）すると Web GUI が立ち上がり、<CodeBlock>http://localhost:7860</CodeBlock> を
+          既定ブラウザで開きます。
+        </p>
+        <Table
+          headers={['起動方法', '内容']}
+          rows={[
+            ['ダブルクリック', 'GUI 起動＋ブラウザ自動オープン（引数なし実行と同じ）。'],
+            ['Pantheon.exe serve', '明示的に GUI を起動。--port でポート変更、--no-browser で自動オープン無効。'],
+            ['Pantheon.exe chat', 'CLI チャットを開始（claude が必要）。'],
+            ['インストーラ', 'Pantheon-Setup.exe を実行するとスタートメニューに登録されます。'],
+          ]}
+        />
+        <p>
+          生成機能（分析・チャット・改善適用）には外部の <CodeBlock>claude</CodeBlock> CLI が必要です。
+          初回のみ <CodeBlock>claude</CodeBlock> を実行してログインしてください。GUI・閲覧機能は claude
+          なしでも動作します。詳細は <CodeBlock>docs/GUIDE.md</CodeBlock> を参照してください。
+        </p>
+      </div>
+    ),
+  },
   {
     id: 'providers',
     title: 'LLM プロバイダー設定',
@@ -425,15 +481,22 @@ const advancedSections: Section[] = [
     title: 'CLI の使い方',
     content: (
       <div className="help-prose">
-        <p>Web GUI とあわせて CLI からも主要操作を実行できます。</p>
+        <div className="help-page-icon-row">
+          <Terminal size={16} />
+          <span>同じ実行体から CLI も使えます（exe は Pantheon.exe、ソース実行は pantheon）。</span>
+        </div>
         <Table
           headers={['コマンド', '説明']}
           rows={[
-            ['python main.py serve', 'サーバーを起動します。'],
-            ['python main.py chat', 'CLI チャットを開始します。'],
-            ['python main.py analyze', 'CLI から分析を実行します。'],
+            ['Pantheon.exe init', 'プラットフォームを初期化します（初回のみ）。'],
+            ['Pantheon.exe serve', 'Web GUI を起動します（--port / --no-browser 指定可）。'],
+            ['Pantheon.exe chat', 'CLI チャットを開始します。'],
+            ['Pantheon.exe analyze --org-name N', 'リポジトリを分析して提案を生成します。'],
+            ['Pantheon.exe approve <id> --org-name N', '提案を承認して適用します。'],
+            ['Pantheon.exe doctor', '健康診断（claude 検出など）。--fix で自動修復。'],
           ]}
         />
+        <p>全コマンドは <CodeBlock>Pantheon.exe --help</CodeBlock> で確認できます。</p>
       </div>
     ),
   },
@@ -445,9 +508,11 @@ const advancedSections: Section[] = [
         <Table
           headers={['症状', '対処法']}
           rows={[
-            ['設定を取得できませんでした', 'サーバーを再起動してください: python main.py serve'],
-            ['API キーが未設定', '設定画面で API キーを入力して保存してください。'],
-            ['プラットフォーム画面が表示されない', 'サーバーが起動しているか確認してください。'],
+            ['「Claude Code CLI が必要」で止まる', 'claude をインストールし、一度 claude を実行してログイン。Pantheon.exe doctor で確認。'],
+            ['ポートが使用中', 'Pantheon.exe serve --port 8080 のように別ポートで起動してください。'],
+            ['ブラウザが自動で開かない', '表示された http://localhost:7860 を手動で開いてください。'],
+            ['GUI は出るが分析・チャットが失敗', 'ほぼ claude 未ログインです。claude を実行して認証を確認してください。'],
+            ['設定を取得できない / 画面が出ない', 'サーバーを再起動してください: Pantheon.exe serve'],
           ]}
         />
       </div>

@@ -2,6 +2,13 @@
 
 開発者が自分専用の自己成長型 AI Organization を作り、CLI / Web / 自律実行パイプラインで改善を回せるプラットフォームです。
 
+> **使う人向けの完全ガイドは [`docs/GUIDE.md`](docs/GUIDE.md)。** 起動方法・人間用可視化サイト（Web GUI）の歩き方・
+> CLI 早見表・トラブルシュートを 1 枚にまとめています。
+>
+> **exe 一個で起動したい場合**は `packaging/build.ps1` でワンクリック exe（`dist/Pantheon/Pantheon.exe`）と
+> インストーラ（`dist/Pantheon-Setup.exe`）を生成できます（[`docs/GUIDE.md` の 10 章](docs/GUIDE.md#10-自分でビルド配布する)）。
+> `Pantheon.exe` はダブルクリックで Web GUI が起動し、ブラウザが自動で開きます。
+
 ## できること
 
 - `pantheon` CLI で Organization を作成・分析・承認

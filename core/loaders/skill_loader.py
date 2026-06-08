@@ -25,18 +25,36 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from core.loaders.schema_support import validate_schema_version
+from core.paths import resource_path
 
 logger = logging.getLogger(__name__)
 
 # スキルの YAML で定義できるフィールド
 _REQUIRED_FIELDS = {"id"}
-_OPTIONAL_FIELDS = {"name", "description", "persona", "focus", "output_hint", "tags", "schema_version"}
+_OPTIONAL_FIELDS = {
+    "name",
+    "description",
+    "persona",
+    "focus",
+    "output_hint",
+    "tags",
+    "schema_version",
+}
 
 
 class SkillDefinition:
     """YAML から読み込んだスキル定義。"""
 
-    __slots__ = ("id", "name", "description", "persona", "focus", "output_hint", "tags", "schema_version")
+    __slots__ = (
+        "id",
+        "name",
+        "description",
+        "persona",
+        "focus",
+        "output_hint",
+        "tags",
+        "schema_version",
+    )
 
     def __init__(self, data: dict[str, Any]):
         self.id: str = data["id"]
@@ -79,7 +97,7 @@ class SkillLoader:
 
     def __init__(self, skills_dir: Optional[Path] = None):
         if skills_dir is None:
-            skills_dir = Path(__file__).parent.parent.parent / "skills"
+            skills_dir = resource_path("skills")
         self._skills_dir = Path(skills_dir)
         self._cache: Dict[str, SkillDefinition] = {}
         self._loaded = False
@@ -106,7 +124,9 @@ class SkillLoader:
                     logger.debug("Skipping %s: missing 'id' field", yaml_file.name)
                     continue
                 data = dict(data)
-                data["schema_version"] = validate_schema_version(data, yaml_file.name, kind="Skill definition")
+                data["schema_version"] = validate_schema_version(
+                    data, yaml_file.name, kind="Skill definition"
+                )
                 skill = SkillDefinition(data)
                 self._cache[skill.id] = skill
                 logger.debug("SkillLoader: loaded %s", skill.id)

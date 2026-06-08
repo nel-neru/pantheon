@@ -55,7 +55,12 @@ describe('HelpPage', () => {
 
     await user.click(screen.getByRole('button', { name: '設定・CLI・トラブル' }))
 
-    expect(screen.getByText('LLM プロバイダー設定')).toBeInTheDocument()
+    // 既定で開くのは「起動とインストール」節（exe 起動の案内）
+    expect(screen.getByText('起動とインストール')).toBeInTheDocument()
+    expect(screen.getByText(/exe をダブルクリックすれば GUI が起動し/)).toBeInTheDocument()
+
+    // プロバイダー節は折りたたまれているので、展開してから内容を検証する
+    await user.click(screen.getByRole('button', { name: 'LLM プロバイダー設定' }))
     expect(screen.getByText('console.anthropic.com')).toBeInTheDocument()
     expect(screen.getByText('github.com/settings/tokens')).toBeInTheDocument()
   })

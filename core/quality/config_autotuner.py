@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from core.paths import resource_path
+
 
 @dataclass
 class TuningRecommendation:
@@ -20,10 +22,14 @@ class TuningRecommendation:
 
 class ConfigAutoTuner:
     def __init__(self, config_path: Path = None):
-        self.config_path = Path(config_path) if config_path else Path(__file__).resolve().parents[2] / "config" / "default.yaml"
+        self.config_path = (
+            Path(config_path) if config_path else resource_path("config", "default.yaml")
+        )
         self._config = self._load_config()
 
-    def analyze_and_recommend(self, health_scores: list[float], accepted_rates: list[float]) -> list[TuningRecommendation]:
+    def analyze_and_recommend(
+        self, health_scores: list[float], accepted_rates: list[float]
+    ) -> list[TuningRecommendation]:
         recommendations: list[TuningRecommendation] = []
         avg_health = sum(health_scores) / len(health_scores) if health_scores else 0.0
         avg_acceptance = sum(accepted_rates) / len(accepted_rates) if accepted_rates else 0.0

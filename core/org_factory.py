@@ -23,12 +23,11 @@ from core.models.organization import (
     SpecialistAgent,
     Team,
 )
+from core.paths import resource_path
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TEMPLATE_PATH = (
-    Path(__file__).parent.parent / "config" / "departments" / "meta_improvement.yaml"
-)
+DEFAULT_TEMPLATE_PATH = resource_path("config", "departments", "meta_improvement.yaml")
 
 # スキル名文字列 → AgentSkill の安全なマッピング
 _SKILL_MAP: dict[str, AgentSkill] = {s.value: s for s in AgentSkill}

@@ -68,9 +68,10 @@ from commands.platform import cmd_platform_run_all as _cmd_platform_run_all_impl
 from commands.platform import cmd_platform_status as _cmd_platform_status_impl
 from commands.platform import cmd_serve as _cmd_serve_impl
 from commands.version import cmd_version as _cmd_version_impl
+from core.paths import resource_root
 from core.platform.state import PlatformStateManager
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = resource_root()
 
 
 def _get_platform_home():
@@ -496,8 +497,26 @@ HANDLERS = {
 
 
 def main() -> None:
+    argv = sys.argv[1:]
+
+    # exe 化（frozen）時のデーモン自己再起動エントリ。
+    # `python -m core._daemon_runner` が使えないため、自分自身を
+    # `Pantheon.exe --daemon-run --interval=.. --max-files=..` の形で再実行する
+    # （commands/platform.py の cmd_daemon_start を参照）。
+    if argv and argv[0] == "--daemon-run":
+        from core import _daemon_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _daemon_runner.main()
+        return
+
+    # 引数なし起動（exe をダブルクリックした場合など）は Web GUI を立ち上げる。
+    # ターミナルから `Pantheon.exe <command>` とすれば従来どおり CLI が使える。
+    if not argv:
+        argv = ["serve"]
+
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     handler_name = getattr(args, "handler_name", "")
     handler = HANDLERS.get(handler_name)
     if handler is None:

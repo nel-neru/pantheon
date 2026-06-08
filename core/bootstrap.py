@@ -13,12 +13,13 @@ from typing import Optional
 
 from core.models.organization import Organization, OrganizationStatus
 from core.org_factory import create_organization_from_template
+from core.paths import resource_path, resource_root
 
 logger = logging.getLogger(__name__)
 
 META_ORG_NAME = "Meta-Improvement Organization"
 META_ORG_PURPOSE = "Pantheon システム全体の強化・改善・自己進化を担う中核 Organization"
-META_TEMPLATE_PATH = Path(__file__).parent.parent / "config" / "departments" / "meta_improvement.yaml"
+META_TEMPLATE_PATH = resource_path("config", "departments", "meta_improvement.yaml")
 
 
 def ensure_meta_improvement_org(
@@ -66,12 +67,10 @@ def bootstrap_platform(core_repo_path: Optional[Path] = None) -> "PlatformStateM
     # Meta-Improvement Org に Core リポジトリを紐付ける（未設定の場合のみ）
     if not meta.target_repo_path:
         if core_repo_path is None:
-            core_repo_path = Path(__file__).parent.parent.resolve()
+            core_repo_path = resource_root()
         meta.target_repo_path = str(core_repo_path)
         psm.save_organization(meta)
-        logger.info(
-            "Meta-Improvement Org wired to Core repo: %s", core_repo_path
-        )
+        logger.info("Meta-Improvement Org wired to Core repo: %s", core_repo_path)
 
     if not psm.is_initialized():
         psm.initialize(meta_improvement_org_id=str(meta.id))
@@ -80,6 +79,7 @@ def bootstrap_platform(core_repo_path: Optional[Path] = None) -> "PlatformStateM
     policy_path = psm.platform_home / "policy.yaml"
     if not policy_path.exists():
         from core.policy.engine import PolicyEngine
+
         PolicyEngine().save_default_policy(policy_path)
         logger.info("Default policy.yaml created at %s", policy_path)
 
