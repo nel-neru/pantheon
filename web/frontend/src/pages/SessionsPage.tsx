@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Boxes, FileText, Play, RefreshCw, Square, Terminal } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
 import { api } from '@/lib/api'
 
 type Surface = {
@@ -57,8 +58,10 @@ export function SessionsPage() {
   const [logText, setLogText] = useState<string>('')
   const [logLoading, setLogLoading] = useState(false)
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
+  const { events } = usePlatformUpdates()
+
+  const loadData = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
     try {
       const [sessionResult, runtimeResult] = await Promise.allSettled([
         api<{ sessions: SessionRecord[] }>('GET', '/api/sessions'),
@@ -72,18 +75,28 @@ export function SessionsPage() {
       setLoadError(null)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'セッションの読み込みに失敗しました。'
-      setSessions([])
-      setRuntime(null)
-      setLoadError(message)
-      toast.error(message)
+      if (!quiet) {
+        setSessions([])
+        setRuntime(null)
+        setLoadError(message)
+        toast.error(message)
+      }
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  // /ws/updates のセッション系イベントで静かに再取得し、ライブ監視する（ポーリング不要）。
+  useEffect(() => {
+    const latest = events[0]
+    if (latest?.type && latest.type.startsWith('session')) {
+      void loadData(true)
+    }
+  }, [events, loadData])
 
   const handleStartDemo = async () => {
     setStarting(true)

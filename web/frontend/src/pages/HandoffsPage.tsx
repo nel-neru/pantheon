@@ -75,13 +75,15 @@ export function HandoffsPage() {
   const handleApprove = async (handoff: Handoff) => {
     setActionId(handoff.handoff_id)
     try {
+      // 承認1ボタン: 承認と同時に本文ドラフト（claude 生成）まで作る。
       const result = await api<Handoff & { materialized: Materialized }>(
         'POST',
         `/api/handoffs/${encodeURIComponent(handoff.handoff_id)}/approve`,
+        { draft: true },
       )
       if (result.materialized) {
         toast.success(
-          `承認しました。受け手「${result.materialized.org_name}」にブリーフ提案を自動生成: ${result.materialized.title}`,
+          `承認し、受け手「${result.materialized.org_name}」に本文ドラフトを自動生成: ${result.materialized.title}`,
         )
       } else {
         toast.success('承認しました。')
@@ -217,7 +219,7 @@ export function HandoffsPage() {
                     disabled={actionId === handoff.handoff_id || handoff.status !== 'pending'}
                   >
                     <CheckCircle size={14} />
-                    {actionId === handoff.handoff_id ? '更新中' : '承認'}
+                    {actionId === handoff.handoff_id ? '生成中' : '承認＋本文生成'}
                   </button>
                   <button
                     type="button"
@@ -237,10 +239,10 @@ export function HandoffsPage() {
                       handoff.status === 'rejected' ||
                       handoff.status === 'consumed'
                     }
-                    title="受け手 org に本文ドラフト提案を生成します"
+                    title="承認とは別に、受け手 org の本文ドラフト提案だけを生成/再生成します"
                   >
                     <FileText size={14} />
-                    {actionId === handoff.handoff_id ? '生成中' : '本文生成'}
+                    {actionId === handoff.handoff_id ? '生成中' : '本文のみ生成'}
                   </button>
                 </div>
               </div>

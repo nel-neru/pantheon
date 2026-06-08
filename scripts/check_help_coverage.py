@@ -11,14 +11,17 @@ FRONTEND_PAGES_DIR = Path(__file__).parent.parent / "web/frontend/src/pages"
 HELP_PAGE = FRONTEND_PAGES_DIR / "HelpPage.tsx"
 
 # ページ名とHelpPage.tsxで言及されるべきキーワードのマッピング
+# チャット/分析/ゴールの実行UIは wmux に集約したため GUI から削除済み（HelpPage の
+# 「対話・実行（wmux）」節で言及）。ここには現存するページのみを列挙する。
 PAGE_KEYWORDS = {
-    "ChatPage": ["チャット", "chat"],
     "DashboardPage": ["プラットフォーム", "dashboard"],
     "OrgsPage": ["組織", "orgs"],
     "ProposalsPage": ["改善提案", "proposals"],
-    "AnalyzePage": ["分析", "analyze"],
-    "GoalsPage": ["ゴール", "goals"],
+    "HandoffsPage": ["引き渡し", "handoff"],
     "AgentsPage": ["エージェント", "agents"],
+    "AtlasPage": ["atlas"],
+    "SessionsPage": ["セッション", "sessions"],
+    "BoardPage": ["作業ボード", "board"],
     "DataPage": ["データ管理", "data"],
     "SettingsPage": ["設定", "settings"],
     "HelpPage": [],  # self-referential, skip

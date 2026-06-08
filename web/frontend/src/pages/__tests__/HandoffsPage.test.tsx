@@ -55,10 +55,12 @@ it('lists pending handoffs and approves with materialization toast', async () =>
   })
   mockApi.mockResolvedValueOnce([]) // reload after approve
 
-  await userEvent.click(screen.getByRole('button', { name: /承認/ }))
+  await userEvent.click(screen.getByRole('button', { name: /承認＋本文生成/ }))
 
   await waitFor(() => {
-    expect(mockApi).toHaveBeenCalledWith('POST', '/api/handoffs/handoff%3Aabc12345/approve')
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/handoffs/handoff%3Aabc12345/approve', {
+      draft: true,
+    })
   })
   expect(mockedToast.success).toHaveBeenCalled()
 })
@@ -76,7 +78,7 @@ it('generates a body draft via the 本文生成 button', async () => {
     file_path: 'content/draft-abc12345.md',
   })
 
-  await userEvent.click(screen.getByRole('button', { name: /本文生成/ }))
+  await userEvent.click(screen.getByRole('button', { name: /本文のみ生成/ }))
 
   await waitFor(() => {
     expect(mockApi).toHaveBeenCalledWith('POST', '/api/handoffs/handoff%3Aabc12345/draft')

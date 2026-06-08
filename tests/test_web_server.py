@@ -244,6 +244,57 @@ def test_handoff_api_approve_unknown_is_404(tmp_path, monkeypatch):
     assert resp.status_code == 404
 
 
+def test_handoff_api_approve_with_draft_makes_body(tmp_path, monkeypatch):
+    """承認1ボタン: approve に draft=true を渡すと本文ドラフトまで作る（claude 不在＝決定論）。"""
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path / "home")
+    repo = tmp_path / "note-org"
+    repo.mkdir()
+    target = create_default_organization("Note Sales", "note", repo_path=repo)
+    psm.save_organization(target)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    store = server._handoff_store()
+    handoff = store.create(
+        source_org="SNS Growth",
+        target_org="Note Sales",
+        kind="audience_signal",
+        title="検証済み需要",
+        payload={"theme": "AI議事録"},
+    )
+    resp = client.post(f"/api/handoffs/{handoff.handoff_id}/approve", json={"draft": True})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "approved"
+    assert body["materialized"]["kind"] == "draft"
+    assert body["materialized"]["file_path"].startswith("content/draft-")
+
+
+def test_outcomes_import_api(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    resp = client.post(
+        "/api/outcomes/import",
+        json={
+            "org_name": "Note Sales",
+            "rows": [
+                {"metric": "revenue", "value": 3000},
+                {"metric": "sales", "value": 4},
+                {"metric": "", "value": 1},
+            ],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["imported"] == 2
+    assert body["skipped"] == 1
+
+    summary = client.get("/api/outcomes/Note Sales")
+    assert summary.status_code == 200
+    assert summary.json()["by_metric"]["revenue"]["sum"] == 3000
+
+
 def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
     """Web: 本文生成エンドポイントが受け手 org に本文ドラフト提案を作る（claude 不在＝決定論）。"""
     from core.org_factory import create_default_organization

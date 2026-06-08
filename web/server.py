@@ -731,6 +731,79 @@ class UpdateHub:
 
 _updates_hub = UpdateHub()
 
+# --- Live session monitor (GUI=監視) ----------------------------------------- #
+# 実行系は wmux の「監視セッション」として走る（core/runtime/work_launcher）。サーバは
+# アクティブなセッションをポーリングし、状態が変わったら /ws/updates へ push する。テストで
+# 勝手に動かないよう run_server() が呼ばれたときだけ有効化する（_LIVE_MONITOR_ENABLED）。
+_LIVE_MONITOR_ENABLED = False
+_session_monitor_task: "asyncio.Task[None] | None" = None
+_session_status_cache: dict[str, str] = {}
+
+
+def _session_signature(rec: Any) -> str:
+    parts = [rec.status]
+    for surface in rec.surfaces:
+        parts.append(
+            f"{surface.get('agent_id')}:{surface.get('status')}:{surface.get('exit_code')}"
+        )
+    return "|".join(str(p) for p in parts)
+
+
+async def _poll_and_broadcast_sessions() -> None:
+    """アクティブセッションをポーリングし、変化したものを /ws/updates へ配信する。"""
+    orch = _session_orchestrator()
+    sessions = await asyncio.to_thread(orch.list_sessions)
+    for rec in sessions:
+        if rec.status in ("running", "rate_limited"):
+            polled = await asyncio.to_thread(orch.poll_session, rec.id)
+            rec = polled or rec
+        signature = _session_signature(rec)
+        if _session_status_cache.get(rec.id) == signature:
+            continue
+        _session_status_cache[rec.id] = signature
+        await _updates_hub.broadcast(
+            {
+                "type": "session_update",
+                "session_id": rec.id,
+                "name": rec.name,
+                "status": rec.status,
+                "driver": rec.driver,
+                "title": f"{rec.name}: {rec.status}",
+                "agents": [
+                    {
+                        "agent_id": s.get("agent_id"),
+                        "title": s.get("title"),
+                        "status": s.get("status"),
+                        "exit_code": s.get("exit_code"),
+                    }
+                    for s in rec.surfaces
+                ],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+
+async def _session_monitor_loop(interval: float = 3.0) -> None:
+    while _LIVE_MONITOR_ENABLED:
+        try:
+            await _poll_and_broadcast_sessions()
+        except Exception:  # noqa: BLE001 - 監視ループは決して落とさない
+            logger.debug("session monitor iteration failed", exc_info=True)
+        await asyncio.sleep(interval)
+
+
+def _ensure_session_monitor() -> None:
+    """ライブ監視ループを一度だけ起動する（run_server 経由で有効化されている場合のみ）。"""
+    global _session_monitor_task
+    if not _LIVE_MONITOR_ENABLED:
+        return
+    if _session_monitor_task is not None and not _session_monitor_task.done():
+        return
+    try:
+        _session_monitor_task = asyncio.create_task(_session_monitor_loop())
+    except RuntimeError:  # 実行中ループが無い場合（通常リクエスト中は発生しない）
+        pass
+
 
 def _migrate_system_orgs(psm: PlatformStateManager | None = None) -> None:
     state_manager = psm or PlatformStateManager()
@@ -2821,6 +2894,11 @@ class HandoffConsumeRequest(BaseModel):
     ref: str = ""
 
 
+class HandoffApproveRequest(BaseModel):
+    # True なら承認と同時に本文ドラフト（claude 生成）まで作る（承認1ボタンで本文まで）。
+    draft: bool = False
+
+
 def _handoff_store():
     from core.hierarchy.org_handoff import OrgHandoffStore
 
@@ -2867,9 +2945,15 @@ async def api_create_handoff(body: HandoffCreateRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/handoffs/{handoff_id}/approve", tags=["handoffs"])
-async def api_approve_handoff(handoff_id: str) -> Dict[str, Any]:
-    """承認ボタン: pending→approved ＋ 受け手 org に content_asset ブリーフ提案を自動生成。"""
-    from core.hierarchy.org_handoff import materialize_handoff
+async def api_approve_handoff(
+    handoff_id: str, body: HandoffApproveRequest | None = None
+) -> Dict[str, Any]:
+    """承認ボタン: pending→approved ＋ 受け手 org に提案を自動生成。
+
+    既定はブリーフ（決定論・即時）。``draft=true`` なら本文ドラフト（claude 生成）まで
+    一括で作る（承認1ボタンで本文まで）。
+    """
+    from core.hierarchy.org_handoff import draft_handoff, materialize_handoff
 
     store = _handoff_store()
     try:
@@ -2879,8 +2963,13 @@ async def api_approve_handoff(handoff_id: str) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    want_draft = bool(body.draft) if body else False
     materialized = None
-    proposal = materialize_handoff(handoff, psm=_psm())
+    proposal = (
+        await draft_handoff(handoff, psm=_psm())
+        if want_draft
+        else materialize_handoff(handoff, psm=_psm())
+    )
     if proposal is not None:
         store.record_materialization(handoff.handoff_id, str(proposal.id))
         materialized = {
@@ -2888,6 +2977,7 @@ async def api_approve_handoff(handoff_id: str) -> Dict[str, Any]:
             "org_name": handoff.target_org,
             "title": proposal.title,
             "file_path": proposal.file_path,
+            "kind": "draft" if want_draft else "brief",
         }
     result = _handoff_dict(store.get(handoff.handoff_id))
     result["materialized"] = materialized
@@ -2941,6 +3031,47 @@ async def api_consume_handoff(
         raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+# --------------------------------------------------------------------------- #
+# Outcomes（成果イベントの一括取り込み / サマリ）                                 #
+# --------------------------------------------------------------------------- #
+
+
+class OutcomeImportRequest(BaseModel):
+    rows: List[Dict[str, Any]] = []
+    org_name: str = ""
+
+
+def _outcome_store():
+    from core.metrics.outcomes import OutcomeStore
+
+    return OutcomeStore(platform_home=_psm().platform_home)
+
+
+@app.post("/api/outcomes/import", tags=["outcomes"])
+async def api_import_outcomes(body: OutcomeImportRequest) -> Dict[str, Any]:
+    """成果イベントを一括取り込みする（ダッシュボードの CSV/JSON エクスポートを行 dict で渡す）。"""
+    store = _outcome_store()
+    added, skipped = store.record_many(body.rows, default_org=body.org_name)
+    return {
+        "imported": len(added),
+        "skipped": skipped,
+        "orgs": sorted({event.org_name for event in added}),
+    }
+
+
+@app.get("/api/outcomes/{org_name}", tags=["outcomes"])
+async def api_outcome_summary(org_name: str) -> Dict[str, Any]:
+    store = _outcome_store()
+    summary = store.summary_for_org(org_name)
+    return {
+        "org_name": org_name,
+        "event_count": summary.event_count,
+        "by_metric": summary.by_metric,
+        "total_reach": summary.total_reach,
+        "total_revenue": summary.total_revenue,
+    }
 
 
 @app.post(
@@ -3398,6 +3529,8 @@ async def ws_updates(websocket: WebSocket) -> None:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
+    # GUI が監視に入ったらライブセッション監視を起動する（run_server 有効時のみ）。
+    _ensure_session_monitor()
 
     try:
         while True:
@@ -3437,6 +3570,10 @@ def _open_browser_when_ready(port: int, *, timeout: float = 15.0) -> None:
 
 def run_server(host: str = "0.0.0.0", port: int = 7860, open_browser: bool = False) -> None:
     import uvicorn
+
+    # 実サーバ起動時のみライブセッション監視を有効化する（テストでは無効のまま）。
+    global _LIVE_MONITOR_ENABLED
+    _LIVE_MONITOR_ENABLED = True
 
     print("\nPantheon Web GUI を起動しています...")
     print(f"   URL: http://localhost:{port}")

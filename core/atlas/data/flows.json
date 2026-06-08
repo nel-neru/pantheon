@@ -360,14 +360,15 @@
         { "component": "core/policy/engine.py:PolicyEngine", "action": "cross_org_handoff を必ず human_required に判定（空 file_path でも auto_reject せず、auto_approve にも落とさない）" },
         { "component": "commands/handoff.py", "action": "承認ボタン（approve: pending→approved）／却下／受け手の消費（consume: approved→consumed）" },
         { "component": "core/hierarchy/org_handoff.py:materialize_handoff", "action": "承認時に受け手 org へ content_asset ブリーフ提案を自動生成（検証済みの型: 無料エリア3要素・3倍刻み・A8.net X不可/PR表記）。受け手は通常の proposal apply で適用" },
-        { "component": "web/server.py", "action": "GET/POST /api/handoffs ＋ {id}/approve|reject|consume（approve は materialize 連動）。Web UI の承認ボタンページ（/handoffs）から駆動" }
+        { "component": "core/hierarchy/org_handoff.py:draft_handoff", "action": "本文ドラフトを生成（claude CLI 経由。型・コンプラ=PR表記/収益保証禁止を system プロンプトに織込み、TODO で事実欠落を明示）。claude 不在時は決定論テンプレへフォールバック" },
+        { "component": "web/server.py", "action": "GET/POST /api/handoffs ＋ {id}/approve|draft|reject|consume（approve は materialize、draft は本文生成）。Web UI の承認ボタンページ（/handoffs）から駆動" }
       ],
-      "surfaces": ["pantheon handoff create", "pantheon handoff list", "pantheon handoff approve", "pantheon handoff reject", "pantheon handoff consume", "GET/POST /api/handoffs", "POST /api/handoffs/{id}/approve（materialize 連動）", "Web UI /handoffs（承認ボタン）"],
-      "state": ["~/.pantheon/org_handoffs.json", "<受け手 org repo>/.pantheon/improvements/（自動生成ブリーフ）"],
-      "verification": ["tests/test_org_handoff.py", "tests/test_web_server.py::test_handoff_api_create_approve_materializes", "web/frontend/src/pages/__tests__/HandoffsPage.test.tsx"],
+      "surfaces": ["pantheon handoff create", "pantheon handoff list", "pantheon handoff approve", "pantheon handoff draft", "pantheon handoff reject", "pantheon handoff consume", "GET/POST /api/handoffs", "POST /api/handoffs/{id}/approve（materialize 連動）", "POST /api/handoffs/{id}/draft（本文生成）", "Web UI /handoffs（承認・本文生成ボタン）"],
+      "state": ["~/.pantheon/org_handoffs.json", "<受け手 org repo>/.pantheon/improvements/（自動生成ブリーフ/本文ドラフト）"],
+      "verification": ["tests/test_org_handoff.py", "tests/test_web_server.py::test_handoff_api_create_approve_materializes", "tests/test_web_server.py::test_handoff_api_draft_creates_body_proposal", "web/frontend/src/pages/__tests__/HandoffsPage.test.tsx"],
       "status": "partial",
       "known_issues": [
-        { "severity": "low", "title": "ブリーフ本文の自動執筆は決定論スケルトンまで", "detail": "approve→受け手 org の content_asset ブリーフ提案を自動生成するところまで配線済み。ブリーフ本文は検証済みの型の決定論スケルトン（TODO プレースホルダ入り）で、実記事本文の生成は後段（LLM/人間）に委ねる。", "file": "core/hierarchy/org_handoff.py" }
+        { "severity": "low", "title": "本文生成はオンデマンド（approve とは別ステップ）", "detail": "approve→ブリーフは即時・決定論。本文ドラフトは handoff draft / draft エンドポイントで claude 生成（数秒）。approve に本文生成を同期させると Web のレイテンシが増すため、意図的に別ステップにしている。", "file": "core/hierarchy/org_handoff.py" }
       ]
     }
   ]

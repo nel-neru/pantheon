@@ -90,18 +90,28 @@ async def cmd_handoff(args: argparse.Namespace, *, get_psm: Any) -> None:
             sys.exit(1)
         print(f"[OK] 承認しました: {updated.source_org} → {updated.target_org}「{updated.title}」")
 
-        # 承認 → 受け手 org に content_asset ブリーフ提案を自動生成（マテリアライズ）。
-        from core.hierarchy.org_handoff import materialize_handoff
+        # 承認 → 受け手 org に提案を自動生成。
+        #   既定: content_asset ブリーフ（決定論・即時）。
+        #   --draft: 本文ドラフト（claude 生成・数秒。承認1ボタンで本文まで）。
+        want_draft = bool(getattr(args, "draft", False))
+        if want_draft:
+            from core.hierarchy.org_handoff import draft_handoff
 
-        proposal = materialize_handoff(updated, psm=get_psm())
+            proposal = await draft_handoff(updated, psm=get_psm())
+            kind_label = "本文ドラフト"
+        else:
+            from core.hierarchy.org_handoff import materialize_handoff
+
+            proposal = materialize_handoff(updated, psm=get_psm())
+            kind_label = "ブリーフ"
         if proposal is None:
             print(
                 f"     受け手 '{updated.target_org}' が着手できます"
-                "（自動ブリーフ生成は対象 org 未登録/repo 未設定のためスキップ）。"
+                "（自動生成は対象 org 未登録/repo 未設定のためスキップ）。"
             )
             return
         store.record_materialization(updated.handoff_id, str(proposal.id))
-        print(f"     受け手 '{updated.target_org}' にブリーフ提案を自動生成しました:")
+        print(f"     受け手 '{updated.target_org}' に{kind_label}提案を自動生成しました:")
         print(f"       [{str(proposal.id)[:8]}] {proposal.title}")
         print(
             f'     適用するには:  pantheon proposal apply {str(proposal.id)[:8]} '
@@ -195,6 +205,11 @@ def register(subparsers: Any) -> None:
 
     approve = sub.add_parser("approve", help="承認ボタン（pending → approved）")
     approve.add_argument("handoff_id", help="引き渡し ID（先頭一致可）")
+    approve.add_argument(
+        "--draft",
+        action="store_true",
+        help="承認と同時に本文ドラフトまで生成する（claude 経由。1ボタンで本文まで）",
+    )
     approve.set_defaults(handler_name="cmd_handoff")
 
     reject = sub.add_parser("reject", help="却下（pending → rejected）")

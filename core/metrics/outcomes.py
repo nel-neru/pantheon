@@ -16,7 +16,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import uuid4
 
 
@@ -113,6 +113,42 @@ class OutcomeStore:
         events.append(event)
         self._save(events)
         return event
+
+    def record_many(
+        self, rows: Iterable[Dict[str, Any]], *, default_org: str = ""
+    ) -> Tuple[List[OutcomeEvent], int]:
+        """成果イベントを一括取り込みする（CSV/JSON エクスポートの自動取り込み用）。
+
+        各 row は ``org_name``（省略時 ``default_org``）/ ``metric`` / ``value`` を必須とし、
+        ``unit`` / ``source`` / ``note`` / ``occurred_at`` は任意。不正な row はスキップして
+        件数を返す（全体を壊さない）。戻り値は ``(取り込んだイベント列, スキップ件数)``。
+        """
+        events = self._load()
+        added: List[OutcomeEvent] = []
+        skipped = 0
+        for row in rows:
+            try:
+                org = str(row.get("org_name") or default_org).strip()
+                metric = str(row.get("metric") or "").strip()
+                if not org or not metric:
+                    skipped += 1
+                    continue
+                event = OutcomeEvent(
+                    org_name=org,
+                    metric=metric.lower(),
+                    value=float(row.get("value")),
+                    unit=str(row.get("unit") or ""),
+                    source=str(row.get("source") or "import"),
+                    note=str(row.get("note") or ""),
+                    occurred_at=str(row.get("occurred_at") or ""),
+                )
+                added.append(event)
+            except (TypeError, ValueError, AttributeError):
+                skipped += 1
+        if added:
+            events.extend(added)
+            self._save(events)
+        return added, skipped
 
     def list_events(self, org_name: Optional[str] = None) -> List[OutcomeEvent]:
         events = self._load()

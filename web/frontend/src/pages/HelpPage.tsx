@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import {
+  ArrowRightLeft,
   Bot,
   Building2,
   ChevronDown,
@@ -10,11 +11,8 @@ import {
   LayoutDashboard,
   Lightbulb,
   Map as MapIcon,
-  MessageSquare,
   Rocket,
-  Search,
   Settings,
-  Target,
   Terminal,
   Wrench,
 } from 'lucide-react'
@@ -150,8 +148,8 @@ const overviewSections: Section[] = [
           <li>
             <span className="help-step-num">3</span>
             <div>
-              <strong>分析 / ゴール</strong>
-              <p>分析画面で改善提案の材料を作るか、ゴール画面で達成したい目的を自然言語で実行します。</p>
+              <strong>対話・実行（wmux）</strong>
+              <p>wmux の汎用チャット（pantheon up で起動）や組織チャットから、分析やゴールを自然言語で実行します。</p>
             </div>
           </li>
           <li>
@@ -169,27 +167,40 @@ const overviewSections: Section[] = [
 
 const pageSections: Section[] = [
   {
-    id: 'chat',
-    title: 'チャット',
+    id: 'workspace',
+    title: '対話・実行（wmux）',
     content: (
       <div className="help-prose">
         <div className="help-page-icon-row">
-          <MessageSquare size={16} />
-          <span>自然言語で AI 組織に依頼する入口です。</span>
+          <Terminal size={16} />
+          <span>チャットと実行（分析・ゴール・適用）は wmux のタブで行います。</span>
         </div>
-        <p>自由文で指示を出せるほか、スラッシュコマンドを使って操作を素早く開始できます。</p>
+        <p>
+          この Web GUI は<strong>監視・可視化・承認・ガイド</strong>に専念し、AI との対話や
+          実行系の操作は wmux 側に集約しています。<CodeBlock>pantheon up</CodeBlock>（exe の
+          ダブルクリックと同じ）で、Web GUI と一緒に wmux の「汎用チャット」タブが起動します。
+        </p>
+        <Table
+          headers={['やりたいこと', '操作']}
+          rows={[
+            ['汎用チャット', 'pantheon up で起動する Pantheon · chat タブ、または端末で pantheon chat。'],
+            ['組織チャット', 'pantheon chat --org <組織名> でその組織スコープのタブを開きます。'],
+            ['分析・ゴール実行', 'チャットから /analyze や /goal を実行すると wmux にエージェントタブが生えます。'],
+            ['進捗の確認', 'この GUI の「セッション」「プラットフォーム」でライブ監視します。'],
+          ]}
+        />
+        <p>チャットで使える主なスラッシュコマンド:</p>
         <Table
           headers={['コマンド', '説明']}
           rows={[
             ['/help', 'ヘルプを表示します。'],
-            ['/analyze', '分析ワークフローを開始します。'],
-            ['/goal', 'ゴール実行の流れを呼び出します。'],
+            ['/analyze', 'リポジトリ分析を開始します。'],
+            ['/goal', 'ゴール実行を呼び出します。'],
             ['/proposals', '改善提案を確認します。'],
             ['/agents', 'エージェント一覧を確認します。'],
             ['/status', 'プラットフォーム状態を確認します。'],
           ]}
         />
-        <p><CodeBlock>Enter</CodeBlock> で送信、<CodeBlock>Shift+Enter</CodeBlock> で改行です。</p>
       </div>
     ),
   },
@@ -215,48 +226,6 @@ const pageSections: Section[] = [
     ),
   },
   {
-    id: 'analyze',
-    title: '分析',
-    content: (
-      <div className="help-prose">
-        <div className="help-page-icon-row">
-          <Search size={16} />
-          <span>リポジトリを分析して改善提案を生成します。</span>
-        </div>
-        <Table
-          headers={['項目', '内容']}
-          rows={[
-            ['対象組織', '分析対象の組織を選択します。'],
-            ['最大ファイル数', '1 回の分析で確認するファイル数の上限を指定できます。'],
-            ['分析を実行', '開始するとリアルタイムログが流れます。'],
-            ['分析結果', '完了後に確認ファイル数と生成提案数が表示され、提案画面へ移動できます。'],
-          ]}
-        />
-      </div>
-    ),
-  },
-  {
-    id: 'goals',
-    title: 'ゴール',
-    content: (
-      <div className="help-prose">
-        <div className="help-page-icon-row">
-          <Target size={16} />
-          <span>自然言語でゴールを入力して実行します。</span>
-        </div>
-        <Table
-          headers={['操作', '内容']}
-          rows={[
-            ['ゴールテキスト', '達成したい内容を自然言語で入力します。'],
-            ['対象組織', '特定組織またはプラットフォーム全体を対象にできます。'],
-            ['実行', 'クリックするとリアルタイムログが表示されます。'],
-            ['結果 / 履歴', '直近の結果と過去の実行履歴をページ内で確認できます。'],
-          ]}
-        />
-      </div>
-    ),
-  },
-  {
     id: 'proposals',
     title: '改善提案',
     content: (
@@ -272,6 +241,30 @@ const pageSections: Section[] = [
             ['ステータスフィルター', '未処理、承認済み、却下済み、すべてで絞り込みできます。'],
             ['カテゴリ / 優先度', '各提案カードでカテゴリと優先度を確認できます。'],
             ['承認 / 却下', '承認すると提案が実行フェーズへ進み、却下で状態を更新できます。'],
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
+    id: 'handoffs',
+    title: '引き渡し',
+    content: (
+      <div className="help-prose">
+        <div className="help-page-icon-row">
+          <ArrowRightLeft size={16} />
+          <span>組織をまたぐ引き渡し（handoff）を人間の承認ボタンで進めます。</span>
+        </div>
+        <p>
+          「集客 → 販売 → 収益化」のように複数組織を繋ぐフライホイールの橋渡しです。すべての
+          引き渡しは承認ゲート（human-in-the-loop）を通ります。
+        </p>
+        <Table
+          headers={['操作', '内容']}
+          rows={[
+            ['一覧', '送り手・受け手・状態（承認待ち / 承認済み / 消費済み / 却下）で確認します。'],
+            ['承認 / 却下', '承認待ちの引き渡しをボタンで承認・却下できます。'],
+            ['自動ブリーフ', '承認すると受け手組織にブリーフ提案を自動生成します。'],
           ]}
         />
       </div>
@@ -437,15 +430,17 @@ const advancedSections: Section[] = [
         </div>
         <p>
           Pantheon は <CodeBlock>Pantheon.exe</CodeBlock> 一つで GUI も CLI も使えます。引数なしで実行
-          （ダブルクリック）すると Web GUI が立ち上がり、<CodeBlock>http://localhost:7860</CodeBlock> を
-          既定ブラウザで開きます。
+          （ダブルクリック）すると<strong>フル起動（up）</strong>: Web GUI（監視）が立ち上がって
+          <CodeBlock>http://localhost:7860</CodeBlock> が既定ブラウザで開き、同時に wmux に汎用チャットタブが
+          起動します。
         </p>
         <Table
           headers={['起動方法', '内容']}
           rows={[
-            ['ダブルクリック', 'GUI 起動＋ブラウザ自動オープン（引数なし実行と同じ）。'],
-            ['Pantheon.exe serve', '明示的に GUI を起動。--port でポート変更、--no-browser で自動オープン無効。'],
-            ['Pantheon.exe chat', 'CLI チャットを開始（claude が必要）。'],
+            ['ダブルクリック', 'フル起動（up）: GUI 監視＋ブラウザ＋wmux 汎用チャット（引数なし実行と同じ）。'],
+            ['Pantheon.exe up', 'フル起動。--no-browser / --no-wmux / --port を指定できます。'],
+            ['Pantheon.exe serve', 'Web GUI のみ起動。--port でポート変更、--no-browser で自動オープン無効。'],
+            ['Pantheon.exe chat [--org N]', 'CLI チャットを開始（claude が必要）。--org で組織スコープ。'],
             ['インストーラ', 'Pantheon-Setup.exe を実行するとスタートメニューに登録されます。'],
           ]}
         />
