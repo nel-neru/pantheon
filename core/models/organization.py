@@ -84,6 +84,11 @@ def is_structural_intervention_dict(data: dict) -> bool:
 CONTENT_ASSET_CATEGORY = "content_asset"
 CONTENT_ASSET_TARGET_KIND = "content_asset"
 
+# ピア Organization 間の引き渡し（SNS 集客 → note 販売 → アフィリ収益化 など）。
+# HQ→子の構造介入（structural_intervention）とは別軸の、対等な org 間アーティファクト移送。
+# PolicyEngine はこのカテゴリを「常に人間確認（承認ボタン）」として扱う。
+CROSS_ORG_HANDOFF_CATEGORY = "cross_org_handoff"
+
 
 def is_content_asset_dict(data: dict) -> bool:
     """dict 形式の提案が「ワークスペース内資産」提案かどうか（適用ディスパッチで共通利用）。

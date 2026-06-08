@@ -28,6 +28,7 @@ from commands.chat import cmd_chat as _cmd_chat_impl
 from commands.doctor import cmd_doctor as _cmd_doctor_impl
 from commands.goal import cmd_goal_run as _cmd_goal_run_impl
 from commands.goal import cmd_goal_status as _cmd_goal_status_impl
+from commands.handoff import cmd_handoff as _cmd_handoff_impl
 from commands.hq import cmd_hq_apply as _cmd_hq_apply_impl
 from commands.hq import cmd_hq_diagnose as _cmd_hq_diagnose_impl
 from commands.hq import cmd_hq_outcomes as _cmd_hq_outcomes_impl
@@ -313,6 +314,10 @@ async def cmd_hq_outcomes(args) -> None:
     await _cmd_hq_outcomes_impl(args, get_psm=_get_psm)
 
 
+async def cmd_handoff(args) -> None:
+    await _cmd_handoff_impl(args, get_psm=_get_psm)
+
+
 async def cmd_platform_status(args) -> None:
     await _cmd_platform_status_impl(args, get_psm=_get_psm)
 
@@ -464,6 +469,7 @@ HANDLERS = {
     "cmd_hq_propose": cmd_hq_propose,
     "cmd_hq_apply": cmd_hq_apply,
     "cmd_hq_outcomes": cmd_hq_outcomes,
+    "cmd_handoff": cmd_handoff,
     "cmd_platform_status": cmd_platform_status,
     "cmd_platform_config": cmd_platform_config,
     "cmd_platform_config_set": cmd_platform_config_set,

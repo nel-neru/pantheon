@@ -349,6 +349,24 @@
       "known_issues": [
         { "severity": "low", "title": "成果は外部から record する前提(自動連携なし)", "detail": "外部分析 API からの自動取り込みは未実装。イベントは手動/スクリプトで record する。", "file": "core/metrics/outcomes.py" }
       ]
+    },
+    {
+      "id": "cross-org-handoff",
+      "name": "ピア Organization 間の引き渡し（集客→販売→収益化フライホイール）",
+      "summary": "対等な収益 Organization 同士（SNS 運用 → note 販売 → アフィリ収益化）を結ぶ橋渡し。ある org の成果物（検証済み需要・購買意図・企画ブリーフ）を OrgHandoff として作成し、PolicyEngine（cross_org_handoff は必ず human_required = 承認ボタン）を通して受け手 org の作業へ渡す。HQ→子の構造介入とは別軸の、ピア間アーティファクト移送。",
+      "trigger": { "kind": "cli", "name": "pantheon handoff create / list / approve / reject / consume" },
+      "steps": [
+        { "component": "core/hierarchy/org_handoff.py:OrgHandoffStore", "action": "引き渡しを作成し ~/.pantheon/org_handoffs.json に永続化（pending）。作成時に PolicyEngine を通す" },
+        { "component": "core/policy/engine.py:PolicyEngine", "action": "cross_org_handoff を必ず human_required に判定（空 file_path でも auto_reject せず、auto_approve にも落とさない）" },
+        { "component": "commands/handoff.py", "action": "承認ボタン（approve: pending→approved）／却下／受け手の消費（consume: approved→consumed）" }
+      ],
+      "surfaces": ["pantheon handoff create", "pantheon handoff list", "pantheon handoff approve", "pantheon handoff reject", "pantheon handoff consume"],
+      "state": ["~/.pantheon/org_handoffs.json"],
+      "verification": ["tests/test_org_handoff.py"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "low", "title": "消費の自動マテリアライズは未配線", "detail": "approved な引き渡しを受け手 org の content_asset 提案へ自動変換する経路は未実装。現状は consume で参照を記録するのみ。各組織 charter の funnel 配線で具体化予定。", "file": "core/hierarchy/org_handoff.py" }
+      ]
     }
   ]
 }
