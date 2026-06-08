@@ -26,11 +26,17 @@ def _store(get_psm: Any):
 
 
 def _find(store, handoff_id: str):
-    """先頭一致で 1 件を解決する（完全 id でも短縮でも可）。"""
+    """先頭一致で 1 件を解決する（完全 id でも、`handoff:` を省いた短縮 uuid でも可）。"""
     exact = store.get(handoff_id)
     if exact:
         return exact
-    matches = [h for h in store.list_handoffs() if h.handoff_id.startswith(handoff_id)]
+
+    def _matches(full_id: str) -> bool:
+        # "handoff:<uuid>" に対し、フル一致／フル接頭辞／uuid 部分の接頭辞 のいずれでも可。
+        uuid_part = full_id.split(":", 1)[1] if ":" in full_id else full_id
+        return full_id.startswith(handoff_id) or uuid_part.startswith(handoff_id)
+
+    matches = [h for h in store.list_handoffs() if _matches(h.handoff_id)]
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
@@ -83,7 +89,24 @@ async def cmd_handoff(args: argparse.Namespace, *, get_psm: Any) -> None:
             print(f"[ERROR] {exc}")
             sys.exit(1)
         print(f"[OK] 承認しました: {updated.source_org} → {updated.target_org}「{updated.title}」")
-        print(f"     受け手 '{updated.target_org}' が着手できます。")
+
+        # 承認 → 受け手 org に content_asset ブリーフ提案を自動生成（マテリアライズ）。
+        from core.hierarchy.org_handoff import materialize_handoff
+
+        proposal = materialize_handoff(updated, psm=get_psm())
+        if proposal is None:
+            print(
+                f"     受け手 '{updated.target_org}' が着手できます"
+                "（自動ブリーフ生成は対象 org 未登録/repo 未設定のためスキップ）。"
+            )
+            return
+        store.record_materialization(updated.handoff_id, str(proposal.id))
+        print(f"     受け手 '{updated.target_org}' にブリーフ提案を自動生成しました:")
+        print(f"       [{str(proposal.id)[:8]}] {proposal.title}")
+        print(
+            f'     適用するには:  pantheon proposal apply {str(proposal.id)[:8]} '
+            f'--org-name "{updated.target_org}"'
+        )
         return
 
     if action == "reject":
@@ -97,6 +120,25 @@ async def cmd_handoff(args: argparse.Namespace, *, get_psm: Any) -> None:
             print(f"[ERROR] {exc}")
             sys.exit(1)
         print(f"[OK] 却下しました:「{handoff.title}」")
+        return
+
+    if action == "draft":
+        handoff = _find(store, args.handoff_id)
+        if not handoff:
+            print(f"[ERROR] 引き渡し '{args.handoff_id}' が見つかりません。")
+            sys.exit(1)
+        from core.hierarchy.org_handoff import draft_handoff
+
+        proposal = await draft_handoff(handoff, psm=get_psm())
+        if proposal is None:
+            print(f"[ERROR] 受け手 '{handoff.target_org}' が未登録/repo 未設定のため本文生成できません。")
+            sys.exit(1)
+        print(f"[OK] 本文ドラフトを生成しました（受け手 '{handoff.target_org}'）:")
+        print(f"       [{str(proposal.id)[:8]}] {proposal.title}")
+        print(
+            f'     適用するには:  pantheon proposal apply {str(proposal.id)[:8]} '
+            f'--org-name "{handoff.target_org}"'
+        )
         return
 
     if action == "consume":
@@ -158,6 +200,10 @@ def register(subparsers: Any) -> None:
     reject = sub.add_parser("reject", help="却下（pending → rejected）")
     reject.add_argument("handoff_id", help="引き渡し ID（先頭一致可）")
     reject.set_defaults(handler_name="cmd_handoff")
+
+    draft = sub.add_parser("draft", help="本文ドラフトを生成（claude 経由、不在時は決定論テンプレ）")
+    draft.add_argument("handoff_id", help="引き渡し ID（先頭一致可）")
+    draft.set_defaults(handler_name="cmd_handoff")
 
     consume = sub.add_parser("consume", help="受け手が消費（approved → consumed）")
     consume.add_argument("handoff_id", help="引き渡し ID（先頭一致可）")

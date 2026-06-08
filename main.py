@@ -68,6 +68,7 @@ from commands.platform import cmd_platform_restore as _cmd_platform_restore_impl
 from commands.platform import cmd_platform_run_all as _cmd_platform_run_all_impl
 from commands.platform import cmd_platform_status as _cmd_platform_status_impl
 from commands.platform import cmd_serve as _cmd_serve_impl
+from commands.up import cmd_up as _cmd_up_impl
 from commands.version import cmd_version as _cmd_version_impl
 from core.paths import resource_root
 from core.platform.state import PlatformStateManager
@@ -350,6 +351,10 @@ def cmd_serve(args) -> None:
     _cmd_serve_impl(args)
 
 
+def cmd_up(args) -> None:
+    _cmd_up_impl(args)
+
+
 async def cmd_daemon_start(args) -> None:
     await _cmd_daemon_start_impl(
         args, get_platform_home=_get_platform_home, project_root=PROJECT_ROOT
@@ -478,6 +483,7 @@ HANDLERS = {
     "cmd_platform_restore": cmd_platform_restore,
     "cmd_platform_run_all": cmd_platform_run_all,
     "cmd_serve": cmd_serve,
+    "cmd_up": cmd_up,
     "cmd_daemon_start": cmd_daemon_start,
     "cmd_daemon_stop": cmd_daemon_stop,
     "cmd_daemon_status": cmd_daemon_status,
@@ -516,10 +522,11 @@ def main() -> None:
         _daemon_runner.main()
         return
 
-    # 引数なし起動（exe をダブルクリックした場合など）は Web GUI を立ち上げる。
+    # 引数なし起動（exe をダブルクリックした場合など）はフル起動（up）する:
+    # Web GUI（監視）+ wmux 汎用チャットタブ + ブラウザ自動オープン。
     # ターミナルから `Pantheon.exe <command>` とすれば従来どおり CLI が使える。
     if not argv:
-        argv = ["serve"]
+        argv = ["up"]
 
     parser = build_parser()
     args = parser.parse_args(argv)

@@ -776,16 +776,23 @@ async def handle_slash_command(cmd: str, session: ChatSession) -> Optional[str]:
 # ───────────────────────────────────────────────────── #
 
 
-async def run_chat(initial_message: Optional[str] = None) -> None:
+async def run_chat(
+    initial_message: Optional[str] = None, current_org: Optional[str] = None
+) -> None:
     """
     対話ループのエントリーポイント。
     main.py の cmd_chat() から呼び出される。
+
+    ``current_org`` を渡すとその Organization スコープで起動する（wmux の
+    「組織チャット」タブ用）。省略時は org 非依存の汎用チャット。
     """
-    session = ChatSession()
+    session = ChatSession(current_org=current_org)
     session.refresh_llm_config()
 
     print("\n" + "═" * 58)
     print("  🤖 Pantheon チャットエージェント")
+    if current_org:
+        print(f"  🏢 操作対象 Organization: {current_org}")
     print("═" * 58)
     if session.has_llm:
         provider_label = PROVIDER_LABEL_MAP.get(

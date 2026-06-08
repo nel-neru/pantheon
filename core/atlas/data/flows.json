@@ -358,14 +358,16 @@
       "steps": [
         { "component": "core/hierarchy/org_handoff.py:OrgHandoffStore", "action": "引き渡しを作成し ~/.pantheon/org_handoffs.json に永続化（pending）。作成時に PolicyEngine を通す" },
         { "component": "core/policy/engine.py:PolicyEngine", "action": "cross_org_handoff を必ず human_required に判定（空 file_path でも auto_reject せず、auto_approve にも落とさない）" },
-        { "component": "commands/handoff.py", "action": "承認ボタン（approve: pending→approved）／却下／受け手の消費（consume: approved→consumed）" }
+        { "component": "commands/handoff.py", "action": "承認ボタン（approve: pending→approved）／却下／受け手の消費（consume: approved→consumed）" },
+        { "component": "core/hierarchy/org_handoff.py:materialize_handoff", "action": "承認時に受け手 org へ content_asset ブリーフ提案を自動生成（検証済みの型: 無料エリア3要素・3倍刻み・A8.net X不可/PR表記）。受け手は通常の proposal apply で適用" },
+        { "component": "web/server.py", "action": "GET/POST /api/handoffs ＋ {id}/approve|reject|consume（approve は materialize 連動）。Web UI の承認ボタンページ（/handoffs）から駆動" }
       ],
-      "surfaces": ["pantheon handoff create", "pantheon handoff list", "pantheon handoff approve", "pantheon handoff reject", "pantheon handoff consume"],
-      "state": ["~/.pantheon/org_handoffs.json"],
-      "verification": ["tests/test_org_handoff.py"],
+      "surfaces": ["pantheon handoff create", "pantheon handoff list", "pantheon handoff approve", "pantheon handoff reject", "pantheon handoff consume", "GET/POST /api/handoffs", "POST /api/handoffs/{id}/approve（materialize 連動）", "Web UI /handoffs（承認ボタン）"],
+      "state": ["~/.pantheon/org_handoffs.json", "<受け手 org repo>/.pantheon/improvements/（自動生成ブリーフ）"],
+      "verification": ["tests/test_org_handoff.py", "tests/test_web_server.py::test_handoff_api_create_approve_materializes", "web/frontend/src/pages/__tests__/HandoffsPage.test.tsx"],
       "status": "partial",
       "known_issues": [
-        { "severity": "low", "title": "消費の自動マテリアライズは未配線", "detail": "approved な引き渡しを受け手 org の content_asset 提案へ自動変換する経路は未実装。現状は consume で参照を記録するのみ。各組織 charter の funnel 配線で具体化予定。", "file": "core/hierarchy/org_handoff.py" }
+        { "severity": "low", "title": "ブリーフ本文の自動執筆は決定論スケルトンまで", "detail": "approve→受け手 org の content_asset ブリーフ提案を自動生成するところまで配線済み。ブリーフ本文は検証済みの型の決定論スケルトン（TODO プレースホルダ入り）で、実記事本文の生成は後段（LLM/人間）に委ねる。", "file": "core/hierarchy/org_handoff.py" }
       ]
     }
   ]

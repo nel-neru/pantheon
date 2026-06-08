@@ -203,6 +203,43 @@ class SessionOrchestrator:
         self._persist(record)
         return record
 
+    def open_command_surface(
+        self,
+        group: str,
+        title: str,
+        command: List[str],
+        *,
+        agent_id: Optional[str] = None,
+        role: str = "interactive",
+        cwd: Optional[str] = None,
+        require_gui: bool = True,
+    ) -> Surface:
+        """Open an arbitrary **interactive** command (e.g. a chat REPL) as a surface.
+
+        Unlike :meth:`start_session` — which runs headless ``claude`` one-shots and
+        persists a session — this types ``command`` into a fresh GUI multiplexer tab
+        (``"<group> · <title>"``) so the user can interact with it: a REPL needs a
+        real TTY. When only the headless substrate is available there is no
+        interactive terminal, so this raises
+        :class:`~core.runtime.multiplexer.MultiplexerUnavailableError` and the caller
+        should tell the user to run ``command`` in their own terminal.
+        """
+        driver = self._driver_for(self.sessions_dir / "_interactive")
+        if require_gui and isinstance(driver, HeadlessDriver):
+            raise MultiplexerUnavailableError(
+                "対話タブには GUI マルチプレクサ（wmux）が必要です。"
+            )
+        driver.ensure_running()
+        workspace = driver.create_workspace(group)
+        spec = AgentSpec(
+            agent_id=agent_id or f"cmd:{_slug(title)}",
+            title=title,
+            command=list(command),
+            cwd=cwd or str(self.repo_root),
+            role=role,
+        )
+        return driver.open_surface(workspace, spec)
+
     def poll_session(self, sid: str) -> Optional[SessionRecord]:
         """Refresh agent statuses from the driver and re-persist."""
         record = self.get_session(sid)

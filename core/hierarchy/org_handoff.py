@@ -65,6 +65,8 @@ class OrgHandoff:
     policy_reason: str = ""
     # 受け手 org が消費した結果の参照（例: 生成した content_asset 提案 id）。
     consumed_ref: str = ""
+    # 承認時に自動生成した受け手 org の content_asset ブリーフ提案 id（マテリアライズ）。
+    materialized_ref: str = ""
     handoff_id: str = ""
     created_at: str = ""
     decided_at: str = ""
@@ -216,6 +218,17 @@ class OrgHandoffStore:
             consumed_ref=consumed_ref,
         )
 
+    def record_materialization(self, handoff_id: str, proposal_id: str) -> OrgHandoff:
+        """承認時に自動生成した受け手 org のブリーフ提案 id を記録（状態は変えない）。"""
+        handoffs = self._load()
+        for handoff in handoffs:
+            if handoff.handoff_id != handoff_id:
+                continue
+            handoff.materialized_ref = proposal_id
+            self._save(handoffs)
+            return handoff
+        raise KeyError(f"引き渡しが見つかりません: {handoff_id}")
+
     def _transition(
         self,
         handoff_id: str,
@@ -265,3 +278,246 @@ class OrgHandoffStore:
             json.dumps([asdict(h) for h in handoffs], ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+
+# ---------------------------------------------------------------------------
+# マテリアライズ（承認 → 受け手 org の content_asset ブリーフ提案を自動生成）
+# ---------------------------------------------------------------------------
+#
+# 「承認ボタンを押すだけで次の org の草稿が出てくる」橋渡し。検証済みの『型』
+# （無料エリア3要素・500円入口+3倍刻みティア・A8.net X不可/PR表記・相互送客）を
+# 決定論的にブリーフ化する。実記事の本文生成は後段（既存の content_asset 適用 / LLM）に委ねる。
+
+
+def _brief_for(handoff: OrgHandoff) -> tuple[str, str, str]:
+    """handoff.kind から受け手向け content_asset ブリーフ (file_path, title, content) を決定論生成する。"""
+    payload = handoff.payload or {}
+    short = handoff.handoff_id.split(":")[-1][:8]
+    kind = handoff.kind
+    src = handoff.source_org
+    prov = f"> 出所: handoff `{handoff.handoff_id}`（{src} → {handoff.target_org} / {kind}）\n"
+
+    def fmt_payload() -> str:
+        if not payload:
+            return "（ペイロードなし）"
+        return "\n".join(f"- {k}: {v}" for k, v in payload.items())
+
+    if kind == "audience_signal":
+        theme = str(payload.get("theme") or handoff.title)
+        file_path = f"content/brief-note-{short}.md"
+        title = f"有料note企画ブリーフ: {theme}"
+        content = (
+            f"# 有料note企画ブリーフ — {theme}\n\n{prov}\n"
+            f"## 引き渡しペイロード\n{fmt_payload()}\n\n"
+            "## 無料エリア（試食）— 3要素（note公式・有料記事100件分析の型）\n"
+            "- ①共感・問いかけ: 読者の悩みを言語化（TODO: 具体化）\n"
+            "- ②変化の物語: Before/After（TODO）\n"
+            "- ③ベネフィット提示: 読んで得られる価値（TODO）\n\n"
+            "## 有料エリア（フルコース）\n"
+            "- 無料では絶対に出さない一段深い内容（生ログ・プロンプト全文・裏側）で差別化\n\n"
+            "## 値付け（note公式・約3,000件分析の型）\n"
+            "- 単発note: 専門ノウハウ 1,000円〜 / +1対1相談権 5,000円〜\n"
+            "- メンバーシップ: 入口500円、複数ティアは3倍刻み（500 → 1,500 → 5,000円）\n\n"
+            "## 次アクション\n"
+            "- このブリーフを承認・適用 → 本文を執筆/生成 → 公開・価格設定（運用者）\n"
+            "- 物販化できる箇所は `monetization_lead` でアフィリ組織へ handoff\n"
+        )
+    elif kind == "monetization_lead":
+        offer = str(payload.get("offer") or handoff.title)
+        file_path = f"content/brief-affiliate-{short}.md"
+        title = f"物販導線ブリーフ: {offer}"
+        content = (
+            f"# 物販導線ブリーフ — {offer}\n\n{prov}\n"
+            f"## 引き渡しペイロード\n{fmt_payload()}\n\n"
+            "## 規約・コンプライアンス（必須・検証済み）\n"
+            "- ステマ規制（景表法 告示第19号, 2023-10-01施行）: 明瞭な PR 表記（「広告」「PR」等）を付す\n"
+            "- A8.net: **X(旧Twitter)でアフィリリンク不可** → 掲出面は note本文 / YouTube概要欄 / リンク集\n"
+            "- 許可SNS（A8.net）: Instagram / YouTube / TikTok / Pinterest\n\n"
+            "## CV導線\n"
+            "- オファー: " + offer + "（intent: " + str(payload.get("intent") or "未設定") + "）\n"
+            "- 掲出面: " + str(payload.get("placement") or "note本文/YouTube概要欄") + "\n"
+            "- ASP: " + str(payload.get("asp") or "A8.net 等（料率/Cookie/ToS を一次ページで再確認）") + "\n\n"
+            "## 次アクション\n"
+            "- このブリーフを承認・適用 → PR表記つき物販導線を執筆 → 概要欄/note本文へ反映（運用者）\n"
+        )
+    elif kind == "content_brief":
+        topic = str(payload.get("topic") or handoff.title)
+        file_path = f"content/brief-sns-{short}.md"
+        title = f"集客テーマブリーフ: {topic}"
+        content = (
+            f"# 集客テーマブリーフ — {topic}\n\n{prov}\n"
+            f"## 引き渡しペイロード\n{fmt_payload()}\n\n"
+            "## 投稿設計（相互送客）\n"
+            "- X: 短文×頻度で実用ノウハウを小出し → 固定ポスト/リンク集から note へ（物販リンクは置かない）\n"
+            "- YouTube: 概要欄 CTA / 動画内 CTA で note・メンバーシップへ\n"
+            "- 一貫テーマ: 「多くの人がいる X/YouTube から少しずつ自分の note へ」\n\n"
+            "## 次アクション\n"
+            "- このブリーフを承認・適用 → 投稿/台本を執筆 → 運用者が手動公開\n"
+        )
+    else:
+        file_path = f"content/brief-{short}.md"
+        title = f"引き渡しブリーフ: {handoff.title}"
+        content = (
+            f"# 引き渡しブリーフ — {handoff.title}\n\n{prov}\n"
+            f"## 引き渡しペイロード\n{fmt_payload()}\n\n"
+            "## 次アクション\n- このブリーフを承認・適用して着手する\n"
+        )
+    return file_path, title, content
+
+
+def materialize_handoff(handoff: OrgHandoff, *, psm: Any) -> Any:
+    """承認済み handoff から受け手 org の content_asset ブリーフ提案を生成・保存する。
+
+    受け手 org の正準ストア（``<repo>/.pantheon/improvements/``）に保存され、PolicyEngine 上
+    content_asset は human_required。受け手側は通常の ``pantheon proposal apply`` で承認・適用する。
+    受け手 org が未登録 / target_repo_path 未設定なら ``None`` を返す（マテリアライズ不可）。
+    """
+    from core.orchestration.asset_application import build_content_asset_proposal
+
+    target = psm.load_organization_by_name(handoff.target_org)
+    if target is None or not target.target_repo_path:
+        return None
+
+    file_path, title, content = _brief_for(handoff)
+    proposal = build_content_asset_proposal(
+        title=title,
+        description=(
+            f"handoff {handoff.handoff_id}（{handoff.source_org} → {handoff.target_org} / "
+            f"{handoff.kind}）から自動生成したブリーフ。承認・適用でワークスペースに草稿が入る。"
+        ),
+        file_path=file_path,
+        content=content,
+        mode="create",
+        target_repo=str(target.target_repo_path),
+        priority=handoff.priority,
+    )
+    sm = psm.get_org_state_manager(target)
+    sm.save_improvement_proposal(proposal)
+    return proposal
+
+
+# ---------------------------------------------------------------------------
+# 本文ドラフトの自動執筆（承認ボタン → ほぼ完成原稿）
+# ---------------------------------------------------------------------------
+#
+# materialize_handoff の「ブリーフ（型のスケルトン）」を一段進めて、本文ドラフトを生成する。
+# 生成は Pantheon 標準どおり claude CLI（ClaudeCodeProvider）経由・API キーなし。
+# claude が使えない（テスト/オフライン）ときは決定論テンプレート（型に沿った充填版）に
+# フォールバックするので、常に何かしらの使えるドラフトが返る。
+
+
+def _draft_system_prompt(kind: str) -> str:
+    """受け手の kind 別に、検証済みの型・コンプラを織り込んだ system プロンプトを返す。"""
+    base = (
+        "あなたは日本市場の収益化に長けた日本語の編集者です。検証済みの『型』に厳密に従い、"
+        "誇大表現・収益保証・虚偽は一切書かないでください。事実が不明な箇所は推測で埋めず "
+        "`TODO:` で明示します。出力は記事に使える markdown 本文のみ。"
+    )
+    if kind == "audience_signal":
+        return base + (
+            "\n対象は note の有料記事ドラフト。構成: (1) タイトル案、(2) 無料エリア=試食 に必ず "
+            "「①共感・問いかけ ②変化の物語(Before/After) ③ベネフィット提示」の3要素、"
+            "(3) 有料エリア=フルコース の見出し構成（生ログ・プロンプト全文など一段深い差別化）、"
+            "(4) 値付け案（入口500円＋3倍刻み 500/1500/5000円を前提）。"
+        )
+    if kind == "monetization_lead":
+        return base + (
+            "\n対象は物販レビュー/紹介セクション。必ず冒頭に明瞭な PR 表記（例『# PR』）を置く"
+            "（ステマ規制 景表法）。A8.net 規約上 X にアフィリリンクは置かず note本文/YouTube概要欄 前提。"
+            "構成: PR表記 / 誰におすすめか / 特徴 / メリット・デメリット（正直に）/ CTA。"
+        )
+    if kind == "content_brief":
+        return base + (
+            "\n対象は SNS 集客。構成: X の短文ポスト案を3〜5本（相互送客で note へ誘導、"
+            "X には物販リンクを置かない）＋ YouTube 動画の構成案（概要欄CTA含む）。"
+        )
+    return base + "\n対象の引き渡しブリーフをもとに、実務で使えるドラフトを書いてください。"
+
+
+def _draft_user_prompt(handoff: OrgHandoff) -> str:
+    payload_lines = (
+        "\n".join(f"- {k}: {v}" for k, v in (handoff.payload or {}).items()) or "（なし）"
+    )
+    return (
+        f"# 引き渡し: {handoff.title}\n"
+        f"種別: {handoff.kind}\n"
+        f"送り手→受け手: {handoff.source_org} → {handoff.target_org}\n\n"
+        f"## ペイロード\n{payload_lines}\n\n"
+        "上記をもとに、指定の構成・型に沿った本文ドラフトを markdown で書いてください。"
+    )
+
+
+def _deterministic_draft(handoff: OrgHandoff, title: str) -> str:
+    """claude が使えないときのフォールバック本文（型に沿った充填テンプレート）。"""
+    _, _, skeleton = _brief_for(handoff)
+    return (
+        f"# {title}（本文ドラフト）\n\n"
+        "> 注: claude CLI 不在のため決定論テンプレートで生成。`pantheon` を claude にログインさせると"
+        " LLM が本文を執筆します。\n\n"
+        + skeleton
+    )
+
+
+async def generate_draft_body(handoff: OrgHandoff) -> tuple[str, str]:
+    """引き渡しから本文ドラフト (title, markdown) を生成する。
+
+    claude CLI が使えれば LLM 生成、使えなければ決定論テンプレートにフォールバックする。
+    例外時も決定論版を返す（best-effort・呼び出し側を失敗させない）。
+    """
+    _, title, _ = _brief_for(handoff)
+
+    from core.runtime.claude_code import claude_available
+
+    if not claude_available():
+        return title, _deterministic_draft(handoff, title)
+
+    try:
+        from core.llm import LLMMessage, get_llm_provider
+
+        provider = get_llm_provider()
+        response = await provider.generate(
+            messages=[
+                LLMMessage(role="system", content=_draft_system_prompt(handoff.kind)),
+                LLMMessage(role="user", content=_draft_user_prompt(handoff)),
+            ],
+            temperature=0.6,
+            max_tokens=2500,
+        )
+        body = (getattr(response, "content", "") or "").strip()
+        return (title, body) if body else (title, _deterministic_draft(handoff, title))
+    except Exception:  # noqa: BLE001 - 生成失敗時は決定論版にフォールバック
+        return title, _deterministic_draft(handoff, title)
+
+
+async def draft_handoff(handoff: OrgHandoff, *, psm: Any) -> Any:
+    """承認済み handoff から本文ドラフトの content_asset 提案を生成・保存する。
+
+    materialize_handoff（ブリーフ）の一段先。受け手 org の正準ストアに保存され、PolicyEngine 上
+    content_asset は human_required。受け手は通常の ``pantheon proposal apply`` で適用する。
+    受け手 org が未登録 / target_repo_path 未設定なら ``None`` を返す。
+    """
+    from core.orchestration.asset_application import build_content_asset_proposal
+    from core.runtime.claude_code import claude_available
+
+    target = psm.load_organization_by_name(handoff.target_org)
+    if target is None or not target.target_repo_path:
+        return None
+
+    title, body = await generate_draft_body(handoff)
+    short = handoff.handoff_id.split(":")[-1][:8]
+    engine = "LLM(claude)" if claude_available() else "決定論テンプレート"
+    proposal = build_content_asset_proposal(
+        title=f"本文ドラフト: {title}",
+        description=(
+            f"handoff {handoff.handoff_id}（{handoff.source_org} → {handoff.target_org} / "
+            f"{handoff.kind}）から生成した本文ドラフト（{engine}）。承認・適用でワークスペースに入る。"
+        ),
+        file_path=f"content/draft-{short}.md",
+        content=body,
+        mode="create",
+        target_repo=str(target.target_repo_path),
+        priority=handoff.priority,
+    )
+    sm = psm.get_org_state_manager(target)
+    sm.save_improvement_proposal(proposal)
+    return proposal

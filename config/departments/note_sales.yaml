@@ -1,0 +1,31 @@
+# note_sales.yaml — note有料販売（無料→有料→メンバーシップ）特化 Organization テンプレート
+#
+# `pantheon org add --name "Note Sales" --template note_sales --repo <workspace> --isolation-level external`
+# content_operations をコンテンツ制作＋収益化寄りに重み付けした版（収益化グループの「中核」org 用）。
+# 注: Organization の name/purpose は CLI 引数で与える（このファイルは departments のみ）。
+
+departments:
+  - name: コンテンツ制作部
+    type: content_production
+    mission: 無料note(試食)・有料note(フルコース)を段階設計に沿って制作する
+    teams:
+      - name: Content Strategy Team
+        mission: ニッチ別の企画・編集カレンダー・無料/有料の境界設計
+        required_skills:
+          - content_strategy
+          - deep_research
+      - name: Editorial Team
+        mission: 記事・コピーの制作と品質管理（無料エリア3要素の適用）
+        required_skills:
+          - content_strategy
+          - knowledge_curation
+
+  - name: 収益化部
+    type: monetization
+    mission: 段階設計・値付け（500円入口＋3倍刻み）・無料→有料の転換最適化
+    teams:
+      - name: Monetization Team
+        mission: 価格設計・メンバーシップ継続・転換率改善
+        required_skills:
+          - performance_marketing
+          - strategic_planning

@@ -47,7 +47,7 @@ def _print_org(org, pending_count: int) -> None:
         print(f"  - Division: {division.name} [{division.type.value}]")
         for team in division.teams:
             print(
-                f"    • Team: {team.name} [{team.division_type.value}] ({len(team.agents)} agents)"
+                f"    - Team: {team.name} [{team.division_type.value}] ({len(team.agents)} agents)"
             )
             for agent in team.agents:
                 skills = " / ".join(getattr(skill, "value", skill) for skill in agent.skills)
@@ -120,7 +120,7 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
     print(f"  Division  : {len(org.divisions)} 個 / Agent: {len(agents)} 個")
     for agent in agents:
         skills = " / ".join(getattr(skill, "value", skill) for skill in agent.skills)
-        print(f"    • {agent.name} [{skills}]")
+        print(f"    - {agent.name} [{skills}]")
     print(f'\n次のステップ: pantheon analyze --org-name "{org.name}"')
 
 

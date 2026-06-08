@@ -190,6 +190,93 @@ def test_init_platform_response_includes_message(tmp_path, monkeypatch):
     assert data["initialized"] is False
 
 
+def test_handoff_api_create_approve_materializes(tmp_path, monkeypatch):
+    """Web: handoff 作成 → 承認ボタンで approved ＋ 受け手 org にブリーフ提案を自動生成。"""
+    from core.org_factory import create_default_organization
+
+    home = tmp_path / "home"
+    psm = server.PlatformStateManager(platform_home=home)
+    repo = tmp_path / "note-org"
+    repo.mkdir()
+    target = create_default_organization("Note Sales", "note", repo_path=repo)
+    psm.save_organization(target)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    # 作成 → pending（policy human_required）
+    create = client.post(
+        "/api/handoffs",
+        json={
+            "source_org": "SNS Growth",
+            "target_org": "Note Sales",
+            "kind": "audience_signal",
+            "title": "検証済み需要: ChatGPT議事録",
+            "payload": {"theme": "ChatGPTで議事録自動化"},
+        },
+    )
+    assert create.status_code == 200, create.text
+    handoff = create.json()
+    assert handoff["status"] == "pending"
+    assert handoff["policy_decision"] == "human_required"
+
+    # 承認 → approved ＋ 受け手にブリーフ提案がマテリアライズされる
+    approve = client.post(f"/api/handoffs/{handoff['handoff_id']}/approve")
+    assert approve.status_code == 200, approve.text
+    body = approve.json()
+    assert body["status"] == "approved"
+    assert body["materialized"] is not None
+    assert body["materialized"]["org_name"] == "Note Sales"
+
+    # 受け手 org の pending に content_asset 提案が積まれている
+    sm = psm.get_org_state_manager(target)
+    pending = sm.get_pending_improvement_proposals(limit=50)
+    assert any(p.get("category") == "content_asset" for p in pending)
+
+    # list で絞り込める
+    listing = client.get("/api/handoffs", params={"target_org": "Note Sales"})
+    assert listing.status_code == 200
+    assert len(listing.json()) == 1
+
+
+def test_handoff_api_approve_unknown_is_404(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    resp = client.post("/api/handoffs/handoff:does-not-exist/approve")
+    assert resp.status_code == 404
+
+
+def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
+    """Web: 本文生成エンドポイントが受け手 org に本文ドラフト提案を作る（claude 不在＝決定論）。"""
+    from core.org_factory import create_default_organization
+
+    home = tmp_path / "home"
+    psm = server.PlatformStateManager(platform_home=home)
+    repo = tmp_path / "note-org"
+    repo.mkdir()
+    target = create_default_organization("Note Sales", "note", repo_path=repo)
+    psm.save_organization(target)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    store = server._handoff_store()
+    handoff = store.create(
+        source_org="SNS Growth",
+        target_org="Note Sales",
+        kind="audience_signal",
+        title="検証済み需要",
+        payload={"theme": "AI議事録"},
+    )
+    resp = client.post(f"/api/handoffs/{handoff.handoff_id}/draft")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["org_name"] == "Note Sales"
+    assert body["file_path"].startswith("content/draft-")
+
+    sm = psm.get_org_state_manager(target)
+    assert any(
+        p.get("category") == "content_asset"
+        for p in sm.get_pending_improvement_proposals(limit=50)
+    )
+
+
 def test_analyze_stream_emits_sse_events(monkeypatch):
     async def fake_perform_analyze(req):
         assert req.org_name == "demo-org"

@@ -226,6 +226,127 @@ def test_corrupt_json_returns_empty(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# マテリアライズ（承認 → 受け手 org に content_asset ブリーフ提案を自動生成）       #
+# --------------------------------------------------------------------------- #
+
+
+def _psm_with_target(tmp_path, name="Note Sales"):
+    from core.org_factory import create_default_organization
+    from core.platform.state import PlatformStateManager
+
+    psm = PlatformStateManager(platform_home=tmp_path / "home")
+    repo = tmp_path / "target-repo"
+    repo.mkdir()
+    target = create_default_organization(name, "target org", repo_path=repo)
+    psm.save_organization(target)
+    return psm, target
+
+
+def test_materialize_creates_content_asset_in_target(tmp_path):
+    from core.hierarchy.org_handoff import materialize_handoff
+
+    psm, target = _psm_with_target(tmp_path)
+    store = OrgHandoffStore(platform_home=psm.platform_home)
+    handoff = store.create(
+        source_org="SNS Growth",
+        target_org="Note Sales",
+        kind="audience_signal",
+        title="検証済み需要: ChatGPT議事録",
+        payload={"theme": "ChatGPTで議事録自動化"},
+    )
+    store.approve(handoff.handoff_id)
+    proposal = materialize_handoff(store.get(handoff.handoff_id), psm=psm)
+    assert proposal is not None
+    assert proposal.category == "content_asset"
+    assert proposal.file_path.startswith("content/")
+    # 受け手 org の正準ストアに content_asset 提案が積まれている
+    sm = psm.get_org_state_manager(target)
+    pending = sm.get_pending_improvement_proposals(limit=50)
+    assert any(p.get("category") == "content_asset" for p in pending)
+    # ブリーフ本文に検証済みの型（無料エリア3要素・3倍刻み）が含まれる
+    content = proposal.intervention_spec["content"]
+    assert "3要素" in content and "3倍刻み" in content
+
+
+def test_materialize_missing_target_returns_none(tmp_path):
+    from core.hierarchy.org_handoff import materialize_handoff
+    from core.platform.state import PlatformStateManager
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    store = OrgHandoffStore(platform_home=tmp_path)
+    handoff = store.create(
+        source_org="SNS Growth", target_org="DoesNotExist", kind="audience_signal", title="x"
+    )
+    store.approve(handoff.handoff_id)
+    assert materialize_handoff(store.get(handoff.handoff_id), psm=psm) is None
+
+
+def test_record_materialization(tmp_path):
+    store = OrgHandoffStore(platform_home=tmp_path)
+    handoff = store.create(
+        source_org="SNS Growth", target_org="Note Sales", kind="audience_signal", title="x"
+    )
+    store.approve(handoff.handoff_id)
+    store.record_materialization(handoff.handoff_id, "proposal:abc123")
+    assert store.get(handoff.handoff_id).materialized_ref == "proposal:abc123"
+
+
+# --------------------------------------------------------------------------- #
+# 本文ドラフト生成（claude 不在 → 決定論フォールバック）                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_draft_handoff_deterministic_fallback(tmp_path):
+    """conftest が PANTHEON_NO_CLAUDE=1 → claude 不在。決定論テンプレで本文ドラフト提案が出る。"""
+    import asyncio
+
+    from core.hierarchy.org_handoff import draft_handoff
+
+    psm, target = _psm_with_target(tmp_path)
+    store = OrgHandoffStore(platform_home=psm.platform_home)
+    handoff = store.create(
+        source_org="SNS Growth",
+        target_org="Note Sales",
+        kind="audience_signal",
+        title="検証済み需要: Claudeでレビュー",
+        payload={"theme": "Claudeでコードレビュー"},
+    )
+    store.approve(handoff.handoff_id)
+    proposal = asyncio.run(draft_handoff(store.get(handoff.handoff_id), psm=psm))
+    assert proposal is not None
+    assert proposal.category == "content_asset"
+    assert proposal.file_path.startswith("content/draft-")
+    body = proposal.intervention_spec["content"]
+    assert "本文ドラフト" in body
+    # 型（無料エリア3要素・3倍刻み）がフォールバック本文にも含まれる
+    assert "3要素" in body and "3倍刻み" in body
+    # 受け手 org の pending に積まれている
+    sm = psm.get_org_state_manager(target)
+    assert any(
+        p.get("category") == "content_asset"
+        for p in sm.get_pending_improvement_proposals(limit=50)
+    )
+
+
+def test_generate_draft_body_returns_title_and_markdown(tmp_path):
+    import asyncio
+
+    from core.hierarchy.org_handoff import generate_draft_body
+
+    store = OrgHandoffStore(platform_home=tmp_path)
+    handoff = store.create(
+        source_org="Note Sales",
+        target_org="Affiliate Revenue",
+        kind="monetization_lead",
+        title="物販導線: Notion AI",
+        payload={"offer": "Notion AI"},
+    )
+    title, body = asyncio.run(generate_draft_body(store.get(handoff.handoff_id)))
+    assert title and body
+    assert "PR" in body  # monetization_lead の決定論本文は PR 表記を含む
+
+
+# --------------------------------------------------------------------------- #
 # CLI（pantheon handoff create → approve → consume）                            #
 # --------------------------------------------------------------------------- #
 

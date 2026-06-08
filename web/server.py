@@ -2802,6 +2802,147 @@ async def api_batch_update_proposals(org_name: str, body: ProposalBatchRequest) 
     }
 
 
+# --------------------------------------------------------------------------- #
+# Cross-org handoff（集客→販売→収益化の引き渡し / 承認ボタン）                    #
+# --------------------------------------------------------------------------- #
+
+
+class HandoffCreateRequest(BaseModel):
+    source_org: str
+    target_org: str
+    kind: str
+    title: str
+    payload: Dict[str, Any] = {}
+    priority: str = "medium"
+    note: str = ""
+
+
+class HandoffConsumeRequest(BaseModel):
+    ref: str = ""
+
+
+def _handoff_store():
+    from core.hierarchy.org_handoff import OrgHandoffStore
+
+    return OrgHandoffStore(platform_home=_psm().platform_home)
+
+
+def _handoff_dict(handoff) -> Dict[str, Any]:
+    from dataclasses import asdict
+
+    return asdict(handoff)
+
+
+@app.get("/api/handoffs", tags=["handoffs"])
+async def api_list_handoffs(
+    source_org: str | None = None,
+    target_org: str | None = None,
+    status: str | None = None,
+) -> List[Dict[str, Any]]:
+    store = _handoff_store()
+    return [
+        _handoff_dict(h)
+        for h in store.list_handoffs(
+            source_org=source_org, target_org=target_org, status=status
+        )
+    ]
+
+
+@app.post("/api/handoffs", tags=["handoffs"])
+async def api_create_handoff(body: HandoffCreateRequest) -> Dict[str, Any]:
+    store = _handoff_store()
+    try:
+        handoff = store.create(
+            source_org=body.source_org,
+            target_org=body.target_org,
+            kind=body.kind,
+            title=body.title,
+            payload=body.payload,
+            priority=body.priority,
+            note=body.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _handoff_dict(handoff)
+
+
+@app.post("/api/handoffs/{handoff_id}/approve", tags=["handoffs"])
+async def api_approve_handoff(handoff_id: str) -> Dict[str, Any]:
+    """承認ボタン: pending→approved ＋ 受け手 org に content_asset ブリーフ提案を自動生成。"""
+    from core.hierarchy.org_handoff import materialize_handoff
+
+    store = _handoff_store()
+    try:
+        handoff = store.approve(handoff_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    materialized = None
+    proposal = materialize_handoff(handoff, psm=_psm())
+    if proposal is not None:
+        store.record_materialization(handoff.handoff_id, str(proposal.id))
+        materialized = {
+            "proposal_id": str(proposal.id),
+            "org_name": handoff.target_org,
+            "title": proposal.title,
+            "file_path": proposal.file_path,
+        }
+    result = _handoff_dict(store.get(handoff.handoff_id))
+    result["materialized"] = materialized
+    return result
+
+
+@app.post("/api/handoffs/{handoff_id}/draft", tags=["handoffs"])
+async def api_draft_handoff(handoff_id: str) -> Dict[str, Any]:
+    """本文ドラフト生成: 受け手 org に本文ドラフトの content_asset 提案を作る（claude 経由 / 不在時は決定論）。"""
+    from core.hierarchy.org_handoff import draft_handoff
+
+    store = _handoff_store()
+    handoff = store.get(handoff_id)
+    if handoff is None:
+        raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
+    proposal = await draft_handoff(handoff, psm=_psm())
+    if proposal is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"受け手 '{handoff.target_org}' が未登録/repo 未設定のため本文生成できません。",
+        )
+    return {
+        "handoff_id": handoff_id,
+        "proposal_id": str(proposal.id),
+        "org_name": handoff.target_org,
+        "title": proposal.title,
+        "file_path": proposal.file_path,
+    }
+
+
+@app.post("/api/handoffs/{handoff_id}/reject", tags=["handoffs"])
+async def api_reject_handoff(handoff_id: str) -> Dict[str, Any]:
+    store = _handoff_store()
+    try:
+        return _handoff_dict(store.reject(handoff_id))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/handoffs/{handoff_id}/consume", tags=["handoffs"])
+async def api_consume_handoff(
+    handoff_id: str, body: HandoffConsumeRequest | None = None
+) -> Dict[str, Any]:
+    store = _handoff_store()
+    ref = body.ref if body else ""
+    try:
+        return _handoff_dict(store.mark_consumed(handoff_id, consumed_ref=ref))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.post(
     "/api/analyze",
     response_model=AnalyzeResponse,
