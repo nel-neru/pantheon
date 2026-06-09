@@ -62,7 +62,10 @@ class ContentScheduler:
                 stop = await self.run_cycle()
                 if stop:
                     # レート制限を検知 → 自律的にループ停止（再開はユーザー操作 or 次回 start）。
-                    logger.info("ContentScheduler self-stopped due to rate limit (retry_at=%s)", self._retry_at)
+                    logger.info(
+                        "ContentScheduler self-stopped due to rate limit (retry_at=%s)",
+                        self._retry_at,
+                    )
                     break
                 await asyncio.sleep(self._interval)
         except asyncio.CancelledError:
@@ -103,6 +106,12 @@ class ContentScheduler:
             )
             results.append({"job_id": job.job_id, **res})
 
+        # 投稿処理: 承認済みで予約時刻に達した PublishJob のうち auto モードのみを実行する。
+        # assisted モードは人間が最終送信する前提なので daemon は自動発火しない（投稿ゲート尊重）。
+        published = 0
+        if not rate_limited:
+            published = await self._process_due_publish_jobs()
+
         # PDCA Act: 成果（reach>0/revenue<=0 等）に基づく構造介入提案（人間承認待ち）。
         interventions = 0
         if self._run_pdca and not rate_limited:
@@ -119,6 +128,7 @@ class ContentScheduler:
             "completed_at": _now_iso(),
             "due_jobs": len(due),
             "generated": sum(1 for r in results if r.get("status") == "generated"),
+            "published": published,
             "interventions": interventions,
             "rate_limited": rate_limited,
             "retry_at": self._retry_at,
@@ -127,6 +137,34 @@ class ContentScheduler:
         self._write_log(summary)
         self._write_state(running=self._running and not rate_limited)
         return rate_limited
+
+    async def _process_due_publish_jobs(self) -> int:
+        """予約時刻に達した auto モードの PublishJob を実行し、成功件数を返す。
+
+        assisted モードは人間が最終送信するため対象外。失敗（ブラウザ未接続等）は
+        ジョブ status=failed になり再ループしない。例外は握りつぶしてサイクルを壊さない。
+        """
+        try:
+            from core.publishing.base import PUBLISH_MODE_AUTO
+            from core.publishing.publish_jobs import PublishJobStore
+            from core.publishing.runner import run_publish_job
+        except ImportError:
+            return 0
+
+        published = 0
+        try:
+            pub_store = PublishJobStore(platform_home=self.platform_home)
+            for pjob in pub_store.due_jobs():
+                if pjob.mode != PUBLISH_MODE_AUTO:
+                    continue
+                res = await run_publish_job(
+                    pjob, store=pub_store, platform_home=self.platform_home, dry_run=False
+                )
+                if res.get("ok"):
+                    published += 1
+        except Exception:  # noqa: BLE001 — 投稿処理の失敗でサイクル全体を壊さない
+            return published
+        return published
 
     # ---- 状態・ログ ----
     def status(self) -> Dict[str, Any]:

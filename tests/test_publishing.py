@@ -101,3 +101,23 @@ async def test_process_due_publish_jobs_runs_only_due(tmp_path, monkeypatch):
     results = await process_due_publish_jobs(store, platform_home=tmp_path)
     assert len(results) == 1
     assert results[0]["ok"] is True
+
+
+async def test_scheduler_auto_publishes_only_auto_mode_jobs(tmp_path, monkeypatch):
+    """daemon は auto モードの予約投稿のみ自動実行し、assisted は人間待ちで残す。"""
+    from core.content.content_scheduler import ContentScheduler
+
+    store = PublishJobStore(platform_home=tmp_path)
+    auto_job = store.add_job(
+        PublishJob(org_name="o", platform="note", title="auto", body="b", mode="auto")
+    )
+    assisted_job = store.add_job(
+        PublishJob(org_name="o", platform="x", title="assisted", body="b", mode="assisted")
+    )
+    monkeypatch.setattr("core.publishing.runner.get_adapter", lambda p: _FakePublisher(platform=p))
+
+    scheduler = ContentScheduler(platform_home=tmp_path, run_pdca=False)
+    await scheduler.run_cycle()
+
+    assert store.get_job(auto_job.job_id).status == "published"
+    assert store.get_job(assisted_job.job_id).status == "queued"
