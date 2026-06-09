@@ -1753,6 +1753,33 @@ def test_revenue_metrics_flags_reach_without_revenue(tmp_path, monkeypatch):
     assert note["reach_but_no_revenue"] is True
 
 
+def test_content_job_create_with_publish_target_persists(tmp_path, monkeypatch):
+    """投稿先付きでコンテンツジョブを作成すると publish_platform/mode が保存される。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    org = create_default_organization("Note Sales", "content", repo_path=str(repo))
+    psm.save_organization(org)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+
+    created = client.post(
+        "/api/content-jobs",
+        json={
+            "org_name": "Note Sales",
+            "kind": "content_brief",
+            "theme": "朝活",
+            "interval_seconds": 3600,
+            "publish_platform": "note",
+            "publish_mode": "auto",
+        },
+    )
+    assert created.status_code == 200
+    body = created.json()
+    assert body["publish_platform"] == "note"
+    assert body["publish_mode"] == "auto"
+
+
 def test_content_job_requires_existing_org(tmp_path, monkeypatch):
     psm = server.PlatformStateManager(platform_home=tmp_path)
     monkeypatch.setattr(server, "_psm", lambda: psm)

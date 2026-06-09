@@ -35,6 +35,10 @@ class ContentJob:
     theme: str = ""
     interval_seconds: int = 86400
     enabled: bool = True
+    # 投稿先（任意）。空なら投稿指定なし＝従来どおり下書きのみ。値があれば生成物の
+    # content_asset 提案に publish 指定が載り、承認時に PublishJob が enqueue される。
+    publish_platform: str = ""
+    publish_mode: str = "assisted"
     job_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     created_at: str = field(default_factory=lambda: _iso(_now()))
     last_run_at: Optional[str] = None

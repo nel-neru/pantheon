@@ -77,6 +77,43 @@ def test_run_content_job_generates_pending_content_asset(tmp_path):
     assert is_active_improvement_proposal_status(proposals[0].get("status"))
 
 
+def test_run_content_job_stamps_publish_block_when_target_set(tmp_path):
+    """投稿先が設定されたジョブの生成物には intervention_spec.publish が載る。"""
+    psm, org = _setup_org(tmp_path)
+    job = ContentJob(
+        org_name=org.name,
+        kind="content_brief",
+        theme="朝活",
+        publish_platform="note",
+        publish_mode="auto",
+    )
+    result = _run(run_content_job(job, psm))
+    assert result["ok"] is True
+    proposals = psm.get_org_state_manager(org).get_all_improvement_proposals()
+    spec = proposals[0].get("intervention_spec") or {}
+    assert spec.get("publish") == {"platform": "note", "mode": "auto"}
+
+
+def test_run_content_job_no_publish_block_without_target(tmp_path):
+    """投稿先未指定なら publish ブロックは載らない（従来どおり下書きのみ）。"""
+    psm, org = _setup_org(tmp_path)
+    job = ContentJob(org_name=org.name, kind="content_brief", theme="朝活")
+    _run(run_content_job(job, psm))
+    proposals = psm.get_org_state_manager(org).get_all_improvement_proposals()
+    spec = proposals[0].get("intervention_spec") or {}
+    assert "publish" not in spec
+
+
+def test_run_content_job_ignores_unsupported_platform(tmp_path):
+    """未対応プラットフォームは publish ブロックを載せない（誤投稿を防ぐ）。"""
+    psm, org = _setup_org(tmp_path)
+    job = ContentJob(org_name=org.name, theme="t", publish_platform="instagram")
+    _run(run_content_job(job, psm))
+    proposals = psm.get_org_state_manager(org).get_all_improvement_proposals()
+    spec = proposals[0].get("intervention_spec") or {}
+    assert "publish" not in spec
+
+
 def test_run_content_job_missing_org(tmp_path):
     psm = PlatformStateManager(platform_home=tmp_path / "home")
     job = ContentJob(org_name="NoSuch")

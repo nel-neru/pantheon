@@ -24,6 +24,8 @@ const job = {
   last_status: 'scheduled',
   last_detail: '',
   run_count: 0,
+  publish_platform: '',
+  publish_mode: 'assisted',
 }
 
 const stoppedDaemon = {
@@ -79,6 +81,8 @@ it('creates a content job from the form', async () => {
       kind: 'content_brief',
       theme: '夜の習慣',
       interval_seconds: 86400,
+      publish_platform: '',
+      publish_mode: 'assisted',
     })
   })
   expect(mockedToast.success).toHaveBeenCalledWith('コンテンツジョブを作成しました。')

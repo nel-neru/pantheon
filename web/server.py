@@ -1896,6 +1896,8 @@ class ContentJobRequest(ApiRequestModel):
     theme: str = Field(default="", max_length=500)
     interval_seconds: int = Field(default=86400, ge=60, le=60 * 60 * 24 * 30)
     enabled: bool = True
+    publish_platform: str = Field(default="", max_length=40)
+    publish_mode: str = Field(default="assisted", max_length=20)
 
 
 class ContentJobUpdateRequest(ApiRequestModel):
@@ -1903,6 +1905,8 @@ class ContentJobUpdateRequest(ApiRequestModel):
     interval_seconds: int | None = Field(default=None, ge=60, le=60 * 60 * 24 * 30)
     enabled: bool | None = None
     kind: str | None = Field(default=None, max_length=40)
+    publish_platform: str | None = Field(default=None, max_length=40)
+    publish_mode: str | None = Field(default=None, max_length=20)
 
 
 class ContentDaemonStartRequest(ApiRequestModel):
@@ -1972,6 +1976,8 @@ async def api_create_content_job(req: ContentJobRequest) -> Dict[str, Any]:
         theme=req.theme,
         interval_seconds=req.interval_seconds,
         enabled=req.enabled,
+        publish_platform=req.publish_platform,
+        publish_mode=req.publish_mode,
     )
     _content_job_store().add_job(job)
     return job.to_dict()
@@ -1991,6 +1997,10 @@ async def api_update_content_job(job_id: str, req: ContentJobUpdateRequest) -> D
         job.enabled = req.enabled
     if req.kind is not None:
         job.kind = req.kind
+    if req.publish_platform is not None:
+        job.publish_platform = req.publish_platform
+    if req.publish_mode is not None:
+        job.publish_mode = req.publish_mode
     store.update_job(job)
     return job.to_dict()
 
