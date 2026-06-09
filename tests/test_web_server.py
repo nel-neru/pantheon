@@ -323,8 +323,7 @@ def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
 
     sm = psm.get_org_state_manager(target)
     assert any(
-        p.get("category") == "content_asset"
-        for p in sm.get_pending_improvement_proposals(limit=50)
+        p.get("category") == "content_asset" for p in sm.get_pending_improvement_proposals(limit=50)
     )
 
 
@@ -1576,7 +1575,12 @@ def test_content_job_crud_and_run(tmp_path, monkeypatch):
 
     created = client.post(
         "/api/content-jobs",
-        json={"org_name": "SNS Growth", "kind": "content_brief", "theme": "朝活", "interval_seconds": 3600},
+        json={
+            "org_name": "SNS Growth",
+            "kind": "content_brief",
+            "theme": "朝活",
+            "interval_seconds": 3600,
+        },
     )
     assert created.status_code == 200
     job_id = created.json()["job_id"]
@@ -1594,6 +1598,159 @@ def test_content_job_crud_and_run(tmp_path, monkeypatch):
 
     deleted = client.delete(f"/api/content-jobs/{job_id}")
     assert deleted.status_code == 200
+
+
+def test_approve_content_asset_with_publish_block_enqueues_publish_job(tmp_path, monkeypatch):
+    """投稿指定付き content_asset を承認すると PublishJob が queued になる（承認＝投稿ゲート通過）。"""
+    import core.orchestration.asset_application as asset_app
+    from core.publishing.publish_jobs import PublishJobStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    org = create_default_organization("Note Sales", "note", repo_path=str(repo))
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    proposal = ImprovementProposal(
+        review_id=uuid4(),
+        title="朝活のコツ",
+        description="note記事ドラフト",
+        priority="medium",
+        category="content_asset",
+        file_path="content/asagatsu.md",
+        target_kind="content_asset",
+        intervention_spec={
+            "content": "本文です",
+            "mode": "create",
+            "publish": {"platform": "note", "mode": "assisted"},
+        },
+    )
+    sm.save_improvement_proposal(proposal)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    async def fake_exec(target, *, repo_path, record=True):
+        return SimpleNamespace(success=True, output={"applied": True}, error=None)
+
+    monkeypatch.setattr(asset_app, "execute_content_asset", fake_exec)
+
+    response = client.post(f"/api/proposals/{org.name}/{str(proposal.id)[:8]}/approve")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "done"
+    assert body["publish_job"] is not None
+    assert body["publish_job"]["platform"] == "note"
+    assert body["publish_job"]["status"] == "queued"
+
+    jobs = PublishJobStore(platform_home=tmp_path).list_jobs()
+    assert len(jobs) == 1
+    assert jobs[0].body == "本文です"
+    assert jobs[0].source_proposal_id == str(proposal.id)
+
+
+def test_approve_content_asset_without_publish_block_enqueues_nothing(tmp_path, monkeypatch):
+    """投稿指定の無い通常 content_asset 承認では PublishJob は作られない（従来挙動）。"""
+    import core.orchestration.asset_application as asset_app
+    from core.publishing.publish_jobs import PublishJobStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    org = create_default_organization("Note Sales", "note", repo_path=str(repo))
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    proposal = ImprovementProposal(
+        review_id=uuid4(),
+        title="ただのメモ",
+        description="投稿しないドラフト",
+        priority="medium",
+        category="content_asset",
+        file_path="content/memo.md",
+        target_kind="content_asset",
+        intervention_spec={"content": "x", "mode": "create"},
+    )
+    sm.save_improvement_proposal(proposal)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    async def fake_exec(target, *, repo_path, record=True):
+        return SimpleNamespace(success=True, output={"applied": True}, error=None)
+
+    monkeypatch.setattr(asset_app, "execute_content_asset", fake_exec)
+
+    response = client.post(f"/api/proposals/{org.name}/{str(proposal.id)[:8]}/approve")
+    assert response.status_code == 200
+    assert response.json()["publish_job"] is None
+    assert PublishJobStore(platform_home=tmp_path).list_jobs() == []
+
+
+def test_publish_jobs_endpoints(tmp_path, monkeypatch):
+    """投稿ジョブの一覧→dry-run実行（status不変）→削除。"""
+    from core.publishing.publish_jobs import PublishJob, PublishJobStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    store = PublishJobStore(platform_home=tmp_path)
+    job = store.add_job(PublishJob(org_name="Note Sales", platform="note", title="t", body="b"))
+
+    listing = client.get("/api/publish-jobs")
+    assert listing.status_code == 200
+    assert any(j["job_id"] == job.job_id for j in listing.json())
+
+    dry = client.post(f"/api/publish-jobs/{job.job_id}/run?dry_run=true")
+    assert dry.status_code == 200
+    assert dry.json()["dry_run"] is True
+    assert store.get_job(job.job_id).status == "queued"  # dry-run は status を変えない
+
+    assert client.delete(f"/api/publish-jobs/{job.job_id}").status_code == 200
+    assert client.delete(f"/api/publish-jobs/{job.job_id}").status_code == 404
+
+
+def test_publishing_connections_endpoints(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    conns = client.get("/api/publishing/connections")
+    assert conns.status_code == 200
+    data = conns.json()
+    assert {c["platform"] for c in data} == {"note", "x", "wordpress"}
+    assert all(c["status"] == "disconnected" for c in data)
+
+    assert client.post("/api/publishing/connections/note/login").status_code == 200
+    assert client.post("/api/publishing/connections/instagram/login").status_code == 404
+    assert client.delete("/api/publishing/connections/note").status_code == 200
+
+
+def test_inbox_aggregates_publish_jobs(tmp_path, monkeypatch):
+    from core.publishing.publish_jobs import PublishJob, PublishJobStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    PublishJobStore(platform_home=tmp_path).add_job(
+        PublishJob(org_name="Note Sales", platform="note", title="投稿待ち")
+    )
+    resp = client.get("/api/inbox")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["counts"]["publish"] >= 1
+    assert any(i["kind"] == "publish" and i["title"] == "投稿待ち" for i in body["items"])
+
+
+def test_revenue_metrics_flags_reach_without_revenue(tmp_path, monkeypatch):
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("Note Sales", "note", repo_path=str(tmp_path / "repo"))
+    psm.save_organization(org)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    OutcomeStore(platform_home=tmp_path).record("Note Sales", "impressions", 5000)
+
+    resp = client.get("/api/metrics/revenue")
+    assert resp.status_code == 200
+    body = resp.json()
+    note = next(o for o in body["orgs"] if o["org_name"] == "Note Sales")
+    assert note["reach"] == 5000
+    assert note["revenue"] == 0
+    assert note["reach_but_no_revenue"] is True
 
 
 def test_content_job_requires_existing_org(tmp_path, monkeypatch):
