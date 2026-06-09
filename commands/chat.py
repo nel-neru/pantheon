@@ -11,7 +11,8 @@ def cmd_chat(args: argparse.Namespace, *, require_api_key: Any) -> None:
 
     require_api_key("pantheon chat")
     initial = getattr(args, "message", None)
-    asyncio.run(run_chat(initial_message=initial))
+    org = getattr(args, "org", None)
+    asyncio.run(run_chat(initial_message=initial, current_org=org))
 
 
 def register(subparsers: Any) -> None:
@@ -24,5 +25,12 @@ def register(subparsers: Any) -> None:
         nargs="?",
         default=None,
         help="最初のメッセージ（省略時は対話モードで起動）",
+    )
+    parser.add_argument(
+        "--org",
+        dest="org",
+        default=None,
+        help="操作対象の Organization 名（指定するとその org スコープで起動。"
+        "省略時は org 非依存の汎用チャット）",
     )
     parser.set_defaults(handler_name="cmd_chat")

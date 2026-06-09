@@ -240,6 +240,42 @@ async def _handle_agent_task(
     return "\n".join(lines)
 
 
+def _multiplexer_available() -> bool:
+    """wmux 等の GUI マルチプレクサが使えるか。
+
+    使えるなら実行系（analyze/goal）はその場で走らせず wmux タブで起動して GUI から
+    監視する（設計方針: GUI=監視 / wmux=実行）。headless 時は従来どおり in-process。
+    """
+    try:
+        from core.runtime.multiplexer import get_driver
+
+        return get_driver().name != "headless"
+    except Exception:  # noqa: BLE001 - 判定不能なら in-process にフォールバック
+        return False
+
+
+def _launch_work_tab(
+    kind: str, *, org_name: Optional[str] = None, goal_text: Optional[str] = None
+) -> str:
+    """analyze/goal を wmux の監視セッション（タブ）として着火し、案内文を返す。"""
+    from core.runtime import work_launcher
+
+    try:
+        if kind == "analyze":
+            record = work_launcher.launch_analyze(org_name or "")
+        else:
+            record = work_launcher.launch_goal(goal_text or "", org_name=org_name)
+    except Exception as exc:  # noqa: BLE001
+        return f"❌ wmux への着火に失敗しました: {exc}"
+
+    tab = record.surfaces[0].get("title") if record.surfaces else kind
+    return (
+        f"🚀 wmux タブ「{record.name} · {tab}」で実行を開始しました（driver={record.driver}）。\n"
+        f"   セッション: {record.id}\n"
+        "   進捗は Web GUI の「セッション」「プラットフォーム」でライブ監視できます。"
+    )
+
+
 # ───────────────────────────────────────────────────── #
 # ツール定義（Anthropic tool_use 形式）                  #
 # ───────────────────────────────────────────────────── #
@@ -532,7 +568,7 @@ async def _tool_run_goal(inp: Dict) -> str:
 
 
 async def _tool_platform_status(_input: Dict) -> str:
-    from core.metrics.balanced_growth import calculate_organization_metrics
+    from core.metrics.live_metrics import compute_live_org_metrics
     from core.platform.state import PlatformStateManager
 
     psm = PlatformStateManager()
@@ -543,12 +579,11 @@ async def _tool_platform_status(_input: Dict) -> str:
     lines = [f"📊 プラットフォーム状態 ({len(orgs)} Organizations)\n"]
     for org in orgs:
         sm = psm.get_org_state_manager(org)
-        proposals = sm.get_pending_improvement_proposals(limit=100)
-        metrics = calculate_organization_metrics(org)
-        health = getattr(metrics, "health_score", 0)
+        live = compute_live_org_metrics(org, sm)
+        health = live.health_score
         lines.append(
             f"  {'🟢' if health >= 70 else '🟡' if health >= 40 else '🔴'} "
-            f"{org.name}  health={health:.0f}%  未対応提案: {len(proposals)} 件"
+            f"{org.name}  health={health:.0f}%  未対応提案: {live.pending_proposals} 件"
         )
     return "\n".join(lines)
 
@@ -747,6 +782,8 @@ async def handle_slash_command(cmd: str, session: ChatSession) -> Optional[str]:
         if not org_name:
             return "使い方: /analyze <Organization名>"
         session.current_org = org_name
+        if _multiplexer_available():
+            return _launch_work_tab("analyze", org_name=org_name)
         return await _tool_analyze_organization({"org_name": org_name})
 
     if command == "/proposals":
@@ -765,6 +802,8 @@ async def handle_slash_command(cmd: str, session: ChatSession) -> Optional[str]:
         if len(parts) < 2:
             return "使い方: /goal <ゴールテキスト>"
         goal_text = " ".join(parts[1:])
+        if _multiplexer_available():
+            return _launch_work_tab("goal", goal_text=goal_text, org_name=session.current_org)
         return await _tool_run_goal({"goal_text": goal_text})
 
     # 未知のスラッシュコマンド
@@ -776,16 +815,23 @@ async def handle_slash_command(cmd: str, session: ChatSession) -> Optional[str]:
 # ───────────────────────────────────────────────────── #
 
 
-async def run_chat(initial_message: Optional[str] = None) -> None:
+async def run_chat(
+    initial_message: Optional[str] = None, current_org: Optional[str] = None
+) -> None:
     """
     対話ループのエントリーポイント。
     main.py の cmd_chat() から呼び出される。
+
+    ``current_org`` を渡すとその Organization スコープで起動する（wmux の
+    「組織チャット」タブ用）。省略時は org 非依存の汎用チャット。
     """
-    session = ChatSession()
+    session = ChatSession(current_org=current_org)
     session.refresh_llm_config()
 
     print("\n" + "═" * 58)
     print("  🤖 Pantheon チャットエージェント")
+    if current_org:
+        print(f"  🏢 操作対象 Organization: {current_org}")
     print("═" * 58)
     if session.has_llm:
         provider_label = PROVIDER_LABEL_MAP.get(

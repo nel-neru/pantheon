@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.loaders.schema_support import validate_schema_version
+from core.paths import resource_path
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class AgentDefinition:
     tools: List[str] = field(default_factory=list)
     behavior: str = ""
     response_format: Dict[str, Any] = field(default_factory=dict)
-    implementation: str = ""   # "module.path.ClassName" — Python実装を使う場合に指定
+    implementation: str = ""  # "module.path.ClassName" — Python実装を使う場合に指定
     source_file: str = ""
     schema_version: str = ""
     capability_id_override: str = ""
@@ -152,7 +153,7 @@ class AgentLoader:
 
     def __init__(self, definitions_dir: Optional[Path] = None):
         if definitions_dir is None:
-            definitions_dir = Path(__file__).parent.parent.parent / "agents" / "definitions"
+            definitions_dir = resource_path("agents", "definitions")
         self._definitions_dir = Path(definitions_dir)
         self._cache: Dict[str, AgentDefinition] = {}
         self._loaded = False

@@ -1,0 +1,31 @@
+# sns_growth.yaml — SNS集客（X/YouTube）特化 Organization テンプレート
+#
+# `pantheon org add --name "SNS Growth" --template sns_growth --repo <workspace> --isolation-level external`
+# content_operations をオーディエンス開発寄りに重み付けした版（収益化グループの「入口」org 用）。
+# 注: Organization の name/purpose は CLI 引数で与える（このファイルは departments のみ）。
+
+departments:
+  - name: オーディエンス開発部
+    type: audience_development
+    mission: X/YouTube で集客し、相互送客で note へ送る（収益化グループの入口）
+    teams:
+      - name: Growth Team
+        mission: 獲得・エンゲージメント・note への送客導線
+        required_skills:
+          - audience_growth
+          - performance_marketing
+      - name: Channel Content Team
+        mission: X 短文・YouTube 台本・概要欄 CTA の企画
+        required_skills:
+          - content_strategy
+          - audience_growth
+
+  - name: コンテンツ制作部
+    type: content_production
+    mission: 投稿テーマ設計と発信用コンテンツの草稿
+    teams:
+      - name: Editorial Team
+        mission: 投稿・台本・概要欄の制作と品質管理
+        required_skills:
+          - content_strategy
+          - knowledge_curation

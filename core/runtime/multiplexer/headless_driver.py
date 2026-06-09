@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import signal
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -54,6 +55,29 @@ def _pid_alive(pid: int) -> bool:
             kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _kill_pid(pid: int) -> bool:
+    """Best-effort terminate a pid (used for cross-process ``stop_session``)."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        PROCESS_TERMINATE = 0x0001
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+        if not handle:
+            return False
+        try:
+            return bool(kernel32.TerminateProcess(handle, 1))
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, signal.SIGTERM)
         return True
     except (OSError, ProcessLookupError):
         return False
@@ -158,6 +182,12 @@ class HeadlessDriver(MultiplexerDriver):
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
+        elif proc is None:
+            # クロスプロセス停止: Popen ハンドルが無い（web など別プロセスで起動した）
+            # 場合は、open_surface で pty_id に保存した pid を使って終了させる。
+            pid = int(surface.pty_id) if (surface.pty_id or "").isdigit() else 0
+            if pid and _pid_alive(pid):
+                _kill_pid(pid)
         self._flush_log(surface.id)
         if surface.status == SurfaceStatus.RUNNING:
             surface.status = SurfaceStatus.CLOSED

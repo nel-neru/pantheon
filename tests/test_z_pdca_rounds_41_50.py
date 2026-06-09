@@ -113,7 +113,8 @@ def test_orchestrator_describe_routing_uses_reasoning_fallback():
 def test_commands_are_discovered_and_parser_assigns_handlers():
     modules = {module.__name__.rsplit(".", 1)[-1] for module in discover_command_modules()}
     parser = build_parser()
-    args = parser.parse_args(["org", "add", "--name", "DemoOrg"])
+    # org add は担当ワークスペース（--repo）が必須（1 ws = 1 org モデル）。
+    args = parser.parse_args(["org", "add", "--name", "DemoOrg", "--repo", "/tmp/demo"])
 
     assert {"chat", "goal", "orchestration", "org", "platform"}.issubset(modules)
     assert args.handler_name == "cmd_org_add"

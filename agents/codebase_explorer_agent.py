@@ -144,9 +144,10 @@ class CodebaseExplorerAgent(BaseAgent):
         from core.intelligence.codebase_snapshot import CodebaseSnapshot
 
         indexer = CodebaseIndexer(repo_root)
-        index = indexer.build()
+        indexer.build()
         stats = indexer.get_summary_stats()
-        snapshot = CodebaseSnapshot(index)
+        # CodebaseSnapshot は CodebaseIndexer オブジェクトを受け取る（build() の戻り値 dict ではない）。
+        snapshot = CodebaseSnapshot(indexer)
         context = (
             snapshot.generate_for_file(target_file)
             if target_file

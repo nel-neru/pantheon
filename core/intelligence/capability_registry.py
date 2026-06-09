@@ -21,15 +21,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.paths import resource_root
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class CapabilityEntry:
     """単一能力の記録。"""
+
     id: str
     name: str
-    capability_type: str          # "agent" | "skill" | "tool" | "mcp_tool"
+    capability_type: str  # "agent" | "skill" | "tool" | "mcp_tool"
     description: str = ""
     source_file: str = ""
     skills: List[str] = field(default_factory=list)
@@ -97,7 +100,7 @@ class CapabilityRegistry:
         Returns: 新規登録した能力の数
         """
         if repo_root is None:
-            repo_root = Path(__file__).parent.parent.parent
+            repo_root = resource_root()
 
         registered = 0
         registered += self._scan_agents(repo_root)
@@ -146,12 +149,11 @@ class CapabilityRegistry:
 
     def has_capability(self, name_or_id: str) -> bool:
         """能力が存在するかチェック（名前またはID）。"""
-        return (
-            name_or_id in self._capabilities
-            or self.find_by_name(name_or_id) is not None
-        )
+        return name_or_id in self._capabilities or self.find_by_name(name_or_id) is not None
 
-    def get_unused_capabilities(self, days_threshold: int = 90, days: Optional[int] = None) -> List[dict]:
+    def get_unused_capabilities(
+        self, days_threshold: int = 90, days: Optional[int] = None
+    ) -> List[dict]:
         """Return capabilities unused longer than the threshold or never used."""
         from datetime import timezone
 
@@ -210,7 +212,9 @@ class CapabilityRegistry:
         for cap_type in ("agent", "skill", "tool"):
             entries = self.list_all(cap_type)
             if entries:
-                label = {"agent": "エージェント", "skill": "スキル", "tool": "ツール"}.get(cap_type, cap_type)
+                label = {"agent": "エージェント", "skill": "スキル", "tool": "ツール"}.get(
+                    cap_type, cap_type
+                )
                 lines.append(f"\n{label}:")
                 for e in entries:
                     desc = f" — {e.description[:60]}" if e.description else ""
@@ -239,6 +243,7 @@ class CapabilityRegistry:
         """
         try:
             from core.loaders.agent_loader import AgentLoader
+
             loader = AgentLoader()
             registered = 0
             for defn in loader.all():
@@ -271,6 +276,7 @@ class CapabilityRegistry:
         """
         try:
             from core.loaders.skill_loader import SkillLoader
+
             loader = SkillLoader()
             registered = 0
             for skill_def in loader.all():
@@ -310,9 +316,7 @@ class CapabilityRegistry:
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "capabilities": [e.to_dict() for e in self._capabilities.values()],
         }
-        path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ------------------------------------------------------------------ #

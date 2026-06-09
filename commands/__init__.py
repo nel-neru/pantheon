@@ -32,11 +32,23 @@ _EXCLUDED_MODULES = {"common"}
 
 
 def discover_command_modules() -> list[ModuleType]:
+    names = [module_info.name for module_info in pkgutil.iter_modules(__path__)]
+    if not names:
+        # exe 化（PyInstaller）時に pkgutil がサブモジュールを列挙できない場合の
+        # フォールバック。同梱された commands/ ディレクトリの .py を直接走査する。
+        from core.paths import resource_path
+
+        commands_dir = resource_path("commands")
+        if commands_dir.is_dir():
+            names = [path.stem for path in commands_dir.glob("*.py")]
+
     modules: list[ModuleType] = []
-    for module_info in sorted(pkgutil.iter_modules(__path__), key=lambda item: item.name):
-        if module_info.name.startswith("_") or module_info.name in _EXCLUDED_MODULES:
+    seen: set[str] = set()
+    for name in sorted(names):
+        if name.startswith("_") or name in _EXCLUDED_MODULES or name in seen:
             continue
-        modules.append(importlib.import_module(f"{__name__}.{module_info.name}"))
+        seen.add(name)
+        modules.append(importlib.import_module(f"{__name__}.{name}"))
     return modules
 
 

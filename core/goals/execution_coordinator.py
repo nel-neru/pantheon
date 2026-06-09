@@ -191,23 +191,14 @@ class ExecutionCoordinator:
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                if self._orchestrator:
-                    analysis = self._orchestrator.analyze(
-                        task.agent_type,
-                        task.description,
-                    )
-                    result_summary = (
-                        f"パターン: {analysis.recommended_pattern}, "
-                        f"エージェント: {analysis.recommended_agent_ids}"
-                    )
-                else:
-                    result_summary = f"直接実行（オーケストレーターなし）: {task.title}"
-
-                task_prog.status = TaskStatus.DONE
-                task_prog.result_summary = result_summary
-                task_prog.completed_at = datetime.now(timezone.utc).isoformat()
-                self._notify(progress)
-                return
+                result_summary, success, error = await self._run_via_orchestrator(task)
+                if success:
+                    task_prog.status = TaskStatus.DONE
+                    task_prog.result_summary = result_summary
+                    task_prog.completed_at = datetime.now(timezone.utc).isoformat()
+                    self._notify(progress)
+                    return
+                raise RuntimeError(error or "タスク実行に失敗しました")
 
             except Exception as e:
                 task_prog.retries = attempt
@@ -219,6 +210,69 @@ class ExecutionCoordinator:
                     self._notify(progress)
                 else:
                     await asyncio.sleep(0.1)
+
+    async def _run_via_orchestrator(self, task: TaskSpec) -> tuple[str, bool, str]:
+        """タスクを実行し ``(result_summary, success, error)`` を返す。
+
+        オーケストレーターに実行バックエンド（agent_factory）が配線されていれば
+        **実エージェントを実行**して結果を反映する。配線が無い最小構成では従来どおり
+        計画（TaskAnalysis）のみを生成して完了扱いにする（後方互換）。
+        """
+        if not self._orchestrator:
+            return (f"直接実行（オーケストレーターなし）: {task.title}", True, "")
+
+        analysis = self._orchestrator.analyze(task.agent_type, task.description)
+
+        # 実行は「推奨エージェントがある」かつ「orchestrator.execute が使える」時のみ。
+        # それ以外（能力未登録の最小構成 / execute 非対応のモック）は計画のみ完了扱い。
+        recommended = getattr(analysis, "recommended_agent_ids", None) or []
+        execute_fn = getattr(self._orchestrator, "execute", None)
+        if not recommended or not callable(execute_fn):
+            return (self._plan_only_summary(analysis), True, "")
+
+        agent_task = self._build_agent_task(task)
+        result = await execute_fn(agent_task, analysis)
+
+        # agent_factory が無いと execute() は渡した analysis をそのまま返す（計画のみ）。
+        if result is analysis:
+            return (self._plan_only_summary(analysis), True, "")
+
+        # それ以外は AgentResult。成否を反映する。
+        if getattr(result, "success", False):
+            return (self._summarize_agent_result(result, analysis), True, "")
+
+        # 実行バックエンドがエージェントを起動できないだけのケースは計画のみ完了扱いにし、
+        # 実際にエージェントが走って失敗した場合のみ FAILED とする。
+        error = str(getattr(result, "error", "unknown error"))
+        if any(token in error for token in ("No agent selected", "Agent not found")):
+            return (self._plan_only_summary(analysis), True, "")
+        return ("", False, error)
+
+    @staticmethod
+    def _plan_only_summary(analysis: Any) -> str:
+        return (
+            f"計画のみ（実行バックエンド未配線）: パターン "
+            f"{getattr(analysis, 'recommended_pattern', '?')}, "
+            f"エージェント {getattr(analysis, 'recommended_agent_ids', [])}"
+        )
+
+    @staticmethod
+    def _build_agent_task(task: TaskSpec):
+        from agents.base import AgentTask as _AgentTask
+
+        return _AgentTask(
+            task_type=task.agent_type,
+            description=task.description,
+            input={"task_id": task.task_id, "title": task.title},
+        )
+
+    @staticmethod
+    def _summarize_agent_result(result: Any, analysis: Any) -> str:
+        output = getattr(result, "output", {}) or {}
+        summary = output.get("change_summary") or output.get("summary")
+        if summary:
+            return str(summary)
+        return f"実行完了（パターン: {getattr(analysis, 'recommended_pattern', '?')}）"
 
     def _topological_sort(self, tasks: List[TaskSpec]) -> List[TaskSpec]:
         """タスクを依存関係に従って順序付ける（トポロジカルソート）。"""

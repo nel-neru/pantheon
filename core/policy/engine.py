@@ -86,6 +86,7 @@ DEFAULT_POLICY: Dict[str, Any] = {
                 "structural_intervention",  # 別 Organization への構造的介入（cross-org）
                 "content_asset",  # ワークスペース資産（publishing 近接）は人間確認
                 "external_action",  # 外部効果（投稿・課金・アカウント操作）は必ず人間確認（Phase 7 ゲート）
+                "cross_org_handoff",  # ピア org 間の引き渡し（集客→販売→収益化）は承認ボタン
             ],
             "file_patterns": [  # 変更に慎重を要するファイル
                 "main.py",
@@ -162,6 +163,12 @@ class PolicyEngine:
         if verdict:
             return verdict
 
+        # 1.65 cross-org 引き渡しチェック（ピア org 間の集客→販売→収益化の橋渡し）。
+        # 別 org の作業キューに仕事を生むため、auto_approve には落とさず承認ボタンを要求する。
+        verdict = self._check_handoff(proposal)
+        if verdict:
+            return verdict
+
         # 1.7 組織分離境界チェック（external 組織のワークスペース外脱出を防ぐ汎用ガード）。
         # 構造介入(1.5)・content_asset(1.6) の専用判定を先に通し、残った通常 code_file 提案にだけ適用する。
         verdict = self._check_org_boundary(proposal, org_context)
@@ -211,16 +218,20 @@ class PolicyEngine:
 
     def _check_auto_reject(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
         cond = self._policy.get("auto_reject", {}).get("conditions", {})
+        from core.models.organization import CROSS_ORG_HANDOFF_CATEGORY
+
         is_meta_or_intervention = bool(
             p.get("is_meta")
             or p.get("target_org_id")
             or p.get("target_org_name")
             or p.get("intervention_type")
+            # ピア org 間の引き渡しもファイルを持たない設計 → empty_file_path で棄却しない。
+            or p.get("category") == CROSS_ORG_HANDOFF_CATEGORY
         )
-        # empty_file_path ルールは meta 提案／cross-org 構造介入を棄却してはいけない
-        # （ファイルを持たない設計）。これらは後続（_check_intervention / human_required）へ委ねる。
-        # ただし disabled_categories（運用者の kill-switch）はこの carve-out の対象外で、
-        # 介入であっても常に有効にする（auto_reject > human_required の優先順位を守る）。
+        # empty_file_path ルールは meta 提案／cross-org 構造介入／引き渡しを棄却してはいけない
+        # （ファイルを持たない設計）。これらは後続（_check_intervention / _check_handoff /
+        # human_required）へ委ねる。ただし disabled_categories（運用者の kill-switch）は
+        # この carve-out の対象外で、介入であっても常に有効にする（auto_reject > human_required の優先順位を守る）。
         if cond.get("empty_file_path") and not p.get("file_path") and not is_meta_or_intervention:
             return PolicyVerdict(
                 decision=ApprovalDecision.REJECT,
@@ -271,6 +282,23 @@ class PolicyEngine:
                 decision=ApprovalDecision.HUMAN_REQUIRED,
                 reason="content_asset（ワークスペース資産・publishing 近接）は人間確認必須",
                 rule_name="human_required.content_asset",
+            )
+        return None
+
+    def _check_handoff(self, p: Dict[str, Any]) -> Optional[PolicyVerdict]:
+        """ピア Organization 間の引き渡し（cross_org_handoff）は必ず人間確認にする。
+
+        SNS 集客 → note 販売 → アフィリ収益化 のように、ある org の成果物が別 org の
+        作業（有料コンテンツ生成・収益化導線）を起動する。承認ボタン＝この人間ゲート。
+        auto_approve には決して落とさない（構造介入・content_asset と同じ安全側の扱い）。
+        """
+        from core.models.organization import CROSS_ORG_HANDOFF_CATEGORY
+
+        if (p.get("category") or "") == CROSS_ORG_HANDOFF_CATEGORY:
+            return PolicyVerdict(
+                decision=ApprovalDecision.HUMAN_REQUIRED,
+                reason="ピア org 間の引き渡し（集客→販売→収益化）は人間確認必須",
+                rule_name="human_required.cross_org_handoff",
             )
         return None
 

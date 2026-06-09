@@ -213,7 +213,6 @@ function OrganizationTree({ divisions }: { divisions: TreeDivision[] }) {
                         </div>
                         <div className="text-xs text-muted mt-1">{agent.skills.join(' / ') || 'skill 未設定'}</div>
                       </div>
-                      <span className="badge badge-green text-xs">ready</span>
                     </div>
                   ))}
                 </div>
@@ -419,8 +418,12 @@ function DetailPanel({
             <div className="detail-kv">
               <div className="detail-kv-row">
                 <FolderOpen size={13} />
-                <span className="detail-kv-key">リポジトリ</span>
-                <span className="detail-kv-val mono">{org.target_repo_path || '未設定'}</span>
+                <span className="detail-kv-key">ワークスペース</span>
+                {org.target_repo_path ? (
+                  <span className="detail-kv-val mono">{org.target_repo_path}</span>
+                ) : (
+                  <span className="badge badge-yellow">未設定（repo を割り当ててください）</span>
+                )}
               </div>
               <div className="detail-kv-row">
                 <span className="detail-kv-key ml-4">ステータス</span>
@@ -528,7 +531,6 @@ export function OrgsPage() {
   const [detail, setDetail] = useState<OrgDetail | null>(null)
   const [editing, setEditing] = useState<Organization | null>(null)
   const [editForm, setEditForm] = useState<EditForm>({ purpose: '', target_repo_path: '' })
-  const [creatingWelcome, setCreatingWelcome] = useState(false)
   const [updatingIcon, setUpdatingIcon] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -564,23 +566,6 @@ export function OrgsPage() {
   useEffect(() => {
     void loadOrganizations()
   }, [loadOrganizations])
-
-  const handleCreateWelcome = async () => {
-    setCreatingWelcome(true)
-    try {
-      const res = await api<{ created: string[] }>('POST', '/api/welcome')
-      if (res.created.length > 0) {
-        toast.success(`サンプル組織「${res.created[0]}」を作成しました。`)
-      } else {
-        toast.info('サンプル組織はすでに存在します。')
-      }
-      await loadOrganizations()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'サンプル組織の作成に失敗しました。')
-    } finally {
-      setCreatingWelcome(false)
-    }
-  }
 
   const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
@@ -641,6 +626,10 @@ export function OrgsPage() {
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (!createForm.target_repo_path.trim()) {
+      toast.error('対象ワークスペース（repo）は必須です。')
+      return
+    }
     setSubmitting(true)
     try {
       await api('POST', '/api/organizations', createForm)
@@ -725,29 +714,22 @@ export function OrgsPage() {
                 <h2 className="welcome-title">Pantheon へようこそ</h2>
                 <p className="welcome-desc">
                   AI 組織を作成して、コードの自律的な分析・改善を始めましょう。
-                  まずはサンプル組織を作成して使い方を確認するか、独自の組織を新規作成してください。
+                  担当する git リポジトリ（ワークスペース）を指定して組織を作成してください。
                 </p>
               </div>
               <div className="welcome-actions">
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={handleCreateWelcome}
-                  disabled={creatingWelcome}
-                >
-                  <Sparkles size={14} />
-                  {creatingWelcome ? '作成中…' : 'サンプル組織で始める'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
                   onClick={() => setShowCreate(true)}
                 >
                   <Plus size={14} />
-                  組織を自分で作成
+                  組織を作成
                 </button>
               </div>
-              <p className="welcome-note">サンプル組織は後からいつでも削除できます。</p>
+              <p className="welcome-note">
+                既存のリポジトリは <code>pantheon org scan</code> で一括登録できます。
+              </p>
             </div>
           </div>
         ) : null}
@@ -858,7 +840,7 @@ export function OrgsPage() {
       <Modal
         open={showCreate}
         title="新規組織"
-        description="対象リポジトリと目的を登録してください。"
+        description="1 組織 = 1 ワークスペース（git リポジトリ）。担当 repo は必須です。"
         onClose={() => {
           if (!submitting) {
             setShowCreate(false)
@@ -890,13 +872,15 @@ export function OrgsPage() {
             />
           </div>
           <div className="input-group">
-            <label className="input-label" htmlFor="org-repo-path">対象リポジトリパス</label>
+            <label className="input-label" htmlFor="org-repo-path">
+              対象ワークスペース（git リポジトリ）の絶対パス
+            </label>
             <input
               id="org-repo-path"
               className="input"
               value={createForm.target_repo_path}
               onChange={(e) => setCreateForm((c) => ({ ...c, target_repo_path: e.target.value }))}
-              placeholder="/Users/name/projects/repo"
+              placeholder="C:\\Users\\name\\projects\\repo"
               required
             />
           </div>

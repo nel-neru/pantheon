@@ -8,7 +8,6 @@ PlatformStateManager を使い、全 Organization（子会社）を横断的に�
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -18,6 +17,7 @@ from core.models.organization import (
     Organization,
     OrganizationStatus,
 )
+from core.paths import resource_path
 from core.platform.state import PlatformStateManager
 from core.state.manager import RepoStateManager
 
@@ -63,7 +63,7 @@ class PantheonOrchestrator:
 
         async with self._lock:
             if template_name:
-                template_path = Path(__file__).parent.parent / "config" / "departments" / f"{template_name}.yaml"
+                template_path = resource_path("config", "departments", f"{template_name}.yaml")
                 org = create_organization_from_template(
                     name,
                     purpose,
@@ -77,7 +77,9 @@ class PantheonOrchestrator:
             self._psm.save_organization(org)
             self._org_state_managers[str(org.id)] = self._psm.get_org_state_manager(org)
 
-            print(f"[Orchestrator] 新 Organization を設立しました: {name} → {target_repo_path or '(未設定)'}")
+            print(
+                f"[Orchestrator] 新 Organization を設立しました: {name} → {target_repo_path or '(未設定)'}"
+            )
             return org
 
     async def get_organization_status(self, org_id: UUID) -> Optional[Dict[str, Any]]:
@@ -135,19 +137,21 @@ class PantheonOrchestrator:
                 sm = self._org_state_managers.get(str(org.id))
                 pending = len(sm.get_pending_improvement_proposals(limit=100)) if sm else 0
                 metrics = calculate_organization_metrics(org, pending_proposals_count=pending)
-                result.append({
-                    "id": str(org.id),
-                    "name": org.name,
-                    "purpose": org.purpose,
-                    "target_repo_path": org.target_repo_path,
-                    "status": org.status.value,
-                    "health_score": metrics.health_score,
-                    "autonomy_score": org.autonomy_score,
-                    "improvement_velocity": org.improvement_velocity,
-                    "total_agents": len(org.get_all_agents()),
-                    "pending_proposals": pending,
-                    "last_active": org.last_active.isoformat(),
-                })
+                result.append(
+                    {
+                        "id": str(org.id),
+                        "name": org.name,
+                        "purpose": org.purpose,
+                        "target_repo_path": org.target_repo_path,
+                        "status": org.status.value,
+                        "health_score": metrics.health_score,
+                        "autonomy_score": org.autonomy_score,
+                        "improvement_velocity": org.improvement_velocity,
+                        "total_agents": len(org.get_all_agents()),
+                        "pending_proposals": pending,
+                        "last_active": org.last_active.isoformat(),
+                    }
+                )
         return result
 
     def get_global_state_summary(self) -> Dict[str, Any]:
@@ -156,8 +160,12 @@ class PantheonOrchestrator:
             calculate_organization_metrics(
                 org,
                 pending_proposals_count=len(
-                    self._org_state_managers[str(org.id)].get_pending_improvement_proposals(limit=100)
-                ) if str(org.id) in self._org_state_managers else 0,
+                    self._org_state_managers[str(org.id)].get_pending_improvement_proposals(
+                        limit=100
+                    )
+                )
+                if str(org.id) in self._org_state_managers
+                else 0,
             )
             for org in self.state.organizations.values()
         ]

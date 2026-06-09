@@ -31,16 +31,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.models.organization import ImprovementProposal, is_active_improvement_proposal_status
+from core.paths import resource_path, resource_root
 from core.platform.state import PlatformStateManager, get_platform_home
 from core.policy.engine import DEFAULT_POLICY, ApprovalDecision, PolicyEngine
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Pantheon Platform", version="2.0.0")
 
-STATIC_DIR = Path(__file__).parent / "static"
-DIST_DIR = Path(__file__).parent / "dist"
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-KNOWLEDGE_DIR = Path(__file__).parent.parent / "knowledge"
+# 同梱リソースは resource_path 経由で解決する（exe 化時は sys._MEIPASS 配下）。
+STATIC_DIR = resource_path("web", "static")
+DIST_DIR = resource_path("web", "dist")
+PROJECT_ROOT = resource_root()
+KNOWLEDGE_DIR = resource_path("knowledge")
 SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "Pantheon Core", "meta-improvement"}
 SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
 CHAT_SESSIONS_DIR = Path.home() / ".pantheon" / "chat_sessions"
@@ -392,12 +394,13 @@ class ApiRequestModel(BaseModel):
 class OrgCreateRequest(ApiRequestModel):
     name: str = Field(min_length=1, max_length=120)
     purpose: str = Field(default="", max_length=2000)
-    target_repo_path: str = Field(default="", max_length=4096)
+    # 中核モデル「1 ワークスペース = 1 Organization」: 担当 repo は必須。
+    target_repo_path: str = Field(min_length=1, max_length=4096)
 
     @field_validator("target_repo_path")
     @classmethod
     def validate_target_repo_path(cls, value: str) -> str:
-        return _normalize_request_path(value, "target_repo_path")
+        return _normalize_request_path(value, "target_repo_path", allow_empty=False)
 
 
 class OrgIconRequest(ApiRequestModel):
@@ -728,6 +731,136 @@ class UpdateHub:
 
 
 _updates_hub = UpdateHub()
+
+# --- Live session monitor (GUI=監視) ----------------------------------------- #
+# 実行系は wmux の「監視セッション」として走る（core/runtime/work_launcher）。サーバは
+# アクティブなセッションをポーリングし、状態が変わったら /ws/updates へ push する。テストで
+# 勝手に動かないよう run_server() が呼ばれたときだけ有効化する（_LIVE_MONITOR_ENABLED）。
+_LIVE_MONITOR_ENABLED = False
+_session_monitor_task: "asyncio.Task[None] | None" = None
+_session_status_cache: dict[str, str] = {}
+# /api/tasks（人間が起票する作業ボード）の drain。run_server 時に config
+# auto_drain_tasks（既定 True）で有効化され、PENDING タスクを wmux の work セッションへ
+# 着火（dispatch）する。テストでは _TASK_DRAIN_ENABLED が False のまま動かない。
+_TASK_DRAIN_ENABLED = False
+_task_drain_task: "asyncio.Task[None] | None" = None
+
+
+def _session_signature(rec: Any) -> str:
+    parts = [rec.status]
+    for surface in rec.surfaces:
+        parts.append(
+            f"{surface.get('agent_id')}:{surface.get('status')}:{surface.get('exit_code')}"
+        )
+    return "|".join(str(p) for p in parts)
+
+
+async def _poll_and_broadcast_sessions() -> None:
+    """アクティブセッションをポーリングし、変化したものを /ws/updates へ配信する。"""
+    orch = _session_orchestrator()
+    sessions = await asyncio.to_thread(orch.list_sessions)
+    for rec in sessions:
+        if rec.status in ("running", "rate_limited"):
+            polled = await asyncio.to_thread(orch.poll_session, rec.id)
+            rec = polled or rec
+        signature = _session_signature(rec)
+        if _session_status_cache.get(rec.id) == signature:
+            continue
+        _session_status_cache[rec.id] = signature
+        await _updates_hub.broadcast(
+            {
+                "type": "session_update",
+                "session_id": rec.id,
+                "name": rec.name,
+                "status": rec.status,
+                "driver": rec.driver,
+                "title": f"{rec.name}: {rec.status}",
+                "agents": [
+                    {
+                        "agent_id": s.get("agent_id"),
+                        "title": s.get("title"),
+                        "status": s.get("status"),
+                        "exit_code": s.get("exit_code"),
+                    }
+                    for s in rec.surfaces
+                ],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+
+async def _session_monitor_loop(interval: float = 3.0) -> None:
+    while _LIVE_MONITOR_ENABLED:
+        try:
+            await _poll_and_broadcast_sessions()
+        except Exception:  # noqa: BLE001 - 監視ループは決して落とさない
+            logger.debug("session monitor iteration failed", exc_info=True)
+        await asyncio.sleep(interval)
+
+
+async def _dispatch_task_to_wmux(task: dict[str, Any]) -> dict[str, Any]:
+    """作業ボードの 1 タスクを wmux の work セッションへ着火する（executor_fn）。"""
+    from core.runtime import work_launcher
+
+    ttype = str(task.get("type", "custom"))
+    org = task.get("org_name") or "Pantheon"
+    desc = task.get("description") or ""
+
+    def _run():
+        if ttype in ("analyze", "review", "improve") and task.get("org_name"):
+            return work_launcher.launch_analyze(org)
+        return work_launcher.launch_goal(desc or ttype, org_name=task.get("org_name"))
+
+    record = await asyncio.to_thread(_run)
+    return {"session_id": record.id, "driver": record.driver, "dispatched": True}
+
+
+async def _drain_pending_tasks() -> None:
+    """PENDING タスクを wmux work セッションへ dispatch し、結果を /ws/updates へ配信する。"""
+    from core.orchestration.multi_org_executor import MultiOrgExecutor
+
+    executor = MultiOrgExecutor(queue=_task_queue())
+    results = await executor.process_pending(_dispatch_task_to_wmux, max_tasks=5)
+    for result in results:
+        if isinstance(result, dict) and result.get("session_id"):
+            await _updates_hub.broadcast(
+                {
+                    "type": "task_dispatched",
+                    "session_id": result["session_id"],
+                    "driver": result.get("driver"),
+                    "title": "作業ボードのタスクを wmux に着火しました",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+
+async def _task_drain_loop(interval: float = 5.0) -> None:
+    while _LIVE_MONITOR_ENABLED and _TASK_DRAIN_ENABLED:
+        try:
+            await _drain_pending_tasks()
+        except Exception:  # noqa: BLE001 - drain ループは決して落とさない
+            logger.debug("task drain iteration failed", exc_info=True)
+        await asyncio.sleep(interval)
+
+
+def _ensure_session_monitor() -> None:
+    """ライブ監視ループと（有効時）task drain を一度だけ起動する。
+
+    いずれも run_server 経由で有効化されている場合のみ動く（テストでは起動しない）。
+    """
+    global _session_monitor_task, _task_drain_task
+    if not _LIVE_MONITOR_ENABLED:
+        return
+    if _session_monitor_task is None or _session_monitor_task.done():
+        try:
+            _session_monitor_task = asyncio.create_task(_session_monitor_loop())
+        except RuntimeError:  # 実行中ループが無い場合（通常リクエスト中は発生しない）
+            pass
+    if _TASK_DRAIN_ENABLED and (_task_drain_task is None or _task_drain_task.done()):
+        try:
+            _task_drain_task = asyncio.create_task(_task_drain_loop())
+        except RuntimeError:
+            pass
 
 
 def _migrate_system_orgs(psm: PlatformStateManager | None = None) -> None:
@@ -1111,6 +1244,18 @@ def _stream_error_message(exc: Exception) -> str:
 async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
     from agents.base import AgentTask
     from agents.orchestrator_agent import OrchestratorAgent
+    from core.runtime.claude_code import claude_available
+
+    # 実データのみ: 生成バックエンド（claude CLI）が無い時にテンプレートの偽提案を
+    # 本物として永続化しない。利用不可なら明示的にエラーを返す。
+    if not claude_available():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "生成バックエンド（claude CLI）が利用できないため、実コード分析を実行できません。"
+                "`claude` を導入・ログインしてから再実行してください。"
+            ),
+        )
 
     psm = _psm()
     org = psm.load_organization_by_name(req.org_name)
@@ -1609,41 +1754,24 @@ def _extract_proposal_diff_text(proposal: dict[str, Any]) -> str:
     responses={200: {"content": {"application/json": {"example": PLATFORM_STATUS_EXAMPLE}}}},
 )
 async def api_platform_status() -> Dict[str, Any]:
-    """プラットフォーム全体のステータス"""
-    from core.metrics.balanced_growth import calculate_group_metrics, calculate_organization_metrics
-    from core.models.organization import GroupHQState
+    """プラットフォーム全体のステータス（指標は実リポジトリ状態から都度計算）"""
+    from core.metrics.live_metrics import compute_live_group_metrics, compute_live_org_metrics
 
     psm = _psm()
     orgs = psm.load_organizations()
-    hq = GroupHQState()
-    metrics_list = []
+    items = []
     for org in orgs:
-        hq.add_organization(org)
         sm = psm.get_org_state_manager(org)
-        pending = len(sm.get_pending_improvement_proposals(limit=100))
-        metrics_list.append(calculate_organization_metrics(org, pending_proposals_count=pending))
+        items.append((org, compute_live_org_metrics(org, sm)))
 
-    if metrics_list:
-        group = calculate_group_metrics(hq, metrics_list)
-        return {
-            "group_health_score": group.group_health_score,
-            "balance_score": group.balance_score,
-            "total_organizations": group.total_organizations,
-            "active_organizations": group.active_organizations,
-            "weakest_organization": group.weakest_organization,
-            "strongest_organization": group.strongest_organization,
-            "platform_home": str(psm.platform_home),
-            "initialized": psm.is_initialized(),
-            "has_llm": _has_llm(),
-        }
-
+    group = compute_live_group_metrics(items)
     return {
-        "group_health_score": 0.0,
-        "balance_score": 100.0,
-        "total_organizations": 0,
-        "active_organizations": 0,
-        "weakest_organization": None,
-        "strongest_organization": None,
+        "group_health_score": group.group_health_score,
+        "balance_score": group.balance_score,
+        "total_organizations": group.total_organizations,
+        "active_organizations": group.active_organizations,
+        "weakest_organization": group.weakest_organization,
+        "strongest_organization": group.strongest_organization,
         "platform_home": str(psm.platform_home),
         "initialized": psm.is_initialized(),
         "has_llm": _has_llm(),
@@ -1757,6 +1885,186 @@ async def api_daemon_stop() -> Dict[str, Any]:
     }
 
 
+# ============================================================
+# Content jobs (定期投稿生成) + Content/PDCA daemon
+# ============================================================
+
+
+class ContentJobRequest(ApiRequestModel):
+    org_name: str = Field(min_length=1, max_length=120)
+    kind: str = Field(default="content_brief", max_length=40)
+    theme: str = Field(default="", max_length=500)
+    interval_seconds: int = Field(default=86400, ge=60, le=60 * 60 * 24 * 30)
+    enabled: bool = True
+
+
+class ContentJobUpdateRequest(ApiRequestModel):
+    theme: str | None = Field(default=None, max_length=500)
+    interval_seconds: int | None = Field(default=None, ge=60, le=60 * 60 * 24 * 30)
+    enabled: bool | None = None
+    kind: str | None = Field(default=None, max_length=40)
+
+
+class ContentDaemonStartRequest(ApiRequestModel):
+    interval: int = Field(default=600, ge=30, le=60 * 60 * 24)
+
+
+def _content_job_store():
+    from core.content.content_jobs import ContentJobStore
+
+    return ContentJobStore(get_platform_home())
+
+
+def _content_daemon_paths() -> tuple[Path, Path, Path]:
+    home = get_platform_home()
+    return (
+        home / "content_daemon.pid",
+        home / "content_daemon.log",
+        home / "content_scheduler_state.json",
+    )
+
+
+def _content_daemon_status_payload() -> dict[str, Any]:
+    pid_file, log_file, state_file = _content_daemon_paths()
+    pid = _read_daemon_pid(pid_file)
+    running = bool(pid is not None and _is_process_running(pid))
+    state: dict[str, Any] = {}
+    if state_file.exists():
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            state = {}
+    return {
+        "running": running,
+        "pid": pid,
+        "log_path": str(log_file),
+        "rate_limited": bool(state.get("rate_limited", False)),
+        "retry_at": state.get("retry_at"),
+        "cycle_count": state.get("cycle_count", 0),
+        "interval_seconds": state.get("interval_seconds"),
+    }
+
+
+@app.get("/api/content-jobs", tags=["content"])
+async def api_list_content_jobs() -> List[Dict[str, Any]]:
+    """定期コンテンツ生成ジョブの一覧。"""
+    return [job.to_dict() for job in _content_job_store().list_jobs()]
+
+
+@app.post("/api/content-jobs", tags=["content"])
+async def api_create_content_job(req: ContentJobRequest) -> Dict[str, Any]:
+    """定期コンテンツ生成ジョブを作成する（対象は実在の repo 紐づき組織）。"""
+    psm = _psm()
+    org = psm.load_organization_by_name(req.org_name)
+    if org is None:
+        raise HTTPException(status_code=404, detail=f"Organization '{req.org_name}' が見つかりません")
+    if not getattr(org, "target_repo_path", None):
+        raise HTTPException(
+            status_code=400, detail=f"Organization '{req.org_name}' に repo が未設定です"
+        )
+    from core.content.content_jobs import ContentJob
+
+    job = ContentJob(
+        org_name=req.org_name,
+        kind=req.kind,
+        theme=req.theme,
+        interval_seconds=req.interval_seconds,
+        enabled=req.enabled,
+    )
+    _content_job_store().add_job(job)
+    return job.to_dict()
+
+
+@app.patch("/api/content-jobs/{job_id}", tags=["content"])
+async def api_update_content_job(job_id: str, req: ContentJobUpdateRequest) -> Dict[str, Any]:
+    store = _content_job_store()
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    if req.theme is not None:
+        job.theme = req.theme
+    if req.interval_seconds is not None:
+        job.interval_seconds = req.interval_seconds
+    if req.enabled is not None:
+        job.enabled = req.enabled
+    if req.kind is not None:
+        job.kind = req.kind
+    store.update_job(job)
+    return job.to_dict()
+
+
+@app.delete("/api/content-jobs/{job_id}", tags=["content"])
+async def api_delete_content_job(job_id: str) -> Dict[str, Any]:
+    if not _content_job_store().delete_job(job_id):
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    return {"status": "deleted", "job_id": job_id}
+
+
+@app.post("/api/content-jobs/{job_id}/run", tags=["content"])
+async def api_run_content_job(job_id: str) -> Dict[str, Any]:
+    """ジョブを即時実行し、投稿ドラフト（content_asset 提案・人間承認待ち）を生成する。"""
+    from core.content.content_runner import run_content_job
+
+    store = _content_job_store()
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    result = await run_content_job(job, _psm())
+    store.mark_run(job_id, status=result.get("status", "done"), detail=result.get("detail", ""))
+    return result
+
+
+@app.get("/api/content-daemon/status", tags=["content"])
+async def api_content_daemon_status() -> Dict[str, Any]:
+    return _content_daemon_status_payload()
+
+
+@app.post("/api/content-daemon/start", tags=["content"])
+async def api_content_daemon_start(req: ContentDaemonStartRequest | None = None) -> Dict[str, Any]:
+    req = req or ContentDaemonStartRequest()
+    pid_file, log_file, _ = _content_daemon_paths()
+    pid = _read_daemon_pid(pid_file)
+    if pid is not None and _is_process_running(pid):
+        return {"status": "already_running", **_content_daemon_status_payload()}
+    if pid is not None:
+        pid_file.unlink(missing_ok=True)
+
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    with log_file.open("a", encoding="utf-8") as log_handle:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "core._content_daemon_runner", f"--interval={req.interval}"],
+            cwd=PROJECT_ROOT,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    pid_file.write_text(str(proc.pid), encoding="utf-8")
+    return {"status": "started", **_content_daemon_status_payload()}
+
+
+@app.post("/api/content-daemon/stop", tags=["content"])
+async def api_content_daemon_stop() -> Dict[str, Any]:
+    pid_file, _, _ = _content_daemon_paths()
+    pid = _read_daemon_pid(pid_file)
+    if pid is None:
+        pid_file.unlink(missing_ok=True)
+        return {"status": "not_running", **_content_daemon_status_payload()}
+    try:
+        os.kill(pid, signal.SIGTERM)
+        status = "stopped"
+    except OSError:
+        status = "already_stopped"
+    pid_file.unlink(missing_ok=True)
+    return {"status": status, **_content_daemon_status_payload()}
+
+
+@app.get("/api/content-daemon/logs", tags=["content"])
+async def api_content_daemon_logs(limit: int = 20) -> List[Dict[str, Any]]:
+    from core.content.content_scheduler import ContentScheduler
+
+    return ContentScheduler(get_platform_home()).get_recent_logs(n=max(1, min(limit, 200)))
+
+
 @app.post(
     "/api/init",
     response_model=PlatformInitResponse,
@@ -1787,40 +2095,18 @@ async def api_init_platform() -> Dict[str, Any]:
 
 @app.post("/api/welcome")
 async def api_create_welcome_data() -> Dict[str, Any]:
-    """ウェルカム用サンプル組織を作成する"""
-    from core.org_factory import create_default_organization
+    """サンプル組織の自動生成は廃止（実データのみ）。
 
-    psm = _psm()
-    created = []
-
-    sample_orgs = [
-        {
-            "name": "Sample Organization",
-            "purpose": "Pantheon のデモ用サンプル組織です。実際のリポジトリを指定して編集してください。",
-            "target_repo_path": str(PROJECT_ROOT),
-        },
-    ]
-
-    for s in sample_orgs:
-        existing = psm.load_organization_by_name(s["name"])
-        if not existing:
-            org = create_default_organization(s["name"], s["purpose"])
-            org.target_repo_path = s["target_repo_path"]
-            psm.save_organization(org)
-            created.append(s["name"])
-            await _record_execution_event(
-                "organization_created",
-                f"{s['name']} を作成しました",
-                org_name=s["name"],
-                entity_type="organization",
-                entity_id=s["name"],
-                route="/orgs",
-                metadata={"source": "welcome", "target_repo_path": s["target_repo_path"]},
-            )
-
+    以前は 'Sample Organization'（Pantheon 自身の repo を指す）をデモ用に作成していたが、
+    GUI には実ワークスペースのみを表示する方針のため、何も作成せず案内を返す。
+    """
     return {
-        "created": created,
-        "skipped": [s["name"] for s in sample_orgs if s["name"] not in created],
+        "created": [],
+        "skipped": [],
+        "message": (
+            "サンプル組織の自動生成は廃止しました。実際の git リポジトリ（ワークスペース）を"
+            "指定して組織を作成するか、`pantheon org scan` で既存リポジトリを登録してください。"
+        ),
     }
 
 
@@ -1932,6 +2218,69 @@ async def api_list_sessions() -> Dict[str, Any]:
     return {"sessions": sessions, "count": len(sessions)}
 
 
+@app.get("/api/dashboard/orchestra", tags=["dashboard"])
+async def api_dashboard_orchestra() -> Dict[str, Any]:
+    """オーケストラ可視化用の集約。
+
+    実行中セッション × エージェント（surface）のライブツリーと、組織横断 handoff
+    フライホイール（集客→販売→収益化）を 1 レスポンスにまとめる。Dashboard が
+    ``/ws/updates`` の session 系イベントを購読してこれを再取得する。
+    """
+    orch = _session_orchestrator()
+    sessions = await asyncio.to_thread(orch.list_sessions)
+    active_states = {"running", "rate_limited"}
+    session_views: List[Dict[str, Any]] = []
+    for rec in sessions:
+        session_views.append(
+            {
+                "id": rec.id,
+                "name": rec.name,
+                "status": rec.status,
+                "driver": rec.driver,
+                "agents": [
+                    {
+                        "agent_id": s.get("agent_id"),
+                        "title": s.get("title"),
+                        "role": s.get("role"),
+                        "status": s.get("status"),
+                        "exit_code": s.get("exit_code"),
+                    }
+                    for s in rec.surfaces
+                ],
+            }
+        )
+
+    handoffs: List[Dict[str, Any]] = []
+    try:
+        for h in _handoff_store().list_handoffs():
+            handoffs.append(
+                {
+                    "id": h.handoff_id,
+                    "source": h.source_org,
+                    "target": h.target_org,
+                    "kind": h.kind,
+                    "status": h.status,
+                    "title": h.title,
+                    "priority": h.priority,
+                }
+            )
+    except Exception:  # noqa: BLE001 - handoff 未設定でもオーケストラは表示する
+        logger.debug("orchestra: handoff load failed", exc_info=True)
+
+    agents_total = sum(len(s["agents"]) for s in session_views)
+    return {
+        "sessions": session_views,
+        "handoffs": handoffs,
+        "counts": {
+            "sessions": len(session_views),
+            "active_sessions": sum(1 for s in session_views if s["status"] in active_states),
+            "agents": agents_total,
+            "handoffs": len(handoffs),
+            "pending_handoffs": sum(1 for h in handoffs if h["status"] == "pending"),
+        },
+    }
+
+
 @app.get("/api/sessions/runtime", tags=["sessions"])
 async def api_sessions_runtime() -> Dict[str, Any]:
     """Live runtime status: claude CLI + multiplexer (wmux/cmux/headless)."""
@@ -1989,23 +2338,27 @@ async def api_get_session_agent_log(
 
 @app.post("/api/sessions", tags=["sessions"])
 async def api_start_session(body: SessionStartRequest) -> Dict[str, Any]:
-    from core.runtime.session_orchestrator import AgentTask, demo_tasks
+    from core.runtime.session_orchestrator import AgentTask
 
+    # デモ用のダミーエージェント（greeter/summarizer）生成は廃止。実セッションは
+    # 明示的なエージェント定義、または /analyze・/goal（wmux）から起動する。
+    if not body.agents:
+        raise HTTPException(
+            status_code=400,
+            detail="agents を1件以上指定してください。実作業は /analyze・/goal から起動します。",
+        )
     orch = _session_orchestrator(prefer=body.prefer)
-    if body.agents:
-        tasks = [
-            AgentTask(
-                agent_id=a.agent_id,
-                title=a.title,
-                prompt=a.prompt,
-                system_prompt=a.system_prompt,
-                model=a.model,
-                role=a.role,
-            )
-            for a in body.agents
-        ]
-    else:
-        tasks = demo_tasks()
+    tasks = [
+        AgentTask(
+            agent_id=a.agent_id,
+            title=a.title,
+            prompt=a.prompt,
+            system_prompt=a.system_prompt,
+            model=a.model,
+            role=a.role,
+        )
+        for a in body.agents
+    ]
     rec = await asyncio.to_thread(orch.start_session, body.name, tasks)
     await _updates_hub.broadcast(
         {
@@ -2242,16 +2595,15 @@ async def get_provider_models(provider: str) -> Dict[str, Any]:
 
 @app.get("/api/organizations")
 async def api_list_organizations() -> List[Dict[str, Any]]:
-    """Organization 一覧"""
-    from core.metrics.balanced_growth import calculate_organization_metrics
+    """Organization 一覧（指標は実リポジトリ状態から都度計算）"""
+    from core.metrics.live_metrics import compute_live_org_metrics
 
     psm = _psm()
     orgs = psm.load_organizations()
     result = []
     for org in orgs:
         sm = psm.get_org_state_manager(org)
-        pending = len(sm.get_pending_improvement_proposals(limit=100))
-        m = calculate_organization_metrics(org, pending_proposals_count=pending)
+        live = compute_live_org_metrics(org, sm)
         result.append(
             {
                 "id": str(org.id),
@@ -2259,10 +2611,11 @@ async def api_list_organizations() -> List[Dict[str, Any]]:
                 "purpose": org.purpose,
                 "target_repo_path": org.target_repo_path,
                 "status": org.status.value,
-                "health_score": m.health_score,
-                "autonomy_score": org.autonomy_score,
+                "health_score": live.health_score,
+                "autonomy_score": live.autonomy_score,
+                "improvement_velocity": live.improvement_velocity,
                 "total_agents": len(org.get_all_agents()),
-                "pending_proposals": pending,
+                "pending_proposals": live.pending_proposals,
                 "last_active": org.last_active.isoformat(),
                 "is_system": org.is_system,
                 "icon_data": org.icon_data,
@@ -2339,8 +2692,8 @@ class OrgUpdateRequest(ApiRequestModel):
 
 @app.get("/api/organizations/{org_name}")
 async def api_get_organization(org_name: str) -> Dict[str, Any]:
-    """Organization の詳細を返す"""
-    from core.metrics.balanced_growth import calculate_organization_metrics
+    """Organization の詳細を返す（指標は実リポジトリ状態から都度計算）"""
+    from core.metrics.live_metrics import compute_live_org_metrics
 
     psm = _psm()
     org = psm.load_organization_by_name(org_name)
@@ -2348,8 +2701,8 @@ async def api_get_organization(org_name: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Organization '{org_name}' が見つかりません")
 
     sm = psm.get_org_state_manager(org)
-    pending = len(sm.get_pending_improvement_proposals(limit=100))
-    m = calculate_organization_metrics(org, pending_proposals_count=pending)
+    live = compute_live_org_metrics(org, sm)
+    pending = live.pending_proposals
     agents = [
         {
             "id": str(a.id),
@@ -2365,8 +2718,9 @@ async def api_get_organization(org_name: str) -> Dict[str, Any]:
         "purpose": org.purpose,
         "target_repo_path": org.target_repo_path,
         "status": org.status.value,
-        "health_score": m.health_score,
-        "autonomy_score": org.autonomy_score,
+        "health_score": live.health_score,
+        "autonomy_score": live.autonomy_score,
+        "improvement_velocity": live.improvement_velocity,
         "total_agents": len(agents),
         "agents": agents,
         "divisions": _serialize_org_structure(org),
@@ -2797,6 +3151,205 @@ async def api_batch_update_proposals(org_name: str, body: ProposalBatchRequest) 
         "updated": len(updated),
         "failed": len(failed),
         "results": results,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Cross-org handoff（集客→販売→収益化の引き渡し / 承認ボタン）                    #
+# --------------------------------------------------------------------------- #
+
+
+class HandoffCreateRequest(BaseModel):
+    source_org: str
+    target_org: str
+    kind: str
+    title: str
+    payload: Dict[str, Any] = {}
+    priority: str = "medium"
+    note: str = ""
+
+
+class HandoffConsumeRequest(BaseModel):
+    ref: str = ""
+
+
+class HandoffApproveRequest(BaseModel):
+    # True なら承認と同時に本文ドラフト（claude 生成）まで作る（承認1ボタンで本文まで）。
+    draft: bool = False
+
+
+def _handoff_store():
+    from core.hierarchy.org_handoff import OrgHandoffStore
+
+    return OrgHandoffStore(platform_home=_psm().platform_home)
+
+
+def _handoff_dict(handoff) -> Dict[str, Any]:
+    from dataclasses import asdict
+
+    return asdict(handoff)
+
+
+@app.get("/api/handoffs", tags=["handoffs"])
+async def api_list_handoffs(
+    source_org: str | None = None,
+    target_org: str | None = None,
+    status: str | None = None,
+) -> List[Dict[str, Any]]:
+    store = _handoff_store()
+    return [
+        _handoff_dict(h)
+        for h in store.list_handoffs(
+            source_org=source_org, target_org=target_org, status=status
+        )
+    ]
+
+
+@app.post("/api/handoffs", tags=["handoffs"])
+async def api_create_handoff(body: HandoffCreateRequest) -> Dict[str, Any]:
+    store = _handoff_store()
+    try:
+        handoff = store.create(
+            source_org=body.source_org,
+            target_org=body.target_org,
+            kind=body.kind,
+            title=body.title,
+            payload=body.payload,
+            priority=body.priority,
+            note=body.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _handoff_dict(handoff)
+
+
+@app.post("/api/handoffs/{handoff_id}/approve", tags=["handoffs"])
+async def api_approve_handoff(
+    handoff_id: str, body: HandoffApproveRequest | None = None
+) -> Dict[str, Any]:
+    """承認ボタン: pending→approved ＋ 受け手 org に提案を自動生成。
+
+    既定はブリーフ（決定論・即時）。``draft=true`` なら本文ドラフト（claude 生成）まで
+    一括で作る（承認1ボタンで本文まで）。
+    """
+    from core.hierarchy.org_handoff import draft_handoff, materialize_handoff
+
+    store = _handoff_store()
+    try:
+        handoff = store.approve(handoff_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    want_draft = bool(body.draft) if body else False
+    materialized = None
+    proposal = (
+        await draft_handoff(handoff, psm=_psm())
+        if want_draft
+        else materialize_handoff(handoff, psm=_psm())
+    )
+    if proposal is not None:
+        store.record_materialization(handoff.handoff_id, str(proposal.id))
+        materialized = {
+            "proposal_id": str(proposal.id),
+            "org_name": handoff.target_org,
+            "title": proposal.title,
+            "file_path": proposal.file_path,
+            "kind": "draft" if want_draft else "brief",
+        }
+    result = _handoff_dict(store.get(handoff.handoff_id))
+    result["materialized"] = materialized
+    return result
+
+
+@app.post("/api/handoffs/{handoff_id}/draft", tags=["handoffs"])
+async def api_draft_handoff(handoff_id: str) -> Dict[str, Any]:
+    """本文ドラフト生成: 受け手 org に本文ドラフトの content_asset 提案を作る（claude 経由 / 不在時は決定論）。"""
+    from core.hierarchy.org_handoff import draft_handoff
+
+    store = _handoff_store()
+    handoff = store.get(handoff_id)
+    if handoff is None:
+        raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
+    proposal = await draft_handoff(handoff, psm=_psm())
+    if proposal is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"受け手 '{handoff.target_org}' が未登録/repo 未設定のため本文生成できません。",
+        )
+    return {
+        "handoff_id": handoff_id,
+        "proposal_id": str(proposal.id),
+        "org_name": handoff.target_org,
+        "title": proposal.title,
+        "file_path": proposal.file_path,
+    }
+
+
+@app.post("/api/handoffs/{handoff_id}/reject", tags=["handoffs"])
+async def api_reject_handoff(handoff_id: str) -> Dict[str, Any]:
+    store = _handoff_store()
+    try:
+        return _handoff_dict(store.reject(handoff_id))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/handoffs/{handoff_id}/consume", tags=["handoffs"])
+async def api_consume_handoff(
+    handoff_id: str, body: HandoffConsumeRequest | None = None
+) -> Dict[str, Any]:
+    store = _handoff_store()
+    ref = body.ref if body else ""
+    try:
+        return _handoff_dict(store.mark_consumed(handoff_id, consumed_ref=ref))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"引き渡しが見つかりません: {handoff_id}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# --------------------------------------------------------------------------- #
+# Outcomes（成果イベントの一括取り込み / サマリ）                                 #
+# --------------------------------------------------------------------------- #
+
+
+class OutcomeImportRequest(BaseModel):
+    rows: List[Dict[str, Any]] = []
+    org_name: str = ""
+
+
+def _outcome_store():
+    from core.metrics.outcomes import OutcomeStore
+
+    return OutcomeStore(platform_home=_psm().platform_home)
+
+
+@app.post("/api/outcomes/import", tags=["outcomes"])
+async def api_import_outcomes(body: OutcomeImportRequest) -> Dict[str, Any]:
+    """成果イベントを一括取り込みする（ダッシュボードの CSV/JSON エクスポートを行 dict で渡す）。"""
+    store = _outcome_store()
+    added, skipped = store.record_many(body.rows, default_org=body.org_name)
+    return {
+        "imported": len(added),
+        "skipped": skipped,
+        "orgs": sorted({event.org_name for event in added}),
+    }
+
+
+@app.get("/api/outcomes/{org_name}", tags=["outcomes"])
+async def api_outcome_summary(org_name: str) -> Dict[str, Any]:
+    store = _outcome_store()
+    summary = store.summary_for_org(org_name)
+    return {
+        "org_name": org_name,
+        "event_count": summary.event_count,
+        "by_metric": summary.by_metric,
+        "total_reach": summary.total_reach,
+        "total_revenue": summary.total_revenue,
     }
 
 
@@ -3255,6 +3808,8 @@ async def ws_updates(websocket: WebSocket) -> None:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
+    # GUI が監視に入ったらライブセッション監視を起動する（run_server 有効時のみ）。
+    _ensure_session_monitor()
 
     try:
         while True:
@@ -3264,12 +3819,51 @@ async def ws_updates(websocket: WebSocket) -> None:
         logger.info("Updates WebSocket client disconnected")
 
 
-def run_server(host: str = "0.0.0.0", port: int = 7860) -> None:
+def _open_browser_when_ready(port: int, *, timeout: float = 15.0) -> None:
+    """サーバが listen を開始したらブラウザで GUI を開く（デーモンスレッド）。
+
+    uvicorn.run() はブロッキングなので、別スレッドでポートの listen を待ってから
+    既定ブラウザを開く。exe をダブルクリックした人がそのまま可視化サイトに入れる。
+    """
+    import socket
+    import threading
+    import webbrowser
+
+    url = f"http://localhost:{port}"
+
+    def _wait_and_open() -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                    break
+            except OSError:
+                time.sleep(0.25)
+        try:
+            webbrowser.open(url)
+        except Exception:
+            logger.debug("ブラウザの自動起動に失敗しました: %s", url)
+
+    threading.Thread(target=_wait_and_open, daemon=True).start()
+
+
+def run_server(host: str = "0.0.0.0", port: int = 7860, open_browser: bool = False) -> None:
     import uvicorn
+
+    # 実サーバ起動時のみライブセッション監視と task drain を有効化する
+    # （テストでは無効のまま）。drain は config auto_drain_tasks（既定 True）で制御。
+    global _LIVE_MONITOR_ENABLED, _TASK_DRAIN_ENABLED
+    _LIVE_MONITOR_ENABLED = True
+    try:
+        _TASK_DRAIN_ENABLED = bool(_psm().load_platform_config().get("auto_drain_tasks", True))
+    except Exception:  # noqa: BLE001 - 設定読込失敗時は drain しない
+        _TASK_DRAIN_ENABLED = False
 
     print("\nPantheon Web GUI を起動しています...")
     print(f"   URL: http://localhost:{port}")
     print(f"   プラットフォーム: {PlatformStateManager().platform_home}")
+    if open_browser:
+        _open_browser_when_ready(port)
     uvicorn.run(app, host=host, port=port)
 
 

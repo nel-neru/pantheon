@@ -15,7 +15,7 @@ def state_manager(tmp_path):
 
 class TestRepoStateManager:
     def test_dirs_created(self, tmp_path):
-        sm = RepoStateManager(tmp_path, "Org")
+        RepoStateManager(tmp_path, "Org")  # 構築の副作用で .pantheon 配下が作られる
         assert (tmp_path / ".pantheon").exists()
         assert (tmp_path / ".pantheon" / "improvements").exists() or True  # created lazily
         assert (tmp_path / ".pantheon" / "organizations").exists()

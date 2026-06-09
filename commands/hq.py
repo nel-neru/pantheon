@@ -19,6 +19,28 @@ from typing import Any
 from core.models.organization import is_structural_intervention_dict
 
 
+def _parse_outcomes_file(path) -> list[dict[str, Any]]:
+    """成果イベントの取り込みファイル（.json または .csv）を行 dict の列に解析する。
+
+    JSON: オブジェクトの配列、または ``{"rows": [...]}``。
+    CSV: ヘッダ行（org_name,metric,value[,unit,source,note,occurred_at]）付き。BOM 許容。
+    """
+    text = path.read_text(encoding="utf-8-sig")
+    if str(path).lower().endswith(".json"):
+        import json
+
+        data = json.loads(text)
+        if isinstance(data, dict):
+            data = data.get("rows", [])
+        return [dict(row) for row in data if isinstance(row, dict)]
+    # CSV
+    import csv
+    import io
+
+    reader = csv.DictReader(io.StringIO(text))
+    return [dict(row) for row in reader]
+
+
 def _find_pending_proposal(
     proposals: list[dict[str, Any]], proposal_id: str
 ) -> dict[str, Any] | None:
@@ -152,6 +174,28 @@ async def cmd_hq_outcomes(args: argparse.Namespace, *, get_psm: Any) -> None:
         )
         return
 
+    if action == "import":
+        from pathlib import Path
+
+        path = Path(args.path)
+        if not path.exists():
+            print(f"[ERROR] ファイルが見つかりません: {path}")
+            sys.exit(1)
+        try:
+            rows = _parse_outcomes_file(path)
+        except (ValueError, OSError) as exc:
+            print(f"[ERROR] ファイルを解析できません: {exc}")
+            sys.exit(1)
+        added, skipped = store.record_many(
+            rows, default_org=getattr(args, "org_name", "") or ""
+        )
+        print(f"[OK] 成果を {len(added)} 件取り込みました（スキップ {skipped} 件）。")
+        orgs = sorted({e.org_name for e in added})
+        for org in orgs:
+            summary = store.summary_for_org(org)
+            print(f"  {org}: リーチ計 {summary.total_reach:.0f} / 収益計 {summary.total_revenue:.0f}")
+        return
+
     # list（既定）
     summary = store.summary_for_org(args.org_name)
     print(f"\n成果サマリ — {args.org_name}（{summary.event_count} 件）\n")
@@ -205,6 +249,15 @@ def register(subparsers: Any) -> None:
     lst = outcomes_sub.add_parser("list", help="成果サマリを表示する")
     lst.add_argument("--org-name", required=True, help="対象 Organization 名")
     lst.set_defaults(handler_name="cmd_hq_outcomes")
+
+    imp = outcomes_sub.add_parser(
+        "import", help="CSV/JSON から成果イベントを一括取り込みする（ダッシュボードのエクスポート等）"
+    )
+    imp.add_argument("path", help="取り込むファイル（.csv または .json）")
+    imp.add_argument(
+        "--org-name", default="", help="org_name 列が無い行に使う既定の Organization 名"
+    )
+    imp.set_defaults(handler_name="cmd_hq_outcomes")
 
     # `hq outcomes --org-name X`（サブコマンド省略時）も list として扱う
     outcomes_parser.add_argument("--org-name", help="対象 Organization 名（list 既定）")

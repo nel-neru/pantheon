@@ -19,12 +19,30 @@ async def cmd_goal_status(args: argparse.Namespace, *, get_platform_home: Any) -
 
 
 async def cmd_goal_run(args: argparse.Namespace, *, require_api_key: Any) -> None:
-    """pantheon goal run <goal_text>"""
+    """pantheon goal run <goal_text> --workspace <org> | --new-workspace [path]"""
     from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
+    from core.platform.state import PlatformStateManager
+
+    workspace = getattr(args, "workspace", None)
+    new_workspace = getattr(args, "new_workspace", None)
+
+    # 中核モデル「1 ワークスペース = 1 Organization」: 対象を明示させ、暗黙の新規 org 量産を防ぐ。
+    if not workspace and new_workspace is None:
+        orgs = PlatformStateManager().load_organizations()
+        print("対象ワークスペースを指定してください（重複の自動生成を防ぐため必須）:")
+        print("  既存を対象:   pantheon goal run <text> --workspace <Organization名>")
+        print("  新規を作成:   pantheon goal run <text> --new-workspace [パス]")
+        if orgs:
+            print("\n登録済みワークスペース:")
+            for o in orgs:
+                print(f"  - {o.name}  ({o.target_repo_path or '(repo 未設定)'})")
+        else:
+            print("\n（まだワークスペースがありません。--new-workspace で作成できます）")
+        return
 
     require_api_key("pantheon goal run")
     pipeline = AbstractGoalPipeline()
-    result = await pipeline.run(args.goal_text)
+    result = await pipeline.run(args.goal_text, workspace=workspace, new_workspace=new_workspace)
     summary = result.summary() if callable(getattr(result, "summary", None)) else str(result)
     print(summary)
 
@@ -38,4 +56,17 @@ def register(subparsers: Any) -> None:
 
     run_parser = goal_sub.add_parser("run", help="抽象ゴールを自律実行する（claude CLI が必要）")
     run_parser.add_argument("goal_text", help="実行するゴール文（例: 'ECサイトを作りたい'）")
+    run_parser.add_argument(
+        "--workspace",
+        default=None,
+        help="既存ワークスペース（Organization 名）を対象に実行する",
+    )
+    run_parser.add_argument(
+        "--new-workspace",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="PATH",
+        help="新規ワークスペースを作成して実行（パス省略時は既定の場所に作成）",
+    )
     run_parser.set_defaults(handler_name="cmd_goal_run")

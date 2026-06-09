@@ -137,7 +137,6 @@ class CodebaseSnapshot:
 
         for rel_path, entry in files.items():
             score = 0.0
-            stem = P(rel_path).stem.lower()
 
             # 全モード共通: エントリポイント優先
             if entry.get("is_entry_point"):

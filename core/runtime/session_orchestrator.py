@@ -203,6 +203,119 @@ class SessionOrchestrator:
         self._persist(record)
         return record
 
+    def open_command_surface(
+        self,
+        group: str,
+        title: str,
+        command: List[str],
+        *,
+        agent_id: Optional[str] = None,
+        role: str = "interactive",
+        cwd: Optional[str] = None,
+        require_gui: bool = True,
+    ) -> Surface:
+        """Open an arbitrary **interactive** command (e.g. a chat REPL) as a surface.
+
+        Unlike :meth:`start_session` — which runs headless ``claude`` one-shots and
+        persists a session — this types ``command`` into a fresh GUI multiplexer tab
+        (``"<group> · <title>"``) so the user can interact with it: a REPL needs a
+        real TTY. When only the headless substrate is available there is no
+        interactive terminal, so this raises
+        :class:`~core.runtime.multiplexer.MultiplexerUnavailableError` and the caller
+        should tell the user to run ``command`` in their own terminal.
+        """
+        driver = self._driver_for(self.sessions_dir / "_interactive")
+        if require_gui and isinstance(driver, HeadlessDriver):
+            raise MultiplexerUnavailableError(
+                "対話タブには GUI マルチプレクサ（wmux）が必要です。"
+            )
+        driver.ensure_running()
+        workspace = driver.create_workspace(group)
+        spec = AgentSpec(
+            agent_id=agent_id or f"cmd:{_slug(title)}",
+            title=title,
+            command=list(command),
+            cwd=cwd or str(self.repo_root),
+            role=role,
+        )
+        return driver.open_surface(workspace, spec)
+
+    def start_command_session(
+        self,
+        name: str,
+        command: List[str],
+        *,
+        title: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        role: str = "work",
+        cwd: Optional[str] = None,
+    ) -> SessionRecord:
+        """Launch a single arbitrary command as a **monitored** session.
+
+        Unlike :meth:`start_session` — which wraps each task in a ``claude`` one-shot
+        — the command is run **as-is** (e.g. ``pantheon analyze --org-name X``), so the
+        full Pantheon pipeline runs inside the surface. One workspace + one surface are
+        persisted under ``.pantheon/sessions/<id>/`` so the GUI can track status, exit
+        code and log. Works on wmux (a visible tab that tees its output to the session
+        log) and the headless substrate (a subprocess whose stdout streams to the log).
+        """
+        title = title or name
+        agent_id = agent_id or f"work:{_slug(title)}"
+        sid = f"{_slug(name)}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        session_dir = self.sessions_dir / sid
+        agents_dir = session_dir / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        driver = self._driver_for(agents_dir)
+        try:
+            driver.ensure_running()
+            workspace = driver.create_workspace(name)
+        except MultiplexerUnavailableError as exc:
+            logger.warning("multiplexer unavailable (%s) — using headless", exc)
+            driver = HeadlessDriver(log_root=agents_dir)
+            self._driver = driver
+            workspace = driver.create_workspace(name)
+
+        log_file = agents_dir / f"{_slug(agent_id)}.log"
+        spec = AgentSpec(
+            agent_id=agent_id,
+            title=title,
+            command=list(command),
+            cwd=cwd or str(self.repo_root),
+            role=role,
+            shell_command=self._pwsh_run_command(command, log_file),
+            metadata={"log_dir": str(agents_dir), "log_path": str(log_file)},
+        )
+        record = SessionRecord(
+            id=sid,
+            name=name,
+            repo_root=str(self.repo_root),
+            driver=driver.name,
+            workspace=workspace.to_dict(),
+        )
+        surface = driver.open_surface(workspace, spec)
+        sr = surface.to_dict()
+        sr["agent_id"] = agent_id
+        sr["title"] = title
+        sr["role"] = role
+        sr["stream_json"] = False
+        sr["log_path"] = surface.log_path or surface.metadata.get("log_path")
+        record.surfaces.append(sr)
+        self._persist(record)
+        return record
+
+    @staticmethod
+    def _pwsh_run_command(command: List[str], log_file: Path) -> str:
+        """Quote ``command`` for a wmux/pwsh surface and tee its output to ``log_file``."""
+
+        def q(p) -> str:
+            return "'" + str(p).replace("'", "''") + "'"
+
+        quoted = " ".join(
+            q(a) if (" " in a or "'" in a or '"' in a) else a for a in command
+        )
+        return f"& {quoted} 2>&1 | Tee-Object -FilePath {q(log_file)}"
+
     def poll_session(self, sid: str) -> Optional[SessionRecord]:
         """Refresh agent statuses from the driver and re-persist."""
         record = self.get_session(sid)

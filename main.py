@@ -28,6 +28,7 @@ from commands.chat import cmd_chat as _cmd_chat_impl
 from commands.doctor import cmd_doctor as _cmd_doctor_impl
 from commands.goal import cmd_goal_run as _cmd_goal_run_impl
 from commands.goal import cmd_goal_status as _cmd_goal_status_impl
+from commands.handoff import cmd_handoff as _cmd_handoff_impl
 from commands.hq import cmd_hq_apply as _cmd_hq_apply_impl
 from commands.hq import cmd_hq_diagnose as _cmd_hq_diagnose_impl
 from commands.hq import cmd_hq_outcomes as _cmd_hq_outcomes_impl
@@ -50,6 +51,7 @@ from commands.org import cmd_init as _cmd_init_impl
 from commands.org import cmd_org_add as _cmd_org_add_impl
 from commands.org import cmd_org_list as _cmd_org_list_impl
 from commands.org import cmd_org_remove as _cmd_org_remove_impl
+from commands.org import cmd_org_scan as _cmd_org_scan_impl
 from commands.org import cmd_org_show as _cmd_org_show_impl
 from commands.org import cmd_proposal_apply as _cmd_proposal_apply_impl
 from commands.org import cmd_proposal_reject as _cmd_proposal_reject_impl
@@ -67,10 +69,12 @@ from commands.platform import cmd_platform_restore as _cmd_platform_restore_impl
 from commands.platform import cmd_platform_run_all as _cmd_platform_run_all_impl
 from commands.platform import cmd_platform_status as _cmd_platform_status_impl
 from commands.platform import cmd_serve as _cmd_serve_impl
+from commands.up import cmd_up as _cmd_up_impl
 from commands.version import cmd_version as _cmd_version_impl
+from core.paths import resource_root
 from core.platform.state import PlatformStateManager
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = resource_root()
 
 
 def _get_platform_home():
@@ -238,6 +242,10 @@ async def cmd_org_list(args) -> None:
     await _cmd_org_list_impl(args, get_psm=_get_psm)
 
 
+async def cmd_org_scan(args) -> None:
+    await _cmd_org_scan_impl(args, get_psm=_get_psm)
+
+
 async def cmd_org_show(args) -> None:
     await _cmd_org_show_impl(args, get_psm=_get_psm)
 
@@ -312,6 +320,10 @@ async def cmd_hq_outcomes(args) -> None:
     await _cmd_hq_outcomes_impl(args, get_psm=_get_psm)
 
 
+async def cmd_handoff(args) -> None:
+    await _cmd_handoff_impl(args, get_psm=_get_psm)
+
+
 async def cmd_platform_status(args) -> None:
     await _cmd_platform_status_impl(args, get_psm=_get_psm)
 
@@ -342,6 +354,10 @@ async def cmd_platform_run_all(args) -> None:
 
 def cmd_serve(args) -> None:
     _cmd_serve_impl(args)
+
+
+def cmd_up(args) -> None:
+    _cmd_up_impl(args)
 
 
 async def cmd_daemon_start(args) -> None:
@@ -450,6 +466,7 @@ HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
     "cmd_org_list": cmd_org_list,
+    "cmd_org_scan": cmd_org_scan,
     "cmd_org_show": cmd_org_show,
     "cmd_org_remove": cmd_org_remove,
     "cmd_analyze": cmd_analyze,
@@ -463,6 +480,7 @@ HANDLERS = {
     "cmd_hq_propose": cmd_hq_propose,
     "cmd_hq_apply": cmd_hq_apply,
     "cmd_hq_outcomes": cmd_hq_outcomes,
+    "cmd_handoff": cmd_handoff,
     "cmd_platform_status": cmd_platform_status,
     "cmd_platform_config": cmd_platform_config,
     "cmd_platform_config_set": cmd_platform_config_set,
@@ -471,6 +489,7 @@ HANDLERS = {
     "cmd_platform_restore": cmd_platform_restore,
     "cmd_platform_run_all": cmd_platform_run_all,
     "cmd_serve": cmd_serve,
+    "cmd_up": cmd_up,
     "cmd_daemon_start": cmd_daemon_start,
     "cmd_daemon_stop": cmd_daemon_stop,
     "cmd_daemon_status": cmd_daemon_status,
@@ -496,8 +515,35 @@ HANDLERS = {
 
 
 def main() -> None:
+    argv = sys.argv[1:]
+
+    # exe 化（frozen）時のデーモン自己再起動エントリ。
+    # `python -m core._daemon_runner` が使えないため、自分自身を
+    # `Pantheon.exe --daemon-run --interval=.. --max-files=..` の形で再実行する
+    # （commands/platform.py の cmd_daemon_start を参照）。
+    if argv and argv[0] == "--daemon-run":
+        from core import _daemon_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _daemon_runner.main()
+        return
+
+    # コンテンツ/PDCA デーモンの frozen 自己再起動エントリ。
+    if argv and argv[0] == "--content-daemon-run":
+        from core import _content_daemon_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _content_daemon_runner.main()
+        return
+
+    # 引数なし起動（exe をダブルクリックした場合など）はフル起動（up）する:
+    # Web GUI（監視）+ wmux 汎用チャットタブ + ブラウザ自動オープン。
+    # ターミナルから `Pantheon.exe <command>` とすれば従来どおり CLI が使える。
+    if not argv:
+        argv = ["up"]
+
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     handler_name = getattr(args, "handler_name", "")
     handler = HANDLERS.get(handler_name)
     if handler is None:

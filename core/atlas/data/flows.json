@@ -338,16 +338,38 @@
       "summary": "収益 org の実成果(インプレッション/クリック/CV/売上等)を軽量 JSON イベントとして記録し、本社(HQ)が『リーチはあるが収益0』等のシグナルから収益化介入を自動提案する。成果→HQ学習→介入→成果 の閉じたループ。",
       "trigger": { "kind": "cli", "name": "pantheon hq outcomes record / list" },
       "steps": [
-        { "component": "core/metrics/outcomes.py", "action": "成果イベントを ~/.pantheon/outcomes.json に蓄積・集計(JSON 正準)" },
+        { "component": "core/metrics/outcomes.py", "action": "成果イベントを ~/.pantheon/outcomes.json に蓄積・集計(JSON 正準)。record_many で CSV/JSON 一括取り込み" },
         { "component": "core/hierarchy/hq_interventions.py", "action": "成果サマリを第一級シグナルに収益化 SET_GOAL 介入を生成" },
-        { "component": "commands/hq.py", "action": "pantheon hq outcomes で記録/閲覧" }
+        { "component": "commands/hq.py", "action": "pantheon hq outcomes record/list/import（ダッシュボードの CSV/JSON を一括取り込み）" },
+        { "component": "web/server.py", "action": "POST /api/outcomes/import（行 dict 一括）／GET /api/outcomes/{org}（サマリ）" }
       ],
-      "surfaces": ["pantheon hq outcomes record", "pantheon hq outcomes list"],
+      "surfaces": ["pantheon hq outcomes record", "pantheon hq outcomes list", "pantheon hq outcomes import", "POST /api/outcomes/import", "GET /api/outcomes/{org}"],
       "state": ["~/.pantheon/outcomes.json"],
-      "verification": ["tests/test_revenue_substrate.py"],
+      "verification": ["tests/test_revenue_substrate.py", "tests/test_outcomes_import.py", "tests/test_web_server.py::test_outcomes_import_api"],
       "status": "partial",
       "known_issues": [
-        { "severity": "low", "title": "成果は外部から record する前提(自動連携なし)", "detail": "外部分析 API からの自動取り込みは未実装。イベントは手動/スクリプトで record する。", "file": "core/metrics/outcomes.py" }
+        { "severity": "low", "title": "外部分析 API の自動プラーは未実装(意図的)", "detail": "成果は外部から取り込む前提。CSV/JSON 一括 import まで配線済み（ダッシュボードのエクスポートを drop）。各プラットフォームの認証付き自動プラーは creds/安全面のため未実装。", "file": "core/metrics/outcomes.py" }
+      ]
+    },
+    {
+      "id": "cross-org-handoff",
+      "name": "ピア Organization 間の引き渡し（集客→販売→収益化フライホイール）",
+      "summary": "対等な収益 Organization 同士（SNS 運用 → note 販売 → アフィリ収益化）を結ぶ橋渡し。ある org の成果物（検証済み需要・購買意図・企画ブリーフ）を OrgHandoff として作成し、PolicyEngine（cross_org_handoff は必ず human_required = 承認ボタン）を通して受け手 org の作業へ渡す。HQ→子の構造介入とは別軸の、ピア間アーティファクト移送。",
+      "trigger": { "kind": "cli", "name": "pantheon handoff create / list / approve / reject / consume" },
+      "steps": [
+        { "component": "core/hierarchy/org_handoff.py:OrgHandoffStore", "action": "引き渡しを作成し ~/.pantheon/org_handoffs.json に永続化（pending）。作成時に PolicyEngine を通す" },
+        { "component": "core/policy/engine.py:PolicyEngine", "action": "cross_org_handoff を必ず human_required に判定（空 file_path でも auto_reject せず、auto_approve にも落とさない）" },
+        { "component": "commands/handoff.py", "action": "承認ボタン（approve: pending→approved）／却下／受け手の消費（consume: approved→consumed）" },
+        { "component": "core/hierarchy/org_handoff.py:materialize_handoff", "action": "承認時に受け手 org へ content_asset ブリーフ提案を自動生成（検証済みの型: 無料エリア3要素・3倍刻み・A8.net X不可/PR表記）。受け手は通常の proposal apply で適用" },
+        { "component": "core/hierarchy/org_handoff.py:draft_handoff", "action": "本文ドラフトを生成（claude CLI 経由。型・コンプラ=PR表記/収益保証禁止を system プロンプトに織込み、TODO で事実欠落を明示）。claude 不在時は決定論テンプレへフォールバック" },
+        { "component": "web/server.py", "action": "GET/POST /api/handoffs ＋ {id}/approve|draft|reject|consume。approve は既定でブリーフ、draft=true で本文まで一括（承認1ボタン）。Web UI /handoffs の「承認＋本文生成」ボタンから駆動" }
+      ],
+      "surfaces": ["pantheon handoff create", "pantheon handoff list", "pantheon handoff approve", "pantheon handoff draft", "pantheon handoff reject", "pantheon handoff consume", "GET/POST /api/handoffs", "POST /api/handoffs/{id}/approve（materialize 連動）", "POST /api/handoffs/{id}/draft（本文生成）", "Web UI /handoffs（承認・本文生成ボタン）"],
+      "state": ["~/.pantheon/org_handoffs.json", "<受け手 org repo>/.pantheon/improvements/（自動生成ブリーフ/本文ドラフト）"],
+      "verification": ["tests/test_org_handoff.py", "tests/test_web_server.py::test_handoff_api_create_approve_materializes", "tests/test_web_server.py::test_handoff_api_draft_creates_body_proposal", "web/frontend/src/pages/__tests__/HandoffsPage.test.tsx"],
+      "status": "partial",
+      "known_issues": [
+        { "severity": "low", "title": "本文生成はオンデマンド（approve とは別ステップ）", "detail": "approve→ブリーフは即時・決定論。本文ドラフトは handoff draft / draft エンドポイントで claude 生成（数秒）。approve に本文生成を同期させると Web のレイテンシが増すため、意図的に別ステップにしている。", "file": "core/hierarchy/org_handoff.py" }
       ]
     }
   ]

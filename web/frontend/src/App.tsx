@@ -11,14 +11,14 @@ import {
   Lightbulb,
   Map as MapIcon,
   Menu,
-  MessageSquare,
   Moon,
   Search,
   Settings,
   Sun,
-  Target,
   Boxes,
   KanbanSquare,
+  ArrowRightLeft,
+  CalendarClock,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -27,14 +27,13 @@ import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { AgentsPage } from '@/pages/AgentsPage'
-import { AnalyzePage } from '@/pages/AnalyzePage'
 import { AtlasPage } from '@/pages/AtlasPage'
-import { ChatPage } from '@/pages/ChatPage'
 import { DataPage } from '@/pages/DataPage'
 import { DashboardPage } from '@/pages/DashboardPage'
-import { GoalsPage } from '@/pages/GoalsPage'
+import { HandoffsPage } from '@/pages/HandoffsPage'
 import { HelpPage } from '@/pages/HelpPage'
 import { BoardPage } from '@/pages/BoardPage'
+import { ContentSchedulePage } from '@/pages/ContentSchedulePage'
 import { OrgsPage } from '@/pages/OrgsPage'
 import { ProposalsPage } from '@/pages/ProposalsPage'
 import { SessionsPage } from '@/pages/SessionsPage'
@@ -43,7 +42,7 @@ import { SettingsPage } from '@/pages/SettingsPage'
 type NavItem = {
   to: string
   label: string
-  icon: typeof MessageSquare
+  icon: typeof LayoutDashboard
 }
 
 type SearchResult = {
@@ -57,16 +56,15 @@ type SearchResult = {
 }
 
 const navItems: NavItem[] = [
-  { to: '/chat', label: 'チャット', icon: MessageSquare },
+  { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
   { to: '/orgs', label: '組織', icon: Building2 },
-  { to: '/analyze', label: '分析', icon: Search },
-  { to: '/goals', label: 'ゴール', icon: Target },
   { to: '/proposals', label: '改善提案', icon: Lightbulb },
+  { to: '/handoffs', label: '引き渡し', icon: ArrowRightLeft },
+  { to: '/content', label: 'コンテンツ予約', icon: CalendarClock },
   { to: '/agents', label: 'エージェント', icon: Bot },
   { to: '/atlas', label: 'Atlas', icon: MapIcon },
   { to: '/sessions', label: 'セッション', icon: Boxes },
   { to: '/board', label: '作業ボード', icon: KanbanSquare },
-  { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
   { to: '/data', label: 'データ管理', icon: Database },
   { to: '/settings', label: '設定', icon: Settings },
   { to: '/help', label: 'ヘルプ', icon: HelpCircle },
@@ -403,13 +401,12 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route path="/" element={<Navigate to="/chat" replace />} />
-        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/orgs" element={<OrgsPage />} />
         <Route path="/proposals" element={<ProposalsPage />} />
-        <Route path="/analyze" element={<AnalyzePage />} />
-        <Route path="/goals" element={<GoalsPage />} />
+        <Route path="/handoffs" element={<HandoffsPage />} />
+        <Route path="/content" element={<ContentSchedulePage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/atlas" element={<AtlasPage />} />
         <Route path="/sessions" element={<SessionsPage />} />
@@ -417,7 +414,7 @@ export default function App() {
         <Route path="/data" element={<DataPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/help" element={<HelpPage />} />
-        <Route path="*" element={<Navigate to="/chat" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>
   )

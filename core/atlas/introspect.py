@@ -16,8 +16,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DATA_DIR = Path(__file__).resolve().parent / "data"
+from core.paths import resource_path, resource_root
+
+# Atlas は同梱されたソースツリーを静的解析する。exe 化時は sys._MEIPASS 配下に
+# 展開されたソース／データを参照する（packaging で source tree を datas に同梱）。
+PROJECT_ROOT = resource_root()
+_DATA_DIR = resource_path("core", "atlas", "data")
 
 # サブシステム分類: ラベル -> そのサブシステムに属するトップレベル相対パスの接頭辞
 SUBSYSTEMS: dict[str, dict[str, Any]] = {
