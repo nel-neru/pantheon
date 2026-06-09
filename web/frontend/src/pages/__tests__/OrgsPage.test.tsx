@@ -92,7 +92,9 @@ describe('OrgsPage', () => {
     renderWithRouter(<OrgsPage />)
 
     expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'サンプル組織で始める' })).toBeInTheDocument()
+    // 実データのみ: サンプル組織生成ボタンは廃止。実 repo 指定の「組織を作成」のみ。
+    expect(screen.getByRole('button', { name: '組織を作成' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'サンプル組織で始める' })).not.toBeInTheDocument()
   })
 
   it('shows an error toast when loading organizations fails', async () => {
@@ -103,29 +105,6 @@ describe('OrgsPage', () => {
     await waitFor(() => {
       expect(mockedToast.error).toHaveBeenCalledWith('org load failed')
     })
-  })
-
-  it('creates a sample organization from the welcome state', async () => {
-    let currentOrgs: typeof baseOrg[] = []
-    mockApi.mockImplementation(async (method, path) => {
-      if (method === 'GET' && path === '/api/organizations') return currentOrgs
-      if (method === 'POST' && path === '/api/welcome') {
-        currentOrgs = [baseOrg]
-        return { created: ['acme-platform'] }
-      }
-      throw new Error(`Unexpected request: ${method} ${path}`)
-    })
-
-    const user = userEvent.setup()
-    renderWithRouter(<OrgsPage />)
-
-    expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'サンプル組織で始める' }))
-
-    await waitFor(() => {
-      expect(mockedToast.success).toHaveBeenCalledWith('サンプル組織「acme-platform」を作成しました。')
-    })
-    expect(await screen.findByText('acme-platform')).toBeInTheDocument()
   })
 
   it('creates a custom organization from the modal form', async () => {
@@ -150,10 +129,13 @@ describe('OrgsPage', () => {
     renderWithRouter(<OrgsPage />)
 
     expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '組織を自分で作成' }))
+    await user.click(screen.getByRole('button', { name: '組織を作成' }))
     await user.type(screen.getByLabelText('名前'), 'beta-team')
     await user.type(screen.getByLabelText('目的'), 'Build a beta product')
-    await user.type(screen.getByLabelText('対象リポジトリパス'), '/Users/test/repos/beta')
+    await user.type(
+      screen.getByLabelText('対象ワークスペース（git リポジトリ）の絶対パス'),
+      '/Users/test/repos/beta',
+    )
     await user.click(screen.getByRole('button', { name: '作成' }))
 
     await waitFor(() => {

@@ -36,6 +36,22 @@ def self_command(*args: str) -> List[str]:
     return [sys.executable, str(resource_root() / "main.py"), *args]
 
 
+def _default_repo_root(repo_root: Optional[Path]) -> Path:
+    """セッション永続化先のルート。
+
+    Web の監視側（``web.server._session_orchestrator``）は ``PROJECT_ROOT =
+    resource_root()`` 配下の ``.pantheon/sessions`` を読む。生産者（ここ）が
+    ``cwd`` 既定だと frozen exe（``resource_root()`` = ``sys._MEIPASS`` の一時ディレクトリ）
+    などで生産/消費ディレクトリが食い違い、着火したセッションが GUI に出ない。
+    既定を ``resource_root()`` に揃えて producer == consumer を保証する。
+    """
+    if repo_root is not None:
+        return Path(repo_root)
+    from core.paths import resource_root
+
+    return resource_root()
+
+
 def _next_index(orch: SessionOrchestrator, group: str, kind: str) -> int:
     """``group`` 内の ``kind#N`` 連番の次の番号を返す（既存セッションから算出）。"""
     n = 0
@@ -62,7 +78,7 @@ def launch_analyze(
     prefer: Optional[str] = None,
 ) -> SessionRecord:
     """``pantheon analyze --org-name <org>`` を ``<org> · analyze#N`` タブで起動する。"""
-    orch = SessionOrchestrator(repo_root, prefer=prefer)
+    orch = SessionOrchestrator(_default_repo_root(repo_root), prefer=prefer)
     n = _next_index(orch, org_name, "analyze")
     return orch.start_command_session(
         name=org_name,
@@ -84,7 +100,7 @@ def launch_goal(
 ) -> SessionRecord:
     """``pantheon goal run <text>`` を ``<group> · goal#N`` タブで起動する。"""
     group = org_name or "Pantheon"
-    orch = SessionOrchestrator(repo_root, prefer=prefer)
+    orch = SessionOrchestrator(_default_repo_root(repo_root), prefer=prefer)
     n = _next_index(orch, group, "goal")
     return orch.start_command_session(
         name=group,
@@ -103,7 +119,7 @@ def launch_apply(
     prefer: Optional[str] = None,
 ) -> SessionRecord:
     """``pantheon approve <id> --org-name <org>`` を ``<org> · apply#N`` タブで起動する。"""
-    orch = SessionOrchestrator(repo_root, prefer=prefer)
+    orch = SessionOrchestrator(_default_repo_root(repo_root), prefer=prefer)
     n = _next_index(orch, org_name, "apply")
     return orch.start_command_session(
         name=org_name,

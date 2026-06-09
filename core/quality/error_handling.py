@@ -24,12 +24,10 @@ def with_error_handling(
     def decorator(func: Callable[..., Awaitable[Any]]):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            last_exception = None
             for attempt in range(max_retries + 1):
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
-                    last_exception = e
                     if log_errors:
                         logger.warning(f"[ErrorHandling] {func.__name__} failed (attempt {attempt + 1}): {e}")
 

@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   Bot,
   Building2,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   Database,
@@ -134,8 +135,8 @@ const overviewSections: Section[] = [
           <li>
             <span className="help-step-num">1</span>
             <div>
-              <strong>設定</strong>
-              <p>設定画面で LLM プロバイダー、モデル、API キーを入力します。</p>
+              <strong>セットアップ</strong>
+              <p>生成はローカルの <code>claude</code> CLI を使います。API キーは不要です。初回に一度 <code>claude</code> を実行してログインし、設定画面で既定モデルを選びます。</p>
             </div>
           </li>
           <li>
@@ -271,6 +272,31 @@ const pageSections: Section[] = [
     ),
   },
   {
+    id: 'content',
+    title: 'コンテンツ予約',
+    content: (
+      <div className="help-prose">
+        <div className="help-page-icon-row">
+          <CalendarClock size={16} />
+          <span>投稿ドラフトを定期生成し、PDCA で回します（コンテンツ・スケジュール）。</span>
+        </div>
+        <p>
+          ワークスペース（組織）ごとに「どんな投稿を・どの間隔で生成するか」を登録します。生成物は
+          repo 内の <strong>承認待ち下書き（content_asset 提案）</strong> として作られ、外部公開は一切しません。
+          公開するかどうかは人間が承認ボタンで判断します。
+        </p>
+        <Table
+          headers={['操作', '内容']}
+          rows={[
+            ['ジョブ追加', '対象組織・種類・テーマ・生成間隔を指定して定期ジョブを作成します。'],
+            ['今すぐ生成', '即時に投稿ドラフトを1件生成します（承認待ち提案として保存）。'],
+            ['PDCA ループ', '開始すると定期生成＋成果由来の介入提案を回し、レート制限を検知すると自動停止します。'],
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: 'agents',
     title: 'エージェント',
     content: (
@@ -347,7 +373,7 @@ const pageSections: Section[] = [
             ['プラットフォーム状態', 'LLM 設定状態、組織数、アクティブ数、バランスを表示します。'],
             ['組織一覧', '組織ごとのヘルスと提案数を確認できます。'],
             ['デーモン状態', '自動改善プロセスの起動、停止、PID、ログパスを管理します。'],
-            ['システム情報', 'LLM プロバイダー、モデル、設定取得状態を確認できます。'],
+            ['システム情報', 'claude CLI の稼働状態、既定モデル、設定取得状態を確認できます。'],
           ]}
         />
       </div>
@@ -386,9 +412,8 @@ const pageSections: Section[] = [
         <Table
           headers={['項目', '内容']}
           rows={[
-            ['LLM プロバイダー', 'Anthropic / OpenAI / Groq / GitHub Models (無料) / Google Gemini を選択できます。'],
-            ['モデル一覧', 'プロバイダー変更時に利用可能モデルを自動取得します。'],
-            ['API キー', 'マスク表示されたキーを確認し、表示切り替えしながら更新できます。'],
+            ['実行ランタイム', 'ローカルの claude CLI を使用します（API キー不要）。CLI の稼働状態を表示します。'],
+            ['既定モデル', 'claude CLI で利用可能なモデル（Opus / Sonnet / Haiku）から既定を選べます。'],
             ['デーモン設定', '実行間隔と最大ファイル数を設定できます。'],
             ['ストレージ情報', '設定ファイルの保存先を確認できます。'],
           ]}
@@ -453,19 +478,21 @@ const advancedSections: Section[] = [
     ),
   },
   {
-    id: 'providers',
-    title: 'LLM プロバイダー設定',
+    id: 'runtime',
+    title: '実行ランタイム（claude CLI）',
     content: (
       <div className="help-prose">
-        <p>設定画面では API キーが設定済みのプロバイダーから最新モデル一覧を取得できます。</p>
+        <p>
+          Pantheon の生成（分析・チャット・コンテンツ生成）はすべてローカルの
+          <CodeBlock>claude</CodeBlock> CLI を通します。<strong>ホスト型 LLM の API キーは使いません。</strong>
+          初回に一度 <CodeBlock>claude</CodeBlock> を実行してログインすれば利用できます。
+        </p>
         <Table
-          headers={['プロバイダー', 'API キー取得先', '補足']}
+          headers={['項目', '内容']}
           rows={[
-            ['Anthropic', 'console.anthropic.com', 'Claude 系モデルを利用します。'],
-            ['OpenAI', 'platform.openai.com/api-keys', 'GPT 系モデルを利用します。'],
-            ['Groq', 'console.groq.com', '無料枠があります。'],
-            ['GitHub Models (無料)', 'github.com/settings/tokens', 'GITHUB_TOKEN を設定して利用します。'],
-            ['Google Gemini', 'aistudio.google.com/app/apikey', '無料枠があります。'],
+            ['認証', '一度 claude を実行してログイン（API キーの入力欄はありません）。'],
+            ['既定モデル', '設定画面で Opus / Sonnet / Haiku から選択します。'],
+            ['CLI が無い場合', '分析・生成は 503 になり、偽のデータは生成しません。GUI の閲覧機能は動作します。'],
           ]}
         />
       </div>

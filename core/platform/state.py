@@ -111,6 +111,20 @@ class PlatformStateManager:
         config["meta_improvement_org_id"] = org_id
         self.save_platform_config(config)
 
+    def get_workspaces_root(self) -> Optional[str]:
+        """新規ワークスペース（git repo）を作成する既定の親フォルダ（未設定なら None）。
+
+        ゴールから新規ワークスペースを作る際の置き場所。未設定時の既定は呼び出し側で
+        ``platform_home/workspaces`` 等にフォールバックする。実運用では
+        ``set_workspaces_root("C:\\Users\\neoma\\NEL")`` のように設定する。
+        """
+        return self.load_platform_config().get("workspaces_root")
+
+    def set_workspaces_root(self, path: str | Path) -> None:
+        config = self.load_platform_config()
+        config["workspaces_root"] = str(path)
+        self.save_platform_config(config)
+
     # ---- Organization 管理 ----
 
     def save_organization(self, org: Organization) -> None:
@@ -133,6 +147,16 @@ class PlatformStateManager:
     def load_organization_by_name(self, name: str) -> Optional[Organization]:
         for org in self.load_organizations():
             if org.name == name:
+                return org
+        return None
+
+    def load_organization_by_repo(self, repo_path: str | Path) -> Optional[Organization]:
+        """指定ワークスペース（repo パス）に紐づく Organization を返す（重複登録判定用）。"""
+        target = str(Path(repo_path)).rstrip("\\/").lower()
+        for org in self.load_organizations():
+            if org.target_repo_path and str(
+                Path(org.target_repo_path)
+            ).rstrip("\\/").lower() == target:
                 return org
         return None
 

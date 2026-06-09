@@ -742,38 +742,20 @@ def test_approve_proposal_persists_approval_notes(tmp_path, monkeypatch):
     assert stored["approval_notes"] == "Ship after smoke test."
 
 
-def test_welcome_creates_sample_org(tmp_path, monkeypatch):
-    """ウェルカムエンドポイントがサンプル組織を作成すること"""
+def test_welcome_creates_no_sample_org(tmp_path, monkeypatch):
+    """実データのみ: ウェルカムはサンプル組織を作成せず案内のみ返す。"""
     psm = server.PlatformStateManager(platform_home=tmp_path)
     monkeypatch.setattr(server, "_psm", lambda: psm)
 
     response = client.post("/api/welcome")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "created": ["Sample Organization"],
-        "skipped": [],
-    }
-    saved = psm.load_organization_by_name("Sample Organization")
-    assert saved is not None
-    assert saved.target_repo_path == str(server.PROJECT_ROOT)
-    assert saved.is_system is False
-
-
-def test_welcome_skips_existing_org(tmp_path, monkeypatch):
-    """すでに同名組織がある場合はスキップすること"""
-    psm = server.PlatformStateManager(platform_home=tmp_path)
-    org = create_default_organization("Sample Organization", "existing org")
-    psm.save_organization(org)
-    monkeypatch.setattr(server, "_psm", lambda: psm)
-
-    response = client.post("/api/welcome")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "created": [],
-        "skipped": ["Sample Organization"],
-    }
+    body = response.json()
+    assert body["created"] == []
+    assert "message" in body
+    # 何も永続化されていない（偽組織が作られない）
+    assert psm.load_organizations() == []
+    assert psm.load_organization_by_name("Sample Organization") is None
 
 
 def test_get_settings_returns_defaults(tmp_path, monkeypatch):
@@ -1325,6 +1307,21 @@ def test_create_organization_rejects_parent_traversal_path():
     assert response.status_code == 422
 
 
+def test_create_organization_requires_repo():
+    """中核モデル「1 ワークスペース = 1 Organization」: repo 未指定は 422。"""
+    response = client.post(
+        "/api/organizations",
+        json={"name": "No Repo Org", "purpose": "missing workspace"},
+    )
+    assert response.status_code == 422
+
+    empty = client.post(
+        "/api/organizations",
+        json={"name": "Blank Repo Org", "purpose": "blank", "target_repo_path": ""},
+    )
+    assert empty.status_code == 422
+
+
 def test_queue_task_rejects_invalid_task_type(tmp_path, monkeypatch):
     _set_task_queue_home(tmp_path, monkeypatch)
 
@@ -1511,6 +1508,8 @@ def test_analyze_routes_through_orchestrator(tmp_path, monkeypatch):
     org.target_repo_path = str(tmp_path)
     psm.save_organization(org)
     monkeypatch.setattr(server, "_psm", lambda: psm)
+    # analyze は claude 不在時に 503 でゲートされる。ルーティング検証のため利用可能にする。
+    monkeypatch.setattr("core.runtime.claude_code.claude_available", lambda: True)
 
     calls = {"created": 0}
 
@@ -1542,3 +1541,71 @@ def test_analyze_routes_through_orchestrator(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert calls["created"] == 1  # OrchestratorAgent 経由で実行された
     assert response.json()["proposals_generated"] == 1
+
+
+def test_analyze_returns_503_when_claude_unavailable(tmp_path, monkeypatch):
+    """実データのみ: 生成バックエンドが無い時は偽提案を作らず 503 を返す。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("NoLLMOrg", "x")
+    org.target_repo_path = str(tmp_path)
+    psm.save_organization(org)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr("core.runtime.claude_code.claude_available", lambda: False)
+
+    response = client.post("/api/analyze", json={"org_name": "NoLLMOrg", "max_files": 3})
+    assert response.status_code == 503
+    # 偽の提案が永続化されていない
+    assert psm.get_org_state_manager(org).get_all_improvement_proposals() == []
+
+
+def test_start_session_requires_agents(monkeypatch):
+    """実データのみ: agents 無しのデモセッション生成は廃止され 400 を返す。"""
+    response = client.post("/api/sessions", json={"name": "Demo"})
+    assert response.status_code == 400
+
+
+def test_content_job_crud_and_run(tmp_path, monkeypatch):
+    """コンテンツジョブの作成→一覧→即時実行（投稿 content_asset 提案生成）→削除。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    org = create_default_organization("SNS Growth", "content", repo_path=str(repo))
+    psm.save_organization(org)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+
+    created = client.post(
+        "/api/content-jobs",
+        json={"org_name": "SNS Growth", "kind": "content_brief", "theme": "朝活", "interval_seconds": 3600},
+    )
+    assert created.status_code == 200
+    job_id = created.json()["job_id"]
+
+    listing = client.get("/api/content-jobs")
+    assert listing.status_code == 200
+    assert any(j["job_id"] == job_id for j in listing.json())
+
+    run = client.post(f"/api/content-jobs/{job_id}/run")
+    assert run.status_code == 200
+    assert run.json()["ok"] is True
+    # 投稿ドラフトが content_asset 提案（承認待ち）として生成される
+    proposals = psm.get_org_state_manager(org).get_all_improvement_proposals()
+    assert proposals and proposals[0]["category"] == "content_asset"
+
+    deleted = client.delete(f"/api/content-jobs/{job_id}")
+    assert deleted.status_code == 200
+
+
+def test_content_job_requires_existing_org(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    resp = client.post("/api/content-jobs", json={"org_name": "Ghost", "theme": "x"})
+    assert resp.status_code == 404
+
+
+def test_content_daemon_status_reports_stopped(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    resp = client.get("/api/content-daemon/status")
+    assert resp.status_code == 200
+    assert resp.json()["running"] is False

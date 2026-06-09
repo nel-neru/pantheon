@@ -143,6 +143,26 @@ class RepoStateManager:
                 break
         return proposals
 
+    def get_all_improvement_proposals(self, limit: int = 1000) -> list[Dict[str, Any]]:
+        """全ての改善提案（status 問わず）を新しい順に返す。
+
+        承認率・適用率など「実状態由来の指標」算出に使う（pending だけでは accepted を
+        数えられないため）。
+        """
+        improvements_dir = self.state_dir / "improvements"
+        if not improvements_dir.exists():
+            return []
+        proposals = []
+        for f in sorted(improvements_dir.glob("*.json"), reverse=True):
+            try:
+                with open(f, "r", encoding="utf-8") as fp:
+                    proposals.append(json.load(fp))
+            except (OSError, ValueError):
+                continue
+            if len(proposals) >= limit:
+                break
+        return proposals
+
     def save_proposal(self, proposal: "ImprovementProposal") -> bool:
         """Sprint 2 alias: ImprovementProposal を保存して成功可否を返す。"""
         self.save_improvement_proposal(proposal)

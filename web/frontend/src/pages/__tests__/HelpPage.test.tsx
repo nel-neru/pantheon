@@ -35,8 +35,9 @@ describe('HelpPage', () => {
 
     await user.click(screen.getByRole('button', { name: '設定' }))
 
-    expect(screen.getByText(/Anthropic \/ OpenAI \/ Groq \/ GitHub Models/)).toBeInTheDocument()
-    expect(screen.getByText(/マスク表示されたキーを確認し、表示切り替えしながら更新できます/)).toBeInTheDocument()
+    // 実データのみ: マルチプロバイダ/API キーの記述は廃止し、claude CLI 前提に統一
+    expect(screen.getByText(/ローカルの claude CLI を使用します（API キー不要）/)).toBeInTheDocument()
+    expect(screen.getByText(/Opus \/ Sonnet \/ Haiku/)).toBeInTheDocument()
   })
 
   it('documents the supported slash commands with /goal', async () => {
@@ -59,10 +60,9 @@ describe('HelpPage', () => {
     expect(screen.getByText('起動とインストール')).toBeInTheDocument()
     expect(screen.getByText(/exe をダブルクリックすれば GUI が起動し/)).toBeInTheDocument()
 
-    // プロバイダー節は折りたたまれているので、展開してから内容を検証する
-    await user.click(screen.getByRole('button', { name: 'LLM プロバイダー設定' }))
-    expect(screen.getByText('console.anthropic.com')).toBeInTheDocument()
-    expect(screen.getByText('github.com/settings/tokens')).toBeInTheDocument()
+    // 実行ランタイム節は折りたたまれているので、展開してから内容を検証する
+    await user.click(screen.getByRole('button', { name: '実行ランタイム（claude CLI）' }))
+    expect(screen.getByText(/ホスト型 LLM の API キーは使いません/)).toBeInTheDocument()
   })
 
   it('collapses and expands accordion sections', async () => {

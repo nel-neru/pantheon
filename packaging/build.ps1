@@ -35,6 +35,56 @@ $Iss = Join-Path $Root 'packaging\pantheon.iss'
 
 function Write-Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
 
+# --- Optional code signing ------------------------------------------------- #
+# Signing is OPTIONAL and OFF unless a certificate is provided via environment
+# variables. This lets unsigned dev builds work while supporting signed release
+# builds (Windows Smart App Control / SmartScreen block unsigned exes).
+#   PANTHEON_SIGN_THUMBPRINT  - SHA1 thumbprint of a cert already in the store, OR
+#   PANTHEON_SIGN_CERT        - path to a .pfx file (+ PANTHEON_SIGN_PASSWORD)
+#   PANTHEON_SIGN_TIMESTAMP   - RFC3161 timestamp URL (default: DigiCert)
+function Get-SignTool {
+    $st = (Get-Command signtool -ErrorAction SilentlyContinue)
+    if ($null -ne $st) { return $st.Source }
+    $sdkRoots = @(
+        "${env:ProgramFiles(x86)}\Windows Kits\10\bin",
+        "$env:ProgramFiles\Windows Kits\10\bin"
+    )
+    foreach ($root in $sdkRoots) {
+        if (Test-Path $root) {
+            $found = Get-ChildItem -Path $root -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match 'x64' } |
+                Sort-Object FullName -Descending | Select-Object -First 1
+            if ($null -ne $found) { return $found.FullName }
+        }
+    }
+    return $null
+}
+
+function Test-SigningConfigured {
+    return [bool]($env:PANTHEON_SIGN_THUMBPRINT -or $env:PANTHEON_SIGN_CERT)
+}
+
+function Invoke-Sign($Path) {
+    if (-not (Test-SigningConfigured)) { return $false }
+    $signtool = Get-SignTool
+    if ($null -eq $signtool) {
+        Write-Warning "signtool.exe not found (install the Windows SDK). Skipping signing of $Path."
+        return $false
+    }
+    $ts = if ($env:PANTHEON_SIGN_TIMESTAMP) { $env:PANTHEON_SIGN_TIMESTAMP } else { 'http://timestamp.digicert.com' }
+    $signArgs = @('sign', '/fd', 'SHA256', '/tr', $ts, '/td', 'SHA256')
+    if ($env:PANTHEON_SIGN_THUMBPRINT) {
+        $signArgs += @('/sha1', $env:PANTHEON_SIGN_THUMBPRINT)
+    } else {
+        $signArgs += @('/f', $env:PANTHEON_SIGN_CERT)
+        if ($env:PANTHEON_SIGN_PASSWORD) { $signArgs += @('/p', $env:PANTHEON_SIGN_PASSWORD) }
+    }
+    $signArgs += $Path
+    & $signtool @signArgs
+    if ($LASTEXITCODE -ne 0) { throw "signtool failed for $Path" }
+    return $true
+}
+
 if (-not (Test-Path $Python)) {
     throw "venv python not found: $Python . First run: py -3.12 -m venv .venv; .\.venv\Scripts\Activate.ps1; pip install -e '.[dev,web]'"
 }
@@ -89,6 +139,15 @@ $Exe = Join-Path $ExeDir 'Pantheon.exe'
 if (-not (Test-Path $Exe)) { throw "Build output not found: $Exe" }
 Write-Host "[OK] Executable: $Exe" -ForegroundColor Green
 
+# --- 2b. Optional code signing (exe) --------------------------------------- #
+Write-Step "Code signing (optional)"
+if (Invoke-Sign $Exe) {
+    Write-Host "[OK] Signed: $Exe" -ForegroundColor Green
+} else {
+    Write-Host "Code signing not configured; shipping unsigned exe."
+    Write-Host "  To sign, set PANTHEON_SIGN_THUMBPRINT (cert in store) or PANTHEON_SIGN_CERT (.pfx) + PANTHEON_SIGN_PASSWORD."
+}
+
 # --- 3. Inno Setup installer ----------------------------------------------- #
 if ($SkipInstaller) {
     Write-Step "Skipping installer (exe folder is ready)"
@@ -101,7 +160,8 @@ $iscc = (Get-Command iscc -ErrorAction SilentlyContinue)
 if ($null -eq $iscc) {
     $candidates = @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"   # winget user-scope install
     )
     foreach ($c in $candidates) { if (Test-Path $c) { $iscc = $c; break } }
 }
@@ -118,6 +178,7 @@ if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed." }
 
 $Setup = Join-Path $Root 'dist\Pantheon-Setup.exe'
 if (Test-Path $Setup) {
+    if (Invoke-Sign $Setup) { Write-Host "[OK] Signed installer." -ForegroundColor Green }
     Write-Host "[OK] Installer: $Setup" -ForegroundColor Green
 } else {
     Write-Warning "Installer output not found (check OutputDir/OutputBaseFilename in pantheon.iss)."

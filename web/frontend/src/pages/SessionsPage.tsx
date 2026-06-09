@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Boxes, FileText, Play, RefreshCw, Square, Terminal } from 'lucide-react'
+import { AlertTriangle, Boxes, FileText, RefreshCw, Square, Terminal } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
@@ -53,7 +53,6 @@ export function SessionsPage() {
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [starting, setStarting] = useState(false)
   const [selected, setSelected] = useState<{ sessionId: string; agentId: string; title: string } | null>(null)
   const [logText, setLogText] = useState<string>('')
   const [logLoading, setLogLoading] = useState(false)
@@ -98,19 +97,6 @@ export function SessionsPage() {
     }
   }, [events, loadData])
 
-  const handleStartDemo = async () => {
-    setStarting(true)
-    try {
-      const rec = await api<SessionRecord>('POST', '/api/sessions', { name: 'Demo' })
-      toast.success(`セッション開始: ${rec.name}（${rec.driver}）`)
-      await loadData()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'セッションの開始に失敗しました。')
-    } finally {
-      setStarting(false)
-    }
-  }
-
   const handleStop = async (sessionId: string) => {
     try {
       await api('POST', `/api/sessions/${encodeURIComponent(sessionId)}/stop`)
@@ -153,10 +139,6 @@ export function SessionsPage() {
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void loadData()} aria-label="再読み込み">
             <RefreshCw size={14} />
             更新
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={handleStartDemo} disabled={starting}>
-            <Play size={14} />
-            {starting ? '開始中…' : 'デモセッション開始'}
           </button>
         </div>
       </header>
@@ -204,7 +186,7 @@ export function SessionsPage() {
               <div className="empty-state">
                 <Boxes className="empty-state-icon" size={28} />
                 <h3>セッションがありません</h3>
-                <p>「デモセッション開始」を押すと、wmux 上にエージェントのタブが自動生成されます。</p>
+                <p>チャットの <code>/analyze</code>・<code>/goal</code> を実行すると、wmux 上にエージェントのタブが生成され、ここにライブ表示されます。</p>
               </div>
             </div>
           </div>

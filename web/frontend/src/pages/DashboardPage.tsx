@@ -3,6 +3,7 @@ import { Activity, Clock3, Power, RefreshCw, Terminal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
+import { OrchestraView } from '@/components/OrchestraView'
 import { api } from '@/lib/api'
 import { healthClass } from '@/lib/utils'
 
@@ -102,16 +103,15 @@ function formatElapsed(task: TaskItem) {
   return `${seconds}秒`
 }
 
-function taskProgress(task: TaskItem) {
+function taskProgress(task: TaskItem): number | null {
+  // 実データのみ: タスクキューに進捗フィールドが無い場合は値を捏造しない。
+  // payload.progress があればそれを、完了/失敗は 100% を返し、進行中/待機は null（バー非表示）。
   const payloadProgress = task.payload?.progress
   if (typeof payloadProgress === 'number') {
     return Math.max(0, Math.min(100, payloadProgress))
   }
-  if (task.status === 'done') return 100
-  if (task.status === 'failed') return 100
-  if (task.status === 'running') return 65
-  if (task.status === 'pending') return 20
-  return 0
+  if (task.status === 'done' || task.status === 'failed') return 100
+  return null
 }
 
 export function DashboardPage() {
@@ -387,6 +387,8 @@ export function DashboardPage() {
           </div>
         ) : null}
 
+        <OrchestraView />
+
         <div className="card">
           <div className="card-header">
             <div>
@@ -479,13 +481,17 @@ export function DashboardPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="health-track">
-                      <div
-                        className={`health-fill ${task.status === 'pending' ? 'warning' : 'good'}`}
-                        style={{ width: `${taskProgress(task)}%` }}
-                      />
-                    </div>
-                    <div className="text-xs text-muted">進捗 {taskProgress(task)}%</div>
+                    {taskProgress(task) !== null && (
+                      <>
+                        <div className="health-track">
+                          <div
+                            className={`health-fill ${task.status === 'pending' ? 'warning' : 'good'}`}
+                            style={{ width: `${taskProgress(task)}%` }}
+                          />
+                        </div>
+                        <div className="text-xs text-muted">進捗 {taskProgress(task)}%</div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>

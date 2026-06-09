@@ -301,6 +301,15 @@ class Organization(BaseModel):
         allowed = {"core", "standard", "external"}
         return value if value in allowed else "standard"
 
+    @property
+    def is_workspace_bound(self) -> bool:
+        """この Organization が担当ワークスペース（git リポジトリ）に紐づいているか。
+
+        中核モデルは「1 ワークスペース = 1 Organization（repo 必須）」。repo 無しの
+        Organization は不正状態であり、GUI 警告や作成境界の enforce 判定に使う。
+        """
+        return bool(self.target_repo_path)
+
     def add_division(self, division: Division) -> None:
         self.divisions.append(division)
 

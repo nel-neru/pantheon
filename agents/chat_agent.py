@@ -568,7 +568,7 @@ async def _tool_run_goal(inp: Dict) -> str:
 
 
 async def _tool_platform_status(_input: Dict) -> str:
-    from core.metrics.balanced_growth import calculate_organization_metrics
+    from core.metrics.live_metrics import compute_live_org_metrics
     from core.platform.state import PlatformStateManager
 
     psm = PlatformStateManager()
@@ -579,12 +579,11 @@ async def _tool_platform_status(_input: Dict) -> str:
     lines = [f"📊 プラットフォーム状態 ({len(orgs)} Organizations)\n"]
     for org in orgs:
         sm = psm.get_org_state_manager(org)
-        proposals = sm.get_pending_improvement_proposals(limit=100)
-        metrics = calculate_organization_metrics(org)
-        health = getattr(metrics, "health_score", 0)
+        live = compute_live_org_metrics(org, sm)
+        health = live.health_score
         lines.append(
             f"  {'🟢' if health >= 70 else '🟡' if health >= 40 else '🔴'} "
-            f"{org.name}  health={health:.0f}%  未対応提案: {len(proposals)} 件"
+            f"{org.name}  health={health:.0f}%  未対応提案: {live.pending_proposals} 件"
         )
     return "\n".join(lines)
 

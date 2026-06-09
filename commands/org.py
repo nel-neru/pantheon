@@ -86,8 +86,9 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
         print(f"[WARN] Organization '{args.name}' はすでに存在します (ID: {existing.id})")
         return
 
-    repo_path = Path(args.repo).resolve() if args.repo else None
-    if repo_path and not repo_path.exists():
+    # 中核モデル「1 ワークスペース = 1 Organization」: repo は必須（argparse で required）。
+    repo_path = Path(args.repo).resolve()
+    if not repo_path.exists():
         print(f"[ERROR] リポジトリパスが存在しません: {repo_path}")
         sys.exit(1)
 
@@ -122,6 +123,93 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
         skills = " / ".join(getattr(skill, "value", skill) for skill in agent.skills)
         print(f"    - {agent.name} [{skills}]")
     print(f'\n次のステップ: pantheon analyze --org-name "{org.name}"')
+
+
+def _find_git_repos(parent: Path, depth: int = 1) -> list[Path]:
+    """``parent`` 配下の git リポジトリ（``.git`` を持つディレクトリ）を浅く探索して返す。
+
+    depth=1 は直下のみ。ネストした巨大ツリーを舐めないよう既定は浅い探索にする。
+    """
+    repos: list[Path] = []
+    if not parent.is_dir():
+        return repos
+    if (parent / ".git").exists():
+        repos.append(parent)
+    if depth >= 1:
+        for child in sorted(parent.iterdir()):
+            try:
+                if child.is_dir() and (child / ".git").exists():
+                    repos.append(child)
+            except OSError:
+                continue
+    # 重複除去（同一パスを1つに）
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for r in repos:
+        key = str(r.resolve()).lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    return unique
+
+
+async def cmd_org_scan(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """親フォルダ配下の git リポジトリを検出し、未登録のものをワークスペースとして登録する。
+
+    中核モデル「1 ワークスペース = 1 Organization」: 検出した repo ごとに、フォルダ名を
+    既定の Organization 名として登録する（既登録の repo はスキップ）。``--yes`` で一括登録、
+    無指定なら候補を表示するだけ。
+    """
+    from core.org_factory import create_default_organization
+
+    if getattr(args, "parent", None):
+        parent = Path(args.parent).expanduser().resolve()
+    else:
+        from core.paths import resource_root
+
+        parent = resource_root().parent  # 既定: Pantheon リポジトリの親フォルダ
+
+    if not parent.is_dir():
+        print(f"[ERROR] 親フォルダが存在しません: {parent}")
+        sys.exit(1)
+
+    psm = get_psm()
+    repos = _find_git_repos(parent)
+    if not repos:
+        print(f"git リポジトリが見つかりませんでした: {parent}")
+        return
+
+    new_repos = [r for r in repos if psm.load_organization_by_repo(r) is None]
+    registered = [r for r in repos if psm.load_organization_by_repo(r) is not None]
+
+    print(f"\nスキャン: {parent}")
+    print(f"  検出 {len(repos)} 件 / 既登録 {len(registered)} 件 / 新規 {len(new_repos)} 件\n")
+    for r in registered:
+        org = psm.load_organization_by_repo(r)
+        print(f"  [済] {r.name}  →  {org.name if org else '?'}")
+    for r in new_repos:
+        print(f"  [新] {r.name}  →  (Organization名: {r.name})")
+
+    if not new_repos:
+        print("\n新規に登録するワークスペースはありません。")
+        return
+
+    if not getattr(args, "yes", False):
+        print("\n登録するには --yes を付けて再実行してください:")
+        print(f"  pantheon org scan {parent} --yes")
+        return
+
+    added = 0
+    for r in new_repos:
+        name = r.name
+        if psm.load_organization_by_name(name):
+            print(f"  [スキップ] '{name}' は同名 Organization が既に存在します")
+            continue
+        org = create_default_organization(name, f"{name} のワークスペース", repo_path=str(r))
+        psm.save_organization(org)
+        added += 1
+        print(f"  [登録] {name}  →  {r}")
+    print(f"\n[OK] {added} 件のワークスペースを登録しました。")
 
 
 async def cmd_org_list(args: argparse.Namespace, *, get_psm: Any) -> None:
@@ -595,9 +683,15 @@ def register(subparsers: Any) -> None:
     org_parser = subparsers.add_parser("org", help="Organization（子会社）の管理")
     org_sub = org_parser.add_subparsers(dest="org_command", required=True)
 
-    add_parser = org_sub.add_parser("add", help="新しい Organization を登録する")
+    add_parser = org_sub.add_parser(
+        "add", help="新しい Organization を担当ワークスペース（repo）付きで登録する"
+    )
     add_parser.add_argument("--name", required=True, help="Organization 名")
-    add_parser.add_argument("--repo", default=None, help="担当リポジトリの絶対パス")
+    add_parser.add_argument(
+        "--repo",
+        required=True,
+        help="担当ワークスペース（git リポジトリ）の絶対パス。1 Organization = 1 repo（必須）",
+    )
     add_parser.add_argument("--purpose", default="", help="Organization の目的・ゴール")
     add_parser.add_argument(
         "--template", default=None, help="テンプレート名（例: meta_improvement）"
@@ -612,6 +706,20 @@ def register(subparsers: Any) -> None:
 
     list_parser = org_sub.add_parser("list", help="Organization の一覧を表示する")
     list_parser.set_defaults(handler_name="cmd_org_list")
+
+    scan_parser = org_sub.add_parser(
+        "scan", help="親フォルダ配下の git リポジトリを検出してワークスペース登録する"
+    )
+    scan_parser.add_argument(
+        "parent",
+        nargs="?",
+        default=None,
+        help="スキャンする親フォルダ（省略時は Pantheon リポジトリの親）",
+    )
+    scan_parser.add_argument(
+        "--yes", action="store_true", help="検出した新規 repo を確認なしで一括登録する"
+    )
+    scan_parser.set_defaults(handler_name="cmd_org_scan")
 
     show_parser = org_sub.add_parser("show", help="Organization の詳細を表示する")
     show_parser.add_argument("--name", required=True, help="Organization 名")

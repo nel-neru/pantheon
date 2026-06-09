@@ -51,6 +51,7 @@ from commands.org import cmd_init as _cmd_init_impl
 from commands.org import cmd_org_add as _cmd_org_add_impl
 from commands.org import cmd_org_list as _cmd_org_list_impl
 from commands.org import cmd_org_remove as _cmd_org_remove_impl
+from commands.org import cmd_org_scan as _cmd_org_scan_impl
 from commands.org import cmd_org_show as _cmd_org_show_impl
 from commands.org import cmd_proposal_apply as _cmd_proposal_apply_impl
 from commands.org import cmd_proposal_reject as _cmd_proposal_reject_impl
@@ -239,6 +240,10 @@ async def cmd_org_add(args) -> None:
 
 async def cmd_org_list(args) -> None:
     await _cmd_org_list_impl(args, get_psm=_get_psm)
+
+
+async def cmd_org_scan(args) -> None:
+    await _cmd_org_scan_impl(args, get_psm=_get_psm)
 
 
 async def cmd_org_show(args) -> None:
@@ -461,6 +466,7 @@ HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
     "cmd_org_list": cmd_org_list,
+    "cmd_org_scan": cmd_org_scan,
     "cmd_org_show": cmd_org_show,
     "cmd_org_remove": cmd_org_remove,
     "cmd_analyze": cmd_analyze,
@@ -520,6 +526,14 @@ def main() -> None:
 
         sys.argv = [sys.argv[0], *argv[1:]]
         _daemon_runner.main()
+        return
+
+    # コンテンツ/PDCA デーモンの frozen 自己再起動エントリ。
+    if argv and argv[0] == "--content-daemon-run":
+        from core import _content_daemon_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _content_daemon_runner.main()
         return
 
     # 引数なし起動（exe をダブルクリックした場合など）はフル起動（up）する:

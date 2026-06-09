@@ -18,6 +18,7 @@ PAGE_KEYWORDS = {
     "OrgsPage": ["組織", "orgs"],
     "ProposalsPage": ["改善提案", "proposals"],
     "HandoffsPage": ["引き渡し", "handoff"],
+    "ContentSchedulePage": ["コンテンツ予約", "コンテンツ・スケジュール"],
     "AgentsPage": ["エージェント", "agents"],
     "AtlasPage": ["atlas"],
     "SessionsPage": ["セッション", "sessions"],

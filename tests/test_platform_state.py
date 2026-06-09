@@ -42,6 +42,15 @@ def test_load_organization_by_name(tmp_psm):
     assert found.name == "SearchOrg"
 
 
+def test_is_workspace_bound_reflects_repo(tmp_path):
+    """1 ワークスペース = 1 Organization モデルの判定プロパティ。"""
+    no_repo = create_default_organization("Unbound", "repo 無し")
+    assert no_repo.is_workspace_bound is False
+
+    bound = create_default_organization("Bound", "repo 付き", repo_path=str(tmp_path))
+    assert bound.is_workspace_bound is True
+
+
 def test_load_organization_by_name_not_found(tmp_psm):
     assert tmp_psm.load_organization_by_name("NonExistent") is None
 
