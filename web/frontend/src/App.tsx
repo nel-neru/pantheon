@@ -21,6 +21,7 @@ import {
   CalendarClock,
   Inbox,
   Coins,
+  PenSquare,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -36,6 +37,7 @@ import { HandoffsPage } from '@/pages/HandoffsPage'
 import { HelpPage } from '@/pages/HelpPage'
 import { InboxPage } from '@/pages/InboxPage'
 import { RevenuePage } from '@/pages/RevenuePage'
+import { StudioPage } from '@/pages/StudioPage'
 import { BoardPage } from '@/pages/BoardPage'
 import { ContentSchedulePage } from '@/pages/ContentSchedulePage'
 import { OrgsPage } from '@/pages/OrgsPage'
@@ -65,6 +67,7 @@ const navItems: NavItem[] = [
   { to: '/orgs', label: '組織', icon: Building2 },
   { to: '/proposals', label: '改善提案', icon: Lightbulb },
   { to: '/handoffs', label: '引き渡し', icon: ArrowRightLeft },
+  { to: '/studio', label: 'スタジオ', icon: PenSquare },
   { to: '/content', label: 'コンテンツ予約', icon: CalendarClock },
   { to: '/revenue', label: '収益', icon: Coins },
   { to: '/agents', label: 'エージェント', icon: Bot },
@@ -413,6 +416,7 @@ export default function App() {
         <Route path="/orgs" element={<OrgsPage />} />
         <Route path="/proposals" element={<ProposalsPage />} />
         <Route path="/handoffs" element={<HandoffsPage />} />
+        <Route path="/studio" element={<StudioPage />} />
         <Route path="/content" element={<ContentSchedulePage />} />
         <Route path="/revenue" element={<RevenuePage />} />
         <Route path="/agents" element={<AgentsPage />} />
