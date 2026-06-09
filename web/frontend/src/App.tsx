@@ -19,6 +19,7 @@ import {
   KanbanSquare,
   ArrowRightLeft,
   CalendarClock,
+  Inbox,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -32,6 +33,7 @@ import { DataPage } from '@/pages/DataPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { HandoffsPage } from '@/pages/HandoffsPage'
 import { HelpPage } from '@/pages/HelpPage'
+import { InboxPage } from '@/pages/InboxPage'
 import { BoardPage } from '@/pages/BoardPage'
 import { ContentSchedulePage } from '@/pages/ContentSchedulePage'
 import { OrgsPage } from '@/pages/OrgsPage'
@@ -57,6 +59,7 @@ type SearchResult = {
 
 const navItems: NavItem[] = [
   { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
+  { to: '/inbox', label: '承認インボックス', icon: Inbox },
   { to: '/orgs', label: '組織', icon: Building2 },
   { to: '/proposals', label: '改善提案', icon: Lightbulb },
   { to: '/handoffs', label: '引き渡し', icon: ArrowRightLeft },
@@ -403,6 +406,7 @@ export default function App() {
       <Route element={<AppShell />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/inbox" element={<InboxPage />} />
         <Route path="/orgs" element={<OrgsPage />} />
         <Route path="/proposals" element={<ProposalsPage />} />
         <Route path="/handoffs" element={<HandoffsPage />} />
