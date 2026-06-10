@@ -76,6 +76,26 @@ def test_missing_reset_at_stays_limited(tmp_path):
     assert gate.seconds_until_clear() > 0.0
 
 
+def test_missing_reset_at_expires_after_default_backoff(tmp_path):
+    """reset 不明レコードで永久ブロックしない: detected_at + 既定バックオフで自動 clear。"""
+    gate = _gate(tmp_path)
+    gate.report(RateLimitInfo(limited=True, reset_at=None, message="429"))
+    future = datetime.now(timezone.utc) + timedelta(hours=2)
+    assert gate.current(now=future) is None
+    assert not gate.state_path.exists()
+
+
+def test_missing_reset_and_detected_at_clears_immediately(tmp_path):
+    gate = _gate(tmp_path)
+    gate.state_path.parent.mkdir(parents=True, exist_ok=True)
+    gate.state_path.write_text(
+        json.dumps({"limited": True, "reset_at": None, "detected_at": "not-a-date"}),
+        encoding="utf-8",
+    )
+    assert gate.current() is None
+    assert not gate.state_path.exists()
+
+
 def test_default_path_uses_platform_home(tmp_path, monkeypatch):
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     gate = RateLimitGate()

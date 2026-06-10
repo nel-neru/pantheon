@@ -83,6 +83,9 @@ class ContentScheduler:
                     # レート制限を検知 → reset 時刻まで pause → 自動 resume（無限継続）。
                     await self._pause_until_reset()
                     continue
+                if self._gate.current() is not None:
+                    # サイクル中に gate へ報告された制限は interval を待たずに即 pause へ。
+                    continue
                 await asyncio.sleep(self._interval)
         except asyncio.CancelledError:
             pass

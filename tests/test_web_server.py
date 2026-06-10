@@ -1638,6 +1638,29 @@ def test_content_job_requires_existing_org(tmp_path, monkeypatch):
 
 def test_content_daemon_status_reports_stopped(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     resp = client.get("/api/content-daemon/status")
     assert resp.status_code == 200
     assert resp.json()["running"] is False
+
+
+def test_content_daemon_start_keeps_action_status(tmp_path, monkeypatch):
+    """前回の scheduler state（status=stopped）が残っていても、start の応答の
+    \"status\" はアクション結果（started）であり、scheduler 状態は別キーで返る。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    (tmp_path / "content_scheduler_state.json").write_text(
+        json.dumps({"running": False, "status": "stopped", "rate_limited": False}),
+        encoding="utf-8",
+    )
+
+    class DummyProc:
+        pid = 4242
+
+    monkeypatch.setattr(server.subprocess, "Popen", lambda *a, **k: DummyProc())
+
+    resp = client.post("/api/content-daemon/start")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "started"
+    assert data["scheduler_status"] == "stopped"

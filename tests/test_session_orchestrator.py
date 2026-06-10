@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import List
@@ -162,6 +163,56 @@ def test_rate_limit_detection_and_resume(tmp_path):
     assert resumed is not None
     assert resumed.surfaces[0]["status"] == SurfaceStatus.RUNNING
     assert len(driver.specs) == 2  # initial launch + resume
+
+
+def test_poll_done_surface_with_stats_429_stays_completed(orch):
+    """完了済み agent の 1 行 JSON ログに数値由来の '429' が含まれても
+    RATE_LIMITED に誤反転しない（完了済み仕事の再実行＝トークン二重消費を防ぐ）。"""
+    rec = orch.start_session("S", [AgentTask(agent_id="agent:a", title="A", prompt="p")])
+    log_path = Path(rec.surfaces[0]["log_path"])
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(
+        json.dumps(
+            {
+                "type": "result",
+                "result": "完了。3件の提案を生成しました。",
+                "is_error": False,
+                "duration_ms": 14290,
+                "total_cost_usd": 0.0429,
+                "session_id": "a4290b1c-9e7f-4a2d-8c3e-5f6a7b8c9d0e",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    polled = orch.poll_session(rec.id)
+    assert polled is not None
+    assert polled.status == "completed"
+    assert polled.surfaces[0]["status"] == SurfaceStatus.DONE
+
+
+def test_poll_done_surface_with_limit_result_marked_rate_limited(orch):
+    """CLI が exit 0 で制限を返すケース（is_error=true の result）は検知して
+    RATE_LIMITED（自動 resume 対象）に倒す。"""
+    rec = orch.start_session("S", [AgentTask(agent_id="agent:a", title="A", prompt="p")])
+    log_path = Path(rec.surfaces[0]["log_path"])
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(
+        json.dumps(
+            {
+                "type": "result",
+                "is_error": True,
+                "result": "You've hit your session limit · resets 3:20am (Asia/Tokyo)",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    polled = orch.poll_session(rec.id)
+    assert polled is not None
+    assert polled.status == "rate_limited"
+    assert polled.surfaces[0]["status"] == SurfaceStatus.RATE_LIMITED
+    assert polled.surfaces[0]["retry_at"]
 
 
 def test_headless_real_subprocess(tmp_path):

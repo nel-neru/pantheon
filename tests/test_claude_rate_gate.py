@@ -152,3 +152,87 @@ def test_exit0_long_content_mentioning_limits_is_not_flagged(isolated_home, monk
     response = cc.run_claude_sync("hello")
     assert response.content == body
     assert not RateLimitGate().is_limited()
+
+
+def test_exit0_short_content_with_bare_signals_is_not_flagged(isolated_home, monkeypatch):
+    """誤検知ガード: X 投稿サイズの正常な短文に '429'/'quota'/'rate limit' が
+    含まれても、結果は破棄されず gate も汚染されない（strict 検知）。"""
+    monkeypatch.setattr(cc, "claude_binary", lambda: "claude")
+    bodies = [
+        "対象記事は1,429件でした。詳細はレポートをご覧ください。",
+        "API の rate limit に備えて quota 監視を自動化しよう！ #開発 #API",
+    ]
+    for body in bodies:
+        assert len(body) <= 400
+
+        class FakeProc:
+            returncode = 0
+            stdout = json.dumps({"result": body, "is_error": False})
+            stderr = ""
+
+        monkeypatch.setattr(cc.subprocess, "run", lambda *a, **k: FakeProc())
+        response = cc.run_claude_sync("hello")
+        assert response.content == body
+        assert not RateLimitGate().is_limited()
+
+
+def test_exit0_real_cli_session_limit_phrasing_detected(isolated_home, monkeypatch):
+    """実際の CLI 文言（You've hit your session limit · resets …）を検知できる。"""
+    monkeypatch.setattr(cc, "claude_binary", lambda: "claude")
+
+    class FakeProc:
+        returncode = 0
+        stdout = json.dumps(
+            {"result": "You've hit your session limit · resets 3:20am (Asia/Tokyo)"}
+        )
+        stderr = ""
+
+    monkeypatch.setattr(cc.subprocess, "run", lambda *a, **k: FakeProc())
+    with pytest.raises(ClaudeRateLimitedError) as ei:
+        cc.run_claude_sync("hello")
+    assert ei.value.info.reset_at is not None
+    assert RateLimitGate().is_limited()
+
+
+def test_nonzero_exit_with_bare_429_in_trace_is_not_flagged(isolated_home, monkeypatch):
+    """失敗出力のスタックトレースに偶発的な '429' が含まれても全体 pause しない。"""
+    monkeypatch.setattr(cc, "claude_binary", lambda: "claude")
+
+    class FakeProc:
+        returncode = 1
+        stdout = ""
+        stderr = 'File "cli.js", line 429, in main\nTypeError: cannot read undefined'
+
+    monkeypatch.setattr(cc.subprocess, "run", lambda *a, **k: FakeProc())
+    with pytest.raises(ClaudeUnavailableError) as ei:
+        cc.run_claude_sync("hello")
+    assert not isinstance(ei.value, ClaudeRateLimitedError)
+    assert not RateLimitGate().is_limited()
+
+
+def test_scan_result_text_ignores_numeric_stats_in_envelope():
+    """1行 JSON の統計値（duration_ms:14290 等）では発火しない。"""
+    stdout = json.dumps(
+        {
+            "type": "result",
+            "result": "完了しました。3件の提案を生成。",
+            "is_error": False,
+            "duration_ms": 14290,
+            "total_cost_usd": 0.0429,
+        }
+    )
+    assert cc.scan_result_text_for_rate_limit(stdout) is None
+
+
+def test_scan_result_text_detects_is_error_limit():
+    stdout = json.dumps(
+        {
+            "type": "result",
+            "result": "You've hit your session limit · resets 3:20am (Asia/Tokyo)",
+            "is_error": True,
+            "duration_ms": 120,
+        }
+    )
+    info = cc.scan_result_text_for_rate_limit(stdout)
+    assert info is not None and info.limited
+    assert info.reset_at is not None

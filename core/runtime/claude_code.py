@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
 from core.llm.base import LLMMessage, LLMResponse
-from core.runtime.rate_limit import RateLimitInfo, detect_rate_limit
+from core.runtime.rate_limit import RateLimitInfo, detect_rate_limit, detect_rate_limit_strict
 from core.runtime.usage_gate import RateLimitGate, gate_bypassed
 
 logger = logging.getLogger(__name__)
@@ -293,20 +293,40 @@ def _parse_output(stdout: str) -> str:
     return _parse_result(stdout)[0]
 
 
-# 成功（exit 0）出力に対するレート制限検知は誤検知対策として「結果 JSON が
-# is_error=true」または「短い結果テキスト」に限定する。CLI の制限メッセージは
-# 常に短い 1〜2 行で返る一方、正常な長文生成が "rate limit" 等に言及しただけで
-# 全 daemon を一斉 pause させるわけにはいかない。
+# 成功（exit 0）出力に対するレート制限検知の誤検知ガード（検知結果は全プロセス
+# 共有の RateLimitGate に波及するため、誤検知 1 回でプラットフォーム全体が
+# 1h 以上 pause してしまう）:
+#   - is_error=true の結果 → エラーメッセージなので緩い検知（detect_rate_limit）
+#   - is_error=false の結果 → CLI の制限メッセージは常に短い 1〜2 行なので
+#     「短い本文 × アンカー付き定型句のみ（detect_rate_limit_strict）」に限定。
+#     X 投稿等の短い正常生成に "429" / "quota" / "rate limit" が混ざるのは
+#     正当な内容であり、裸の部分一致でゲートしてはならない。
 _SUCCESS_SCAN_MAX_CHARS = 400
 
 
 def _detect_success_rate_limit(content: str, is_error: bool) -> Optional[RateLimitInfo]:
     if not content:
         return None
-    if not is_error and len(content) > _SUCCESS_SCAN_MAX_CHARS:
+    if is_error:
+        info = detect_rate_limit(content)
+        return info if info.limited else None
+    if len(content) > _SUCCESS_SCAN_MAX_CHARS:
         return None
-    info = detect_rate_limit(content)
+    info = detect_rate_limit_strict(content)
     return info if info.limited else None
+
+
+def scan_result_text_for_rate_limit(stdout: str) -> Optional[RateLimitInfo]:
+    """Scan a captured ``claude`` JSON/stream-json output for a usage limit.
+
+    Parses the envelope first and applies the success-path guards to the
+    *extracted result text only* — never the raw JSON line, whose numeric
+    stats (``duration_ms":14290`` …) would false-positive the loose
+    substring signals. For callers that hold a completed agent's log
+    (session orchestrator) rather than a live ``CompletedProcess``.
+    """
+    content, is_error = _parse_result(stdout)
+    return _detect_success_rate_limit(content, is_error)
 
 
 # --------------------------------------------------------------------------- #
@@ -445,7 +465,9 @@ def run_claude_sync(
 
     if proc.returncode != 0:
         combined = "\n".join(part for part in (proc.stderr, proc.stdout) if part)
-        info = detect_rate_limit(combined)
+        # 失敗出力にもスタックトレース等の偶発的な "429"/"quota" が混ざり得るため、
+        # 全プロセスを止める判断はアンカー付き定型句に限定する。
+        info = detect_rate_limit_strict(combined)
         if info.limited:
             gate.report(info)
             raise ClaudeRateLimitedError(_limit_message(info), info)

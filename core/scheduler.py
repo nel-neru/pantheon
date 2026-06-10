@@ -84,6 +84,10 @@ class AutonomousScheduler:
                 except ClaudeRateLimitedError as exc:
                     await self._pause_until_reset(exc.info)
                     continue
+                # サイクル中に検知された制限（agent 内部で捕捉されヒューリスティックに
+                # フォールバックした場合等）は interval を待たずに即 pause へ。
+                if self._gate.current() is not None:
+                    continue
                 await asyncio.sleep(self._interval)
         except asyncio.CancelledError:
             pass

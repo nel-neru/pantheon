@@ -28,9 +28,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from core.runtime.rate_limit import RateLimitInfo
+from core.runtime.rate_limit import DEFAULT_BACKOFF, RateLimitInfo
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_dt(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
 
 STATE_FILENAME = "rate_limit_state.json"
 # Escape hatch: a truthy value disables the *pre-call block* in claude_code
@@ -114,18 +127,17 @@ class RateLimitGate:
         if not isinstance(data, dict) or not data.get("limited"):
             return None
 
-        reset_at: Optional[datetime] = None
-        raw_reset = data.get("reset_at")
-        if isinstance(raw_reset, str) and raw_reset:
-            try:
-                reset_at = datetime.fromisoformat(raw_reset)
-            except ValueError:
-                reset_at = None
-            if reset_at is not None and reset_at.tzinfo is None:
-                reset_at = reset_at.replace(tzinfo=timezone.utc)
+        reset_at = _parse_dt(data.get("reset_at"))
 
         now = now or datetime.now(timezone.utc)
-        if reset_at is not None and reset_at <= now:
+        if reset_at is None:
+            # reset 不明のレコードで永久ブロックしない: detected_at + 既定バックオフを
+            # 実効 reset とみなす（detected_at も不明なら即 clear）。
+            detected = _parse_dt(data.get("detected_at"))
+            if detected is None or detected + DEFAULT_BACKOFF <= now:
+                self.clear()
+                return None
+        elif reset_at <= now:
             # 制限窓が開いた — ここで自動 clear するのが「解除されたら再開」の起点。
             self.clear()
             return None

@@ -1962,7 +1962,9 @@ def _content_daemon_status_payload() -> dict[str, Any]:
         # scheduler 自身の state とプロセス横断ゲートのどちらかが制限中なら制限中。
         "rate_limited": bool(state.get("rate_limited", False)) or gate["rate_limited"],
         "retry_at": state.get("retry_at") or gate["retry_at"],
-        "status": state.get("status"),
+        # "status" はアクション系応答（{"status": "started", **payload}）の
+        # アクション結果キーと衝突するため、scheduler の状態は別名で返す。
+        "scheduler_status": state.get("status"),
         "cycle_count": state.get("cycle_count", 0),
         "interval_seconds": state.get("interval_seconds"),
     }

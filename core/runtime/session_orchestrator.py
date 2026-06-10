@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.runtime.claude_code import claude_binary
+from core.runtime.claude_code import claude_binary, scan_result_text_for_rate_limit
 from core.runtime.multiplexer import (
     AgentSpec,
     MultiplexerUnavailableError,
@@ -42,6 +42,7 @@ from core.runtime.multiplexer import (
 )
 from core.runtime.multiplexer.headless_driver import HeadlessDriver
 from core.runtime.rate_limit import detect_rate_limit
+from core.runtime.usage_gate import RateLimitGate
 
 logger = logging.getLogger(__name__)
 
@@ -70,12 +71,13 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "-", text or "").strip("-").lower() or "session"
 
 
-def _log_tail(text: str, lines: int = 5) -> str:
-    """The last few non-empty lines of an agent log.
+def _log_tail(text: str, lines: int = 1) -> str:
+    """The last non-empty line(s) of an agent log.
 
-    Used when scanning *successful* (exit 0) output for a usage limit: the CLI
-    prints the limit notice as its final short message, while a long normal
-    transcript may legitimately mention "rate limit" earlier in its body.
+    Headless agents emit ``--output-format json`` (one compact line) or
+    ``stream-json`` (one JSON event per line, the final ``result`` event
+    carrying the outcome), so the last non-empty line is the result envelope
+    to hand to :func:`scan_result_text_for_rate_limit`.
     """
     if not text:
         return ""
@@ -348,15 +350,19 @@ class SessionOrchestrator:
             # A failed agent may have simply hit a usage limit — mark it for
             # automatic resume rather than treating it as a hard failure. The CLI
             # can also report the limit as *successful* (exit 0) final output, so
-            # DONE surfaces are scanned too — but only their log tail, so a long
-            # legitimate transcript that merely mentions "rate limit" doesn't
-            # false-positive into RATE_LIMITED.
+            # DONE surfaces are scanned too — but headless logs are (stream-)json
+            # whose final line embeds the whole result plus numeric stats
+            # (``duration_ms":14290`` …), so the envelope is parsed and only the
+            # extracted result text is checked, with the strict success-path
+            # guards. Otherwise a completed agent would flip to RATE_LIMITED and
+            # be re-run, double-spending tokens.
             if surface.status in (SurfaceStatus.FAILED, SurfaceStatus.DONE):
                 log_text = self._read_surface_log(sr)
                 if surface.status == SurfaceStatus.DONE:
-                    log_text = _log_tail(log_text)
-                info = detect_rate_limit(log_text)
-                if info.limited:
+                    info = scan_result_text_for_rate_limit(_log_tail(log_text, 1))
+                else:
+                    info = detect_rate_limit(log_text)
+                if info is not None and info.limited:
                     sr["status"] = SurfaceStatus.RATE_LIMITED
                     sr["retry_at"] = info.reset_at.isoformat() if info.reset_at else None
                     sr["rate_limit_scope"] = info.scope
@@ -386,6 +392,11 @@ class SessionOrchestrator:
         record = self.get_session(sid)
         if record is None:
             return None
+        # アカウント全体の制限が gate に共有されている間は再launchしても即座に
+        # 再制限されるだけなので、force でない限り resume を見送る。
+        if not force and RateLimitGate().is_limited():
+            logger.info("resume_session(%s) deferred: rate-limit gate is active", sid)
+            return record
         agents_dir = self.sessions_dir / sid / "agents"
         driver = self._driver_for(agents_dir)
         workspace = Workspace(
