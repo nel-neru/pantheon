@@ -58,7 +58,7 @@ async def _generate_body(job: ContentJob, label: str, stamp: str):
     claude 不在/通常失敗時は決定論テンプレ。
     """
     from core.runtime.claude_code import claude_available
-    from core.runtime.rate_limit import detect_rate_limit
+    from core.runtime.rate_limit import detect_rate_limit, detect_rate_limit_strict
 
     if not claude_available():
         return _deterministic_draft(job, label, stamp), False, None
@@ -78,8 +78,9 @@ async def _generate_body(job: ContentJob, label: str, stamp: str):
         )
         body = (getattr(response, "content", "") or "").strip()
         # claude CLI はレート制限を「正常終了(returncode 0)の結果テキスト」として返すことがある。
-        # 例外時だけでなく成功本文も検査し、レート制限ならループ停止を上位へ伝える（誤生成も防ぐ）。
-        info = detect_rate_limit(body)
+        # 例外時だけでなく成功本文も検査するが、正常なドラフトが "rate limit"/"429" に
+        # 言及しただけで誤検知しないよう、アンカー付き定型句（strict）に限定する。
+        info = detect_rate_limit_strict(body)
         if info.limited:
             return "", False, info
         if body:
@@ -103,7 +104,11 @@ async def run_content_job(job: ContentJob, psm: Any) -> Dict[str, Any]:
 
     org = psm.load_organization_by_name(job.org_name)
     if org is None:
-        return {"ok": False, "status": "org_not_found", "detail": f"組織 '{job.org_name}' が見つかりません"}
+        return {
+            "ok": False,
+            "status": "org_not_found",
+            "detail": f"組織 '{job.org_name}' が見つかりません",
+        }
     if not getattr(org, "target_repo_path", None):
         return {
             "ok": False,

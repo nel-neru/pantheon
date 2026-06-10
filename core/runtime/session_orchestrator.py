@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.runtime.claude_code import claude_binary
+from core.runtime.claude_code import claude_binary, scan_result_text_for_rate_limit
 from core.runtime.multiplexer import (
     AgentSpec,
     MultiplexerUnavailableError,
@@ -42,6 +42,7 @@ from core.runtime.multiplexer import (
 )
 from core.runtime.multiplexer.headless_driver import HeadlessDriver
 from core.runtime.rate_limit import detect_rate_limit
+from core.runtime.usage_gate import RateLimitGate
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,20 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
 
 def _slug(text: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "-", text or "").strip("-").lower() or "session"
+
+
+def _log_tail(text: str, lines: int = 1) -> str:
+    """The last non-empty line(s) of an agent log.
+
+    Headless agents emit ``--output-format json`` (one compact line) or
+    ``stream-json`` (one JSON event per line, the final ``result`` event
+    carrying the outcome), so the last non-empty line is the result envelope
+    to hand to :func:`scan_result_text_for_rate_limit`.
+    """
+    if not text:
+        return ""
+    non_empty = [ln for ln in text.strip().splitlines() if ln.strip()]
+    return "\n".join(non_empty[-lines:])
 
 
 def _read_log(path: Path) -> str:
@@ -226,9 +241,7 @@ class SessionOrchestrator:
         """
         driver = self._driver_for(self.sessions_dir / "_interactive")
         if require_gui and isinstance(driver, HeadlessDriver):
-            raise MultiplexerUnavailableError(
-                "対話タブには GUI マルチプレクサ（wmux）が必要です。"
-            )
+            raise MultiplexerUnavailableError("対話タブには GUI マルチプレクサ（wmux）が必要です。")
         driver.ensure_running()
         workspace = driver.create_workspace(group)
         spec = AgentSpec(
@@ -311,9 +324,7 @@ class SessionOrchestrator:
         def q(p) -> str:
             return "'" + str(p).replace("'", "''") + "'"
 
-        quoted = " ".join(
-            q(a) if (" " in a or "'" in a or '"' in a) else a for a in command
-        )
+        quoted = " ".join(q(a) if (" " in a or "'" in a or '"' in a) else a for a in command)
         return f"& {quoted} 2>&1 | Tee-Object -FilePath {q(log_file)}"
 
     def poll_session(self, sid: str) -> Optional[SessionRecord]:
@@ -337,16 +348,29 @@ class SessionOrchestrator:
             sr["status"] = surface.status
             sr["exit_code"] = surface.exit_code
             # A failed agent may have simply hit a usage limit — mark it for
-            # automatic resume rather than treating it as a hard failure.
-            if surface.status == SurfaceStatus.FAILED:
-                info = detect_rate_limit(self._read_surface_log(sr))
-                if info.limited:
+            # automatic resume rather than treating it as a hard failure. The CLI
+            # can also report the limit as *successful* (exit 0) final output, so
+            # DONE surfaces are scanned too — but headless logs are (stream-)json
+            # whose final line embeds the whole result plus numeric stats
+            # (``duration_ms":14290`` …), so the envelope is parsed and only the
+            # extracted result text is checked, with the strict success-path
+            # guards. Otherwise a completed agent would flip to RATE_LIMITED and
+            # be re-run, double-spending tokens.
+            if surface.status in (SurfaceStatus.FAILED, SurfaceStatus.DONE):
+                log_text = self._read_surface_log(sr)
+                if surface.status == SurfaceStatus.DONE:
+                    info = scan_result_text_for_rate_limit(_log_tail(log_text, 1))
+                else:
+                    info = detect_rate_limit(log_text)
+                if info is not None and info.limited:
                     sr["status"] = SurfaceStatus.RATE_LIMITED
                     sr["retry_at"] = info.reset_at.isoformat() if info.reset_at else None
                     sr["rate_limit_scope"] = info.scope
                     rate_limited = True
             if sr["status"] not in (
-                SurfaceStatus.DONE, SurfaceStatus.FAILED, SurfaceStatus.CLOSED,
+                SurfaceStatus.DONE,
+                SurfaceStatus.FAILED,
+                SurfaceStatus.CLOSED,
             ):
                 all_done = False
         if rate_limited:
@@ -368,6 +392,11 @@ class SessionOrchestrator:
         record = self.get_session(sid)
         if record is None:
             return None
+        # アカウント全体の制限が gate に共有されている間は再launchしても即座に
+        # 再制限されるだけなので、force でない限り resume を見送る。
+        if not force and RateLimitGate().is_limited():
+            logger.info("resume_session(%s) deferred: rate-limit gate is active", sid)
+            return record
         agents_dir = self.sessions_dir / sid / "agents"
         driver = self._driver_for(agents_dir)
         workspace = Workspace(
@@ -491,7 +520,12 @@ class SessionOrchestrator:
         # pwsh command line for GUI drivers: read prompt/system from files (avoids
         # quoting a huge prompt) and tee the stream to the per-agent log.
         shell_command = self._pwsh_command(
-            binary, prompt_file, sys_file, model, out_fmt, log_file,
+            binary,
+            prompt_file,
+            sys_file,
+            model,
+            out_fmt,
+            log_file,
         )
 
         return AgentSpec(

@@ -22,10 +22,15 @@ from typing import Any, Dict, List, Optional
 
 from core.events.detector import DetectedEvent, EventDetector
 from core.policy.engine import ApprovalDecision, OrgBoundaryContext, PolicyEngine
+from core.runtime.claude_code import ClaudeRateLimitedError
+from core.runtime.rate_limit import DEFAULT_BACKOFF, MAX_BACKOFF, RateLimitInfo
+from core.runtime.usage_gate import RateLimitGate
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_SECONDS = 3600
+# レート制限 pause 中の sleep チャンク（stop() への即応性を保つ）。
+PAUSE_SLEEP_CHUNK_SECONDS = 60.0
 
 
 class AutonomousScheduler:
@@ -58,6 +63,7 @@ class AutonomousScheduler:
         self._policy = PolicyEngine(policy_path=self._psm.platform_home / "policy.yaml")
         self._running = False
         self._cycle_count = 0
+        self._gate = RateLimitGate()
         self._log_path = self._psm.platform_home / "scheduler_log.jsonl"
 
     async def start(self) -> None:
@@ -68,7 +74,20 @@ class AutonomousScheduler:
 
         try:
             while self._running:
-                await self._run_cycle()
+                # 他プロセス（content daemon 等）が検知した制限も gate 経由で共有される。
+                info = self._gate.current()
+                if info is not None:
+                    await self._pause_until_reset(info)
+                    continue
+                try:
+                    await self._run_cycle()
+                except ClaudeRateLimitedError as exc:
+                    await self._pause_until_reset(exc.info)
+                    continue
+                # サイクル中に検知された制限（agent 内部で捕捉されヒューリスティックに
+                # フォールバックした場合等）は interval を待たずに即 pause へ。
+                if self._gate.current() is not None:
+                    continue
                 await asyncio.sleep(self._interval)
         except asyncio.CancelledError:
             pass
@@ -78,6 +97,22 @@ class AutonomousScheduler:
 
     def stop(self) -> None:
         self._running = False
+
+    async def _pause_until_reset(self, info: RateLimitInfo) -> None:
+        """レート制限の reset 時刻まで pause し、窓が開いたら自動 resume する。"""
+        now = datetime.now(timezone.utc)
+        reset_at = info.reset_at or (now + DEFAULT_BACKOFF)
+        reset_at = min(max(reset_at, now), now + MAX_BACKOFF)
+        logger.info("AutonomousScheduler paused (rate limit) — resumes at %s", reset_at.isoformat())
+        print(f"[Scheduler] レート制限を検知 — {reset_at.isoformat()} まで待機（解除後に自動再開）")
+        while self._running:
+            remaining = (reset_at - datetime.now(timezone.utc)).total_seconds()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(PAUSE_SLEEP_CHUNK_SECONDS, remaining))
+        if self._running:
+            logger.info("AutonomousScheduler resumed after rate-limit window")
+            print("[Scheduler] レート制限解除 — 自動再開します")
 
     async def _run_cycle(self) -> Dict[str, Any]:
         self._cycle_count += 1

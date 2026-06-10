@@ -34,6 +34,8 @@ from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
 from core.llm.base import LLMMessage, LLMResponse
+from core.runtime.rate_limit import RateLimitInfo, detect_rate_limit, detect_rate_limit_strict
+from core.runtime.usage_gate import RateLimitGate, gate_bypassed
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +84,27 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 class ClaudeUnavailableError(RuntimeError):
     """Raised when the ``claude`` CLI cannot be used for a generation call."""
+
+
+class ClaudeRateLimitedError(ClaudeUnavailableError):
+    """Raised when generation is blocked by a Claude usage/rate limit.
+
+    Subclasses :class:`ClaudeUnavailableError` so every existing
+    ``except ClaudeUnavailableError`` fallback keeps working; callers that
+    care about the limit specifically can catch this type and read ``info``.
+    The message embeds the reset time as an ISO timestamp so legacy callers
+    that re-run :func:`detect_rate_limit` over ``str(exc)`` recover it.
+    """
+
+    def __init__(self, message: str, info: Optional[RateLimitInfo] = None):
+        super().__init__(message)
+        self.info = info or RateLimitInfo(limited=True)
+
+
+def _limit_message(info: RateLimitInfo) -> str:
+    reset = info.reset_at.isoformat() if info.reset_at else "unknown"
+    base = f"claude usage limit reached (scope={info.scope}); resets at {reset}"
+    return f"{base}. {info.message}".strip() if info.message else base
 
 
 def _default_timeout() -> float:
@@ -239,29 +262,71 @@ def _resolve(messages: MessageLike, system: Optional[str]) -> tuple[Optional[str
     return (system if system is not None else sys_from_msg), user
 
 
-def _parse_output(stdout: str) -> str:
-    """Extract the assistant text from ``claude -p --output-format json`` output."""
+def _parse_result(stdout: str) -> tuple[str, bool]:
+    """Extract ``(assistant_text, is_error)`` from ``claude -p --output-format json`` output."""
     text = (stdout or "").strip()
     if not text:
-        return ""
+        return "", False
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return text
+        return text, False
     if isinstance(data, dict):
+        is_error = bool(data.get("is_error"))
         for key in ("result", "content", "text", "response"):
             value = data.get(key)
             if isinstance(value, str) and value.strip():
-                return value
-        return text
+                return value, is_error
+        return text, is_error
     if isinstance(data, list) and data:
         # stream-json transcripts: take the last textual chunk
         for entry in reversed(data):
             if isinstance(entry, dict):
                 value = entry.get("result") or entry.get("text")
                 if isinstance(value, str) and value.strip():
-                    return value
-    return text
+                    return value, bool(entry.get("is_error"))
+    return text, False
+
+
+def _parse_output(stdout: str) -> str:
+    """Extract the assistant text from ``claude -p --output-format json`` output."""
+    return _parse_result(stdout)[0]
+
+
+# 成功（exit 0）出力に対するレート制限検知の誤検知ガード（検知結果は全プロセス
+# 共有の RateLimitGate に波及するため、誤検知 1 回でプラットフォーム全体が
+# 1h 以上 pause してしまう）:
+#   - is_error=true の結果 → エラーメッセージなので緩い検知（detect_rate_limit）
+#   - is_error=false の結果 → CLI の制限メッセージは常に短い 1〜2 行なので
+#     「短い本文 × アンカー付き定型句のみ（detect_rate_limit_strict）」に限定。
+#     X 投稿等の短い正常生成に "429" / "quota" / "rate limit" が混ざるのは
+#     正当な内容であり、裸の部分一致でゲートしてはならない。
+_SUCCESS_SCAN_MAX_CHARS = 400
+
+
+def _detect_success_rate_limit(content: str, is_error: bool) -> Optional[RateLimitInfo]:
+    if not content:
+        return None
+    if is_error:
+        info = detect_rate_limit(content)
+        return info if info.limited else None
+    if len(content) > _SUCCESS_SCAN_MAX_CHARS:
+        return None
+    info = detect_rate_limit_strict(content)
+    return info if info.limited else None
+
+
+def scan_result_text_for_rate_limit(stdout: str) -> Optional[RateLimitInfo]:
+    """Scan a captured ``claude`` JSON/stream-json output for a usage limit.
+
+    Parses the envelope first and applies the success-path guards to the
+    *extracted result text only* — never the raw JSON line, whose numeric
+    stats (``duration_ms":14290`` …) would false-positive the loose
+    substring signals. For callers that hold a completed agent's log
+    (session orchestrator) rather than a live ``CompletedProcess``.
+    """
+    content, is_error = _parse_result(stdout)
+    return _detect_success_rate_limit(content, is_error)
 
 
 # --------------------------------------------------------------------------- #
@@ -307,12 +372,22 @@ def run_claude_sync(
 
     Raises :class:`ClaudeUnavailableError` when the CLI is unavailable, times out,
     or exits non-zero — callers typically catch this and fall back to heuristics.
+    Raises :class:`ClaudeRateLimitedError` (a subclass) when a usage/rate limit
+    is active or newly detected; the limit is shared cross-process via
+    :class:`RateLimitGate` so no further CLI processes are spawned (and no
+    tokens wasted) until the window reopens.
     """
     binary = claude_binary()
     if not binary:
         raise ClaudeUnavailableError(
             f"`claude` CLI is unavailable (not installed or disabled via {DISABLE_ENV}).",
         )
+
+    gate = RateLimitGate()
+    if not gate_bypassed():
+        active = gate.current()
+        if active is not None:
+            raise ClaudeRateLimitedError(_limit_message(active), active)
 
     system_text, user_text = _resolve(messages, system)
     if not user_text.strip():
@@ -389,10 +464,22 @@ def run_claude_sync(
         )
 
     if proc.returncode != 0:
+        combined = "\n".join(part for part in (proc.stderr, proc.stdout) if part)
+        # 失敗出力にもスタックトレース等の偶発的な "429"/"quota" が混ざり得るため、
+        # 全プロセスを止める判断はアンカー付き定型句に限定する。
+        info = detect_rate_limit_strict(combined)
+        if info.limited:
+            gate.report(info)
+            raise ClaudeRateLimitedError(_limit_message(info), info)
         detail = (proc.stderr or proc.stdout or "").strip()[:500]
         raise ClaudeUnavailableError(f"claude exited {proc.returncode}: {detail}")
 
-    content = _parse_output(proc.stdout)
+    content, is_error = _parse_result(proc.stdout)
+    # CLI はレート制限を「正常終了 (exit 0) の結果テキスト」として返すことがある。
+    info = _detect_success_rate_limit(content, is_error)
+    if info is not None:
+        gate.report(info)
+        raise ClaudeRateLimitedError(_limit_message(info), info)
     return LLMResponse(content=content, model=chosen_model or "claude-code", finish_reason="stop")
 
 

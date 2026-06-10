@@ -494,6 +494,10 @@ class DaemonStatusResponse(BaseModel):
     log_path: str | None
     interval: int | None = None
     max_files: int | None = None
+    # プロセス横断レート制限ゲート（~/.pantheon/rate_limit_state.json）の状態。
+    rate_limited: bool = False
+    retry_at: str | None = None
+    rate_limit_scope: str | None = None
 
 
 class PlatformInitResponse(BaseModel):
@@ -599,6 +603,7 @@ DAEMON_STATUS_EXAMPLE = {
     "running": True,
     "pid": 4321,
     "log_path": str(Path.home() / ".pantheon" / "daemon.log"),
+    "rate_limited": False,
 }
 DAEMON_ACTION_EXAMPLE = {
     "status": "started",
@@ -1173,10 +1178,25 @@ def _is_process_running(pid: int) -> bool:
         return False
 
 
+def _rate_gate_payload() -> dict[str, Any]:
+    """プロセス横断のレート制限ゲート状態（daemon status 表示用）。"""
+    from core.runtime.usage_gate import RateLimitGate
+
+    info = RateLimitGate().current()
+    if info is None:
+        return {"rate_limited": False, "retry_at": None}
+    return {
+        "rate_limited": True,
+        "retry_at": info.reset_at.isoformat() if info.reset_at else None,
+        "rate_limit_scope": info.scope,
+    }
+
+
 def _daemon_status_payload() -> dict[str, Any]:
     pid_file, log_file = _daemon_paths()
     pid = _read_daemon_pid(pid_file)
     return {
+        **_rate_gate_payload(),
         "running": bool(pid is not None and _is_process_running(pid)),
         "pid": pid,
         "log_path": str(log_file),
@@ -1934,12 +1954,17 @@ def _content_daemon_status_payload() -> dict[str, Any]:
             state = json.loads(state_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             state = {}
+    gate = _rate_gate_payload()
     return {
         "running": running,
         "pid": pid,
         "log_path": str(log_file),
-        "rate_limited": bool(state.get("rate_limited", False)),
-        "retry_at": state.get("retry_at"),
+        # scheduler 自身の state とプロセス横断ゲートのどちらかが制限中なら制限中。
+        "rate_limited": bool(state.get("rate_limited", False)) or gate["rate_limited"],
+        "retry_at": state.get("retry_at") or gate["retry_at"],
+        # "status" はアクション系応答（{"status": "started", **payload}）の
+        # アクション結果キーと衝突するため、scheduler の状態は別名で返す。
+        "scheduler_status": state.get("status"),
         "cycle_count": state.get("cycle_count", 0),
         "interval_seconds": state.get("interval_seconds"),
     }
@@ -1957,7 +1982,9 @@ async def api_create_content_job(req: ContentJobRequest) -> Dict[str, Any]:
     psm = _psm()
     org = psm.load_organization_by_name(req.org_name)
     if org is None:
-        raise HTTPException(status_code=404, detail=f"Organization '{req.org_name}' が見つかりません")
+        raise HTTPException(
+            status_code=404, detail=f"Organization '{req.org_name}' が見つかりません"
+        )
     if not getattr(org, "target_repo_path", None):
         raise HTTPException(
             status_code=400, detail=f"Organization '{req.org_name}' に repo が未設定です"
@@ -3199,9 +3226,7 @@ async def api_list_handoffs(
     store = _handoff_store()
     return [
         _handoff_dict(h)
-        for h in store.list_handoffs(
-            source_org=source_org, target_org=target_org, status=status
-        )
+        for h in store.list_handoffs(source_org=source_org, target_org=target_org, status=status)
     ]
 
 
