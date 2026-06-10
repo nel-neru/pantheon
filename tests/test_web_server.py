@@ -93,16 +93,42 @@ def test_daemon_status_reports_running(tmp_path, monkeypatch):
     pid_file.write_text("4321", encoding="utf-8")
 
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     monkeypatch.setattr(server.os, "kill", lambda pid, sig: None)
 
     response = client.get("/api/daemon/status")
 
     assert response.status_code == 200
+    # retry_at は None のため response_model_exclude_none で応答から省かれる
     assert response.json() == {
         "running": True,
         "pid": 4321,
         "log_path": str(tmp_path / "daemon.log"),
+        "rate_limited": False,
     }
+
+
+def test_daemon_status_reports_rate_limited_from_gate(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from core.runtime.rate_limit import RateLimitInfo
+    from core.runtime.usage_gate import RateLimitGate
+
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    reset = datetime.now(timezone.utc) + timedelta(minutes=5)
+    RateLimitGate().report(
+        RateLimitInfo(limited=True, reset_at=reset, scope="session", message="usage limit")
+    )
+
+    response = client.get("/api/daemon/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["rate_limited"] is True
+    assert data["retry_at"] == reset.isoformat()
+    assert data["rate_limit_scope"] == "session"
 
 
 def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
@@ -157,6 +183,7 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
         killed["sig"] = sig
 
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     monkeypatch.setattr(server.os, "kill", fake_kill)
 
     response = client.post("/api/daemon/stop")
@@ -168,6 +195,7 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
         "running": False,
         "pid": 2222,
         "log_path": str(tmp_path / "daemon.log"),
+        "rate_limited": False,
     }
     assert killed == {"pid": 2222, "sig": server.signal.SIGTERM}
     assert not pid_file.exists()
@@ -323,8 +351,7 @@ def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
 
     sm = psm.get_org_state_manager(target)
     assert any(
-        p.get("category") == "content_asset"
-        for p in sm.get_pending_improvement_proposals(limit=50)
+        p.get("category") == "content_asset" for p in sm.get_pending_improvement_proposals(limit=50)
     )
 
 
@@ -1576,7 +1603,12 @@ def test_content_job_crud_and_run(tmp_path, monkeypatch):
 
     created = client.post(
         "/api/content-jobs",
-        json={"org_name": "SNS Growth", "kind": "content_brief", "theme": "朝活", "interval_seconds": 3600},
+        json={
+            "org_name": "SNS Growth",
+            "kind": "content_brief",
+            "theme": "朝活",
+            "interval_seconds": 3600,
+        },
     )
     assert created.status_code == 200
     job_id = created.json()["job_id"]

@@ -70,6 +70,19 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "-", text or "").strip("-").lower() or "session"
 
 
+def _log_tail(text: str, lines: int = 5) -> str:
+    """The last few non-empty lines of an agent log.
+
+    Used when scanning *successful* (exit 0) output for a usage limit: the CLI
+    prints the limit notice as its final short message, while a long normal
+    transcript may legitimately mention "rate limit" earlier in its body.
+    """
+    if not text:
+        return ""
+    non_empty = [ln for ln in text.strip().splitlines() if ln.strip()]
+    return "\n".join(non_empty[-lines:])
+
+
 def _read_log(path: Path) -> str:
     """Read an agent log, tolerating UTF-8 (headless) or UTF-16 (PowerShell
     ``Tee-Object`` writes UTF-16LE by default in the wmux shell)."""
@@ -226,9 +239,7 @@ class SessionOrchestrator:
         """
         driver = self._driver_for(self.sessions_dir / "_interactive")
         if require_gui and isinstance(driver, HeadlessDriver):
-            raise MultiplexerUnavailableError(
-                "対話タブには GUI マルチプレクサ（wmux）が必要です。"
-            )
+            raise MultiplexerUnavailableError("対話タブには GUI マルチプレクサ（wmux）が必要です。")
         driver.ensure_running()
         workspace = driver.create_workspace(group)
         spec = AgentSpec(
@@ -311,9 +322,7 @@ class SessionOrchestrator:
         def q(p) -> str:
             return "'" + str(p).replace("'", "''") + "'"
 
-        quoted = " ".join(
-            q(a) if (" " in a or "'" in a or '"' in a) else a for a in command
-        )
+        quoted = " ".join(q(a) if (" " in a or "'" in a or '"' in a) else a for a in command)
         return f"& {quoted} 2>&1 | Tee-Object -FilePath {q(log_file)}"
 
     def poll_session(self, sid: str) -> Optional[SessionRecord]:
@@ -337,16 +346,25 @@ class SessionOrchestrator:
             sr["status"] = surface.status
             sr["exit_code"] = surface.exit_code
             # A failed agent may have simply hit a usage limit — mark it for
-            # automatic resume rather than treating it as a hard failure.
-            if surface.status == SurfaceStatus.FAILED:
-                info = detect_rate_limit(self._read_surface_log(sr))
+            # automatic resume rather than treating it as a hard failure. The CLI
+            # can also report the limit as *successful* (exit 0) final output, so
+            # DONE surfaces are scanned too — but only their log tail, so a long
+            # legitimate transcript that merely mentions "rate limit" doesn't
+            # false-positive into RATE_LIMITED.
+            if surface.status in (SurfaceStatus.FAILED, SurfaceStatus.DONE):
+                log_text = self._read_surface_log(sr)
+                if surface.status == SurfaceStatus.DONE:
+                    log_text = _log_tail(log_text)
+                info = detect_rate_limit(log_text)
                 if info.limited:
                     sr["status"] = SurfaceStatus.RATE_LIMITED
                     sr["retry_at"] = info.reset_at.isoformat() if info.reset_at else None
                     sr["rate_limit_scope"] = info.scope
                     rate_limited = True
             if sr["status"] not in (
-                SurfaceStatus.DONE, SurfaceStatus.FAILED, SurfaceStatus.CLOSED,
+                SurfaceStatus.DONE,
+                SurfaceStatus.FAILED,
+                SurfaceStatus.CLOSED,
             ):
                 all_done = False
         if rate_limited:
@@ -491,7 +509,12 @@ class SessionOrchestrator:
         # pwsh command line for GUI drivers: read prompt/system from files (avoids
         # quoting a huge prompt) and tee the stream to the per-agent log.
         shell_command = self._pwsh_command(
-            binary, prompt_file, sys_file, model, out_fmt, log_file,
+            binary,
+            prompt_file,
+            sys_file,
+            model,
+            out_fmt,
+            log_file,
         )
 
         return AgentSpec(

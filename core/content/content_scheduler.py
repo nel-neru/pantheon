@@ -1,9 +1,11 @@
 """ContentScheduler — ContentJob を定期実行する PDCA ループ。
 
 各サイクル: 期限が来たジョブを実行（投稿 content_asset 提案を生成＝Plan/Do）→ 成果由来の構造介入を
-提案（Act: ``HQInterventionProposer.propose_all``）。Claude のレート制限を検知したらループを安全に
-自動停止する（「レート制限になるまで無限に実行」の実体）。状態は ``content_scheduler_state.json`` に
-永続化し、Web/CLI から参照できる。外部公開は一切しない。
+提案（Act: ``HQInterventionProposer.propose_all``）。Claude のレート制限を検知したらプロセスは
+生かしたまま reset 時刻まで pause し、窓が開いたら自動 resume する（「制限解除されたら再開を
+無限に繰り返す」の実体）。制限状態は :class:`RateLimitGate` 経由で全プロセス共有なので、別 daemon が
+検知した制限でも先回りして pause する。状態は ``content_scheduler_state.json`` に永続化し、
+Web/CLI から参照できる。外部公開は一切しない。
 """
 
 from __future__ import annotations
@@ -17,10 +19,18 @@ from typing import Any, Dict, List, Optional
 
 from core.content.content_jobs import ContentJobStore
 from core.content.content_runner import run_content_job
+from core.runtime.rate_limit import DEFAULT_BACKOFF, MAX_BACKOFF
+from core.runtime.usage_gate import RateLimitGate
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONTENT_INTERVAL_SECONDS = 600
+# pause 中の sleep チャンク。stop() への応答性と heartbeat の鮮度を保つ。
+PAUSE_SLEEP_CHUNK_SECONDS = 60.0
+
+STATUS_RUNNING = "running"
+STATUS_PAUSED_RATE_LIMIT = "paused_rate_limit"
+STATUS_STOPPED = "stopped"
 
 
 def _now_iso() -> str:
@@ -28,7 +38,7 @@ def _now_iso() -> str:
 
 
 class ContentScheduler:
-    """コンテンツ生成ジョブの定期ランナー（レート制限で自動停止）。"""
+    """コンテンツ生成ジョブの定期ランナー（レート制限で pause → 自動 resume）。"""
 
     def __init__(
         self,
@@ -48,6 +58,8 @@ class ContentScheduler:
         self._cycle_count = 0
         self._rate_limited = False
         self._retry_at: Optional[str] = None
+        self._status = STATUS_STOPPED
+        self._gate = RateLimitGate()
         self._log_path = self.platform_home / "content_scheduler_log.jsonl"
         self._state_path = self.platform_home / "content_scheduler_state.json"
 
@@ -59,11 +71,18 @@ class ContentScheduler:
         logger.info("ContentScheduler started (interval=%ds)", self._interval)
         try:
             while self._running:
-                stop = await self.run_cycle()
-                if stop:
-                    # レート制限を検知 → 自律的にループ停止（再開はユーザー操作 or 次回 start）。
-                    logger.info("ContentScheduler self-stopped due to rate limit (retry_at=%s)", self._retry_at)
-                    break
+                # 別プロセスが検知した制限も gate 経由で先回りして pause する。
+                gate_info = self._gate.current()
+                if gate_info is not None:
+                    self._rate_limited = True
+                    self._retry_at = gate_info.reset_at.isoformat() if gate_info.reset_at else None
+                    await self._pause_until_reset()
+                    continue
+                limited = await self.run_cycle()
+                if limited:
+                    # レート制限を検知 → reset 時刻まで pause → 自動 resume（無限継続）。
+                    await self._pause_until_reset()
+                    continue
                 await asyncio.sleep(self._interval)
         except asyncio.CancelledError:
             pass
@@ -74,8 +93,42 @@ class ContentScheduler:
     def stop(self) -> None:
         self._running = False
 
+    def _resume_at(self) -> datetime:
+        """retry_at（ISO 文字列）から再開時刻を決める。欠損/不正時は既定バックオフ。"""
+        now = datetime.now(timezone.utc)
+        if self._retry_at:
+            try:
+                dt: Optional[datetime] = datetime.fromisoformat(self._retry_at)
+            except ValueError:
+                dt = None
+            if dt is not None:
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return min(max(dt, now), now + MAX_BACKOFF)
+        return now + DEFAULT_BACKOFF
+
+    async def _pause_until_reset(self) -> None:
+        """レート制限の reset 時刻まで pause し、窓が開いたら自動 resume する。
+
+        プロセスは生かしたまま短いチャンクで sleep する（``stop()`` への即応と
+        heartbeat の鮮度維持のため）。resume 後は rate_limited 状態をクリアする。
+        """
+        resume_at = self._resume_at()
+        logger.info("ContentScheduler paused (rate limit) — resumes at %s", resume_at.isoformat())
+        self._write_state(running=True, status=STATUS_PAUSED_RATE_LIMIT)
+        while self._running:
+            remaining = (resume_at - datetime.now(timezone.utc)).total_seconds()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(PAUSE_SLEEP_CHUNK_SECONDS, remaining))
+        if self._running:
+            self._rate_limited = False
+            self._retry_at = None
+            self._write_state(running=True, status=STATUS_RUNNING)
+            logger.info("ContentScheduler resumed after rate-limit window")
+
     async def run_cycle(self) -> bool:
-        """1サイクル実行。レート制限を検知したら True（ループ停止）。"""
+        """1サイクル実行。レート制限を検知したら True（呼び出し側が pause する）。"""
         self._cycle_count += 1
         started = _now_iso()
         due = self._store.due_jobs()
@@ -125,22 +178,31 @@ class ContentScheduler:
             "results": results,
         }
         self._write_log(summary)
-        self._write_state(running=self._running and not rate_limited)
+        # pause 中もプロセスは生きている（自動 resume する）ので running は落とさない。
+        self._write_state(
+            running=self._running,
+            status=STATUS_PAUSED_RATE_LIMIT if rate_limited else None,
+        )
         return rate_limited
 
     # ---- 状態・ログ ----
     def status(self) -> Dict[str, Any]:
         return {
             "running": self._running,
+            "status": self._status,
             "rate_limited": self._rate_limited,
             "retry_at": self._retry_at,
             "cycle_count": self._cycle_count,
             "interval_seconds": self._interval,
         }
 
-    def _write_state(self, *, running: bool) -> None:
+    def _write_state(self, *, running: bool, status: Optional[str] = None) -> None:
+        if status is None:
+            status = STATUS_RUNNING if running else STATUS_STOPPED
+        self._status = status
         state = {
             "running": running,
+            "status": status,
             "rate_limited": self._rate_limited,
             "retry_at": self._retry_at,
             "cycle_count": self._cycle_count,
