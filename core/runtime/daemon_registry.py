@@ -76,6 +76,15 @@ KNOWN_DAEMONS: Dict[str, DaemonSpec] = {
         pid_filename="content_daemon.pid",
         log_filename="content_daemon.log",
     ),
+    "watchdog": DaemonSpec(
+        name="watchdog",
+        description="daemon 監視・自動復旧（enabled.json と実態の突合、ハング検知・再起動）",
+        runner_module="core._watchdog_runner",
+        frozen_flag="--watchdog-run",
+        default_interval=60,
+        pid_filename="watchdog.pid",
+        log_filename="watchdog.log",
+    ),
 }
 
 

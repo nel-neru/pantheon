@@ -492,6 +492,24 @@ async def cmd_daemons_disable(args) -> None:
     await _impl(args)
 
 
+async def cmd_daemons_watchdog_install(args) -> None:
+    from commands.daemons import cmd_daemons_watchdog_install as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_watchdog_uninstall(args) -> None:
+    from commands.daemons import cmd_daemons_watchdog_uninstall as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_watchdog_status(args) -> None:
+    from commands.daemons import cmd_daemons_watchdog_status as _impl
+
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
@@ -546,6 +564,9 @@ HANDLERS = {
     "cmd_daemons_stop": cmd_daemons_stop,
     "cmd_daemons_enable": cmd_daemons_enable,
     "cmd_daemons_disable": cmd_daemons_disable,
+    "cmd_daemons_watchdog_install": cmd_daemons_watchdog_install,
+    "cmd_daemons_watchdog_uninstall": cmd_daemons_watchdog_uninstall,
+    "cmd_daemons_watchdog_status": cmd_daemons_watchdog_status,
 }
 
 
@@ -569,6 +590,14 @@ def main() -> None:
 
         sys.argv = [sys.argv[0], *argv[1:]]
         _content_daemon_runner.main()
+        return
+
+    # watchdog（daemon 監視・自動復旧）の frozen 自己再起動エントリ。
+    if argv and argv[0] == "--watchdog-run":
+        from core import _watchdog_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _watchdog_runner.main()
         return
 
     # 引数なし起動（exe をダブルクリックした場合など）はフル起動（up）する:
