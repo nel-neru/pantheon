@@ -336,7 +336,9 @@ def _brief_for(handoff: OrgHandoff) -> tuple[str, str, str]:
             "## CV導線\n"
             "- オファー: " + offer + "（intent: " + str(payload.get("intent") or "未設定") + "）\n"
             "- 掲出面: " + str(payload.get("placement") or "note本文/YouTube概要欄") + "\n"
-            "- ASP: " + str(payload.get("asp") or "A8.net 等（料率/Cookie/ToS を一次ページで再確認）") + "\n\n"
+            "- ASP: "
+            + str(payload.get("asp") or "A8.net 等（料率/Cookie/ToS を一次ページで再確認）")
+            + "\n\n"
             "## 次アクション\n"
             "- このブリーフを承認・適用 → PR表記つき物販導線を執筆 → 概要欄/note本文へ反映（運用者）\n"
         )
@@ -453,8 +455,7 @@ def _deterministic_draft(handoff: OrgHandoff, title: str) -> str:
     return (
         f"# {title}（本文ドラフト）\n\n"
         "> 注: claude CLI 不在のため決定論テンプレートで生成。`pantheon` を claude にログインさせると"
-        " LLM が本文を執筆します。\n\n"
-        + skeleton
+        " LLM が本文を執筆します。\n\n" + skeleton
     )
 
 
@@ -482,6 +483,7 @@ async def generate_draft_body(handoff: OrgHandoff) -> tuple[str, str]:
             ],
             temperature=0.6,
             max_tokens=2500,
+            task_type="summarize",
         )
         body = (getattr(response, "content", "") or "").strip()
         return (title, body) if body else (title, _deterministic_draft(handoff, title))

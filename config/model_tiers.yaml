@@ -1,0 +1,30 @@
+# モデルティアリング設定 — task_type → ティア → claude CLI の --model エイリアス
+#
+# 「作業内容に応じたモデルの使い分け」の中枢設定。alias（opus/sonnet/haiku）で
+# 指定するためモデル ID の世代交代に追従不要。優先順位は
+#   明示 model 引数 ＞ このルーター ＞ PANTHEON_DEFAULT_MODEL
+# で、PANTHEON_MODEL_ROUTING=0 にするとルーター全体を無効化できる（キルスイッチ）。
+# このファイルが欠落・破損していても内蔵デフォルト（同内容）で動作する。
+
+tiers:
+  heavy: opus      # 高難度: コード改変・メタ改善・セキュリティ
+  standard: sonnet # 標準: レビュー・コンテンツ生成・探索
+  light: haiku     # 軽量: 会話・要約・スコアリング・コンパクション
+
+default_tier: standard
+
+task_tiers:
+  improvement_execution: heavy
+  meta_improvement: heavy
+  security_audit: heavy
+  code_review: standard
+  quality_review: standard
+  content_generation: standard
+  codebase_exploration: standard
+  conversation: light
+  compaction: light
+  scoring: light
+  summarize: light
+
+# プロンプトがこの文字数を超えるタスクは 1 ティア上げる（大きい文脈の理解力を優先）
+escalate_above_prompt_chars: 20000
