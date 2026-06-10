@@ -151,6 +151,9 @@ class AutonomousScheduler:
 
         results: List[Dict[str, Any]] = []
         for org_name in triggered_orgs:
+            # org ごとの分析（claude 呼び出し）は長く、サイクル中に heartbeat が
+            # 途切れると watchdog にハングと誤判定されるため 1 org ごとに更新する。
+            self._beat("running")
             result = await self._process_org(org_name, events)
             results.append(result)
 

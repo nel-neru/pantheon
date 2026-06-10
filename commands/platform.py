@@ -276,77 +276,43 @@ async def cmd_daemon_start(
     get_platform_home: Any,
     project_root: Path,
 ) -> None:
-    """自律改善デーモンをバックグラウンドで起動する"""
-    import subprocess
+    """自律改善デーモンをバックグラウンドで起動する（registry 経由）。
 
-    platform_home = get_platform_home()
-    pid_file = platform_home / "daemon.pid"
+    desired state（enabled.json）も更新されるため、watchdog 導入後は
+    クラッシュ/再起動からの自動復元対象になる。
+    """
+    from core.runtime.daemon_registry import spawn_daemon
 
-    if pid_file.exists():
-        pid = int(pid_file.read_text().strip())
-        try:
-            import os as _os
-
-            _os.kill(pid, 0)
-            print(f"[WARN] デーモンはすでに起動中です (PID: {pid})")
-            return
-        except OSError:
-            pid_file.unlink(missing_ok=True)
-
-    log_file = platform_home / "daemon.log"
-    if getattr(sys, "frozen", False):
-        # exe 化時は `-m core._daemon_runner` が使えないので、自分自身を
-        # `Pantheon.exe --daemon-run ...` として再実行する（main.py 側で捕捉）。
-        cmd = [
-            sys.executable,
-            "--daemon-run",
-            f"--interval={args.interval}",
-            f"--max-files={args.max_files}",
-        ]
-    else:
-        cmd = [
-            sys.executable,
-            "-m",
-            "core._daemon_runner",
-            f"--interval={args.interval}",
-            f"--max-files={args.max_files}",
-        ]
-
-    with open(log_file, "a", encoding="utf-8") as log_handle:
-        proc = subprocess.Popen(
-            cmd,
-            cwd=project_root,
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    pid_file.write_text(str(proc.pid), encoding="utf-8")
-    print(f"[OK] デーモンを起動しました (PID: {proc.pid})")
-    print(f"   ログ  : {log_file}")
+    del project_root  # spawn は registry の PROJECT_ROOT（resource_root()）を使う
+    result = spawn_daemon(
+        "improvement",
+        args=[f"--interval={args.interval}", f"--max-files={args.max_files}"],
+        platform_home=get_platform_home(),
+    )
+    if result["status"] == "already_running":
+        print(f"[WARN] デーモンはすでに起動中です (PID: {result['pid']})")
+        return
+    print(f"[OK] デーモンを起動しました (PID: {result['pid']})")
+    print(f"   ログ  : {result['log_path']}")
     print(f"   間隔  : {args.interval} 秒ごと")
     print("\n停止: pantheon daemon stop")
     print("状態: pantheon daemon status")
 
 
 def cmd_daemon_stop(args: argparse.Namespace, *, get_platform_home: Any) -> None:
-    """自律改善デーモンを停止する"""
-    import signal as _signal
+    """自律改善デーモンを停止する（registry 経由）。
 
-    pid_file = get_platform_home() / "daemon.pid"
-    if not pid_file.exists():
+    desired state も OFF になるため、watchdog が勝手に復元することはない。
+    """
+    from core.runtime.daemon_registry import stop_daemon
+
+    result = stop_daemon("improvement", platform_home=get_platform_home())
+    if result["status"] == "not_running":
         print("[INFO] デーモンは起動していません。")
-        return
-
-    pid = int(pid_file.read_text().strip())
-    try:
-        import os as _os
-
-        _os.kill(pid, _signal.SIGTERM)
-        pid_file.unlink(missing_ok=True)
-        print(f"[OK] デーモンを停止しました (PID: {pid})")
-    except OSError:
-        pid_file.unlink(missing_ok=True)
-        print(f"[INFO] デーモン (PID: {pid}) はすでに停止しています。")
+    elif result["status"] == "stopped":
+        print(f"[OK] デーモンを停止しました (PID: {result['pid']})")
+    else:  # already_stopped
+        print(f"[INFO] デーモン (PID: {result['pid']}) はすでに停止しています。")
 
 
 def cmd_daemon_status(args: argparse.Namespace, *, get_platform_home: Any) -> None:

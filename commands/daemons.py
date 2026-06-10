@@ -91,11 +91,18 @@ async def cmd_daemons_stop(args: argparse.Namespace) -> None:
 
 async def cmd_daemons_enable(args: argparse.Namespace) -> None:
     """desired state のみ ON にする（watchdog/再起動時に起動される）。"""
-    from core.runtime.daemon_registry import get_spec, set_enabled
+    from core.runtime.daemon_registry import get_spec, load_enabled, set_enabled
 
     for name in _resolve_names(args.name):
         spec = get_spec(name)
-        set_enabled(name, True, args=[f"--interval={spec.default_interval}"])
+        # 過去に start で記録された args は保持する（args=None なら set_enabled は
+        # 既存値を維持）。未記録の場合のみ既定 interval を入れる。
+        has_recorded_args = bool(load_enabled().get(name, {}).get("args"))
+        set_enabled(
+            name,
+            True,
+            args=None if has_recorded_args else [f"--interval={spec.default_interval}"],
+        )
         print(f"[{name}] enabled（watchdog/次回復元の対象になりました）")
 
 

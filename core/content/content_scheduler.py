@@ -144,6 +144,9 @@ class ContentScheduler:
         rate_limited = False
 
         for job in due:
+            # ジョブ（claude 生成）は数分かかり得るので、1件ごとに heartbeat を更新し
+            # 長いバッチ実行中に watchdog から「ハング」と誤判定されないようにする。
+            self._beat()
             try:
                 res = await run_content_job(job, self._psm)
             except Exception as exc:  # noqa: BLE001

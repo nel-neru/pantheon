@@ -202,7 +202,7 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
         "log_path": str(tmp_path / "daemon.log"),
         "rate_limited": False,
     }
-    assert killed == {"pid": 2222, "sig": server.signal.SIGTERM}
+    assert killed == {"pid": 2222, "sig": registry.signal.SIGTERM}
     assert not pid_file.exists()
 
 
