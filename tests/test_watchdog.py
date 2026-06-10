@@ -16,11 +16,23 @@ from core.runtime.watchdog import (
     ACTION_RESTART,
     ACTION_START,
     WatchdogRunner,
+    acquire_single_instance_lock,
     backoff_delay_seconds,
     decide_action,
 )
 
 NOW = datetime(2026, 6, 11, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def test_single_instance_lock_excludes_second_holder(tmp_path):
+    """OS 排他ロック: 2 つ目の取得は失敗し、解放後は再取得できる。"""
+    first = acquire_single_instance_lock(tmp_path)
+    assert first is not None
+    assert acquire_single_instance_lock(tmp_path) is None  # 既に保持されている
+    first.close()
+    third = acquire_single_instance_lock(tmp_path)
+    assert third is not None  # 解放後は取得可能（クラッシュ後の再起動を妨げない）
+    third.close()
 
 
 def test_decide_action_branches():

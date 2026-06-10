@@ -24,10 +24,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import IO, Dict, Optional
 
 from core.runtime.daemon_registry import (
     KNOWN_DAEMONS,
@@ -50,6 +51,45 @@ ACTION_NONE = "none"
 ACTION_OK = "ok"
 ACTION_START = "start"
 ACTION_RESTART = "restart"
+
+LOCK_FILENAME = "watchdog.lock"
+
+
+def acquire_single_instance_lock(home: Path) -> Optional[IO[str]]:
+    """watchdog の単一インスタンスを OS 排他ロックで保証する。
+
+    pid ファイル比較は TOCTOU 競合（ONLOGON＋ガードタスクの同時発火）と
+    再起動後の PID 再利用誤判定（無関係なプロセスを「watchdog 稼働中」と
+    誤認して起動拒否）に弱いため、OS ロックを正とする。ロックはプロセス
+    終了時に OS が必ず解放するので、クラッシュ後も次の起動を妨げない。
+
+    Returns: ロックを保持するファイルハンドル（呼び出し側が生存期間中
+    参照を保ち続けること）。取得失敗（既に稼働中）なら ``None``。
+    """
+    lock_path = Path(home) / LOCK_FILENAME
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(lock_path, "a+", encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        if fh.tell() == 0 and not fh.read(1):
+            # msvcrt.locking はロック範囲がデータを要求する場合があるため 1 byte 確保
+            fh.write("x")
+            fh.flush()
+        fh.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:  # pragma: no cover - POSIX 環境のみ
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fh
+    except OSError:
+        fh.close()
+        return None
 
 
 def decide_action(

@@ -32,7 +32,7 @@ def main() -> None:
     args = parser.parse_args()
 
     from core.platform.state import get_platform_home
-    from core.runtime.daemon_registry import is_process_running, pid_path
+    from core.runtime.daemon_registry import pid_path
 
     home = Path(get_platform_home())
     home.mkdir(parents=True, exist_ok=True)
@@ -44,18 +44,20 @@ def main() -> None:
     )
     log = logging.getLogger(__name__)
 
-    pid_file = pid_path("watchdog")
-    try:
-        existing: int | None = int(pid_file.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        existing = None
-    if existing is not None and is_process_running(existing):
-        log.info("watchdog already running (pid=%s) — exiting", existing)
+    from core.runtime.watchdog import WatchdogRunner, acquire_single_instance_lock
+
+    # 単一インスタンスは OS 排他ロックで保証する（pid ファイル比較は ONLOGON＋
+    # ガードタスク同時発火の TOCTOU と、再起動後の PID 再利用誤判定に弱い）。
+    # ロックはプロセス終了時に OS が必ず解放するため、クラッシュ後の再起動も妨げない。
+    lock = acquire_single_instance_lock(home)
+    if lock is None:
+        log.info("watchdog already running (lock held) — exiting")
         return
+
+    # pid ファイルは status 表示（pantheon daemons status / API）用に併記する。
+    pid_file = pid_path("watchdog")
     pid_file.parent.mkdir(parents=True, exist_ok=True)
     pid_file.write_text(str(os.getpid()), encoding="utf-8")
-
-    from core.runtime.watchdog import WatchdogRunner
 
     try:
         asyncio.run(WatchdogRunner(poll_seconds=args.poll).run())
@@ -67,6 +69,7 @@ def main() -> None:
                 pid_file.unlink(missing_ok=True)
         except OSError:
             pass
+        lock.close()
 
 
 if __name__ == "__main__":
