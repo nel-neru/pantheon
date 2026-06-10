@@ -145,8 +145,11 @@ def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
         calls["stdout_name"] = Path(stdout.name)
         return DummyProc()
 
+    import core.runtime.daemon_registry as registry
+
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
-    monkeypatch.setattr(server.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(registry.subprocess, "Popen", fake_popen)
 
     response = client.post("/api/daemon/start")
 
@@ -182,9 +185,11 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
         killed["pid"] = pid
         killed["sig"] = sig
 
+    import core.runtime.daemon_registry as registry
+
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
-    monkeypatch.setattr(server.os, "kill", fake_kill)
+    monkeypatch.setattr(registry.os, "kill", fake_kill)
 
     response = client.post("/api/daemon/stop")
 
@@ -197,7 +202,7 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
         "log_path": str(tmp_path / "daemon.log"),
         "rate_limited": False,
     }
-    assert killed == {"pid": 2222, "sig": server.signal.SIGTERM}
+    assert killed == {"pid": 2222, "sig": registry.signal.SIGTERM}
     assert not pid_file.exists()
 
 
@@ -1654,13 +1659,67 @@ def test_content_daemon_start_keeps_action_status(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
+    import core.runtime.daemon_registry as registry
+
     class DummyProc:
         pid = 4242
 
-    monkeypatch.setattr(server.subprocess, "Popen", lambda *a, **k: DummyProc())
+    monkeypatch.setattr(registry.subprocess, "Popen", lambda *a, **k: DummyProc())
 
     resp = client.post("/api/content-daemon/start")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "started"
     assert data["scheduler_status"] == "stopped"
+
+
+def test_daemons_status_lists_registry(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    resp = client.get("/api/daemons/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rate_limited"] is False
+    names = [d["name"] for d in data["daemons"]]
+    assert names == ["content", "improvement"]
+    for d in data["daemons"]:
+        assert d["running"] is False
+        assert d["heartbeat_stale"] is True
+        assert d["healthy"] is False
+
+
+def test_daemons_start_unknown_name_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    resp = client.post("/api/daemons/ghost/start")
+    assert resp.status_code == 404
+    assert client.post("/api/daemons/ghost/stop").status_code == 404
+
+
+def test_daemons_start_and_stop_roundtrip(tmp_path, monkeypatch):
+    import core.runtime.daemon_registry as registry
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    class DummyProc:
+        pid = 7777
+
+    monkeypatch.setattr(registry.subprocess, "Popen", lambda *a, **k: DummyProc())
+
+    resp = client.post("/api/daemons/content/start")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "content"
+    assert data["status"] == "started"
+    assert data["pid"] == 7777
+    # desired state が ON になった（watchdog 復元の対象）
+    assert registry.load_enabled(platform_home=tmp_path)["content"]["enabled"] is True
+
+    killed: dict[str, int] = {}
+    monkeypatch.setattr(registry.os, "kill", lambda pid, sig: killed.update(pid=pid, sig=sig))
+    resp = client.post("/api/daemons/content/stop")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "stopped"
+    assert killed["pid"] == 7777
+    # 明示 stop で desired state は OFF（watchdog は復元しない）
+    assert registry.load_enabled(platform_home=tmp_path)["content"]["enabled"] is False

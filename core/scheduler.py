@@ -23,8 +23,11 @@ from typing import Any, Dict, List, Optional
 from core.events.detector import DetectedEvent, EventDetector
 from core.policy.engine import ApprovalDecision, OrgBoundaryContext, PolicyEngine
 from core.runtime.claude_code import ClaudeRateLimitedError
+from core.runtime.heartbeat import write_heartbeat
 from core.runtime.rate_limit import DEFAULT_BACKOFF, MAX_BACKOFF, RateLimitInfo
 from core.runtime.usage_gate import RateLimitGate
+
+HEARTBEAT_NAME = "improvement"  # core.runtime.daemon_registry の登録名と一致させる
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +77,7 @@ class AutonomousScheduler:
 
         try:
             while self._running:
+                self._beat("running")
                 # 他プロセス（content daemon 等）が検知した制限も gate 経由で共有される。
                 info = self._gate.current()
                 if info is not None:
@@ -93,6 +97,7 @@ class AutonomousScheduler:
             pass
         finally:
             self._running = False
+            self._beat("stopped")
             print("[Scheduler] 停止しました")
 
     def stop(self) -> None:
@@ -109,10 +114,24 @@ class AutonomousScheduler:
             remaining = (reset_at - datetime.now(timezone.utc)).total_seconds()
             if remaining <= 0:
                 break
+            # pause 中も heartbeat を打ち続ける（watchdog に「生きている」と伝える）。
+            self._beat("paused_rate_limit")
             await asyncio.sleep(min(PAUSE_SLEEP_CHUNK_SECONDS, remaining))
         if self._running:
             logger.info("AutonomousScheduler resumed after rate-limit window")
             print("[Scheduler] レート制限解除 — 自動再開します")
+
+    def _beat(self, status: str) -> None:
+        """heartbeat を更新する（watchdog/health API 用、ベストエフォート）。"""
+        write_heartbeat(
+            HEARTBEAT_NAME,
+            {
+                "status": status,
+                "cycle": self._cycle_count,
+                "interval_seconds": self._interval,
+            },
+            platform_home=self._psm.platform_home,
+        )
 
     async def _run_cycle(self) -> Dict[str, Any]:
         self._cycle_count += 1
@@ -132,6 +151,9 @@ class AutonomousScheduler:
 
         results: List[Dict[str, Any]] = []
         for org_name in triggered_orgs:
+            # org ごとの分析（claude 呼び出し）は長く、サイクル中に heartbeat が
+            # 途切れると watchdog にハングと誤判定されるため 1 org ごとに更新する。
+            self._beat("running")
             result = await self._process_org(org_name, events)
             results.append(result)
 

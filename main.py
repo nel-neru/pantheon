@@ -462,6 +462,36 @@ async def cmd_session_doctor(args) -> None:
     await _impl(args)
 
 
+async def cmd_daemons_status(args) -> None:
+    from commands.daemons import cmd_daemons_status as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_start(args) -> None:
+    from commands.daemons import cmd_daemons_start as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_stop(args) -> None:
+    from commands.daemons import cmd_daemons_stop as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_enable(args) -> None:
+    from commands.daemons import cmd_daemons_enable as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_disable(args) -> None:
+    from commands.daemons import cmd_daemons_disable as _impl
+
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
@@ -511,6 +541,11 @@ HANDLERS = {
     "cmd_session_stop": cmd_session_stop,
     "cmd_session_resume": cmd_session_resume,
     "cmd_session_doctor": cmd_session_doctor,
+    "cmd_daemons_status": cmd_daemons_status,
+    "cmd_daemons_start": cmd_daemons_start,
+    "cmd_daemons_stop": cmd_daemons_stop,
+    "cmd_daemons_enable": cmd_daemons_enable,
+    "cmd_daemons_disable": cmd_daemons_disable,
 }
 
 

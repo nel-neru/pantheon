@@ -19,8 +19,11 @@ from typing import Any, Dict, List, Optional
 
 from core.content.content_jobs import ContentJobStore
 from core.content.content_runner import run_content_job
+from core.runtime.heartbeat import write_heartbeat
 from core.runtime.rate_limit import DEFAULT_BACKOFF, MAX_BACKOFF
 from core.runtime.usage_gate import RateLimitGate
+
+HEARTBEAT_NAME = "content"  # core.runtime.daemon_registry の登録名と一致させる
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +126,8 @@ class ContentScheduler:
             remaining = (resume_at - datetime.now(timezone.utc)).total_seconds()
             if remaining <= 0:
                 break
+            # pause 中も heartbeat を打ち続ける（watchdog に「生きている」と伝える）。
+            self._beat()
             await asyncio.sleep(min(PAUSE_SLEEP_CHUNK_SECONDS, remaining))
         if self._running:
             self._rate_limited = False
@@ -139,6 +144,9 @@ class ContentScheduler:
         rate_limited = False
 
         for job in due:
+            # ジョブ（claude 生成）は数分かかり得るので、1件ごとに heartbeat を更新し
+            # 長いバッチ実行中に watchdog から「ハング」と誤判定されないようにする。
+            self._beat()
             try:
                 res = await run_content_job(job, self._psm)
             except Exception as exc:  # noqa: BLE001
@@ -199,6 +207,20 @@ class ContentScheduler:
             "interval_seconds": self._interval,
         }
 
+    def _beat(self) -> None:
+        """heartbeat を更新する（watchdog/health API 用、ベストエフォート）。"""
+        write_heartbeat(
+            HEARTBEAT_NAME,
+            {
+                "status": self._status,
+                "cycle": self._cycle_count,
+                "interval_seconds": self._interval,
+                "rate_limited": self._rate_limited,
+                "retry_at": self._retry_at,
+            },
+            platform_home=self.platform_home,
+        )
+
     def _write_state(self, *, running: bool, status: Optional[str] = None) -> None:
         if status is None:
             status = STATUS_RUNNING if running else STATUS_STOPPED
@@ -218,6 +240,8 @@ class ContentScheduler:
             )
         except OSError:
             pass
+        # 状態遷移は必ず heartbeat にも反映する（サイクルごとの生存通知を兼ねる）。
+        self._beat()
 
     def _write_log(self, data: Dict[str, Any]) -> None:
         try:
