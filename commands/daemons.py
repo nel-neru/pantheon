@@ -17,7 +17,7 @@ from typing import Any, List, Optional
 
 # argparse の choices 用（core を import せず CLI 起動を軽く保つ）。
 # core/runtime/daemon_registry.py の KNOWN_DAEMONS と同期させること。
-DAEMON_NAMES = ("improvement", "content")
+DAEMON_NAMES = ("improvement", "content", "watchdog")
 
 
 def _format_age(age: Optional[float]) -> str:
@@ -115,6 +115,66 @@ async def cmd_daemons_disable(args: argparse.Namespace) -> None:
         print(f"[{name}] disabled（watchdog は復元しません）")
 
 
+def _run_watchdog_script(script_name: str) -> None:
+    import subprocess
+
+    from core.paths import resource_path
+
+    script = resource_path("scripts", script_name)
+    if not script.exists():
+        print(f"[ERROR] スクリプトが見つかりません: {script}")
+        return
+    proc = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    if out:
+        print(out)
+    if proc.returncode != 0:
+        print(f"[ERROR] {script_name} が失敗しました (exit {proc.returncode})")
+        if err:
+            print(err)
+
+
+async def cmd_daemons_watchdog_install(args: argparse.Namespace) -> None:
+    """watchdog を Windows タスクスケジューラに登録する（ONLOGON＋5分ガード）。"""
+    _run_watchdog_script("install_watchdog_task.ps1")
+
+
+async def cmd_daemons_watchdog_uninstall(args: argparse.Namespace) -> None:
+    """watchdog のタスク登録を解除する（実行中プロセスは stop watchdog で停止）。"""
+    _run_watchdog_script("uninstall_watchdog_task.ps1")
+
+
+async def cmd_daemons_watchdog_status(args: argparse.Namespace) -> None:
+    """watchdog のタスク登録状況とプロセス状態を表示する。"""
+    import subprocess
+
+    from core.runtime.daemon_registry import daemon_status
+
+    for task_name in ("Pantheon Watchdog", "Pantheon Watchdog Guard"):
+        proc = subprocess.run(
+            ["schtasks", "/Query", "/TN", task_name],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        mark = "[OK]  " if proc.returncode == 0 else "[NONE]"
+        print(f"{mark} タスク '{task_name}' {'登録済み' if proc.returncode == 0 else '未登録'}")
+
+    st = daemon_status("watchdog")
+    state = "稼働中" if st["running"] else "停止中"
+    print(f"プロセス: {state} (pid={st['pid'] or '-'}) log: {st['log_path']}")
+    if not st["running"]:
+        print("起動: pantheon daemons start watchdog（または watchdog install でタスク登録）")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser(
         "daemons",
@@ -144,3 +204,14 @@ def register(subparsers: Any) -> None:
     sp = sub.add_parser("disable", help="desired state のみ OFF（プロセスには触れない）")
     sp.add_argument("name", choices=[*DAEMON_NAMES, "all"])
     sp.set_defaults(handler_name="cmd_daemons_disable")
+
+    sp = sub.add_parser(
+        "watchdog", help="watchdog のタスクスケジューラ登録/解除/状態（PC再起動後の自動復帰）"
+    )
+    wd = sp.add_subparsers(dest="watchdog_command", required=True)
+    w = wd.add_parser("install", help="ONLOGON＋5分ガードのタスクを登録し即起動")
+    w.set_defaults(handler_name="cmd_daemons_watchdog_install")
+    w = wd.add_parser("uninstall", help="タスク登録を解除")
+    w.set_defaults(handler_name="cmd_daemons_watchdog_uninstall")
+    w = wd.add_parser("status", help="タスク登録状況とプロセス状態を表示")
+    w.set_defaults(handler_name="cmd_daemons_watchdog_status")
