@@ -13,10 +13,8 @@ import hashlib
 import json
 import logging
 import os
-import signal
 import stat
 import subprocess
-import sys
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -423,6 +421,13 @@ class GoalRunRequest(ApiRequestModel):
 class DaemonStartRequest(ApiRequestModel):
     interval: int = Field(default=3600, ge=1)
     max_files: int = Field(default=10, ge=1, le=1000)
+
+
+class DaemonsActionRequest(ApiRequestModel):
+    """統合 daemon API（/api/daemons/{name}/start）の起動オプション。"""
+
+    interval: int | None = Field(default=None, ge=1)
+    max_files: int | None = Field(default=None, ge=1, le=1000)
 
 
 class TaskQueueRequest(ApiRequestModel):
@@ -1817,11 +1822,15 @@ async def api_daemon_status() -> Dict[str, Any]:
     responses={200: {"content": {"application/json": {"example": DAEMON_ACTION_EXAMPLE}}}},
 )
 async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, Any]:
+    from core.runtime.daemon_registry import spawn_daemon
+
     req = req or DaemonStartRequest()
-    pid_file, log_file = _daemon_paths()
-    pid = _read_daemon_pid(pid_file)
-    if pid is not None and _is_process_running(pid):
-        status = "already_running"
+    result = spawn_daemon(
+        "improvement",
+        args=[f"--interval={req.interval}", f"--max-files={req.max_files}"],
+    )
+    status = result["status"]
+    if status == "already_running":
         return {
             "status": status,
             "message": _daemon_action_message(status),
@@ -1829,33 +1838,12 @@ async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, A
             "interval": req.interval,
             "max_files": req.max_files,
         }
-    if pid is not None:
-        pid_file.unlink(missing_ok=True)
-
-    pid_file.parent.mkdir(parents=True, exist_ok=True)
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    with log_file.open("a", encoding="utf-8") as log_handle:
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "core._daemon_runner",
-                f"--interval={req.interval}",
-                f"--max-files={req.max_files}",
-            ],
-            cwd=PROJECT_ROOT,
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    pid_file.write_text(str(proc.pid), encoding="utf-8")
-    status = "started"
     return {
         "status": status,
         "message": _daemon_action_message(status),
         "running": True,
-        "pid": proc.pid,
-        "log_path": str(log_file),
+        "pid": result["pid"],
+        "log_path": result["log_path"],
         "interval": req.interval,
         "max_files": req.max_files,
     }
@@ -1877,32 +1865,58 @@ async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, A
     },
 )
 async def api_daemon_stop() -> Dict[str, Any]:
-    pid_file, log_file = _daemon_paths()
-    pid = _read_daemon_pid(pid_file)
-    if pid is None:
-        pid_file.unlink(missing_ok=True)
-        status = "not_running"
-        return {
-            "status": status,
-            "message": _daemon_action_message(status),
-            "running": False,
-            "pid": None,
-            "log_path": str(log_file),
-        }
+    from core.runtime.daemon_registry import stop_daemon
 
-    try:
-        os.kill(pid, signal.SIGTERM)
-        status = "stopped"
-    except OSError:
-        status = "already_stopped"
-    pid_file.unlink(missing_ok=True)
+    result = stop_daemon("improvement")
     return {
-        "status": status,
-        "message": _daemon_action_message(status),
+        "status": result["status"],
+        "message": _daemon_action_message(result["status"]),
         "running": False,
-        "pid": pid,
-        "log_path": str(log_file),
+        "pid": result["pid"],
+        "log_path": result["log_path"],
     }
+
+
+# --------------------------------------------------------------------------- #
+# 統合 daemon API（registry ベース） — 個別 API（/api/daemon, /api/content-daemon）
+# は後方互換のため残し、新規利用はこちらを推奨。
+# --------------------------------------------------------------------------- #
+def _require_daemon(name: str) -> None:
+    from core.runtime.daemon_registry import KNOWN_DAEMONS
+
+    if name not in KNOWN_DAEMONS:
+        raise HTTPException(status_code=404, detail=f"Daemon '{name}' が見つかりません")
+
+
+@app.get("/api/daemons/status", tags=["platform"])
+async def api_daemons_status() -> Dict[str, Any]:
+    """全 daemon の health（pid 生死 × heartbeat 鮮度 × desired state）＋レート制限状態。"""
+    from core.runtime.daemon_registry import all_statuses
+
+    return {**_rate_gate_payload(), "daemons": all_statuses()}
+
+
+@app.post("/api/daemons/{name}/start", tags=["platform"])
+async def api_daemons_start(name: str, req: DaemonsActionRequest | None = None) -> Dict[str, Any]:
+    from core.runtime.daemon_registry import get_spec, spawn_daemon
+
+    _require_daemon(name)
+    req = req or DaemonsActionRequest()
+    spec = get_spec(name)
+    args = [f"--interval={req.interval or spec.default_interval}"]
+    if name == "improvement":
+        args.append(f"--max-files={req.max_files or 10}")
+    result = spawn_daemon(name, args=args)
+    return {"name": name, **result}
+
+
+@app.post("/api/daemons/{name}/stop", tags=["platform"])
+async def api_daemons_stop(name: str) -> Dict[str, Any]:
+    from core.runtime.daemon_registry import stop_daemon
+
+    _require_daemon(name)
+    result = stop_daemon(name)
+    return {"name": name, **result}
 
 
 # ============================================================
@@ -2048,41 +2062,20 @@ async def api_content_daemon_status() -> Dict[str, Any]:
 
 @app.post("/api/content-daemon/start", tags=["content"])
 async def api_content_daemon_start(req: ContentDaemonStartRequest | None = None) -> Dict[str, Any]:
-    req = req or ContentDaemonStartRequest()
-    pid_file, log_file, _ = _content_daemon_paths()
-    pid = _read_daemon_pid(pid_file)
-    if pid is not None and _is_process_running(pid):
-        return {"status": "already_running", **_content_daemon_status_payload()}
-    if pid is not None:
-        pid_file.unlink(missing_ok=True)
+    from core.runtime.daemon_registry import spawn_daemon
 
-    pid_file.parent.mkdir(parents=True, exist_ok=True)
-    with log_file.open("a", encoding="utf-8") as log_handle:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "core._content_daemon_runner", f"--interval={req.interval}"],
-            cwd=PROJECT_ROOT,
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    pid_file.write_text(str(proc.pid), encoding="utf-8")
-    return {"status": "started", **_content_daemon_status_payload()}
+    req = req or ContentDaemonStartRequest()
+    result = spawn_daemon("content", args=[f"--interval={req.interval}"])
+    # 注意: "status" はアクション結果。payload 側の scheduler 状態は scheduler_status。
+    return {**_content_daemon_status_payload(), "status": result["status"]}
 
 
 @app.post("/api/content-daemon/stop", tags=["content"])
 async def api_content_daemon_stop() -> Dict[str, Any]:
-    pid_file, _, _ = _content_daemon_paths()
-    pid = _read_daemon_pid(pid_file)
-    if pid is None:
-        pid_file.unlink(missing_ok=True)
-        return {"status": "not_running", **_content_daemon_status_payload()}
-    try:
-        os.kill(pid, signal.SIGTERM)
-        status = "stopped"
-    except OSError:
-        status = "already_stopped"
-    pid_file.unlink(missing_ok=True)
-    return {"status": status, **_content_daemon_status_payload()}
+    from core.runtime.daemon_registry import stop_daemon
+
+    result = stop_daemon("content")
+    return {**_content_daemon_status_payload(), "status": result["status"]}
 
 
 @app.get("/api/content-daemon/logs", tags=["content"])
