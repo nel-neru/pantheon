@@ -75,6 +75,7 @@ async def _generate_body(job: ContentJob, label: str, stamp: str):
             ],
             temperature=0.6,
             max_tokens=2000,
+            task_type="content_generation",
         )
         body = (getattr(response, "content", "") or "").strip()
         # claude CLI はレート制限を「正常終了(returncode 0)の結果テキスト」として返すことがある。

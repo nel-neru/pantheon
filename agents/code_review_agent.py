@@ -258,8 +258,18 @@ class CodeReviewAgent(BaseAgent):
         """LLM が使えない場合にファイル一覧から規則的な提案を生成する。"""
         file_list = list(files.keys())
         templates = [
-            ("型アノテーションの追加", "型ヒントを追加して保守性を向上させる", "maintainability", "high"),
-            ("テストカバレッジの向上", "ユニットテストを追加してバグリスクを低減する", "testing", "medium"),
+            (
+                "型アノテーションの追加",
+                "型ヒントを追加して保守性を向上させる",
+                "maintainability",
+                "high",
+            ),
+            (
+                "テストカバレッジの向上",
+                "ユニットテストを追加してバグリスクを低減する",
+                "testing",
+                "medium",
+            ),
             ("エラーハンドリングの強化", "例外処理を追加して信頼性を向上させる", "bug", "high"),
         ]
         result = []
@@ -296,7 +306,9 @@ class CodeReviewAgent(BaseAgent):
             LLMMessage(role="user", content=user_prompt),
         ]
         try:
-            response = await provider.generate(messages=messages, temperature=0.3, max_tokens=3000)
+            response = await provider.generate(
+                messages=messages, temperature=0.3, max_tokens=3000, task_type="code_review"
+            )
             data = json.loads(response.content)
             suggestions: List[CodeImprovementSuggestion] = []
             for raw_suggestion in data.get("suggestions", []):
