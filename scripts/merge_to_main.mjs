@@ -32,15 +32,12 @@ const STAY = argv.has("--stay");
 const DELETE_BRANCH = argv.has("--delete-branch");
 const DRY_RUN = argv.has("--dry-run");
 
-// CLAUDE.md に記載の既知失敗（Windows path-sep / chmod / order-flaky）。
+// CLAUDE.md に記載の既知失敗（Windows chmod / order-flaky）。
 // これらは回帰ではないので、新規失敗の判定から除外する（テスト関数名で照合）。
 // CLAUDE.md と同期。**ファイル(::クラス)::関数 のフル nodeid** で照合する
 // （関数名だけだと別ファイルの同名テストの回帰を baseline と誤判定するため）。
+// 注: 旧 path-separator 4 件は 2026-06-12 に as_posix() 正規化で根治済み。
 const KNOWN_BASELINE_FAILURES = new Set([
-  "tests/test_improvement_executor_agent.py::test_apply_local_change_writes_only_inside_repo",
-  "tests/test_pdca_rounds_71_80.py::test_repo_reader_finds_code_files",
-  "tests/test_platform_state.py::test_save_and_load_organization",
-  "tests/test_theme_ijklmn_remaining.py::test_dependency_graph_build",
   "tests/test_web_server.py::test_get_settings_warns_on_open_permissions",
   "tests/test_web_server.py::test_update_settings_sets_restrictive_permissions",
   // order-flaky（単体では通るが全体実行で稀に落ちる）

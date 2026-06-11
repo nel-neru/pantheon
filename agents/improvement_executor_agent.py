@@ -60,7 +60,7 @@ class ImprovementExecutorAgent(BaseAgent):
             target_file = self._resolve_repo_file_path(repo_path, file_path)
         except ValueError as exc:
             return AgentResult(success=False, error=str(exc))
-        normalized_file_path = str(target_file.relative_to(repo_path))
+        normalized_file_path = target_file.relative_to(repo_path).as_posix()
         if not target_file.exists():
             return AgentResult(
                 success=False, error=f"Target file not found: {normalized_file_path}"
@@ -132,7 +132,7 @@ class ImprovementExecutorAgent(BaseAgent):
 
         repo_root = repo_path.resolve()
         target = self._resolve_repo_file_path(repo_root, file_path)
-        relative_file_path = str(target.relative_to(repo_root))
+        relative_file_path = target.relative_to(repo_root).as_posix()
 
         repo = git.Repo(repo_root)
         repo.git.checkout("-b", branch_name)

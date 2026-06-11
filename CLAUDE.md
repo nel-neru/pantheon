@@ -38,13 +38,14 @@ Bash-tool equivalents use forward slashes: `.venv/Scripts/python -m pytest tests
 
 ## Test baseline — DO NOT treat these as regressions
 
-On Windows the full backend suite has **6 long-standing failures** unrelated to any change
+On Windows the full backend suite has **2 long-standing failures** unrelated to any change
 (verified against a clean tree). Only NEW failures beyond these count:
 
-- Path-separator (`\` vs `/`): `test_apply_local_change_writes_only_inside_repo`,
-  `test_repo_reader_finds_code_files`, `test_save_and_load_organization`, `test_dependency_graph_build`
 - POSIX `chmod 0o600` not honored on Windows: `test_get_settings_warns_on_open_permissions`,
   `test_update_settings_sets_restrictive_permissions`
+
+(4 former path-separator failures were fixed 2026-06-12 by normalizing relative paths to
+POSIX with `as_posix()` in `repo_reader` / `dependency_graph` / `improvement_executor_agent`.)
 
 Two tests are order-flaky (pass in isolation, fail only in full-suite runs):
 `test_backup_manager_cleanup_old`, `test_get_improvement_history`.

@@ -16,13 +16,13 @@ class DependencyGraphBuilder:
         repo_root = Path(repo_root)
         py_files = sorted(repo_root.rglob("*.py"))
         module_map = {
-            self._module_name(repo_root, path): str(path.relative_to(repo_root))
+            self._module_name(repo_root, path): path.relative_to(repo_root).as_posix()
             for path in py_files
         }
 
         graph: dict[str, list[str]] = {}
         for path in py_files:
-            rel_path = str(path.relative_to(repo_root))
+            rel_path = path.relative_to(repo_root).as_posix()
             imports: list[str] = []
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -38,7 +38,9 @@ class DependencyGraphBuilder:
                         imports.append(self._resolve_module(alias.name, module_map))
                 elif isinstance(node, ast.ImportFrom):
                     for alias in node.names:
-                        resolved = self._resolve_from_import(current_module, is_package, node, alias.name, module_map)
+                        resolved = self._resolve_from_import(
+                            current_module, is_package, node, alias.name, module_map
+                        )
                         if resolved:
                             imports.append(resolved)
             graph[rel_path] = sorted(dict.fromkeys(imports))
@@ -71,7 +73,9 @@ class DependencyGraphBuilder:
         return [list(cycle) for cycle in sorted(cycles)]
 
     def save_graph(self, graph: dict, output_path: Path) -> None:
-        Path(output_path).write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding="utf-8")
+        Path(output_path).write_text(
+            json.dumps(graph, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
     def _module_name(self, repo_root: Path, file_path: Path) -> str:
         rel = file_path.relative_to(repo_root).with_suffix("")
@@ -83,9 +87,18 @@ class DependencyGraphBuilder:
     def _resolve_module(self, module_name: str, module_map: dict[str, str]) -> str:
         return module_map.get(module_name, module_name)
 
-    def _resolve_from_import(self, current_module: str, is_package: bool, node: ast.ImportFrom, alias_name: str, module_map: dict[str, str]) -> str:
+    def _resolve_from_import(
+        self,
+        current_module: str,
+        is_package: bool,
+        node: ast.ImportFrom,
+        alias_name: str,
+        module_map: dict[str, str],
+    ) -> str:
         if node.level:
-            package_parts = current_module.split(".") if is_package else current_module.split(".")[:-1]
+            package_parts = (
+                current_module.split(".") if is_package else current_module.split(".")[:-1]
+            )
             trim = max(node.level - 1, 0)
             if trim:
                 package_parts = package_parts[:-trim] if trim <= len(package_parts) else []
