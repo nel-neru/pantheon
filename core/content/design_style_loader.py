@@ -51,8 +51,34 @@ def get_style_prompt_addon(style_id: str) -> str:
     return str(addon).strip() if addon else ""
 
 
+def get_palette(style_id: str) -> Dict[str, str]:
+    """スタイルの配色（primary/secondary/background/accent）を返す（欠落時空）。"""
+    data = load_style(style_id)
+    if not data:
+        return {}
+    palette = data.get("palette")
+    return {str(k): str(v) for k, v in palette.items()} if isinstance(palette, dict) else {}
+
+
 def list_styles() -> List[str]:
     d = _styles_dir()
     if not d.exists():
         return []
     return sorted({p.stem for p in d.glob("*.yaml")})
+
+
+def list_style_summaries() -> List[Dict[str, Any]]:
+    """全スタイルの id/name/description/palette を返す（/studio・API 用）。"""
+    out: List[Dict[str, Any]] = []
+    for sid in list_styles():
+        data = load_style(sid) or {}
+        out.append(
+            {
+                "id": sid,
+                "name": str(data.get("name", sid)),
+                "description": str(data.get("description", "")),
+                "palette": get_palette(sid),
+                "font_family": str(data.get("font_family", "")),
+            }
+        )
+    return out

@@ -1,0 +1,15 @@
+id: luxury
+name: ラグジュアリー
+description: 高級感・品格。余白と一語の重みで価値を伝える。
+prompt_addon: |
+  視覚トーンは「高級感（ラグジュアリー）」。静謐で品格のある語り口。多くを語らず、
+  素材・体験の質感や細部のこだわりを描写する。煽り・誇張・過度な絵文字を避け、
+  上質さと余韻を残す。
+palette:
+  primary: "#1A1A1A"
+  secondary: "#B8860B"
+  background: "#0E0E0E"
+  accent: "#C9A227"
+font_family: "'Playfair Display', 'Noto Serif JP', serif"
+image_prompt: "elegant luxury aesthetic, gold and black, premium materials, soft cinematic lighting, refined"
+layout: "中央寄せ、ゆとりある余白、セリフ見出し、暗色背景に金のアクセント"

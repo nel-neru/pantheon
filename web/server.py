@@ -1961,6 +1961,27 @@ async def api_usage_summary() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/design-styles", tags=["org"])
+async def api_list_design_styles() -> List[Dict[str, Any]]:
+    """利用可能なデザインスタイル（id/name/description/palette）の一覧。"""
+    from core.content.design_style_loader import list_style_summaries
+
+    return list_style_summaries()
+
+
+@app.get("/api/personas", tags=["org"])
+async def api_list_personas() -> List[Dict[str, Any]]:
+    """利用可能なペルソナ（id/name/role）の一覧。"""
+    from core.intelligence.persona_loader import PersonaLoader
+
+    loader = PersonaLoader()
+    out: List[Dict[str, Any]] = []
+    for pid in loader.list_personas():
+        p = loader.load_persona(pid) or {}
+        out.append({"id": pid, "name": p.get("name", pid), "role": p.get("role", "")})
+    return out
+
+
 @app.get("/api/trends", tags=["trends"])
 async def api_list_trends(
     limit: int = 50, source: str | None = None, genre: str | None = None, min_score: float = 0.0

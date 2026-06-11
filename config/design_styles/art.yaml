@@ -1,0 +1,14 @@
+id: art
+name: アート
+description: 表現的・芸術的。比喩や情景描写で感性に訴える。
+prompt_addon: |
+  視覚トーンは「アート（芸術的・表現的）」。比喩・情景・色彩の描写を交え、
+  感性に訴える表現を用いる。型にはまらない構成を許容しつつ、伝えたい核は明確に保つ。
+palette:
+  primary: "#2D1B4E"
+  secondary: "#E63946"
+  background: "#FFF8F0"
+  accent: "#F4A261"
+font_family: "'Cormorant Garamond', 'Noto Serif JP', serif"
+image_prompt: "expressive artistic illustration, bold brush strokes, rich color contrast, gallery aesthetic"
+layout: "非対称・大胆な構図、コントラストの効いた配色、表現的なタイポグラフィ"

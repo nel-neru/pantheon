@@ -1,0 +1,14 @@
+id: minimal
+name: ミニマル
+description: 余白と簡潔さを最優先。装飾を削ぎ落とし、要点だけを残す。
+prompt_addon: |
+  視覚トーンは「ミニマル」。装飾語を削り、短く明快に。1 メッセージに集中し、
+  余白を意識した読みやすい構成にする。絵文字・誇張を避ける。
+palette:
+  primary: "#111111"
+  secondary: "#6B7280"
+  background: "#FFFFFF"
+  accent: "#2563EB"
+font_family: "Inter, 'Helvetica Neue', sans-serif"
+image_prompt: "clean minimal flat design, lots of white space, single focal element, muted palette"
+layout: "広い余白、左揃え、1カラム、強い視覚的階層"

@@ -1,0 +1,14 @@
+id: vibrant
+name: ビビッド
+description: 鮮やか・元気。ポジティブでエネルギッシュ。
+prompt_addon: |
+  視覚トーンは「ビビッド（鮮やか・エネルギッシュ）」。前向きで勢いのある言い回しを用い、
+  読み手の気分を上げる。明快な行動喚起を添える。下品にならない範囲で絵文字を活用してよい。
+palette:
+  primary: "#FF006E"
+  secondary: "#FB5607"
+  background: "#FFFFFF"
+  accent: "#3A86FF"
+font_family: "'Poppins', 'Noto Sans JP', sans-serif"
+image_prompt: "vibrant colorful design, bold gradients, energetic, playful shapes, high saturation"
+layout: "鮮やかなグラデーション、大きな見出し、丸みのあるボタン、躍動感"
