@@ -24,6 +24,7 @@
  * （--force は使わない）。main が origin から乖離していたら手動解決を促す。
  */
 import { execFileSync } from "node:child_process";
+import { resolveGit } from "./lib/git_exec.mjs";
 
 const argv = new Set(process.argv.slice(2));
 const NO_TEST = argv.has("--no-test");
@@ -49,8 +50,10 @@ const KNOWN_BASELINE_FAILURES = new Set([
 
 const PROTECTED = new Set(["main", "master"]);
 
+const GIT = resolveGit();
+
 function git(args, { capture = true } = {}) {
-  return execFileSync("git", args, {
+  return execFileSync(GIT, args, {
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
   });
