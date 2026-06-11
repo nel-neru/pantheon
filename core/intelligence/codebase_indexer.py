@@ -81,7 +81,9 @@ class CodebaseIndexer:
         updated = 0
 
         for file_path in all_files:
-            rel = str(file_path.relative_to(self.repo_path))
+            # POSIX 正規化（.claude/rules/python.md）。旧ネイティブ区切りキーの既存インデックスは
+            # mtime 不一致で再構築され、旧キーは削除ファイル掃除で除去される（一度きり・自己治癒）
+            rel = file_path.relative_to(self.repo_path).as_posix()
             current_rels.add(rel)
             try:
                 mtime = file_path.stat().st_mtime
