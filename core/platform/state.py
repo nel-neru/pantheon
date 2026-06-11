@@ -10,12 +10,36 @@ Core（本社）のグローバルストア（~/.pantheon/）を管理する。
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.models.organization import Organization
+
+logger = logging.getLogger(__name__)
+
+# 同じ破損ファイルが居座ると常時ポーリングの daemon/web で warning が洪水になるため、
+# path+mtime 単位で初回のみ WARNING、同一内容の再遭遇は DEBUG に落とす。
+_warned_org_files: Dict[str, float] = {}
+
+
+def warn_skipped_org_file(f: Path, exc: Exception) -> None:
+    try:
+        mtime = f.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    key = str(f)
+    level = logging.DEBUG if _warned_org_files.get(key) == mtime else logging.WARNING
+    _warned_org_files[key] = mtime
+    logger.log(
+        level,
+        "Organization ファイルの読み込みをスキップ: %s (%s: %s)",
+        f,
+        type(exc).__name__,
+        exc,
+    )
 
 
 def _migrate_legacy_home(new_home: Path) -> None:
@@ -134,12 +158,18 @@ class PlatformStateManager:
         path.write_text(org.model_dump_json(indent=2), encoding="utf-8")
 
     def load_organizations(self) -> List[Organization]:
-        """全 Organization を読み込む"""
+        """全 Organization を読み込む。
+
+        壊れた/検証に失敗した JSON は耐性のためスキップするが（旧データや手書きファイルで
+        全体を壊さない）、黙って消えると「組織が音もなく消失した」ように見えるため
+        warning で観測可能にする。ファイルは削除しない（修復すれば次回読み込まれる）。
+        """
         result = []
         for f in sorted(self.orgs_dir.glob("*.json")):
             try:
                 result.append(Organization.model_validate_json(f.read_text(encoding="utf-8")))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 — 1ファイルの破損で全体を壊さない
+                warn_skipped_org_file(f, exc)
                 continue
         return result
 

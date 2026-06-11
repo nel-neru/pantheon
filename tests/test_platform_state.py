@@ -36,6 +36,24 @@ def test_save_and_load_organization(tmp_psm, tmp_path):
     assert loaded[0].target_repo_path == repo_path
 
 
+def test_load_organizations_warns_on_corrupt_file(tmp_psm, tmp_path, caplog):
+    """壊れた JSON は耐性のためスキップするが、黙って消さず warning で観測可能にする。"""
+    import logging
+
+    org = create_default_organization("GoodOrg", "正常")
+    tmp_psm.save_organization(org)
+    (tmp_psm.orgs_dir / "broken.json").write_text("{not json", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+        loaded = tmp_psm.load_organizations()
+        tmp_psm.load_organizations()  # 2回目: 同一 path+mtime は WARNING を繰り返さない
+
+    assert [o.name for o in loaded] == ["GoodOrg"]  # 正常分は読める
+    warnings = [r for r in caplog.records if "broken.json" in r.message]
+    assert len(warnings) == 1  # 破損は警告される（ただし洪水にならない＝初回のみ）
+    assert (tmp_psm.orgs_dir / "broken.json").exists()  # ファイルは削除しない
+
+
 def test_load_organization_by_name(tmp_psm):
     org = create_default_organization("SearchOrg", "検索テスト")
     tmp_psm.save_organization(org)

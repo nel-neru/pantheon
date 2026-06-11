@@ -142,14 +142,19 @@ class TestRepoStateManager:
         assert len(state["recent_tasks"]) == 1
         assert state["recent_tasks"][0]["org_name"] == "CrossOrg"
 
-    def test_load_organizations_skips_malformed_json(self, state_manager):
+    def test_load_organizations_skips_malformed_json(self, state_manager, caplog):
+        import logging
+
         good_org = Organization(name="GoodOrg", purpose="ok")
         state_manager.save_organization(good_org)
         (state_manager.organizations_dir / "broken.json").write_text("{not json", encoding="utf-8")
 
-        orgs = state_manager.load_organizations()
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            orgs = state_manager.load_organizations()
 
         assert [org.name for org in orgs] == ["GoodOrg"]
+        # 黙って捨てず警告する（共有ヘルパ warn_skipped_org_file 経由）
+        assert any("broken.json" in rec.message for rec in caplog.records)
 
     def test_get_recent_decisions_places_invalid_timestamp_last(self, state_manager):
         state_manager.record_decision("d1", "Valid", "Content", "Tester")
