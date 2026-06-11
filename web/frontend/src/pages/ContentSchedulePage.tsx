@@ -17,6 +17,8 @@ type ContentJob = {
   last_status: string
   last_detail: string
   run_count: number
+  publish_platform: string
+  publish_mode: string
 }
 
 type DaemonStatus = {
@@ -44,6 +46,12 @@ const KIND_LABELS: Record<string, string> = {
   audience_signal: '需要シグナル',
   monetization_lead: '収益化リード',
   generic: '汎用下書き',
+}
+
+const PUBLISH_PLATFORMS: Record<string, string> = {
+  note: 'note',
+  x: 'X (Twitter)',
+  wordpress: 'WordPress',
 }
 
 const INTERVAL_PRESETS = [
@@ -79,6 +87,8 @@ export function ContentSchedulePage() {
   const [kind, setKind] = useState('content_brief')
   const [theme, setTheme] = useState('')
   const [interval, setIntervalSeconds] = useState(86400)
+  const [publishPlatform, setPublishPlatform] = useState('')
+  const [publishMode, setPublishMode] = useState('assisted')
 
   const loadData = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true)
@@ -116,8 +126,19 @@ export function ContentSchedulePage() {
     }
     setBusy(true)
     try {
-      await api('POST', '/api/content-jobs', { org_name: orgName, kind, theme, interval_seconds: interval })
-      toast.success('コンテンツジョブを作成しました。')
+      await api('POST', '/api/content-jobs', {
+        org_name: orgName,
+        kind,
+        theme,
+        interval_seconds: interval,
+        publish_platform: publishPlatform,
+        publish_mode: publishMode,
+      })
+      toast.success(
+        publishPlatform
+          ? `コンテンツジョブを作成しました（承認時に ${PUBLISH_PLATFORMS[publishPlatform] ?? publishPlatform} へ投稿予約）。`
+          : 'コンテンツジョブを作成しました。',
+      )
       setTheme('')
       await loadData(true)
     } catch (error) {
@@ -280,6 +301,41 @@ export function ContentSchedulePage() {
                   ))}
                 </select>
               </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="input-group">
+                  <label className="input-label" htmlFor="cj-platform">投稿先（任意）</label>
+                  <select
+                    id="cj-platform"
+                    className="input"
+                    value={publishPlatform}
+                    onChange={(e) => setPublishPlatform(e.target.value)}
+                  >
+                    <option value="">投稿しない（下書きのみ）</option>
+                    {Object.entries(PUBLISH_PLATFORMS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                {publishPlatform ? (
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="cj-pubmode">投稿方法</label>
+                    <select
+                      id="cj-pubmode"
+                      className="input"
+                      value={publishMode}
+                      onChange={(e) => setPublishMode(e.target.value)}
+                    >
+                      <option value="assisted">承認後に手動送信（補助）</option>
+                      <option value="auto">承認したら自動投稿</option>
+                    </select>
+                  </div>
+                ) : null}
+              </div>
+              {publishPlatform ? (
+                <p className="text-xs text-muted">
+                  承認すると投稿待ちに入り、{publishMode === 'auto' ? '予約時刻に自動投稿' : '投稿画面へ流し込み（最終送信は人間）'}されます。
+                </p>
+              ) : null}
               <div>
                 <button type="submit" className="btn btn-primary" disabled={busy}>
                   <Plus size={14} /> ジョブを追加
@@ -317,6 +373,12 @@ export function ContentSchedulePage() {
                         <span className={`badge ${job.enabled ? 'badge-green' : 'badge-neutral'}`}>
                           {job.enabled ? '有効' : '無効'}
                         </span>
+                        {job.publish_platform ? (
+                          <span className="badge badge-green">
+                            投稿: {PUBLISH_PLATFORMS[job.publish_platform] ?? job.publish_platform}
+                            {job.publish_mode === 'auto' ? '（自動）' : ''}
+                          </span>
+                        ) : null}
                         <span className="badge badge-blue">実行 {job.run_count}</span>
                       </div>
                     </div>

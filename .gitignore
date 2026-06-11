@@ -46,6 +46,7 @@ htmlcov/
 node_modules/
 web/frontend/dist/
 web/frontend/.vite/
+*.tsbuildinfo
 
 # Pantheon runtime state (per-repo): sessions, indexes, caches
 .pantheon/

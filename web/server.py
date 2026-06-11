@@ -20,7 +20,8 @@ import time
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -1378,7 +1379,7 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
             org_name=org.name,
             entity_type="proposal",
             entity_id=str(proposal.id),
-            route=f"/proposals?org={org.name}",
+            route=f"/proposals?org={quote(org.name)}",
             metadata={"file_path": proposal.file_path, "priority": proposal.priority},
         )
 
@@ -1651,7 +1652,7 @@ def _search_results(query: str, limit: int = 20) -> list[dict[str, Any]]:
                     "type": "proposal",
                     "title": str(proposal.get("title") or "改善提案"),
                     "subtitle": str(proposal.get("description") or proposal.get("file_path") or ""),
-                    "route": f"/proposals?org={org_name}",
+                    "route": f"/proposals?org={quote(org_name)}",
                     "org_name": org_name or None,
                     "status": proposal.get("status"),
                     "metadata": {
@@ -2043,6 +2044,8 @@ class ContentJobRequest(ApiRequestModel):
     theme: str = Field(default="", max_length=500)
     interval_seconds: int = Field(default=86400, ge=60, le=60 * 60 * 24 * 30)
     enabled: bool = True
+    publish_platform: str = Field(default="", max_length=40)
+    publish_mode: str = Field(default="assisted", max_length=20)
 
 
 class ContentJobUpdateRequest(ApiRequestModel):
@@ -2050,6 +2053,8 @@ class ContentJobUpdateRequest(ApiRequestModel):
     interval_seconds: int | None = Field(default=None, ge=60, le=60 * 60 * 24 * 30)
     enabled: bool | None = None
     kind: str | None = Field(default=None, max_length=40)
+    publish_platform: str | None = Field(default=None, max_length=40)
+    publish_mode: str | None = Field(default=None, max_length=20)
 
 
 class ContentDaemonStartRequest(ApiRequestModel):
@@ -2124,6 +2129,8 @@ async def api_create_content_job(req: ContentJobRequest) -> Dict[str, Any]:
         theme=req.theme,
         interval_seconds=req.interval_seconds,
         enabled=req.enabled,
+        publish_platform=req.publish_platform,
+        publish_mode=req.publish_mode,
     )
     _content_job_store().add_job(job)
     return job.to_dict()
@@ -2143,6 +2150,10 @@ async def api_update_content_job(job_id: str, req: ContentJobUpdateRequest) -> D
         job.enabled = req.enabled
     if req.kind is not None:
         job.kind = req.kind
+    if req.publish_platform is not None:
+        job.publish_platform = req.publish_platform
+    if req.publish_mode is not None:
+        job.publish_mode = req.publish_mode
     store.update_job(job)
     return job.to_dict()
 
@@ -2196,6 +2207,200 @@ async def api_content_daemon_logs(limit: int = 20) -> List[Dict[str, Any]]:
     from core.content.content_scheduler import ContentScheduler
 
     return ContentScheduler(get_platform_home()).get_recent_logs(n=max(1, min(limit, 200)))
+
+
+# ---------- 投稿（publishing）: PublishJob・接続・インボックス・収益メトリクス ----------
+
+
+def _publish_job_store():
+    from core.publishing.publish_jobs import PublishJobStore
+
+    return PublishJobStore(platform_home=get_platform_home())
+
+
+def _session_store():
+    from core.publishing.session import SessionStore
+
+    return SessionStore(platform_home=get_platform_home())
+
+
+@app.get("/api/publish-jobs", tags=["publishing"])
+async def api_list_publish_jobs(
+    status: str | None = None, org_name: str | None = None
+) -> List[Dict[str, Any]]:
+    """投稿ジョブ一覧（任意で status / org_name で絞り込み）。"""
+    jobs = _publish_job_store().list_jobs()
+    if status:
+        jobs = [j for j in jobs if j.status == status]
+    if org_name:
+        jobs = [j for j in jobs if j.org_name == org_name]
+    return [j.to_dict() for j in jobs]
+
+
+@app.post("/api/publish-jobs/{job_id}/run", tags=["publishing"])
+async def api_run_publish_job(job_id: str, dry_run: bool = False) -> Dict[str, Any]:
+    """投稿ジョブを実行する。dry_run=true ならプレビューのみ（ジョブ status 不変）。"""
+    from core.publishing.runner import run_publish_job
+
+    store = _publish_job_store()
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="投稿ジョブが見つかりません")
+    result = await run_publish_job(
+        job, store=store, platform_home=get_platform_home(), dry_run=dry_run
+    )
+    if not dry_run:
+        await _updates_hub.broadcast(
+            {
+                "type": "publish_succeeded" if result["ok"] else "publish_failed",
+                "status": "success" if result["ok"] else "error",
+                "title": f"{'投稿成功' if result['ok'] else '投稿失敗'}: {job.title or job.platform}",
+                "details": result.get("url") or result.get("error") or "",
+                "org_name": job.org_name,
+                "entity_type": "publish_job",
+                "entity_id": job.job_id,
+                "platform": job.platform,
+                "route": "/inbox",
+            }
+        )
+    return result
+
+
+@app.delete("/api/publish-jobs/{job_id}", tags=["publishing"])
+async def api_delete_publish_job(job_id: str) -> Dict[str, Any]:
+    if not _publish_job_store().delete_job(job_id):
+        raise HTTPException(status_code=404, detail="投稿ジョブが見つかりません")
+    return {"status": "deleted", "job_id": job_id}
+
+
+@app.get("/api/publishing/connections", tags=["publishing"])
+async def api_list_publishing_connections() -> List[Dict[str, Any]]:
+    """各プラットフォームのブラウザセッション接続状態（資格情報は保持しない）。"""
+    from dataclasses import asdict
+
+    return [asdict(c) for c in _session_store().list_connections()]
+
+
+@app.post("/api/publishing/connections/{platform}/login", tags=["publishing"])
+async def api_publishing_login(platform: str) -> Dict[str, Any]:
+    """手動ログイン接続フローの起点（Phase 1 でヘッドフルブラウザ起動を実装）。"""
+    from core.publishing.base import SUPPORTED_PLATFORMS
+
+    if platform not in SUPPORTED_PLATFORMS:
+        raise HTTPException(status_code=404, detail=f"未対応のプラットフォーム: {platform}")
+    store = _session_store()
+    store.ensure_dir(platform)
+    return {
+        "platform": platform,
+        "status": store.status(platform).status,
+        "detail": "手動ログイン接続フロー（ヘッドフルブラウザ）は Phase 1 で実装予定です。",
+    }
+
+
+@app.delete("/api/publishing/connections/{platform}", tags=["publishing"])
+async def api_publishing_disconnect(platform: str) -> Dict[str, Any]:
+    """セッション state を削除して切断する。"""
+    from core.publishing.base import SUPPORTED_PLATFORMS
+
+    if platform not in SUPPORTED_PLATFORMS:
+        raise HTTPException(status_code=404, detail=f"未対応のプラットフォーム: {platform}")
+    cleared = _session_store().clear(platform)
+    return {"platform": platform, "cleared": cleared, "status": "disconnected"}
+
+
+@app.get("/api/inbox", tags=["inbox"])
+async def api_inbox() -> Dict[str, Any]:
+    """承認インボックス: 保留中の提案＋handoff＋投稿待ちを 1 つの優先度付きキューに集約する。"""
+    psm = _psm()
+    items: List[Dict[str, Any]] = []
+
+    for org in psm.load_organizations():
+        try:
+            sm = psm.get_org_state_manager(org)
+            for p in sm.get_pending_improvement_proposals(limit=50):
+                items.append(
+                    {
+                        "kind": "proposal",
+                        "id": str(p.get("id", "")),
+                        "org_name": org.name,
+                        "title": p.get("title", ""),
+                        "category": p.get("category", "general"),
+                        "priority": p.get("priority", "medium"),
+                        "route": f"/proposals?org={quote(org.name)}",
+                    }
+                )
+        except Exception:  # noqa: BLE001 — 1 組織の読み取り失敗で全体を落とさない
+            continue
+
+    for h in _handoff_store().list_handoffs(status="pending"):
+        hd = _handoff_dict(h)
+        items.append(
+            {
+                "kind": "handoff",
+                "id": hd.get("handoff_id", ""),
+                "org_name": hd.get("target_org", ""),
+                "title": hd.get("title", ""),
+                "category": "cross_org_handoff",
+                "priority": hd.get("priority", "medium"),
+                "route": "/handoffs",
+            }
+        )
+
+    for j in _publish_job_store().list_jobs():
+        if j.status != "queued":
+            continue
+        items.append(
+            {
+                "kind": "publish",
+                "id": j.job_id,
+                "org_name": j.org_name,
+                "title": j.title or j.platform,
+                "category": "external_action",
+                "priority": "high",
+                "platform": j.platform,
+                "scheduled_at": j.scheduled_at,
+                "route": "/inbox",
+            }
+        )
+
+    counts = {
+        "proposal": sum(1 for i in items if i["kind"] == "proposal"),
+        "handoff": sum(1 for i in items if i["kind"] == "handoff"),
+        "publish": sum(1 for i in items if i["kind"] == "publish"),
+        "total": len(items),
+    }
+    return {"items": items, "counts": counts}
+
+
+@app.get("/api/metrics/revenue", tags=["metrics"])
+async def api_revenue_metrics() -> Dict[str, Any]:
+    """収益メトリクス: 組織別の reach / revenue / 投稿数と「リーチ有・収益0」検知。"""
+    psm = _psm()
+    store = _outcome_store()
+    orgs_payload: List[Dict[str, Any]] = []
+    total_revenue = 0.0
+    total_reach = 0.0
+    for org in psm.load_organizations():
+        summary = store.summary_for_org(org.name)
+        posts = summary.by_metric.get("posts", {}).get("sum", 0.0)
+        reach = summary.total_reach
+        revenue = summary.total_revenue
+        total_revenue += revenue
+        total_reach += reach
+        orgs_payload.append(
+            {
+                "org_name": org.name,
+                "reach": reach,
+                "revenue": revenue,
+                "posts": posts,
+                "reach_but_no_revenue": reach > 0 and revenue == 0,
+            }
+        )
+    return {
+        "orgs": orgs_payload,
+        "total_revenue": total_revenue,
+        "total_reach": total_reach,
+    }
 
 
 @app.post(
@@ -3022,6 +3227,39 @@ def _policy_payload(verdict: Any) -> Dict[str, Any]:
     }
 
 
+async def _enqueue_publish_from_proposal(
+    target: Dict[str, Any], org_name: str
+) -> Optional[Dict[str, Any]]:
+    """承認済み content_asset に投稿指定があれば PublishJob を enqueue し、WS 通知する。
+
+    投稿指定が無ければ何もせず None を返す（通常の content_asset 承認はこれまで通り）。
+    enqueue の失敗で承認フロー全体を落とさない（投稿は後から再試行できる）。
+    """
+    try:
+        from core.publishing.publish_jobs import enqueue_from_proposal
+
+        job = enqueue_from_proposal(target, org_name, platform_home=_psm().platform_home)
+    except Exception as exc:  # noqa: BLE001 — enqueue 失敗で承認は壊さない
+        logger.warning("PublishJob の enqueue に失敗: %s", exc)
+        return None
+    if job is None:
+        return None
+    payload = job.to_dict()
+    await _updates_hub.broadcast(
+        {
+            "type": "publish_queued",
+            "status": "queued",
+            "title": f"投稿待ち: {job.title or job.platform}",
+            "org_name": org_name,
+            "entity_type": "publish_job",
+            "entity_id": job.job_id,
+            "platform": job.platform,
+            "route": "/inbox",
+        }
+    )
+    return payload
+
+
 async def _approve_proposal_internal(
     org_name: str,
     proposal_id: str,
@@ -3108,12 +3346,17 @@ async def _approve_proposal_internal(
                 status_code=500, detail=result.error or "コンテンツ資産の適用に失敗しました"
             )
         sm.update_proposal_status(str(target.get("id", "")), "done")
+        # ワークスペース書き込み成功後、投稿指定（intervention_spec.publish）があれば
+        # PublishJob を enqueue する。承認＝外部投稿の人間ゲートを通過した証なので、
+        # ここで初めて投稿ジョブが生まれる（承認なしの投稿は決して作られない）。
+        publish_job_payload = await _enqueue_publish_from_proposal(target, org_name)
         return {
             "status": "done",
             "proposal_id": str(target.get("id", "")),
             "title": target.get("title"),
             "output": result.output,
             "policy": _policy_payload(verdict),
+            "publish_job": publish_job_payload,
         }
 
     # ポリシーは通ったが file_path が無い提案は直接適用できない（meta 提案は
@@ -3143,7 +3386,7 @@ async def _approve_proposal_internal(
         org_name=org_name,
         entity_type="proposal",
         entity_id=str(target.get("id", "")),
-        route=f"/proposals?org={org_name}",
+        route=f"/proposals?org={quote(org_name)}",
         metadata={"file_path": target.get("file_path")},
     )
 
@@ -3168,7 +3411,7 @@ async def _approve_proposal_internal(
             org_name=org_name,
             entity_type="proposal",
             entity_id=str(target.get("id", "")),
-            route=f"/proposals?org={org_name}",
+            route=f"/proposals?org={quote(org_name)}",
             metadata={"file_path": target.get("file_path")},
         )
         raise HTTPException(status_code=500, detail=result.error or "改善提案の適用に失敗しました")
@@ -3194,7 +3437,7 @@ async def _approve_proposal_internal(
         org_name=org_name,
         entity_type="proposal",
         entity_id=str(target.get("id", "")),
-        route=f"/proposals?org={org_name}",
+        route=f"/proposals?org={quote(org_name)}",
         metadata={
             "file_path": target.get("file_path"),
             "branch": result.output.get("branch"),
@@ -3211,7 +3454,7 @@ async def _approve_proposal_internal(
             "org_name": org_name,
             "entity_type": "proposal",
             "entity_id": str(target.get("id", "")),
-            "route": f"/proposals?org={org_name}",
+            "route": f"/proposals?org={quote(org_name)}",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
@@ -3243,7 +3486,7 @@ async def _reject_proposal_internal(org_name: str, proposal_id: str) -> Dict[str
         org_name=org_name,
         entity_type="proposal",
         entity_id=str(target.get("id", "")),
-        route=f"/proposals?org={org_name}",
+        route=f"/proposals?org={quote(org_name)}",
         metadata={"file_path": target.get("file_path")},
     )
     return payload

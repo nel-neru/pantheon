@@ -134,6 +134,23 @@ async def _generate_body(
         return _deterministic_draft(job, label, stamp), False, None
 
 
+def _publish_block(job: ContentJob) -> Dict[str, Any] | None:
+    """ジョブの投稿先指定を intervention_spec.publish 用 dict に変換する（無効/未指定は None）。"""
+    platform = (getattr(job, "publish_platform", "") or "").strip().lower()
+    if not platform:
+        return None
+    try:
+        from core.publishing.base import PUBLISH_MODES, SUPPORTED_PLATFORMS
+    except ImportError:
+        return None
+    if platform not in SUPPORTED_PLATFORMS:
+        return None
+    mode = (getattr(job, "publish_mode", "") or "assisted").strip().lower()
+    if mode not in PUBLISH_MODES:
+        mode = "assisted"
+    return {"platform": platform, "mode": mode}
+
+
 async def run_content_job(job: ContentJob, psm: Any, *, downgrade: bool = False) -> Dict[str, Any]:
     """ContentJob を1回実行し、生成した content_asset 提案を受け手 org の repo に保存する。
 
@@ -190,6 +207,16 @@ async def run_content_job(job: ContentJob, psm: Any, *, downgrade: bool = False)
         target_repo=str(org.target_repo_path),
         priority="medium",
     )
+
+    # 投稿先が指定されていれば intervention_spec に publish 指定を載せる。
+    # これにより承認時に PublishJob が enqueue される（承認＝外部投稿の人間ゲート）。
+    publish_target = _publish_block(job)
+    if publish_target is not None:
+        proposal.intervention_spec = {
+            **(proposal.intervention_spec or {}),
+            "publish": publish_target,
+        }
+
     sm = psm.get_org_state_manager(org)
     sm.save_improvement_proposal(proposal)
 

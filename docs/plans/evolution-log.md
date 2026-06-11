@@ -19,6 +19,26 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 4 — publishing パイプライン（6コミット +2552行）の statale ブランチ統合  (2026-06-12 04:45)
+  Plan   : 滞留2日の work/web-gui-publishing-20260610（生成→承認→投稿の一気通貫、/inbox /studio
+           /revenue、PublishJob、auto/assisted モード）へ main 17マージ分を取り込み統合。
+           受け入れ基準 = 統合後 backend 新基線+frontend 緑 / 承認ゲート不変条件の維持を
+           レビューで確認 / merge_to_main 成功。落とした候補: serve 導線 / フレーク根治。
+  Did    : merge-tree プローブで衝突3件と事前確認 → main をブランチへマージ。衝突解決:
+           content_scheduler は main の A-1 設計（gate pause→自動resume）を採用、content_runner は
+           _publish_block と downgrade= を両立、tsbuildinfo は untrack+gitignore（*.tsbuildinfo を
+           ルートに追加）で根治。レビュー所見対応: runner.process_due_publish_jobs に
+           PUBLISH_MODE_AUTO ガード+回帰テスト（assisted は自動実行経路から絶対に発火しない）、
+           /proposals?org= ルートの quote() 統一（8箇所）、InboxPage の WS ライブ更新+preview の
+           無駄リロード抑止、splitIntoThread の接尾辞 reserve を桁安定までループ（999→1000 境界）。
+  Check  : backend 1051 passed / 失敗は基線3件のみ（chmod2+フレーク1）。frontend 89/89 + build 緑。
+           Workflow レビュー（4次元×反証検証、16 agents）: critical/major 0、確定 minor 5件→全修正。
+  Act    : merged（結果はマージ後追記）。学び: (1) stale ブランチは merge-tree --write-tree で
+           無侵襲に衝突プローブしてから着手 (2) 自動投稿経路の mode ガードは「daemon 側にあるから
+           helper は不要」ではなく全経路に置く（防御の深層化）。
+  Next   : test_get_improvement_history フレーク根治（単体でも失敗に悪化の報告あり）/
+           atelier serve 導線 / load_organizations silent-drop 警告。
+
 Cycle 3 — Windows パス区切り基線4件の根治  (2026-06-12 04:25)
   Plan   : 既知基線6件のうち path-separator 起因4件を根治し基線を 2 件（chmod のみ）へ縮小。
            受け入れ基準 = 4テスト pass（POSIX 互換維持）+ 基線符号化9箇所の同期 + 新規失敗ゼロ。
@@ -30,9 +50,12 @@ Cycle 3 — Windows パス区切り基線4件の根治  (2026-06-12 04:25)
            基線記述 9箇所を 6→2 件へ同期、python.md ルールに as_posix 規約を固定化。
            付随: ruff format . が未整形112ファイルを再整形 → fix と style を**2コミットに分割**
            （412a68d fix / 878557e style）。以後 'ruff format .' は no-op。
-  Check  : 対象4ファイル 72/72 pass。全件 test-triage + code-reviewer は実行済み
-           （結果はマージ後追記）。
-  Act    : （マージ後追記）
+  Check  : 対象4ファイル 72/72 pass。全件 test-triage GREEN（1023 passed、新基線どおり）。
+           code-reviewer APPROVE（全消費者・永続化・ゲート・CI 検証済み）。follow-up 2件
+           （codebase_indexer の as_posix 化 / ci.yml コメント）も対応。
+  Act    : merged ✅（9cbb66d..e8d2978）。memory pantheon-test-baseline を新基線（chmod 2件）に
+           更新。固定化: python.md に as_posix 規約、test-triage agent に「基線リストは
+           リテラル一致・記憶で推論しない」を明記。
   Next   : work/web-gui-publishing-20260610 の取り込み判断 / atelier serve 導線 /
            load_organizations の silent-drop（検証失敗 JSON を黙って捨てる）に警告ログ。
 
