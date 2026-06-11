@@ -46,9 +46,11 @@ def test_load_organizations_warns_on_corrupt_file(tmp_psm, tmp_path, caplog):
 
     with caplog.at_level(logging.WARNING, logger="core.platform.state"):
         loaded = tmp_psm.load_organizations()
+        tmp_psm.load_organizations()  # 2回目: 同一 path+mtime は WARNING を繰り返さない
 
     assert [o.name for o in loaded] == ["GoodOrg"]  # 正常分は読める
-    assert any("broken.json" in rec.message for rec in caplog.records)  # 破損は警告される
+    warnings = [r for r in caplog.records if "broken.json" in r.message]
+    assert len(warnings) == 1  # 破損は警告される（ただし洪水にならない＝初回のみ）
     assert (tmp_psm.orgs_dir / "broken.json").exists()  # ファイルは削除しない
 
 

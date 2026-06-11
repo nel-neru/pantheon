@@ -211,14 +211,22 @@ class RepoStateManager:
         return path
 
     def load_organizations(self) -> list["Organization"]:
-        """保存済みの全 Organization を読み込む"""
+        """保存済みの全 Organization を読み込む。
+
+        壊れた JSON は耐性のためスキップするが、黙って消えないよう警告する
+        （core/platform/state.py の load_organizations と同じ方針・デデュープ付き）。
+        """
         from core.models.organization import Organization
+
+        # 循環 import 回避のため関数内で import（platform.state も manager を lazy import する）
+        from core.platform.state import warn_skipped_org_file
 
         result = []
         for f in sorted(self.organizations_dir.glob("*.json")):
             try:
                 result.append(Organization.model_validate_json(f.read_text(encoding="utf-8")))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 — 1ファイルの破損で全体を壊さない
+                warn_skipped_org_file(f, exc)
                 continue
         return result
 

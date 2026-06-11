@@ -20,6 +20,27 @@ from core.models.organization import Organization
 
 logger = logging.getLogger(__name__)
 
+# 同じ破損ファイルが居座ると常時ポーリングの daemon/web で warning が洪水になるため、
+# path+mtime 単位で初回のみ WARNING、同一内容の再遭遇は DEBUG に落とす。
+_warned_org_files: Dict[str, float] = {}
+
+
+def warn_skipped_org_file(f: Path, exc: Exception) -> None:
+    try:
+        mtime = f.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    key = str(f)
+    level = logging.DEBUG if _warned_org_files.get(key) == mtime else logging.WARNING
+    _warned_org_files[key] = mtime
+    logger.log(
+        level,
+        "Organization ファイルの読み込みをスキップ: %s (%s: %s)",
+        f,
+        type(exc).__name__,
+        exc,
+    )
+
 
 def _migrate_legacy_home(new_home: Path) -> None:
     """One-time migration from the old ``~/.repocorp`` store to ``~/.pantheon``.
@@ -148,12 +169,7 @@ class PlatformStateManager:
             try:
                 result.append(Organization.model_validate_json(f.read_text(encoding="utf-8")))
             except Exception as exc:  # noqa: BLE001 — 1ファイルの破損で全体を壊さない
-                logger.warning(
-                    "Organization ファイルの読み込みをスキップ: %s (%s: %s)",
-                    f,
-                    type(exc).__name__,
-                    exc,
-                )
+                warn_skipped_org_file(f, exc)
                 continue
         return result
 
