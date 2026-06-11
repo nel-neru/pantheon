@@ -1745,6 +1745,18 @@ def test_content_daemon_start_keeps_action_status(tmp_path, monkeypatch):
     assert data["scheduler_status"] == "stopped"
 
 
+def test_usage_summary_endpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    resp = client.get("/api/usage/summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "session_5h" in data["usage"]
+    assert "weekly_7d" in data["usage"]
+    assert data["governor"]["level"] in {"ok", "soft_limit", "hard_limit", "rate_limited"}
+    assert data["rate_limited"] is False
+
+
 def test_daemons_status_lists_registry(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
