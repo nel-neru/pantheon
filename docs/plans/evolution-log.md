@@ -19,6 +19,23 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 3 — Windows パス区切り基線4件の根治  (2026-06-12 04:25)
+  Plan   : 既知基線6件のうち path-separator 起因4件を根治し基線を 2 件（chmod のみ）へ縮小。
+           受け入れ基準 = 4テスト pass（POSIX 互換維持）+ 基線符号化9箇所の同期 + 新規失敗ゼロ。
+           なぜ今: 基線の複雑さが毎回の merge ゲート・triage を歪めている（今日 test-triage が
+           基線リスト照合を誤った遠因）。落とした候補: publishing ブランチ取り込み / serve 導線。
+  Did    : work/windows-path-baseline-20260612。repo_reader / dependency_graph /
+           improvement_executor の相対パスを as_posix() 正規化（消費者はテストのみと確認済み）。
+           test_save_and_load_organization は '/tmp' ハードコード→tmp_path に（意図=永続化往復）。
+           基線記述 9箇所を 6→2 件へ同期、python.md ルールに as_posix 規約を固定化。
+           付随: ruff format . が未整形112ファイルを再整形 → fix と style を**2コミットに分割**
+           （412a68d fix / 878557e style）。以後 'ruff format .' は no-op。
+  Check  : 対象4ファイル 72/72 pass。全件 test-triage + code-reviewer は実行済み
+           （結果はマージ後追記）。
+  Act    : （マージ後追記）
+  Next   : work/web-gui-publishing-20260610 の取り込み判断 / atelier serve 導線 /
+           load_organizations の silent-drop（検証失敗 JSON を黙って捨てる）に警告ログ。
+
 Cycle 2 — scripts の git 解決を fail-fast 化  (2026-06-12 04:00)
   Plan   : branch_status.mjs が git 不在環境（PowerShell セッション）で ENOENT を握りつぶし
            「全ブランチ 0」と誤報告する確定バグの修正。受け入れ基準 = git 無し PATH でも
