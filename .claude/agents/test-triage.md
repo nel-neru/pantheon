@@ -24,12 +24,11 @@ Lint (optional, if asked): `.venv/Scripts/python.exe -m ruff check .`
 
 - chmod 0o600 not honored on Windows: `test_get_settings_warns_on_open_permissions`,
   `test_update_settings_sets_restrictive_permissions`
-- Order-flaky (pass in isolation): `test_backup_manager_cleanup_old`, `test_get_improvement_history`
-  → if one of these fails, re-run it alone to confirm before calling it a regression.
 
 This list is EXACT and exhaustive — match failures against it literally (full test names).
 Do not reason from memory about what "should" be baseline; anything not listed above is a
-NEW regression. (The 4 former path-separator failures were fixed on 2026-06-12.)
+NEW regression. (The 4 former path-separator failures and the 2 former order-flaky tests
+were root-fixed on 2026-06-12 — if they fail, report them as regressions.)
 
 ## Procedure
 
@@ -41,7 +40,7 @@ NEW regression. (The 4 former path-separator failures were fixed on 2026-06-12.)
 
 ```
 SUITE: <backend N passed / M failed | frontend ...>
-BASELINE failures present: <count>/4 (expected)
+BASELINE failures present: <count>/2 (expected)
 NEW regressions: <count>
   - <test name> — <one-line cause> — <file:line>
 VERDICT: GREEN (no new failures) | RED (regressions) | FLAKY (needs isolated re-run)
