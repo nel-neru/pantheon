@@ -24,10 +24,14 @@ async def collect_and_store(
 
     戻り値: {"collected": int, "added": int, "sources": int, "web": int, "youtube": int}
     """
+    import asyncio
+
     sources = load_sources(sources_path)
     channels = load_channels(sources_path)
-    web_items = collect_web(sources)
-    yt_items = collect_youtube(channels, with_captions=with_captions)
+    # collect_web/collect_youtube は同期ブロッキング HTTP。イベントループ（FastAPI
+    # の /api/trends/collect 等）を塞がないよう worker thread で実行する。
+    web_items = await asyncio.to_thread(collect_web, sources)
+    yt_items = await asyncio.to_thread(collect_youtube, channels, with_captions=with_captions)
     items = web_items + yt_items
     await score_all(items)
     store = TrendStore(platform_home)

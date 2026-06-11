@@ -1961,6 +1961,33 @@ async def api_usage_summary() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/trends", tags=["trends"])
+async def api_list_trends(
+    limit: int = 50, source: str | None = None, genre: str | None = None, min_score: float = 0.0
+) -> List[Dict[str, Any]]:
+    """収集済みトレンドをスコア順に返す。"""
+    from core.trends.store import TrendStore
+
+    items = TrendStore().list(limit=limit, source=source, genre=genre, min_score=min_score)
+    return [i.to_dict() for i in items]
+
+
+@app.post("/api/trends/collect", tags=["trends"])
+async def api_collect_trends() -> Dict[str, Any]:
+    """トレンドを今すぐ収集・採点・保存する（手動トリガー）。"""
+    from core.trends.runner import collect_and_store
+
+    return await collect_and_store()
+
+
+@app.post("/api/trends/convert", tags=["trends"])
+async def api_convert_trends() -> Dict[str, Any]:
+    """高スコアトレンドを承認ゲート付き ContentJob/提案へ変換する。"""
+    from core.trends.trend_to_jobs import convert_trends
+
+    return convert_trends()
+
+
 @app.post("/api/daemons/{name}/start", tags=["platform"])
 async def api_daemons_start(name: str, req: DaemonsActionRequest | None = None) -> Dict[str, Any]:
     from core.runtime.daemon_registry import get_spec, spawn_daemon
