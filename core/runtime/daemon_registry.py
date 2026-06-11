@@ -85,6 +85,15 @@ KNOWN_DAEMONS: Dict[str, DaemonSpec] = {
         pid_filename="watchdog.pid",
         log_filename="watchdog.log",
     ),
+    "trend": DaemonSpec(
+        name="trend",
+        description="トレンド収集→採点→人間承認ゲート付き ContentJob/新規事業提案への変換",
+        runner_module="core._trend_daemon_runner",
+        frozen_flag="--trend-daemon-run",
+        default_interval=6 * 3600,
+        pid_filename="trend_daemon.pid",
+        log_filename="trend_daemon.log",
+    ),
 }
 
 

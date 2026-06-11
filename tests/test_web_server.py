@@ -1745,6 +1745,28 @@ def test_content_daemon_start_keeps_action_status(tmp_path, monkeypatch):
     assert data["scheduler_status"] == "stopped"
 
 
+def test_trends_list_endpoint_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    resp = client.get("/api/trends")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_trends_list_endpoint_returns_stored(tmp_path, monkeypatch):
+    from core.trends.models import TrendItem
+    from core.trends.store import TrendStore
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    TrendStore(platform_home=tmp_path).add(
+        TrendItem(source="web", url="https://x/1", title="T", score=8.0, genre="ai")
+    )
+    resp = client.get("/api/trends?min_score=5")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "T"
+
+
 def test_usage_summary_endpoint(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
@@ -1766,7 +1788,7 @@ def test_daemons_status_lists_registry(tmp_path, monkeypatch):
     data = resp.json()
     assert data["rate_limited"] is False
     names = [d["name"] for d in data["daemons"]]
-    assert names == ["content", "improvement", "watchdog"]
+    assert names == ["content", "improvement", "trend", "watchdog"]
     for d in data["daemons"]:
         assert d["running"] is False
         assert d["heartbeat_stale"] is True

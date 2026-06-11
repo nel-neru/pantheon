@@ -28,6 +28,12 @@ sources:
     type: atom
     genre: side_business
 
+  # Claude Code / Anthropic 自体のトレンド監視（リポジトリ設定の進化に反映）
+  - name: Anthropic News
+    url: https://www.anthropic.com/rss.xml
+    type: rss
+    genre: claude_code
+
 # YouTube チャンネル（APIキー不要のチャンネル RSS で最新動画を収集）。
 # channel_id は チャンネルページの「共有」やソースから取得できる UC... 形式。
 youtube_channels:

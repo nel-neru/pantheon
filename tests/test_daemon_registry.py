@@ -24,7 +24,7 @@ from core.runtime.heartbeat import write_heartbeat
 
 
 def test_known_daemons_and_get_spec():
-    assert set(KNOWN_DAEMONS) == {"improvement", "content", "watchdog"}
+    assert set(KNOWN_DAEMONS) == {"improvement", "content", "watchdog", "trend"}
     assert get_spec("improvement").pid_filename == "daemon.pid"  # 既存レイアウト互換
     assert get_spec("content").pid_filename == "content_daemon.pid"
     assert get_spec("watchdog").pid_filename == "watchdog.pid"

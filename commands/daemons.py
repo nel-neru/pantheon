@@ -17,7 +17,7 @@ from typing import Any, List, Optional
 
 # argparse の choices 用（core を import せず CLI 起動を軽く保つ）。
 # core/runtime/daemon_registry.py の KNOWN_DAEMONS と同期させること。
-DAEMON_NAMES = ("improvement", "content", "watchdog")
+DAEMON_NAMES = ("improvement", "content", "watchdog", "trend")
 
 
 def _format_age(age: Optional[float]) -> str:
