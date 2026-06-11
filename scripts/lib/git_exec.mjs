@@ -52,7 +52,8 @@ export function resolveGit() {
       process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs\\Git\\cmd\\git.exe` : null,
     ];
     for (const p of fallbacks) {
-      if (p && existsSync(p)) {
+      // 存在するだけでなく実行できること（壊れた実体を選ぶと merge 等の途中で初めて死ぬ）
+      if (p && existsSync(p) && canRun(p)) {
         cached = p;
         return cached;
       }
