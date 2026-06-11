@@ -40,7 +40,9 @@ class SkillProficiencyManager:
         self.platform_home = Path(platform_home) if platform_home else get_platform_home()
         self.platform_home.mkdir(parents=True, exist_ok=True)
         self.store_file = self.platform_home / self.STORE_FILE
-        self._records: dict[str, dict[str, SkillProficiencyRecord]] = self._deserialize(self._load())
+        self._records: dict[str, dict[str, SkillProficiencyRecord]] = self._deserialize(
+            self._load()
+        )
 
     def record_use(self, agent_id, skill_name, success: bool) -> SkillProficiencyRecord:
         agent_records = self._records.setdefault(agent_id, {})
@@ -88,10 +90,7 @@ class SkillProficiencyManager:
 
     def _save(self) -> None:
         payload = {
-            agent_id: {
-                skill_name: record.to_dict()
-                for skill_name, record in skills.items()
-            }
+            agent_id: {skill_name: record.to_dict() for skill_name, record in skills.items()}
             for agent_id, skills in self._records.items()
         }
         self.store_file.write_text(
@@ -99,7 +98,9 @@ class SkillProficiencyManager:
             encoding="utf-8",
         )
 
-    def _deserialize(self, data: dict[str, dict[str, dict[str, Any]]]) -> dict[str, dict[str, SkillProficiencyRecord]]:
+    def _deserialize(
+        self, data: dict[str, dict[str, dict[str, Any]]]
+    ) -> dict[str, dict[str, SkillProficiencyRecord]]:
         records: dict[str, dict[str, SkillProficiencyRecord]] = {}
         for agent_id, skills in data.items():
             records[agent_id] = {

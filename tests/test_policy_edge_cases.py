@@ -11,22 +11,30 @@ def test_policy_engine_empty_proposals():
 
 
 def test_policy_engine_unknown_category():
-    verdict = engine.evaluate({"priority": "low", "category": "unknown", "file_path": "src/file.py"})
+    verdict = engine.evaluate(
+        {"priority": "low", "category": "unknown", "file_path": "src/file.py"}
+    )
     assert verdict.decision == ApprovalDecision.HUMAN_REQUIRED
 
 
 def test_policy_engine_special_chars_in_filepath():
-    verdict = engine.evaluate({"priority": "low", "category": "style", "file_path": "src/space name/ファイル.py"})
+    verdict = engine.evaluate(
+        {"priority": "low", "category": "style", "file_path": "src/space name/ファイル.py"}
+    )
     assert verdict.decision == ApprovalDecision.AUTO_APPROVE
 
 
 def test_policy_engine_all_auto_approve():
-    proposals = [{"priority": "low", "category": "style", "file_path": f"src/{i}.py"} for i in range(3)]
+    proposals = [
+        {"priority": "low", "category": "style", "file_path": f"src/{i}.py"} for i in range(3)
+    ]
     assert len(engine.get_auto_approvable(proposals)) == 3
 
 
 def test_policy_engine_all_human_required():
-    proposals = [{"priority": "high", "category": "style", "file_path": f"src/{i}.py"} for i in range(3)]
+    proposals = [
+        {"priority": "high", "category": "style", "file_path": f"src/{i}.py"} for i in range(3)
+    ]
     assert len(engine.get_human_required(proposals)) == 3
 
 

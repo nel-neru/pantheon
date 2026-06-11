@@ -21,6 +21,7 @@ def with_error_handling(
     """
     非同期関数用のシンプルなエラーハンドリングデコレータ
     """
+
     def decorator(func: Callable[..., Awaitable[Any]]):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
@@ -29,15 +30,21 @@ def with_error_handling(
                     return await func(*args, **kwargs)
                 except Exception as e:
                     if log_errors:
-                        logger.warning(f"[ErrorHandling] {func.__name__} failed (attempt {attempt + 1}): {e}")
+                        logger.warning(
+                            f"[ErrorHandling] {func.__name__} failed (attempt {attempt + 1}): {e}"
+                        )
 
                     if attempt == max_retries:
                         if log_errors:
-                            logger.error(f"[ErrorHandling] {func.__name__} failed after {max_retries} retries.")
+                            logger.error(
+                                f"[ErrorHandling] {func.__name__} failed after {max_retries} retries."
+                            )
                         # フォールバック値を返す（グラフが止まらないようにする）
                         return fallback_return
             return fallback_return
+
         return wrapper
+
     return decorator
 
 

@@ -1,4 +1,5 @@
 """Unit tests for core data models"""
+
 from uuid import uuid4
 
 import pytest
@@ -122,7 +123,15 @@ class TestImprovementProposal:
         assert p.status == "proposed"
 
     def test_valid_statuses(self):
-        for status in ("proposed", "pending", "in_progress", "done", "rejected", "failed", "cancelled"):
+        for status in (
+            "proposed",
+            "pending",
+            "in_progress",
+            "done",
+            "rejected",
+            "failed",
+            "cancelled",
+        ):
             p = ImprovementProposal(review_id=uuid4(), title="T", description="D", status=status)
             assert p.status == status
 

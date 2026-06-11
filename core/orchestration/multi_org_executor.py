@@ -1,4 +1,5 @@
 """複数組織のタスクを並行実行するエグゼキューター。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -47,7 +48,9 @@ class MultiOrgExecutor:
         finally:
             self._running.pop(task_id, None)
 
-    async def run_parallel(self, tasks: list[dict[str, Any]], executor_fn: ExecutorFn) -> list[dict[str, Any]]:
+    async def run_parallel(
+        self, tasks: list[dict[str, Any]], executor_fn: ExecutorFn
+    ) -> list[dict[str, Any]]:
         """複数タスクを並行実行する（max_concurrent まで同時に実行）。"""
         semaphore = asyncio.Semaphore(self.max_concurrent)
 

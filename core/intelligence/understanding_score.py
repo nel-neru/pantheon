@@ -17,7 +17,9 @@ class UnderstandingScoreTracker:
         self.platform_home = Path(platform_home) if platform_home else get_platform_home()
         self.file_path = self.platform_home / "understanding_scores.json"
 
-    def record_exploration(self, repo_name: str, files_explored: int, proposals_accepted: int, proposals_total: int) -> None:
+    def record_exploration(
+        self, repo_name: str, files_explored: int, proposals_accepted: int, proposals_total: int
+    ) -> None:
         data = self._load()
         record = data.get(repo_name, {})
         exploration_count = int(record.get("exploration_count", 0)) + 1

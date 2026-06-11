@@ -50,7 +50,11 @@ class OrgGoalManager:
         return goal
 
     def get_active_goals(self, org_name: str) -> list[OrgGoal]:
-        return [goal for goal in self._load_goals() if goal.org_name == org_name and not goal.achieved_at]
+        return [
+            goal
+            for goal in self._load_goals()
+            if goal.org_name == org_name and not goal.achieved_at
+        ]
 
     def get_category_weights(self, org_name: str) -> dict[str, float]:
         weights = {category: 1.0 for category in self.DEFAULT_CATEGORIES}

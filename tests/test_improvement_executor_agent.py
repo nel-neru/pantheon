@@ -73,8 +73,9 @@ def test_run_rejects_path_traversal(tmp_path, agent: ImprovementExecutorAgent):
     assert result.error == "Path traversal is not allowed in suggestion.file_path"
 
 
-
-def test_apply_local_change_rejects_absolute_paths(tmp_path, monkeypatch, agent: ImprovementExecutorAgent):
+def test_apply_local_change_rejects_absolute_paths(
+    tmp_path, monkeypatch, agent: ImprovementExecutorAgent
+):
     repo_path = tmp_path / "repo"
     repo_path.mkdir()
     fake_git = DummyGitModule()
@@ -90,8 +91,9 @@ def test_apply_local_change_rejects_absolute_paths(tmp_path, monkeypatch, agent:
         )
 
 
-
-def test_apply_local_change_writes_only_inside_repo(tmp_path, monkeypatch, agent: ImprovementExecutorAgent):
+def test_apply_local_change_writes_only_inside_repo(
+    tmp_path, monkeypatch, agent: ImprovementExecutorAgent
+):
     repo_path = tmp_path / "repo"
     target = repo_path / "nested" / "file.py"
     target.parent.mkdir(parents=True)

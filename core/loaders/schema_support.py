@@ -13,7 +13,12 @@ def validate_schema_version(data: dict[str, Any], source_name: str, *, kind: str
     """Validate YAML schema version and return the normalized version string."""
     raw_version = data.get(SCHEMA_VERSION_FIELD)
     if raw_version is None:
-        logger.warning("%s %s is missing %s; assuming 1.0 compatibility", kind, source_name, SCHEMA_VERSION_FIELD)
+        logger.warning(
+            "%s %s is missing %s; assuming 1.0 compatibility",
+            kind,
+            source_name,
+            SCHEMA_VERSION_FIELD,
+        )
         return ""
 
     version = str(raw_version)

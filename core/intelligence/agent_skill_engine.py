@@ -36,6 +36,7 @@ class AgentSkillEngine:
     def _get_skill_section(self, skill: AgentSkill) -> str:
         """スキル1件のプロンプトセクションを返す（skills/*.yaml から）。"""
         from core.loaders.skill_loader import get_skill_loader
+
         skill_def = get_skill_loader().get(skill.value)
         if skill_def:
             addon = skill_def.to_prompt_addon()
@@ -60,9 +61,7 @@ class AgentSkillEngine:
             return base_prompt
 
         skill_sections = [
-            section
-            for skill in skills
-            if (section := self._get_skill_section(skill))
+            section for skill in skills if (section := self._get_skill_section(skill))
         ]
 
         if not skill_sections:
@@ -88,6 +87,7 @@ class AgentSkillEngine:
         if not skills:
             return "スキル未定義のエージェント"
         from core.loaders.skill_loader import get_skill_loader
+
         loader = get_skill_loader()
         descs = []
         for skill in skills:

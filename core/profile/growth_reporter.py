@@ -41,7 +41,9 @@ class GrowthReporter:
         improvements: list[str] = []
 
         if score_delta > 0:
-            improvements.append(f"{org_name} のスコアが {prev_score:.1f} → {current_score:.1f} に向上")
+            improvements.append(
+                f"{org_name} のスコアが {prev_score:.1f} → {current_score:.1f} に向上"
+            )
         if accepted_count > 0:
             improvements.append(f"{accepted_count}件の改善提案が承認されました")
         if knowledge_count > 0:

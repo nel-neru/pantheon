@@ -31,8 +31,12 @@ class DiffQualityReviewer:
                 )
             )
 
-        added_lines = [line[2:] for line in difflib.ndiff(before_lines, after_lines) if line.startswith("+ ")]
-        if any(token in line.upper() for line in added_lines for token in ("TODO", "FIXME", "HACK")):
+        added_lines = [
+            line[2:] for line in difflib.ndiff(before_lines, after_lines) if line.startswith("+ ")
+        ]
+        if any(
+            token in line.upper() for line in added_lines for token in ("TODO", "FIXME", "HACK")
+        ):
             issues.append(
                 DiffIssue(
                     issue_type="added_todo",
@@ -45,7 +49,9 @@ class DiffQualityReviewer:
             issues.append(
                 DiffIssue(
                     issue_type="file_too_short",
-                    description=self._describe(file_path, "File became significantly shorter after the change."),
+                    description=self._describe(
+                        file_path, "File became significantly shorter after the change."
+                    ),
                     severity="error",
                 )
             )
@@ -56,7 +62,9 @@ class DiffQualityReviewer:
                 issues.append(
                     DiffIssue(
                         issue_type="signature_changed",
-                        description=self._describe(file_path, f"Public function '{name}' signature changed."),
+                        description=self._describe(
+                            file_path, f"Public function '{name}' signature changed."
+                        ),
                         severity="warning",
                     )
                 )
@@ -73,14 +81,20 @@ class DiffQualityReviewer:
 
         signatures: dict[str, str] = {}
         for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_"):
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef)
+            ) and not node.name.startswith("_"):
                 args = [arg.arg for arg in node.args.posonlyargs + node.args.args]
                 if node.args.vararg:
                     args.append(f"*{node.args.vararg.arg}")
                 args.extend(arg.arg for arg in node.args.kwonlyargs)
                 if node.args.kwarg:
                     args.append(f"**{node.args.kwarg.arg}")
-                returns = ast.unparse(node.returns) if node.returns is not None and hasattr(ast, "unparse") else ""
+                returns = (
+                    ast.unparse(node.returns)
+                    if node.returns is not None and hasattr(ast, "unparse")
+                    else ""
+                )
                 signatures[node.name] = f"({', '.join(args)}) -> {returns}"
         return signatures
 

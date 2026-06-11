@@ -82,9 +82,7 @@ def launch_analyze(
     n = _next_index(orch, org_name, "analyze")
     return orch.start_command_session(
         name=org_name,
-        command=self_command(
-            "analyze", "--org-name", org_name, "--max-files", str(max_files)
-        ),
+        command=self_command("analyze", "--org-name", org_name, "--max-files", str(max_files)),
         title=f"analyze#{n}",
         agent_id=f"work:{_slug(org_name)}:analyze:{n}",
         role="analyze",

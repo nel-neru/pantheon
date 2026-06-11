@@ -224,18 +224,26 @@ def register(subparsers: Any) -> None:
     agent_status.add_argument("--org-name", required=True, help="対象 Organization 名")
     agent_status.set_defaults(handler_name="cmd_agent_status")
 
-    orch_parser = subparsers.add_parser("orchestration", help="Pre-Task Orchestration の管理・分析 (Theme N)")
+    orch_parser = subparsers.add_parser(
+        "orchestration", help="Pre-Task Orchestration の管理・分析 (Theme N)"
+    )
     orch_sub = orch_parser.add_subparsers(dest="orch_command", required=True)
 
     analyze = orch_sub.add_parser("analyze", help="タスクの最適実行計画を表示")
-    analyze.add_argument("task_type", help="タスク種別 (例: code_review, meta_improvement, security_audit)")
+    analyze.add_argument(
+        "task_type", help="タスク種別 (例: code_review, meta_improvement, security_audit)"
+    )
     analyze.set_defaults(handler_name="cmd_orchestration_analyze")
 
     history = orch_sub.add_parser("history", help="過去のオーケストレーション実行履歴を表示")
     history.set_defaults(handler_name="cmd_orchestration_history")
 
-    capabilities = orch_sub.add_parser("capabilities", help="現在のエージェント能力一覧と未充足ギャップを表示")
+    capabilities = orch_sub.add_parser(
+        "capabilities", help="現在のエージェント能力一覧と未充足ギャップを表示"
+    )
     capabilities.set_defaults(handler_name="cmd_orchestration_capabilities")
 
-    self_review = orch_sub.add_parser("self-review", help="Orchestrator の判断精度を振り返り改善提案を生成 (N-10)")
+    self_review = orch_sub.add_parser(
+        "self-review", help="Orchestrator の判断精度を振り返り改善提案を生成 (N-10)"
+    )
     self_review.set_defaults(handler_name="cmd_orchestration_self_review")

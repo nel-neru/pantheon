@@ -44,7 +44,10 @@ class SystemDoctor:
                 )
             )
 
-        for issue_id, path in (("missing_backups_dir", self.backups_dir), ("missing_profiles_dir", self.profiles_dir)):
+        for issue_id, path in (
+            ("missing_backups_dir", self.backups_dir),
+            ("missing_profiles_dir", self.profiles_dir),
+        ):
             if not path.exists():
                 issues.append(
                     DiagnosticIssue(

@@ -54,16 +54,16 @@ CLIENT_VERSION = "1.0"
 #: Capabilities Pantheon needs, mapped from the methods it calls. Declaring a
 #: bare capability (no glob) grants unrestricted access to it.
 DEFAULT_PERMISSIONS: Tuple[str, ...] = (
-    "workspace.claim",    # mcp.claimWorkspace  -> create a session workspace
-    "workspace.read",     # workspace.list / workspace.current
-    "pane.read",          # pane.list / pane.focus
-    "pane.create",        # pane.split          -> add an agent surface
-    "pane.search",        # pane.search
-    "meta.read",          # pane.getMetadata
-    "meta.write",         # pane.setMetadata / meta.setStatus
-    "events.subscribe",   # events.poll
-    "terminal.send",      # input.send / input.sendKey
-    "terminal.read",      # input.readScreen / terminal.readEvents
+    "workspace.claim",  # mcp.claimWorkspace  -> create a session workspace
+    "workspace.read",  # workspace.list / workspace.current
+    "pane.read",  # pane.list / pane.focus
+    "pane.create",  # pane.split          -> add an agent surface
+    "pane.search",  # pane.search
+    "meta.read",  # pane.getMetadata
+    "meta.write",  # pane.setMetadata / meta.setStatus
+    "events.subscribe",  # events.poll
+    "terminal.send",  # input.send / input.sendKey
+    "terminal.read",  # input.readScreen / terminal.readEvents
 )
 
 _RATIONALE = "Pantheon — AI agent organization orchestrator (sessions=workspaces, agents=panes)."

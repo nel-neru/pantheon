@@ -40,6 +40,7 @@ def _pid_alive(pid: int) -> bool:
         return False
     if os.name == "nt":
         import ctypes
+
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         STILL_ACTIVE = 259
         kernel32 = ctypes.windll.kernel32
@@ -154,7 +155,9 @@ class HeadlessDriver(MultiplexerDriver):
             # Cross-process polling: no Popen handle here, fall back to the pid
             # we recorded as ``pty_id`` when the surface was opened.
             if surface.status in (
-                SurfaceStatus.DONE, SurfaceStatus.FAILED, SurfaceStatus.CLOSED,
+                SurfaceStatus.DONE,
+                SurfaceStatus.FAILED,
+                SurfaceStatus.CLOSED,
             ):
                 return surface
             pid = int(surface.pty_id) if (surface.pty_id or "").isdigit() else 0

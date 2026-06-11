@@ -9,19 +9,19 @@ import os
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "ja": {
-      "status_healthy": "健康",
-      "status_critical": "危機的",
-      "proposals_pending": "未承認の提案",
-      "no_orgs": "組織が登録されていません",
-      "run_analyze": "pantheon analyze を実行してください",
+        "status_healthy": "健康",
+        "status_critical": "危機的",
+        "proposals_pending": "未承認の提案",
+        "no_orgs": "組織が登録されていません",
+        "run_analyze": "pantheon analyze を実行してください",
     },
     "en": {
-      "status_healthy": "Healthy",
-      "status_critical": "Critical",
-      "proposals_pending": "Pending Proposals",
-      "no_orgs": "No organizations registered",
-      "run_analyze": "Run pantheon analyze",
-    }
+        "status_healthy": "Healthy",
+        "status_critical": "Critical",
+        "proposals_pending": "Pending Proposals",
+        "no_orgs": "No organizations registered",
+        "run_analyze": "Run pantheon analyze",
+    },
 }
 
 

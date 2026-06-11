@@ -48,7 +48,9 @@ class MilestoneTracker:
         for milestone in MILESTONES:
             if milestone.milestone_id in achieved:
                 continue
-            if not self._is_achieved(milestone.milestone_id, autonomy_score, accepted_count, knowledge_count):
+            if not self._is_achieved(
+                milestone.milestone_id, autonomy_score, accepted_count, knowledge_count
+            ):
                 continue
             awarded = Milestone(
                 milestone_id=milestone.milestone_id,

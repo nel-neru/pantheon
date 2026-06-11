@@ -16,6 +16,7 @@ from core.profile.developer_profile import DeveloperProfileManager
 
 # -------------------- DeveloperProfileManager --------------------
 
+
 def test_create_default_profile(tmp_path):
     manager = DeveloperProfileManager(platform_home=tmp_path)
 
@@ -100,6 +101,7 @@ def test_persistence_save_and_load(tmp_path):
 
 # -------------------- OrganizationDesigner --------------------
 
+
 def test_design_with_security_purpose(tmp_path):
     designer = OrganizationDesigner(platform_home=tmp_path)
 
@@ -165,6 +167,7 @@ def test_optimize_underperforming_teams_adds_support_agent(tmp_path):
 
 
 # -------------------- SafeChangeExecutor --------------------
+
 
 def test_create_backup_existing_file(tmp_path):
     file_path = tmp_path / "sample.py"
@@ -262,14 +265,12 @@ def test_resolve_path_rejects_absolute_path(tmp_path):
         executor._resolve_path("/etc/passwd")
 
 
-
 def test_resolve_path_rejects_absolute_path_outside_project(tmp_path):
     executor = SafeChangeExecutor(project_root=tmp_path)
     outside_path = tmp_path.parent / "escape.py"
 
     with pytest.raises(ValueError, match="escapes project root"):
         executor._resolve_path(str(outside_path))
-
 
 
 def test_list_backups(tmp_path):

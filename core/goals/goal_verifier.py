@@ -27,19 +27,21 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CriterionResult:
     """成功基準1件の評価結果。"""
+
     criterion: str
     met: bool
-    confidence: float = 0.0    # 0.0〜1.0
+    confidence: float = 0.0  # 0.0〜1.0
     evidence: str = ""
 
 
 @dataclass
 class GoalVerificationResult:
     """目標達成検証の総合結果。"""
+
     goal_id: str
     goal_description: str
     overall_achieved: bool
-    achievement_pct: float                          # 0〜100
+    achievement_pct: float  # 0〜100
     criterion_results: List[CriterionResult] = field(default_factory=list)
     unmet_criteria: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
@@ -73,7 +75,7 @@ class GoalVerifier:
     達成度 (0〜100%) を算出する。
     """
 
-    ACHIEVEMENT_THRESHOLD = 70.0    # この%以上で「達成」とみなす
+    ACHIEVEMENT_THRESHOLD = 70.0  # この%以上で「達成」とみなす
 
     def __init__(self, llm_client: Optional[Any] = None):
         self._llm = llm_client
@@ -109,9 +111,7 @@ class GoalVerifier:
         achievement_pct = min(100.0, max(0.0, achievement_pct))
 
         unmet = [r.criterion for r in criterion_results if not r.met]
-        recommendations = self._generate_recommendations(
-            goal, unmet, execution_progress
-        )
+        recommendations = self._generate_recommendations(goal, unmet, execution_progress)
 
         if use_llm and self._llm:
             try:
@@ -140,22 +140,26 @@ class GoalVerifier:
 
         for criterion in goal.success_criteria:
             met, confidence, evidence = self._check_criterion(criterion, progress)
-            results.append(CriterionResult(
-                criterion=criterion,
-                met=met,
-                confidence=confidence,
-                evidence=evidence,
-            ))
+            results.append(
+                CriterionResult(
+                    criterion=criterion,
+                    met=met,
+                    confidence=confidence,
+                    evidence=evidence,
+                )
+            )
 
         # 基準がない場合はタスク完了率のみで評価
         if not results:
             met = progress.progress_pct >= 80
-            results.append(CriterionResult(
-                criterion="タスクが80%以上完了している",
-                met=met,
-                confidence=0.9,
-                evidence=f"タスク完了率: {progress.progress_pct:.1f}%",
-            ))
+            results.append(
+                CriterionResult(
+                    criterion="タスクが80%以上完了している",
+                    met=met,
+                    confidence=0.9,
+                    evidence=f"タスク完了率: {progress.progress_pct:.1f}%",
+                )
+            )
 
         return results
 
@@ -176,7 +180,8 @@ class GoalVerifier:
         # テスト関連
         if "テスト" in criterion or "test" in c_lower:
             done_tasks = [
-                p for p in progress.task_progresses.values()
+                p
+                for p in progress.task_progresses.values()
                 if p.status == TaskStatus.DONE and "テスト" in p.title
             ]
             met = len(done_tasks) > 0
@@ -210,15 +215,15 @@ class GoalVerifier:
 
         if progress.failed_count > 0:
             failed = [
-                p.title for p in progress.task_progresses.values()
-                if p.status == TaskStatus.FAILED
+                p.title for p in progress.task_progresses.values() if p.status == TaskStatus.FAILED
             ]
             recs.append(f"失敗したタスク ({progress.failed_count} 件) を再実行してください:")
             for title in failed[:3]:
                 recs.append(f"  → {title}")
 
         skipped = [
-            p for p in progress.task_progresses.values()
+            p
+            for p in progress.task_progresses.values()
             if p.status == TaskStatus.SKIPPED and "能力" in p.error
         ]
         if skipped:
@@ -242,7 +247,7 @@ class GoalVerifier:
 
 目標: {goal.description}
 成功基準:
-{chr(10).join(f'- {c}' for c in goal.success_criteria)}
+{chr(10).join(f"- {c}" for c in goal.success_criteria)}
 
 実行結果:
 - 総タスク数: {progress.total}
@@ -255,7 +260,8 @@ class GoalVerifier:
         response = self._llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
         import re
-        match = re.search(r'\d+', content)
+
+        match = re.search(r"\d+", content)
         if match:
             return float(min(100, max(0, int(match.group()))))
         return 50.0

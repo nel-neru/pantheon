@@ -22,6 +22,7 @@ class StrictModel(BaseModel):
     if ConfigDict is not None:
         model_config = ConfigDict(extra="forbid")
     else:  # pragma: no cover - pydantic v1 compatibility
+
         class Config:
             extra = "forbid"
 

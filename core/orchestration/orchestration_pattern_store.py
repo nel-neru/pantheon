@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PatternRecord:
     """オーケストレーションパターンの実行記録。"""
+
     task_type: str
     pattern: str
     agent_ids: List[str]
@@ -38,6 +39,7 @@ class PatternRecord:
 @dataclass
 class PatternStats:
     """パターンの集計統計。"""
+
     task_type: str
     pattern: str
     total_runs: int
@@ -96,6 +98,7 @@ class OrchestrationPatternStore:
             return []
 
         from collections import defaultdict
+
         grouped: Dict[str, List[PatternRecord]] = defaultdict(list)
         for rec in filtered:
             grouped[rec.pattern].append(rec)
@@ -103,13 +106,15 @@ class OrchestrationPatternStore:
         stats = []
         for pattern, records in grouped.items():
             successes = sum(1 for r in records if r.success)
-            stats.append(PatternStats(
-                task_type=task_type,
-                pattern=pattern,
-                total_runs=len(records),
-                success_rate=round(successes / len(records), 3),
-                avg_quality=round(sum(r.quality_score for r in records) / len(records), 2),
-            ))
+            stats.append(
+                PatternStats(
+                    task_type=task_type,
+                    pattern=pattern,
+                    total_runs=len(records),
+                    success_rate=round(successes / len(records), 3),
+                    avg_quality=round(sum(r.quality_score for r in records) / len(records), 2),
+                )
+            )
 
         # 推奨パターンにフラグ
         if stats:
@@ -137,10 +142,11 @@ class OrchestrationPatternStore:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             for d in data.get("records", []):
-                self._records.append(PatternRecord(**{
-                    k: v for k, v in d.items()
-                    if k in PatternRecord.__dataclass_fields__
-                }))
+                self._records.append(
+                    PatternRecord(
+                        **{k: v for k, v in d.items() if k in PatternRecord.__dataclass_fields__}
+                    )
+                )
         except Exception as e:
             logger.warning("OrchestrationPatternStore load failed: %s", e)
 
@@ -152,6 +158,4 @@ class OrchestrationPatternStore:
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "records": [r.to_dict() for r in self._records],
         }
-        path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

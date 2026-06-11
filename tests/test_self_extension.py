@@ -177,11 +177,15 @@ class TestSelfIntegrationTester:
         assert result.error_message == ""
         assert not (tmp_path / ".pantheon" / "self_validation").exists()
 
-    def test_run_existing_tests_parses_success_output(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_run_existing_tests_parses_success_output(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         tester = SelfIntegrationTester()
 
         def fake_run(*args, **kwargs):
-            return SimpleNamespace(returncode=0, stdout="............ [100%]\n12 passed in 0.08s\n", stderr="")
+            return SimpleNamespace(
+                returncode=0, stdout="............ [100%]\n12 passed in 0.08s\n", stderr=""
+            )
 
         monkeypatch.setattr("core.intelligence.self_integration_tester.subprocess.run", fake_run)
 
@@ -192,7 +196,9 @@ class TestSelfIntegrationTester:
         assert result.test_count == 12
         assert result.errors == []
 
-    def test_run_existing_tests_parses_failure_output(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_run_existing_tests_parses_failure_output(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         tester = SelfIntegrationTester()
 
         def fake_run(*args, **kwargs):
@@ -211,7 +217,9 @@ class TestSelfIntegrationTester:
         assert result.test_count == 12
         assert any("AssertionError" in line for line in result.errors)
 
-    def test_run_full_validation_combines_component_results(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_run_full_validation_combines_component_results(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         tester = SelfIntegrationTester()
         code_output = CodeOutput(
             output_id="code:full",
@@ -296,7 +304,9 @@ class TestSelfExtensionPipeline:
         assert result.proposal_id == ""
         assert result.validation is not None and result.validation.is_valid is False
 
-    def test_run_all_gaps_collects_all_results(self, agent_gap: CapabilityGap, tool_gap: CapabilityGap):
+    def test_run_all_gaps_collects_all_results(
+        self, agent_gap: CapabilityGap, tool_gap: CapabilityGap
+    ):
         pipeline = SelfExtensionPipeline(
             gap_analyzer=None,
             design_agent=ToolDesignAgent(llm_client=None),

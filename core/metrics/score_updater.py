@@ -27,13 +27,14 @@ class ExecutionOutcome:
     1回のエージェント実行の結果サマリー。
     ScoreUpdater はこの構造体を受け取ってスコアを計算する。
     """
+
     success: bool
-    suggestions_count: int = 0          # 生成した提案数
-    accepted_suggestions: int = 0       # 承認された提案数
-    quality_score: float = 5.0          # 提案品質スコア (0~10)
+    suggestions_count: int = 0  # 生成した提案数
+    accepted_suggestions: int = 0  # 承認された提案数
+    quality_score: float = 5.0  # 提案品質スコア (0~10)
     execution_time_ms: int = 0
     used_cached_knowledge: bool = False  # 知識ループを活用したか
-    self_initiated: bool = False        # システムが自律的に開始したか
+    self_initiated: bool = False  # システムが自律的に開始したか
 
 
 class ScoreUpdater:
@@ -49,12 +50,12 @@ class ScoreUpdater:
     EMA 係数 alpha=0.2 → 直近5回の実行で約 70% の重みが決まる
     """
 
-    EMA_ALPHA = 0.2                    # 指数移動平均の平滑化係数
-    BASE_AUTONOMY_GAIN = 2.0           # 成功1回あたりの自律スコア基本増加量
-    BASE_VELOCITY_GAIN = 1.5           # 提案1件あたりの速度スコア基本増加量
-    KNOWLEDGE_BONUS = 1.0              # 知識ループ活用ボーナス
-    SELF_INITIATED_BONUS = 2.0         # 自律起動ボーナス
-    FAILURE_PENALTY = 3.0              # 失敗時のペナルティ
+    EMA_ALPHA = 0.2  # 指数移動平均の平滑化係数
+    BASE_AUTONOMY_GAIN = 2.0  # 成功1回あたりの自律スコア基本増加量
+    BASE_VELOCITY_GAIN = 1.5  # 提案1件あたりの速度スコア基本増加量
+    KNOWLEDGE_BONUS = 1.0  # 知識ループ活用ボーナス
+    SELF_INITIATED_BONUS = 2.0  # 自律起動ボーナス
+    FAILURE_PENALTY = 3.0  # 失敗時のペナルティ
 
     def update(
         self,
@@ -86,9 +87,7 @@ class ScoreUpdater:
                 autonomy_delta += self.KNOWLEDGE_BONUS
             new_autonomy = self._ema_update(old_autonomy, old_autonomy + autonomy_delta)
         else:
-            new_autonomy = self._ema_update(
-                old_autonomy, old_autonomy - self.FAILURE_PENALTY
-            )
+            new_autonomy = self._ema_update(old_autonomy, old_autonomy - self.FAILURE_PENALTY)
 
         # ── improvement_velocity の更新 ──
         if outcome.success and outcome.suggestions_count > 0:
@@ -97,13 +96,9 @@ class ScoreUpdater:
                 + outcome.accepted_suggestions * 2.0
                 + (outcome.quality_score - 5.0) * 0.5
             )
-            new_velocity = self._ema_update(
-                old_velocity, old_velocity + velocity_delta
-            )
+            new_velocity = self._ema_update(old_velocity, old_velocity + velocity_delta)
         elif not outcome.success:
-            new_velocity = self._ema_update(
-                old_velocity, old_velocity - self.FAILURE_PENALTY
-            )
+            new_velocity = self._ema_update(old_velocity, old_velocity - self.FAILURE_PENALTY)
         else:
             new_velocity = old_velocity
 
@@ -113,13 +108,16 @@ class ScoreUpdater:
 
         # 更新日時を記録
         from datetime import datetime, timezone
+
         organization.last_active = datetime.now(timezone.utc)
 
         logger.debug(
             "ScoreUpdater: %s autonomy %.1f→%.1f velocity %.1f→%.1f",
             organization.name,
-            old_autonomy, organization.autonomy_score,
-            old_velocity, organization.improvement_velocity,
+            old_autonomy,
+            organization.autonomy_score,
+            old_velocity,
+            organization.improvement_velocity,
         )
 
         # 永続化
@@ -158,6 +156,7 @@ class ScoreUpdater:
             accepted_suggestions=accepted_suggestions,
             quality_score=quality_score or 5.0,
             used_cached_knowledge=result.output.get("knowledge_injected", False)
-            if result.output else False,
+            if result.output
+            else False,
             self_initiated=self_initiated,
         )

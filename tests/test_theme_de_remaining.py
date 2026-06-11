@@ -37,7 +37,10 @@ def test_communication_style_verbose_hint(tmp_path):
 
     profile = manager.get_profile()
 
-    assert manager.get_description_length_hint(profile) == "詳細な説明と根拠を含めてください（500文字以上）"
+    assert (
+        manager.get_description_length_hint(profile)
+        == "詳細な説明と根拠を含めてください（500文字以上）"
+    )
 
 
 def test_communication_style_concise_hint(tmp_path):
@@ -46,7 +49,10 @@ def test_communication_style_concise_hint(tmp_path):
 
     profile = manager.get_profile()
 
-    assert manager.get_description_length_hint(profile) == "簡潔に要点のみ記載してください（100文字以内）"
+    assert (
+        manager.get_description_length_hint(profile)
+        == "簡潔に要点のみ記載してください（100文字以内）"
+    )
 
 
 def test_activity_tracker_records_and_summarizes(tmp_path, monkeypatch):
@@ -120,13 +126,19 @@ def test_growth_reporter_monthly_report(tmp_path):
 def test_motivation_message_5_accepted(tmp_path):
     reporter = GrowthReporter(platform_home=tmp_path)
 
-    assert reporter.generate_motivation_message(5, 3) == "今週は5件の改善を承認しました！すばらしい進歩です🎉"
+    assert (
+        reporter.generate_motivation_message(5, 3)
+        == "今週は5件の改善を承認しました！すばらしい進歩です🎉"
+    )
 
 
 def test_motivation_message_zero_accepted(tmp_path):
     reporter = GrowthReporter(platform_home=tmp_path)
 
-    assert reporter.generate_motivation_message(0, 0) == "今週はまだ改善がありません。小さな一歩から始めましょう👋"
+    assert (
+        reporter.generate_motivation_message(0, 0)
+        == "今週はまだ改善がありません。小さな一歩から始めましょう👋"
+    )
 
 
 def test_developer_goal_set_and_achieve(tmp_path):

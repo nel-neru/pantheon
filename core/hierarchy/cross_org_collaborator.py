@@ -21,7 +21,9 @@ class CrossOrgCollaborator:
     def __init__(self):
         self._requests: list[CollaborationRequest] = []
 
-    def request_collaboration(self, source_org: str, target_org: str, task: str) -> CollaborationRequest:
+    def request_collaboration(
+        self, source_org: str, target_org: str, task: str
+    ) -> CollaborationRequest:
         request = CollaborationRequest(
             request_id=f"collab:{uuid4()}",
             source_org=source_org,
