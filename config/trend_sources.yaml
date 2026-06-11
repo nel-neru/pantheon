@@ -27,3 +27,13 @@ sources:
     url: https://www.producthunt.com/feed
     type: atom
     genre: side_business
+
+# YouTube チャンネル（APIキー不要のチャンネル RSS で最新動画を収集）。
+# channel_id は チャンネルページの「共有」やソースから取得できる UC... 形式。
+youtube_channels:
+  - name: Fireship
+    channel_id: UCsBjURrPoezykLs9EqgamOA
+    genre: ai
+  - name: Two Minute Papers
+    channel_id: UCbfYPyITQ-7l4upoX8nvctg
+    genre: ai
