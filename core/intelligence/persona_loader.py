@@ -14,7 +14,16 @@ class PersonaLoader:
     """config/personas/ 以下の persona YAML を読み込む。"""
 
     def __init__(self, personas_dir: Path = None):
-        self.personas_dir = Path(personas_dir) if personas_dir else Path("config/personas")
+        if personas_dir is not None:
+            self.personas_dir = Path(personas_dir)
+        else:
+            # 同梱リソースとして解決（exe 化時も cwd 非依存で読める）。
+            try:
+                from core.paths import resource_path
+
+                self.personas_dir = resource_path("config", "personas")
+            except Exception:  # noqa: BLE001
+                self.personas_dir = Path("config/personas")
 
     def load_persona(self, persona_name: str) -> dict | None:
         path = self._resolve_path(persona_name)
@@ -56,7 +65,9 @@ class PersonaLoader:
                 "name": persona.get("name", persona_name),
                 "role": persona.get("role", ""),
                 "tone": communication_style.get("tone", ""),
-                "focus_areas": list(data.get("focus_areas") or data.get("self_improvement_focus") or []),
+                "focus_areas": list(
+                    data.get("focus_areas") or data.get("self_improvement_focus") or []
+                ),
                 "system_prompt_addon": str(persona.get("description", "")).strip(),
             }
 

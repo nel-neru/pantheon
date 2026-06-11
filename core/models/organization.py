@@ -284,6 +284,23 @@ class Organization(BaseModel):
         description="external 組織が変更してよいワークスペース相対パス接頭辞（空=ワークスペース全体可、"
         "ただし外への脱出は不可）",
     )
+    # ---- ジャンル/ペルソナ/デザイン（多角ビジネス化）----
+    # すべて additive・デフォルト付き。既存の永続化済み JSON を後方互換でロード可能。
+    # コンテンツ生成・publishing がこれらを参照して組織ごとに口調/視覚を切り替える。
+    industry_genre: str = Field(
+        "general",
+        description="業界ジャンル（ai / side_business / video_edit / game_dev / business 等）。"
+        "テンプレ自動設計・スキル付与・コンテンツ方向の分類に使う",
+    )
+    persona_id: str = Field(
+        "",
+        description="投稿/コンテンツの人格（config/personas/<id>.yaml）。空=ニュートラル",
+    )
+    design_style: str = Field(
+        "minimal",
+        description="視覚スタイル（minimal / luxury / art / 3d / pixel / vibrant 等、"
+        "config/design_styles/<id>.yaml）。コンテンツ/UI のトーンに反映",
+    )
 
     @field_validator("target_repo_path")
     @classmethod

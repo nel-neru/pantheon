@@ -36,6 +36,37 @@ _KIND_SYSTEM = {
 }
 
 
+def _persona_design_addon(org: Any) -> str:
+    """org の persona_id / design_style を system prompt の追記文へ変換する。
+
+    persona は config/personas/<id>.yaml の口調/役割、design_style は
+    config/design_styles/<id>.yaml のトーン指針を注入する（いずれも欠落時は無視）。
+    これにより「ペルソナ・デザインなんでも適応」を組織単位で実現する。
+    """
+    parts: list[str] = []
+    persona_id = (getattr(org, "persona_id", "") or "").strip()
+    if persona_id:
+        try:
+            from core.intelligence.persona_loader import PersonaLoader
+
+            addon = PersonaLoader().get_system_prompt_addon(persona_id)
+            if addon:
+                parts.append(f"【ペルソナ: {persona_id}】{addon}")
+        except Exception:  # noqa: BLE001
+            pass
+    design_style = (getattr(org, "design_style", "") or "").strip()
+    if design_style and design_style != "minimal":
+        try:
+            from core.content.design_style_loader import get_style_prompt_addon
+
+            addon = get_style_prompt_addon(design_style)
+            if addon:
+                parts.append(f"【デザイン: {design_style}】{addon}")
+        except Exception:  # noqa: BLE001
+            pass
+    return "\n\n".join(parts)
+
+
 def _deterministic_draft(job: ContentJob, label: str, stamp: str) -> str:
     theme = job.theme or "(テーマ未設定)"
     pr_note = "\n\n#PR" if job.kind == "monetization_lead" else ""
@@ -51,12 +82,14 @@ def _deterministic_draft(job: ContentJob, label: str, stamp: str) -> str:
     )
 
 
-async def _generate_body(job: ContentJob, label: str, stamp: str, downgrade: bool = False):
+async def _generate_body(
+    job: ContentJob, label: str, stamp: str, downgrade: bool = False, org: Any = None
+):
     """(markdown 本文, llm_used, rate_info) を返す。
 
     rate_info は :class:`RateLimitInfo`（``limited=True`` ならレート制限検知）または None。
     claude 不在/通常失敗時は決定論テンプレ。``downgrade`` はクォータ逼迫時に light
-    ティアへ降格する（A-5）。
+    ティアへ降格する（A-5）。``org`` を渡すと persona/design を system prompt に注入する。
     """
     from core.runtime.claude_code import claude_available
     from core.runtime.rate_limit import detect_rate_limit, detect_rate_limit_strict
@@ -68,6 +101,10 @@ async def _generate_body(job: ContentJob, label: str, stamp: str, downgrade: boo
 
         provider = get_llm_provider()
         system = _KIND_SYSTEM.get(job.kind, _KIND_SYSTEM["generic"])
+        if org is not None:
+            addon = _persona_design_addon(org)
+            if addon:
+                system = f"{system}\n\n{addon}"
         user = f"テーマ: {job.theme or '(未設定)'}\n対象組織: {job.org_name}\nMarkdown で出力。"
         response = await provider.generate(
             messages=[
@@ -125,7 +162,9 @@ async def run_content_job(job: ContentJob, psm: Any, *, downgrade: bool = False)
     file_stamp = now.strftime("%Y%m%d-%H%M%S")
     label = _KIND_LABEL.get(job.kind, _KIND_LABEL["generic"])
 
-    body, llm_used, rate_info = await _generate_body(job, label, stamp, downgrade=downgrade)
+    body, llm_used, rate_info = await _generate_body(
+        job, label, stamp, downgrade=downgrade, org=org
+    )
     if rate_info is not None and rate_info.limited:
         # レート制限検知時は提案を作らず、上位（スケジューラ）にループ停止を促す。
         return {
