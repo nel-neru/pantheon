@@ -28,11 +28,13 @@ class TeamCoordinator:
 
     def add_contribution(self, task_id: str, agent_id: str, output: str) -> None:
         context = self.create_context(task_id)
-        context.contributions.append({
-            "agent_id": agent_id,
-            "output": output,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        context.contributions.append(
+            {
+                "agent_id": agent_id,
+                "output": output,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     def get_context_for_agent(self, task_id: str, requesting_agent_id: str) -> str:
         context = self.create_context(task_id)

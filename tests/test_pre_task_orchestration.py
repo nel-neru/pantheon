@@ -5,6 +5,7 @@ Tests for Pre-Task Orchestration Layer (Theme N):
   - DynamicAgentSpawner
   - OrchestrationPatternStore
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +28,7 @@ from core.orchestration.task_router import TaskRouter
 # TaskRouter テスト
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestTaskRouter:
     def _make_registry(self, agent_skills: dict[str, list[str]]):
         """指定スキルセットを持つエージェントが登録されたモックレジストリを返す。"""
@@ -43,10 +45,12 @@ class TestTaskRouter:
         return registry
 
     def test_routes_to_agent_with_matching_skill(self):
-        registry = self._make_registry({
-            "Explorer": ["codebase_exploration", "deep_research"],
-            "Planner": ["strategic_planning", "org_design"],
-        })
+        registry = self._make_registry(
+            {
+                "Explorer": ["codebase_exploration", "deep_research"],
+                "Planner": ["strategic_planning", "org_design"],
+            }
+        )
         router = TaskRouter(capability_registry=registry)
         decision = router.route("codebase_exploration")
         assert "agent:Explorer" in decision.selected_agent_ids
@@ -58,20 +62,24 @@ class TestTaskRouter:
         assert decision.fallback_used
 
     def test_fallback_flag_when_low_score(self):
-        registry = self._make_registry({
-            "Planner": ["strategic_planning", "org_design"],
-        })
+        registry = self._make_registry(
+            {
+                "Planner": ["strategic_planning", "org_design"],
+            }
+        )
         router = TaskRouter(capability_registry=registry)
         # security_audit requires tool_integration + deep_research; Planner doesn't have those
         decision = router.route("security_audit")
         assert decision.fallback_used
 
     def test_max_agents_limit(self):
-        registry = self._make_registry({
-            "A": ["codebase_exploration", "deep_research"],
-            "B": ["codebase_exploration", "performance_analysis"],
-            "C": ["codebase_exploration", "knowledge_curation"],
-        })
+        registry = self._make_registry(
+            {
+                "A": ["codebase_exploration", "deep_research"],
+                "B": ["codebase_exploration", "performance_analysis"],
+                "C": ["codebase_exploration", "knowledge_curation"],
+            }
+        )
         router = TaskRouter(capability_registry=registry)
         decision = router.route("code_review", max_agents=2)
         assert len(decision.selected_agent_ids) <= 2
@@ -87,6 +95,7 @@ class TestTaskRouter:
 # ═══════════════════════════════════════════════════════════════
 # DynamicAgentSpawner テスト
 # ═══════════════════════════════════════════════════════════════
+
 
 class TestDynamicAgentSpawner:
     def test_spawns_agent_with_resolved_skills(self):
@@ -144,15 +153,18 @@ class TestDynamicAgentSpawner:
 # OrchestrationPatternStore テスト
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestOrchestrationPatternStore:
     def test_record_and_get_stats(self, tmp_path):
         store = OrchestrationPatternStore(platform_home=tmp_path)
-        store.record(PatternRecord(
-            task_type="code_review",
-            pattern=OrchestrationPattern.REVIEW_LOOP,
-            agent_ids=["agent:Explorer"],
-            success=True,
-        ))
+        store.record(
+            PatternRecord(
+                task_type="code_review",
+                pattern=OrchestrationPattern.REVIEW_LOOP,
+                agent_ids=["agent:Explorer"],
+                success=True,
+            )
+        )
         stats = store.get_stats_for_task("code_review")
         assert len(stats) == 1
         assert stats[0].total_runs == 1
@@ -162,53 +174,63 @@ class TestOrchestrationPatternStore:
         store = OrchestrationPatternStore(platform_home=tmp_path)
         # 2件 → まだ推奨なし
         for _ in range(2):
-            store.record(PatternRecord(
+            store.record(
+                PatternRecord(
+                    task_type="code_review",
+                    pattern=OrchestrationPattern.REVIEW_LOOP,
+                    agent_ids=[],
+                    success=True,
+                )
+            )
+        assert store.get_best_pattern("code_review") is None
+
+        # 3件 → 推奨あり
+        store.record(
+            PatternRecord(
                 task_type="code_review",
                 pattern=OrchestrationPattern.REVIEW_LOOP,
                 agent_ids=[],
                 success=True,
-            ))
-        assert store.get_best_pattern("code_review") is None
-
-        # 3件 → 推奨あり
-        store.record(PatternRecord(
-            task_type="code_review",
-            pattern=OrchestrationPattern.REVIEW_LOOP,
-            agent_ids=[],
-            success=True,
-        ))
+            )
+        )
         assert store.get_best_pattern("code_review") == OrchestrationPattern.REVIEW_LOOP
 
     def test_best_pattern_is_highest_success_rate(self, tmp_path):
         store = OrchestrationPatternStore(platform_home=tmp_path)
         # single_agent: 2成功1失敗
         for s in [True, True, False]:
-            store.record(PatternRecord(
-                task_type="code_review",
-                pattern=OrchestrationPattern.SINGLE_AGENT,
-                agent_ids=[],
-                success=s,
-            ))
+            store.record(
+                PatternRecord(
+                    task_type="code_review",
+                    pattern=OrchestrationPattern.SINGLE_AGENT,
+                    agent_ids=[],
+                    success=s,
+                )
+            )
         # review_loop: 3成功
         for _ in range(3):
-            store.record(PatternRecord(
-                task_type="code_review",
-                pattern=OrchestrationPattern.REVIEW_LOOP,
-                agent_ids=[],
-                success=True,
-            ))
+            store.record(
+                PatternRecord(
+                    task_type="code_review",
+                    pattern=OrchestrationPattern.REVIEW_LOOP,
+                    agent_ids=[],
+                    success=True,
+                )
+            )
         best = store.get_best_pattern("code_review")
         assert best == OrchestrationPattern.REVIEW_LOOP
 
     def test_persistence(self, tmp_path):
         store1 = OrchestrationPatternStore(platform_home=tmp_path)
         for _ in range(3):
-            store1.record(PatternRecord(
-                task_type="meta_improvement",
-                pattern=OrchestrationPattern.HIERARCHICAL,
-                agent_ids=[],
-                success=True,
-            ))
+            store1.record(
+                PatternRecord(
+                    task_type="meta_improvement",
+                    pattern=OrchestrationPattern.HIERARCHICAL,
+                    agent_ids=[],
+                    success=True,
+                )
+            )
         # 別インスタンスでロード
         store2 = OrchestrationPatternStore(platform_home=tmp_path)
         assert store2.get_best_pattern("meta_improvement") == OrchestrationPattern.HIERARCHICAL
@@ -217,6 +239,7 @@ class TestOrchestrationPatternStore:
 # ═══════════════════════════════════════════════════════════════
 # PreTaskOrchestrator テスト
 # ═══════════════════════════════════════════════════════════════
+
 
 class TestPreTaskOrchestrator:
     def test_analyze_returns_task_analysis(self):
@@ -235,12 +258,14 @@ class TestPreTaskOrchestrator:
         store = OrchestrationPatternStore(platform_home=tmp_path)
         # 学習データ: hierarchical が成功
         for _ in range(3):
-            store.record(PatternRecord(
-                task_type="code_review",
-                pattern=OrchestrationPattern.HIERARCHICAL,
-                agent_ids=[],
-                success=True,
-            ))
+            store.record(
+                PatternRecord(
+                    task_type="code_review",
+                    pattern=OrchestrationPattern.HIERARCHICAL,
+                    agent_ids=[],
+                    success=True,
+                )
+            )
         orchestrator = PreTaskOrchestrator(pattern_store=store)
         analysis = orchestrator.analyze("code_review", "テスト")
         # パターンストアの学習結果が使われる
@@ -298,7 +323,9 @@ class TestPreTaskOrchestrator:
         )
         task = AgentTask(task_type="code_review", description="テスト")
 
-        result = asyncio.run(orchestrator.execute(task, analysis, agent_factory=lambda _: FailingAgent()))
+        result = asyncio.run(
+            orchestrator.execute(task, analysis, agent_factory=lambda _: FailingAgent())
+        )
 
         assert result.success is False
         assert result.error == "All parallel agents failed"
@@ -313,6 +340,7 @@ class TestPreTaskOrchestrator:
         result = asyncio.run(orchestrator.execute(task, analysis, agent_factory=None))
         # デフォルト factory が使われるため AgentResult が返る（TaskAnalysis ではない）
         from agents.base import AgentResult
+
         assert isinstance(result, AgentResult)
 
     def test_plan_and_execute_convenience(self):

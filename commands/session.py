@@ -42,16 +42,18 @@ def _load_tasks(args: argparse.Namespace) -> List[Any]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     tasks: List[AgentTask] = []
     for item in data:
-        tasks.append(AgentTask(
-            agent_id=item["agent_id"],
-            title=item.get("title", item["agent_id"]),
-            prompt=item["prompt"],
-            system_prompt=item.get("system_prompt"),
-            model=item.get("model"),
-            role=item.get("role", "agent"),
-            cwd=item.get("cwd"),
-            stream_json=item.get("stream_json", True),
-        ))
+        tasks.append(
+            AgentTask(
+                agent_id=item["agent_id"],
+                title=item.get("title", item["agent_id"]),
+                prompt=item["prompt"],
+                system_prompt=item.get("system_prompt"),
+                model=item.get("model"),
+                role=item.get("role", "agent"),
+                cwd=item.get("cwd"),
+                stream_json=item.get("stream_json", True),
+            )
+        )
     return tasks
 
 
@@ -59,7 +61,9 @@ def _print_surface(sr: dict) -> None:
     status = sr.get("status", "?")
     code = sr.get("exit_code")
     code_str = "" if code is None else f" exit={code}"
-    print(f"    - {sr.get('title', sr.get('agent_id'))} [{status}{code_str}]  pty={sr.get('pty_id')}")
+    print(
+        f"    - {sr.get('title', sr.get('agent_id'))} [{status}{code_str}]  pty={sr.get('pty_id')}"
+    )
 
 
 async def cmd_session_start(args: argparse.Namespace) -> None:
@@ -88,11 +92,14 @@ async def cmd_session_start(args: argparse.Namespace) -> None:
                 if rec.status == "rate_limited" and orch.due_for_resume(record.id):
                     print("\n[rate-limit] reset window reached — resuming agents…")
                     rec = orch.resume_session(record.id) or rec
-                done = sum(1 for s in rec.surfaces
-                           if s.get("status") in ("done", "failed", "closed"))
+                done = sum(
+                    1 for s in rec.surfaces if s.get("status") in ("done", "failed", "closed")
+                )
                 limited = sum(1 for s in rec.surfaces if s.get("status") == "rate_limited")
                 suffix = f" ({limited} rate-limited)" if limited else ""
-                print(f"  [{rec.status}] {done}/{len(rec.surfaces)} agents finished{suffix}", end="\r")
+                print(
+                    f"  [{rec.status}] {done}/{len(rec.surfaces)} agents finished{suffix}", end="\r"
+                )
                 if rec.status in ("completed", "stopped"):
                     print()
                     print("[OK] session complete.")
@@ -166,7 +173,9 @@ async def cmd_session_doctor(args: argparse.Namespace) -> None:
     )
 
     print("Pantheon session doctor")
-    print(f"  claude CLI:   {'OK ' + (claude_binary() or '') if claude_available() else 'NOT FOUND'}")
+    print(
+        f"  claude CLI:   {'OK ' + (claude_binary() or '') if claude_available() else 'NOT FOUND'}"
+    )
     print(f"  wmux running: {is_wmux_running()}")
     drv = get_driver()
     print(f"  driver(auto): {drv.name}")
@@ -186,15 +195,21 @@ async def cmd_session_doctor(args: argparse.Namespace) -> None:
 
 
 def register(subparsers: Any) -> None:
-    session = subparsers.add_parser("session", help="マルチプレクサ上でエージェントセッションを駆動")
+    session = subparsers.add_parser(
+        "session", help="マルチプレクサ上でエージェントセッションを駆動"
+    )
     session.add_argument("--repo", help="リポジトリルート（既定: カレント）")
     sub = session.add_subparsers(dest="session_command", required=True)
 
-    start = sub.add_parser("start", help="セッションを開始（大タブ＝ワークスペース、エージェント＝小タブ）")
+    start = sub.add_parser(
+        "start", help="セッションを開始（大タブ＝ワークスペース、エージェント＝小タブ）"
+    )
     start.add_argument("--name", help="セッション名（ワークスペース名）")
     start.add_argument("--demo", action="store_true", help="デモ用の最小エージェントで起動")
     start.add_argument("--agents-file", dest="agents_file", help="エージェント定義 JSON ファイル")
-    start.add_argument("--prefer", choices=["wmux", "cmux", "headless"], help="使用するドライバを強制")
+    start.add_argument(
+        "--prefer", choices=["wmux", "cmux", "headless"], help="使用するドライバを強制"
+    )
     start.add_argument("--watch", action="store_true", help="完了までステータスを監視")
     start.add_argument("--timeout", type=float, default=1800, help="--watch のタイムアウト秒")
     start.set_defaults(handler_name="cmd_session_start")

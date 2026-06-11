@@ -56,7 +56,9 @@ class PromptEvolutionEngine:
         self._save()
         return experiment
 
-    def record_result(self, experiment_id: str, variant_id: str, success: bool, quality: float) -> None:
+    def record_result(
+        self, experiment_id: str, variant_id: str, success: bool, quality: float
+    ) -> None:
         experiment = self._experiments.get(experiment_id)
         if experiment is None:
             return
@@ -84,7 +86,9 @@ class PromptEvolutionEngine:
     def evolve_prompt(self, base_prompt: str, performance_history: list[dict]) -> str:
         if not performance_history:
             return base_prompt
-        qualities = [float(item.get("quality", 0.0)) for item in performance_history if "quality" in item]
+        qualities = [
+            float(item.get("quality", 0.0)) for item in performance_history if "quality" in item
+        ]
         if not qualities:
             return base_prompt
         avg_quality = sum(qualities) / len(qualities)
@@ -117,9 +121,7 @@ class PromptEvolutionEngine:
         return experiments
 
     def _save(self) -> None:
-        payload = {
-            "experiments": [asdict(experiment) for experiment in self._experiments.values()]
-        }
+        payload = {"experiments": [asdict(experiment) for experiment in self._experiments.values()]}
         self.experiments_file.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",

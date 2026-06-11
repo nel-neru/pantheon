@@ -24,7 +24,7 @@ argument-hint: "[任意: 注力領域 (例: frontend / 24h-autonomy / monetizati
   初めて `node scripts/merge_to_main.mjs`（テストゲート付き）で main へ統合する。
 - **生成は claude CLI のみ**（API キー無し）。`.env` / `*.pem` / `*.key` / 資格情報は読み書きしない。
   `rm -rf` / `git push --force` は PreToolUse フックで禁止。
-- **テスト基線を回帰扱いしない**: Windows の既知 6 失敗（パス区切り 4 + chmod 2）と順序フレーク 2 件は
+- **テスト基線を回帰扱いしない**: Windows の既知 2 失敗（chmod 0o600）と順序フレーク 2 件は
   ベースライン。**新規の失敗だけ**が回帰。全件の収集・実行を壊さない。
 - **コード規約**: 新規 Python は `from __future__ import annotations`、`datetime.now(timezone.utc)`、
   `SpecialistAgent.skills` は 2〜3、`web/server.py` の明示 404 を壊さない、状態は `~/.pantheon`（global）/

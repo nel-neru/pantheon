@@ -20,7 +20,9 @@ class EvaluationResult:
 class AgentSelfEvaluator:
     """LLMを使わないヒューリスティックな自己評価器。"""
 
-    FILE_OR_LINE_PATTERN = re.compile(r"(?:\b[\w./-]+\.[\w]+(?::\d+)?\b|\bline\s+\d+\b|\bL\d+\b)", re.IGNORECASE)
+    FILE_OR_LINE_PATTERN = re.compile(
+        r"(?:\b[\w./-]+\.[\w]+(?::\d+)?\b|\bline\s+\d+\b|\bL\d+\b)", re.IGNORECASE
+    )
     BULLET_PATTERN = re.compile(r"(^\s*[-*•]\s+)|(^\s*\d+[.)]\s+)", re.MULTILINE)
 
     def evaluate(self, output: str, task_type: str) -> EvaluationResult:
@@ -42,9 +44,8 @@ class AgentSelfEvaluator:
             score += 2.0
             feedback.append("構造化された箇条書きがあります")
 
-        unresolved_error = (
-            ("エラー" in text or "失敗" in text)
-            and not any(keyword in text for keyword in ["解決", "対応", "resolved", "修正"])
+        unresolved_error = ("エラー" in text or "失敗" in text) and not any(
+            keyword in text for keyword in ["解決", "対応", "resolved", "修正"]
         )
         if not unresolved_error:
             score += 2.0

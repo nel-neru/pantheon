@@ -23,13 +23,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CapabilityGap:
     """検出された能力ギャップ。"""
+
     gap_id: str
-    pattern_key: str                      # どの繰り返しパターンから検出されたか
-    description: str                      # ギャップの説明
-    suggested_type: str                   # "agent" | "skill" | "tool" | "mcp_tool"
-    suggested_name: str                   # 提案する能力名
-    rationale: str                        # なぜこの能力が必要か
-    priority: str = "medium"             # "high" | "medium" | "low"
+    pattern_key: str  # どの繰り返しパターンから検出されたか
+    description: str  # ギャップの説明
+    suggested_type: str  # "agent" | "skill" | "tool" | "mcp_tool"
+    suggested_name: str  # 提案する能力名
+    rationale: str  # なぜこの能力が必要か
+    priority: str = "medium"  # "high" | "medium" | "low"
     estimated_token_savings: int = 0
     detected_at: str = ""
     implemented: bool = False
@@ -38,7 +39,9 @@ class CapabilityGap:
         if not self.detected_at:
             self.detected_at = datetime.now(timezone.utc).isoformat()
         if not self.gap_id:
-            self.gap_id = f"gap:{self.pattern_key}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            self.gap_id = (
+                f"gap:{self.pattern_key}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -108,6 +111,7 @@ class CapabilityGapAnalyzer:
         self._llm = llm_client
 
         from core.platform.state import get_platform_home
+
         home = platform_home or get_platform_home()
         self._gap_file = home / self.GAP_FILE
 
@@ -269,22 +273,25 @@ class CapabilityGapAnalyzer:
             content = response.content if hasattr(response, "content") else str(response)
 
             import re
-            json_match = re.search(r'\[.*?\]', content, re.DOTALL)
+
+            json_match = re.search(r"\[.*?\]", content, re.DOTALL)
             if not json_match:
                 return []
 
             raw_gaps = json.loads(json_match.group())
             result = []
             for i, raw in enumerate(raw_gaps):
-                result.append(CapabilityGap(
-                    gap_id=f"gap:llm:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}:{i}",
-                    pattern_key="llm_analysis",
-                    description=raw.get("description", ""),
-                    suggested_type=raw.get("suggested_type", "agent"),
-                    suggested_name=raw.get("suggested_name", f"UnknownCapability_{i}"),
-                    rationale=raw.get("rationale", ""),
-                    priority=raw.get("priority", "medium"),
-                ))
+                result.append(
+                    CapabilityGap(
+                        gap_id=f"gap:llm:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}:{i}",
+                        pattern_key="llm_analysis",
+                        description=raw.get("description", ""),
+                        suggested_type=raw.get("suggested_type", "agent"),
+                        suggested_name=raw.get("suggested_name", f"UnknownCapability_{i}"),
+                        rationale=raw.get("rationale", ""),
+                        priority=raw.get("priority", "medium"),
+                    )
+                )
             return result
         except Exception as e:
             logger.warning("LLM gap analysis failed: %s", e)
@@ -307,6 +314,4 @@ class CapabilityGapAnalyzer:
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "gaps": [g.to_dict() for g in self._gaps],
         }
-        self._gap_file.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        self._gap_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

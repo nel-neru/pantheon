@@ -21,7 +21,9 @@ class HealthSnapshot:
 
 
 class HealthCalculator:
-    def calculate(self, org_name: str, proposals: list[dict], decisions: list[dict]) -> HealthSnapshot:
+    def calculate(
+        self, org_name: str, proposals: list[dict], decisions: list[dict]
+    ) -> HealthSnapshot:
         pending_proposals = sum(1 for proposal in proposals if self._is_pending(proposal))
         accepted_count = sum(1 for decision in decisions if self._is_accepted(decision))
         total_decisions = len(decisions)

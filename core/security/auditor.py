@@ -22,11 +22,26 @@ class SecurityAuditor:
     """Regex-based lightweight security auditor."""
 
     RULES = [
-        ("api_key_exposure", "high", re.compile(r"(sk-[A-Za-z0-9_-]+|ghp_[A-Za-z0-9]+|AIza[0-9A-Za-z-_]+)"), "API key exposure risk"),
+        (
+            "api_key_exposure",
+            "high",
+            re.compile(r"(sk-[A-Za-z0-9_-]+|ghp_[A-Za-z0-9]+|AIza[0-9A-Za-z-_]+)"),
+            "API key exposure risk",
+        ),
         ("eval_usage", "high", re.compile(r"\beval\s*\("), "Potential code injection via eval()"),
         ("exec_usage", "high", re.compile(r"\bexec\s*\("), "Potential code injection via exec()"),
-        ("os_system_usage", "medium", re.compile(r"\bos\.system\s*\("), "Potential shell injection via os.system()"),
-        ("pickle_loads_usage", "high", re.compile(r"\bpickle\.loads\s*\("), "Unsafe deserialization via pickle.loads()"),
+        (
+            "os_system_usage",
+            "medium",
+            re.compile(r"\bos\.system\s*\("),
+            "Potential shell injection via os.system()",
+        ),
+        (
+            "pickle_loads_usage",
+            "high",
+            re.compile(r"\bpickle\.loads\s*\("),
+            "Unsafe deserialization via pickle.loads()",
+        ),
     ]
 
     def audit_file(self, file_path: Path) -> list[SecurityIssue]:

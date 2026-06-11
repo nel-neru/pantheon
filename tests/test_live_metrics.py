@@ -126,7 +126,9 @@ def test_recency_uses_acceptance_time_last_updated(tmp_path):
     old = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
     today = datetime.now(timezone.utc).isoformat()
     (improvements / f"{uuid.uuid4().hex}.json").write_text(
-        json.dumps({"id": uuid.uuid4().hex, "status": "done", "created_at": old, "last_updated": today}),
+        json.dumps(
+            {"id": uuid.uuid4().hex, "status": "done", "created_at": old, "last_updated": today}
+        ),
         encoding="utf-8",
     )
     live = compute_live_org_metrics(org, sm)

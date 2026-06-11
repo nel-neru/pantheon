@@ -28,7 +28,7 @@ class GroupBalanceEvaluator:
         avg_score = sum(scores) / len(scores)
         if len(scores) > 1:
             variance = sum((score - avg_score) ** 2 for score in scores) / (len(scores) - 1)
-            std_dev = variance ** 0.5
+            std_dev = variance**0.5
         else:
             std_dev = 0.0
         weakest_org = min(items, key=lambda item: item[1])[0]

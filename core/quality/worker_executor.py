@@ -61,6 +61,8 @@ class WorkerTaskExecutor:
         for proposal in proposals:
             self.state_manager.save_improvement_proposal(proposal)
 
-        print(f"[WorkerExecutor] レビュー完了 (Score: {review.overall_score:.1f}) / 提案 {len(proposals)}件 保存済み")
+        print(
+            f"[WorkerExecutor] レビュー完了 (Score: {review.overall_score:.1f}) / 提案 {len(proposals)}件 保存済み"
+        )
 
         return result, review, proposals

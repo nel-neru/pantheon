@@ -58,8 +58,9 @@ def shell_command_for(spec: AgentSpec) -> str:
     """Return the shell command line to type into a surface for ``spec``."""
     if spec.shell_command:
         return spec.shell_command
-    return " ".join(_pwsh_quote(a) if (" " in a or "'" in a or '"' in a) else a
-                     for a in spec.command)
+    return " ".join(
+        _pwsh_quote(a) if (" " in a or "'" in a or '"' in a) else a for a in spec.command
+    )
 
 
 class WmuxDriver(MultiplexerDriver):
@@ -74,9 +75,7 @@ class WmuxDriver(MultiplexerDriver):
 
     def ensure_running(self) -> None:
         if not self._client.available():
-            raise MultiplexerUnavailableError(
-                "wmux app is not running. Launch wmux, then retry."
-            )
+            raise MultiplexerUnavailableError("wmux app is not running. Launch wmux, then retry.")
         try:
             self._client.verify()
         except WmuxNotConfirmedError as exc:
@@ -119,22 +118,25 @@ class WmuxDriver(MultiplexerDriver):
 
         # Label the agent's workspace pane so the dashboard can group it.
         self._safe_set_metadata(
-            ws_id, pane_id,
+            ws_id,
+            pane_id,
             label=spec.title[:64],
             role=spec.role[:64],
             status="running",
-            custom={"pantheon.agentId": spec.agent_id,
-                    "pantheon.session": workspace.name},
+            custom={"pantheon.agentId": spec.agent_id, "pantheon.session": workspace.name},
         )
 
         cmd = shell_command_for(spec)
         try:
-            self._client.call("input.send", {
-                "workspaceId": ws_id,
-                "ptyId": pty_id,
-                "text": cmd,
-                "submit": True,
-            })
+            self._client.call(
+                "input.send",
+                {
+                    "workspaceId": ws_id,
+                    "ptyId": pty_id,
+                    "text": cmd,
+                    "submit": True,
+                },
+            )
         except WmuxRpcError as exc:
             logger.warning("wmux input.send failed for %s: %s", spec.agent_id, exc)
             surface.status = SurfaceStatus.FAILED
@@ -154,11 +156,14 @@ class WmuxDriver(MultiplexerDriver):
             surface.status = SurfaceStatus.CLOSED
             return surface
         try:
-            ev = self._client.call("terminal.readEvents", {
-                "workspaceId": surface.workspace_id,
-                "ptyId": surface.pty_id,
-                "lastCommandOnly": True,
-            })
+            ev = self._client.call(
+                "terminal.readEvents",
+                {
+                    "workspaceId": surface.workspace_id,
+                    "ptyId": surface.pty_id,
+                    "lastCommandOnly": True,
+                },
+            )
         except WmuxRpcError as exc:
             logger.debug("readEvents failed for %s: %s", surface.id, exc)
             return surface
@@ -168,7 +173,8 @@ class WmuxDriver(MultiplexerDriver):
             surface.exit_code = code
             surface.status = SurfaceStatus.DONE if code == 0 else SurfaceStatus.FAILED
             self._safe_set_metadata(
-                surface.workspace_id, surface.metadata.get("pane_id"),
+                surface.workspace_id,
+                surface.metadata.get("pane_id"),
                 status=("done" if code == 0 else f"failed({code})"),
             )
         return surface
@@ -177,10 +183,13 @@ class WmuxDriver(MultiplexerDriver):
         if not surface.pty_id or not surface.workspace_id:
             return ""
         try:
-            res = self._client.call("input.readScreen", {
-                "workspaceId": surface.workspace_id,
-                "ptyId": surface.pty_id,
-            })
+            res = self._client.call(
+                "input.readScreen",
+                {
+                    "workspaceId": surface.workspace_id,
+                    "ptyId": surface.pty_id,
+                },
+            )
         except WmuxRpcError:
             return ""
         if isinstance(res, dict):
@@ -194,19 +203,26 @@ class WmuxDriver(MultiplexerDriver):
         # tears the agent's tab down (automatic tab removal).
         if surface.pty_id and surface.workspace_id:
             try:
-                self._client.call("input.sendKey", {
-                    "workspaceId": surface.workspace_id,
-                    "ptyId": surface.pty_id, "key": "ctrl+c",
-                })
+                self._client.call(
+                    "input.sendKey",
+                    {
+                        "workspaceId": surface.workspace_id,
+                        "ptyId": surface.pty_id,
+                        "key": "ctrl+c",
+                    },
+                )
             except WmuxRpcError:
                 pass
             try:
-                self._client.call("input.send", {
-                    "workspaceId": surface.workspace_id,
-                    "ptyId": surface.pty_id,
-                    "text": "exit",
-                    "submit": True,
-                })
+                self._client.call(
+                    "input.send",
+                    {
+                        "workspaceId": surface.workspace_id,
+                        "ptyId": surface.pty_id,
+                        "text": "exit",
+                        "submit": True,
+                    },
+                )
             except WmuxRpcError:
                 pass
         if surface.status == SurfaceStatus.RUNNING:
@@ -215,12 +231,17 @@ class WmuxDriver(MultiplexerDriver):
     def tag_surface(self, surface: Surface, **meta: Any) -> None:
         super().tag_surface(surface, **meta)
         self._safe_set_metadata(
-            surface.workspace_id, surface.metadata.get("pane_id"),
+            surface.workspace_id,
+            surface.metadata.get("pane_id"),
             label=meta.get("label"),
             role=meta.get("role"),
             status=meta.get("status"),
-            custom={k: str(v) for k, v in meta.items()
-                    if k not in ("label", "role", "status") and v is not None} or None,
+            custom={
+                k: str(v)
+                for k, v in meta.items()
+                if k not in ("label", "role", "status") and v is not None
+            }
+            or None,
         )
 
     # -- listing ------------------------------------------------------------ #
@@ -229,14 +250,16 @@ class WmuxDriver(MultiplexerDriver):
         for w in self._raw_workspaces():
             ws = Workspace(id=w.get("id"), name=w.get("name") or w.get("id"))
             for pty in w.get("ptyIds") or []:
-                ws.surfaces.append(Surface(
-                    id=f"{ws.id}:{pty}",
-                    title=pty,
-                    workspace_id=ws.id,
-                    pty_id=pty,
-                    cwd=(w.get("metadata") or {}).get("cwd"),
-                    status=SurfaceStatus.RUNNING,
-                ))
+                ws.surfaces.append(
+                    Surface(
+                        id=f"{ws.id}:{pty}",
+                        title=pty,
+                        workspace_id=ws.id,
+                        pty_id=pty,
+                        cwd=(w.get("metadata") or {}).get("cwd"),
+                        status=SurfaceStatus.RUNNING,
+                    )
+                )
             out.append(ws)
         return out
 
@@ -260,15 +283,16 @@ class WmuxDriver(MultiplexerDriver):
         except WmuxRpcError:
             return None
         panes = res.get("panes") if isinstance(res, dict) else res
-        for p in (panes or []):
+        for p in panes or []:
             if p.get("active"):
                 return p.get("id")
         if panes:
             return panes[0].get("id")
         return None
 
-    def _safe_set_metadata(self, ws_id, pane_id, *, label=None, role=None,
-                           status=None, custom=None) -> None:
+    def _safe_set_metadata(
+        self, ws_id, pane_id, *, label=None, role=None, status=None, custom=None
+    ) -> None:
         if not ws_id:
             return
         params: Dict[str, Any] = {"workspaceId": ws_id}

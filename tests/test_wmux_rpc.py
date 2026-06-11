@@ -53,17 +53,26 @@ class FakeWmuxServer:
             return {"id": rid, "ok": True, "result": {"identity": {"name": "pantheon"}}}
         if not self.approved:
             return {
-                "id": rid, "ok": False,
+                "id": rid,
+                "ok": False,
                 "error": f"{method}: awaiting user approval (promptId=abc-123)",
-                "rejection": {"reason": "identity-status",
-                              "pendingApproval": {"promptId": "abc-123"}},
+                "rejection": {
+                    "reason": "identity-status",
+                    "pendingApproval": {"promptId": "abc-123"},
+                },
             }
         if method == "workspace.list":
             return {"id": rid, "ok": True, "result": [{"id": "ws1", "name": "Work"}]}
         if method == "mcp.claimWorkspace":
-            return {"id": rid, "ok": True,
-                    "result": {"workspaceId": "ws-new", "ptyId": "pty-1",
-                               "workspaceName": req["params"].get("name")}}
+            return {
+                "id": rid,
+                "ok": True,
+                "result": {
+                    "workspaceId": "ws-new",
+                    "ptyId": "pty-1",
+                    "workspaceName": req["params"].get("name"),
+                },
+            }
         return {"id": rid, "ok": True, "result": {"echo": method}}
 
     def close(self):
@@ -86,11 +95,13 @@ def client_to(monkeypatch):
     def _make(srv: FakeWmuxServer) -> WmuxClient:
         monkeypatch.setattr(wmux_rpc, "read_auth_token", lambda: "test-token")
         monkeypatch.setattr(
-            wmux_rpc, "resolve_endpoints",
+            wmux_rpc,
+            "resolve_endpoints",
             lambda: [("tcp", ("127.0.0.1", srv.port))],
         )
         monkeypatch.setattr(wmux_rpc, "_probe", lambda kind, target: True)
         return WmuxClient()
+
     return _make
 
 
@@ -110,9 +121,9 @@ def test_declare_permissions_payload(fake_server, client_to):
     client.handshake()
     decl = next(r for r in fake_server.received if r["method"] == "mcp.declarePermissions")
     perms = decl["params"]["permissions"]
-    assert "workspace.claim" in perms          # create a session workspace
-    assert "pane.create" in perms              # add an agent surface
-    assert "terminal.send" in perms            # type the claude command
+    assert "workspace.claim" in perms  # create a session workspace
+    assert "pane.create" in perms  # add an agent surface
+    assert "terminal.send" in perms  # type the claude command
 
 
 def test_not_confirmed_raises(client_to):

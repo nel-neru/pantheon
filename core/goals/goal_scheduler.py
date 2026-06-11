@@ -37,7 +37,11 @@ class GoalScheduler:
         return execution
 
     def get_active_executions(self) -> list[GoalExecution]:
-        return [execution for execution in self._executions if execution.status in {"pending", "running"}]
+        return [
+            execution
+            for execution in self._executions
+            if execution.status in {"pending", "running"}
+        ]
 
     def can_start_new(self) -> bool:
         return len(self.get_active_executions()) < self.max_parallel

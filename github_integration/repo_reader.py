@@ -10,8 +10,16 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 EXCLUDE_DIRS = {
-    ".git", "__pycache__", "node_modules", ".venv", "venv",
-    "dist", "build", ".mypy_cache", ".pytest_cache", ".pantheon",
+    ".git",
+    "__pycache__",
+    "node_modules",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".pantheon",
 }
 
 CODE_EXTENSIONS = {".py", ".ts", ".js", ".go", ".rs", ".java", ".rb", ".cpp", ".c", ".h"}
@@ -19,14 +27,14 @@ ENTRY_POINT_STEMS = {"main", "app", "cli", "__main__", "server", "api", "run", "
 
 
 def get_file_tree(repo_path: Path) -> List[str]:
-    """コードファイルのパス一覧を返す（除外ディレクトリ除く）"""
+    """コードファイルのパス一覧を返す（除外ディレクトリ除く、POSIX 区切りで正規化）"""
     result = []
     for f in sorted(repo_path.rglob("*")):
         if f.is_dir():
             continue
         if any(part in EXCLUDE_DIRS for part in f.relative_to(repo_path).parts):
             continue
-        result.append(str(f.relative_to(repo_path)))
+        result.append(f.relative_to(repo_path).as_posix())
     return result
 
 
@@ -73,9 +81,9 @@ def get_important_files(repo_path: Path, max_files: int = 15) -> Dict[str, str]:
     for f in candidates:
         if len(result) >= max_files or total_chars >= max_total:
             break
-        content = read_file_content(repo_path, str(f.relative_to(repo_path)))
+        rel = f.relative_to(repo_path).as_posix()
+        content = read_file_content(repo_path, rel)
         if content:
-            rel = str(f.relative_to(repo_path))
             result[rel] = content
             total_chars += len(content)
 

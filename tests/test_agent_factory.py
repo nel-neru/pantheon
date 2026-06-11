@@ -99,7 +99,9 @@ class TestAgentFactoryCreate:
             implementation="",
             build_system_prompt=lambda _loader: "YAML_PROMPT",
         )
-        monkeypatch.setattr(factory, "_get_agent_loader", lambda: SimpleNamespace(get=lambda _capability_id: defn))
+        monkeypatch.setattr(
+            factory, "_get_agent_loader", lambda: SimpleNamespace(get=lambda _capability_id: defn)
+        )
         monkeypatch.setattr(factory, "_get_skill_loader", lambda: object())
 
         agent = factory.create("agent:yaml_agent")
@@ -125,15 +127,14 @@ class TestAgentFactoryCreateForSkills:
         from agents.codebase_explorer_agent import CodebaseExplorerAgent
 
         assert isinstance(agent, CodebaseExplorerAgent)
+
     def test_unknown_skills_returns_generic(self):
         """未登録のスキル組み合わせは GenericSkillAgent が返る。
         CORPORATE_RESEARCH + PROMPT_ENGINEERING は部分一致候補があるが
         overlap が 1/2 未満なので GenericSkillAgent にフォールバックする。"""
         factory = AgentFactory()
         # CORPORATE_RESEARCH はどのエージェントも持っていない→ overlap < 2 → Generic
-        agent = factory.create_for_skills(
-            [AgentSkill.CORPORATE_RESEARCH, AgentSkill.ORG_DESIGN]
-        )
+        agent = factory.create_for_skills([AgentSkill.CORPORATE_RESEARCH, AgentSkill.ORG_DESIGN])
         assert isinstance(agent, GenericSkillAgent)
 
     def test_single_skill_gets_deep_research_appended(self):
@@ -179,8 +180,10 @@ class TestGenericSkillAgentSkillDifference:
         task = AgentTask("research", "市場調査を行え")
         result = asyncio.run(agent.run(task))
         assert result.success
-        assert "corporate_research" in result.output["result"] or \
-               "corporate_research" in result.thinking_process
+        assert (
+            "corporate_research" in result.output["result"]
+            or "corporate_research" in result.thinking_process
+        )
 
     def test_generic_agent_without_llm(self):
         agent = GenericSkillAgent.from_skills(
@@ -275,6 +278,7 @@ class TestPreTaskOrchestratorDefaultFactory:
         analysis.recommended_agent_ids = ["agent:strategic_planner"]
 
         from core.orchestration.pre_task_orchestrator import OrchestrationPattern
+
         analysis.recommended_pattern = OrchestrationPattern.SINGLE_AGENT
 
         async def _run():

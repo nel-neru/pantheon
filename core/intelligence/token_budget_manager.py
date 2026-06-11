@@ -20,10 +20,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TokenBudget:
     """タスク種別のトークン予算定義。"""
+
     task_type: str
-    max_context_tokens: int       # コンテキスト（コードベース情報等）上限
-    max_prompt_tokens: int        # プロンプト全体上限
-    max_output_tokens: int        # 出力上限
+    max_context_tokens: int  # コンテキスト（コードベース情報等）上限
+    max_prompt_tokens: int  # プロンプト全体上限
+    max_output_tokens: int  # 出力上限
     snapshot_mode: str = "exploration"
     description: str = ""
 
@@ -100,6 +101,7 @@ DEFAULT_BUDGETS: Dict[str, TokenBudget] = {
 @dataclass
 class TokenUsageRecord:
     """トークン使用実績記録。予算の自動最適化に使用する。"""
+
     task_type: str
     actual_context_tokens: int
     actual_prompt_tokens: int
@@ -139,7 +141,9 @@ class TokenBudgetManager:
         truncated = context[:max_chars]
         logger.debug(
             "TokenBudgetManager: %s コンテキストを %d文字 → %d文字 にトリミング",
-            task_type, len(context), max_chars,
+            task_type,
+            len(context),
+            max_chars,
         )
         return truncated + f"\n... (トークン上限 {budget.max_context_tokens} により省略)"
 
@@ -161,6 +165,7 @@ class TokenBudgetManager:
     ) -> None:
         """実際のトークン使用量を記録する。"""
         from datetime import datetime, timezone
+
         record = TokenUsageRecord(
             task_type=task_type,
             actual_context_tokens=context_tokens,

@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AgentTask:
     """エージェントへの入力タスク"""
+
     task_type: str
     description: str
     input: Dict[str, Any] = field(default_factory=dict)
@@ -36,6 +37,7 @@ class AgentTask:
 @dataclass
 class AgentResult:
     """エージェントの実行結果"""
+
     success: bool
     output: Dict[str, Any] = field(default_factory=dict)
     thinking_process: str = ""
@@ -101,6 +103,7 @@ class BaseAgent(ABC):
         """AgentSkillEngine の遅延取得（循環インポート回避）。"""
         if self._skill_engine is None:
             from core.intelligence.agent_skill_engine import AgentSkillEngine
+
             self._skill_engine = AgentSkillEngine()
         return self._skill_engine
 
@@ -110,9 +113,7 @@ class BaseAgent(ABC):
         サブクラスは SYSTEM_PROMPT を apply_skills_to_prompt() で
         ラップすることでスキルを有効化できる。
         """
-        return self._get_skill_engine().apply_skills_to_prompt(
-            base_prompt, self.specialist.skills
-        )
+        return self._get_skill_engine().apply_skills_to_prompt(base_prompt, self.specialist.skills)
 
     def get_skill_tags(self) -> List[str]:
         """このエージェントのスキルに対応するナレッジタグを返す。"""

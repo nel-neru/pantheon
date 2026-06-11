@@ -1,6 +1,5 @@
 """Tests for PlatformStateManager"""
 
-
 import pytest
 
 from core.org_factory import create_default_organization, create_organization_from_template
@@ -23,15 +22,18 @@ def test_initialize(tmp_psm):
     assert cfg["meta_improvement_org_id"] == "test-id"
 
 
-def test_save_and_load_organization(tmp_psm):
+def test_save_and_load_organization(tmp_psm, tmp_path):
+    # POSIX 絶対パスのハードコードは Windows の absolute 検証で load 時に弾かれる。
+    # 意図は永続化の往復確認なので、プラットフォーム正規の絶対パスを使う。
+    repo_path = str(tmp_path / "test-repo")
     org = create_default_organization("TestOrg", "テスト用")
-    org.target_repo_path = "/tmp/test-repo"
+    org.target_repo_path = repo_path
     tmp_psm.save_organization(org)
 
     loaded = tmp_psm.load_organizations()
     assert len(loaded) == 1
     assert loaded[0].name == "TestOrg"
-    assert loaded[0].target_repo_path == "/tmp/test-repo"
+    assert loaded[0].target_repo_path == repo_path
 
 
 def test_load_organization_by_name(tmp_psm):
@@ -83,7 +85,9 @@ def test_get_org_state_manager_no_target_repo(tmp_psm):
 
 
 def test_save_shared_insight(tmp_psm):
-    tmp_psm.save_shared_insight("python活用", "List comprehension を使う", "TestOrg", tags=["python"])
+    tmp_psm.save_shared_insight(
+        "python活用", "List comprehension を使う", "TestOrg", tags=["python"]
+    )
     insights = tmp_psm.get_shared_insights(tags=["python"])
     assert len(insights) == 1
     assert insights[0]["content"] == "List comprehension を使う"

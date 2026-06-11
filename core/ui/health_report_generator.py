@@ -48,10 +48,14 @@ class HealthReportGenerator:
             recommendations.append("提案品質の見直しと優先度調整を行ってください。")
         if knowledge_count < 5:
             issues.append(f"ナレッジ蓄積が不足しています ({knowledge_count}件)")
-            recommendations.append("重要な学びを KnowledgeManager に保存して再利用性を高めてください。")
+            recommendations.append(
+                "重要な学びを KnowledgeManager に保存して再利用性を高めてください。"
+            )
 
         if not issues:
-            recommendations.append("現在の運用状態は良好です。このまま週次レビューを継続してください。")
+            recommendations.append(
+                "現在の運用状態は良好です。このまま週次レビューを継続してください。"
+            )
 
         return HealthReport(
             org_name=org_name,

@@ -79,7 +79,10 @@ class SelfImprovementCycle:
         version = CoreVersion(
             version=next_version,
             improved_at=completed_at,
-            changes=[f"HUMAN_REQUIRED: {len(proposals)} proposal(s) awaiting approval", *improvements],
+            changes=[
+                f"HUMAN_REQUIRED: {len(proposals)} proposal(s) awaiting approval",
+                *improvements,
+            ],
         )
         self.version_file.write_text(
             json.dumps(asdict(version), ensure_ascii=False, indent=2),

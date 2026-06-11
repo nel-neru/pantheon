@@ -32,7 +32,9 @@ class PatternLibrary:
         self.platform_home = Path(platform_home) if platform_home else get_platform_home()
         self.file_path = self.platform_home / "pattern_library.json"
 
-    def save_pattern(self, name: str, code: str, tags: list[str], description: str = "") -> CodePattern:
+    def save_pattern(
+        self, name: str, code: str, tags: list[str], description: str = ""
+    ) -> CodePattern:
         patterns = self._load_all()
         pattern = CodePattern(
             pattern_id=f"pattern:{uuid4().hex[:8]}",
@@ -80,4 +82,6 @@ class PatternLibrary:
     def _save_all(self, patterns: list[CodePattern]) -> None:
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"patterns": [asdict(pattern) for pattern in patterns]}
-        self.file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.file_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )

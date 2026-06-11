@@ -27,7 +27,6 @@ class FailingAgent(BaseAgent):
 
 
 @pytest.fixture
-
 def specialist():
     return SpecialistAgent(
         name="KnowledgeAgent",
@@ -36,7 +35,6 @@ def specialist():
 
 
 @pytest.fixture
-
 def agent(specialist):
     return DummyAgent(specialist)
 
@@ -49,10 +47,12 @@ class TestBaseAgentKnowledge:
         prompt = agent.apply_skills_to_prompt("Base prompt")
 
         assert prompt == "patched prompt"
-        assert engine.calls == [(
-            "Base prompt",
-            [AgentSkill.DEEP_RESEARCH, AgentSkill.TOOL_INTEGRATION],
-        )]
+        assert engine.calls == [
+            (
+                "Base prompt",
+                [AgentSkill.DEEP_RESEARCH, AgentSkill.TOOL_INTEGRATION],
+            )
+        ]
 
     def test_get_skill_tags_returns_skill_values_as_strings(self, agent):
         assert agent.get_skill_tags() == ["deep_research", "tool_integration"]
@@ -109,7 +109,9 @@ class TestBaseAgentKnowledge:
     async def test_safe_run_returns_standardized_error_result(self, specialist):
         agent = FailingAgent(specialist)
 
-        result = await agent.safe_run(AgentTask(task_type="review", description="Inspect the repository"))
+        result = await agent.safe_run(
+            AgentTask(task_type="review", description="Inspect the repository")
+        )
 
         assert result.success is False
         assert result.error == "boom: review"

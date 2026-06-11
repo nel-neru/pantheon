@@ -83,7 +83,9 @@ class OrgSelfDiagnostics:
     def format_report(self, report: DiagnosticReport) -> str:
         strengths = "、".join(report.strengths) if report.strengths else "なし"
         weaknesses = "、".join(report.weaknesses) if report.weaknesses else "なし"
-        next_steps = "\n".join(f"- {step}" for step in report.next_steps) if report.next_steps else "- なし"
+        next_steps = (
+            "\n".join(f"- {step}" for step in report.next_steps) if report.next_steps else "- なし"
+        )
         return (
             f"🩺 組織自己診断: {report.org_name}\n"
             f"Health Score: {report.health_score:.1f}\n"

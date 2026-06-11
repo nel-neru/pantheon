@@ -47,6 +47,7 @@ class GroupOrchestrator:
 
         # N-06: PreTaskOrchestrator を内部に持つ（全タスクはここを経由する）
         from core.orchestration.pre_task_orchestrator import PreTaskOrchestrator
+
         self._pre_task = PreTaskOrchestrator(
             capability_registry=capability_registry,
             knowledge_manager=knowledge_manager,
@@ -102,7 +103,9 @@ class GroupOrchestrator:
         best_org_key, best_score = max(scored, key=lambda x: x[1])
         target_org = self.hq_state.organizations.get(best_org_key)
 
-        print(f"[GroupOrchestrator] 次に改善すべきOrganization: {target_org.name} (優先度スコア: {best_score})")
+        print(
+            f"[GroupOrchestrator] 次に改善すべきOrganization: {target_org.name} (優先度スコア: {best_score})"
+        )
         return target_org, best_score
 
     async def run_smart_improvement_cycle(
@@ -142,7 +145,7 @@ class GroupOrchestrator:
                 print(f"StateManagerが見つかりません: {org.name}")
                 continue
 
-            print(f"\n--- [{i+1}/{len(sorted_metrics)}] {org.name} の改善 ---")
+            print(f"\n--- [{i + 1}/{len(sorted_metrics)}] {org.name} の改善 ---")
 
             # N-06: PreTaskOrchestrator で実行計画を事前分析
             analysis = self._pre_task.analyze(
@@ -154,9 +157,7 @@ class GroupOrchestrator:
                 f"推奨エージェント: {analysis.recommended_agent_ids or '(デフォルト)'}"
             )
 
-            result = await run_improvement_for_organization(
-                org, sm, max_cycles=max_cycles_per_org
-            )
+            result = await run_improvement_for_organization(org, sm, max_cycles=max_cycles_per_org)
 
             # C-02: 改善サイクル結果でスコアを自動更新
             outcome = self._build_outcome_from_cycle(result)
@@ -180,7 +181,8 @@ class GroupOrchestrator:
             if isinstance(cycle_result, dict):
                 proposals = cycle_result.get("proposals", cycle_result.get("suggestions", []))
                 accepted = sum(
-                    1 for p in proposals
+                    1
+                    for p in proposals
                     if isinstance(p, dict) and p.get("status") in ("approved", "accepted", "done")
                 )
                 return ExecutionOutcome(

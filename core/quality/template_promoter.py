@@ -25,7 +25,9 @@ class TemplatePromoter:
         payload.setdefault("org_name", org_name)
         payload["promoted_score"] = score
         path = self.templates_dir / f"{org_name}_promoted.yaml"
-        path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        path.write_text(
+            yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8"
+        )
         return path
 
     def list_promoted_templates(self) -> list[str]:

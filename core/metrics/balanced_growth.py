@@ -15,6 +15,7 @@ from core.models.organization import GroupHQState, Organization, OrganizationMet
 @dataclass
 class GroupMetrics:
     """Core 視点のバランス成長指標"""
+
     total_organizations: int
     active_organizations: int
     avg_autonomy: float
@@ -35,14 +36,13 @@ def calculate_organization_metrics(
     recent_review_scores = recent_review_scores or []
 
     avg_review = (
-        sum(recent_review_scores) / len(recent_review_scores)
-        if recent_review_scores else 5.0
+        sum(recent_review_scores) / len(recent_review_scores) if recent_review_scores else 5.0
     )
 
     health = (
-        organization.autonomy_score * 0.4 +
-        organization.improvement_velocity * 0.3 +
-        avg_review * 0.3
+        organization.autonomy_score * 0.4
+        + organization.improvement_velocity * 0.3
+        + avg_review * 0.3
     )
 
     return OrganizationMetrics(
@@ -106,8 +106,8 @@ def calculate_group_metrics(
 def get_improvement_priority_score(metrics: OrganizationMetrics) -> float:
     """このOrganizationを今改善すべき優先度スコアを計算"""
     score = (
-        (100 - metrics.health_score) * 0.5 +
-        metrics.pending_proposals_count * 5 +
-        (100 - metrics.autonomy_score) * 0.3
+        (100 - metrics.health_score) * 0.5
+        + metrics.pending_proposals_count * 5
+        + (100 - metrics.autonomy_score) * 0.3
     )
     return round(score, 1)

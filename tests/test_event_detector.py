@@ -1,6 +1,5 @@
 """Tests for EventDetector"""
 
-
 import pytest
 
 from core.events.detector import EventDetector, EventType
@@ -47,8 +46,12 @@ def test_pending_spike_detected(tmp_path):
     # 3件の提案を追加（limit=2 に設定してスパイクにする）
     for i in range(3):
         p = ImprovementProposal(
-            review_id=uuid4(), priority="low", category="style",
-            title=f"提案{i}", description="説明", file_path=f"src/f{i}.py",
+            review_id=uuid4(),
+            priority="low",
+            category="style",
+            title=f"提案{i}",
+            description="説明",
+            file_path=f"src/f{i}.py",
         )
         sm.save_improvement_proposal(p)
 

@@ -108,7 +108,9 @@ class DeveloperProfileManager:
 
     def get_personalization_context(self, user_id: str = "default") -> str:
         profile = self._load(user_id)
-        preferred = ", ".join(profile.preferred_categories) if profile.preferred_categories else "なし"
+        preferred = (
+            ", ".join(profile.preferred_categories) if profile.preferred_categories else "なし"
+        )
         avoided = ", ".join(profile.avoided_categories) if profile.avoided_categories else "なし"
         parts = [f"好む変更: {preferred}", f"避ける変更: {avoided}"]
         if profile.focus_areas:
@@ -149,7 +151,9 @@ class DeveloperProfileManager:
             user_id=data.get("user_id", user_id),
             approval_patterns=patterns,
             focus_areas=list(data.get("focus_areas", [])),
-            communication_style=self._normalize_style(data.get("communication_style", "balanced")).value,
+            communication_style=self._normalize_style(
+                data.get("communication_style", "balanced")
+            ).value,
             preferred_categories=list(data.get("preferred_categories", [])),
             avoided_categories=list(data.get("avoided_categories", [])),
             weak_categories=list(data.get("weak_categories", [])),
@@ -170,7 +174,8 @@ class DeveloperProfileManager:
                 avoided.append(category)
 
         eligible_focus = [
-            pattern for pattern in profile.approval_patterns.values()
+            pattern
+            for pattern in profile.approval_patterns.values()
             if pattern.approved_count + pattern.rejected_count >= 2
         ]
         eligible_focus.sort(
@@ -200,4 +205,8 @@ class DeveloperProfileManager:
         normalized = (style or "").strip().lower()
         if normalized == "detailed":
             normalized = CommunicationStyle.VERBOSE.value
-        return CommunicationStyle(normalized) if normalized in CommunicationStyle._value2member_map_ else CommunicationStyle.BALANCED
+        return (
+            CommunicationStyle(normalized)
+            if normalized in CommunicationStyle._value2member_map_
+            else CommunicationStyle.BALANCED
+        )

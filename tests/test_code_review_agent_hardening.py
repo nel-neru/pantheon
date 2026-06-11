@@ -128,7 +128,9 @@ def test_generate_suggestions_skips_invalid_llm_entries(monkeypatch):
             )
         )
     )
-    monkeypatch.setattr("agents.code_review_agent.get_llm_provider", lambda _provider_name: fake_provider)
+    monkeypatch.setattr(
+        "agents.code_review_agent.get_llm_provider", lambda _provider_name: fake_provider
+    )
 
     suggestions = _run(agent._generate_suggestions("code", "repo"))
 

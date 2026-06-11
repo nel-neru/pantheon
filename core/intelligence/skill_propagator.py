@@ -31,7 +31,8 @@ class SkillPropagator:
 
     def propagate(self, from_agent_id: str, to_agent_id: str, skill_name: str) -> bool:
         source_patterns = [
-            pattern for pattern in self.knowledge_accumulator._load_patterns()
+            pattern
+            for pattern in self.knowledge_accumulator._load_patterns()
             if pattern.agent_id == from_agent_id and pattern.skill_name == skill_name
         ]
         if not source_patterns:

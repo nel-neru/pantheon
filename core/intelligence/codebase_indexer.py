@@ -26,8 +26,16 @@ INDEX_VERSION = "1.0.0"
 SUPPORTED_EXTENSIONS = {".py", ".ts", ".js", ".go", ".rs", ".java", ".rb", ".cpp", ".c"}
 
 EXCLUDE_DIRS = {
-    ".git", "__pycache__", "node_modules", ".venv", "venv",
-    "dist", "build", ".mypy_cache", ".pytest_cache", ".pantheon",
+    ".git",
+    "__pycache__",
+    "node_modules",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".pantheon",
     "pantheon.egg-info",
 }
 
@@ -73,7 +81,9 @@ class CodebaseIndexer:
         updated = 0
 
         for file_path in all_files:
-            rel = str(file_path.relative_to(self.repo_path))
+            # POSIX 正規化（.claude/rules/python.md）。旧ネイティブ区切りキーの既存インデックスは
+            # mtime 不一致で再構築され、旧キーは削除ファイル掃除で除去される（一度きり・自己治癒）
+            rel = file_path.relative_to(self.repo_path).as_posix()
             current_rels.add(rel)
             try:
                 mtime = file_path.stat().st_mtime
@@ -97,7 +107,9 @@ class CodebaseIndexer:
         self._save_index(index)
         logger.info(
             "CodebaseIndexer: %d files indexed, %d updated (%s)",
-            index["total_files"], updated, self.repo_path.name,
+            index["total_files"],
+            updated,
+            self.repo_path.name,
         )
         return index
 
@@ -262,7 +274,9 @@ def invalidate_cache(index_path: Path, file_paths: list[Path]) -> None:
     files = data.get("files", {})
     for rel_path in list(files.keys()):
         candidate = str(Path(rel_path))
-        if candidate in normalized or any(Path(path).name == Path(rel_path).name for path in normalized):
+        if candidate in normalized or any(
+            Path(path).name == Path(rel_path).name for path in normalized
+        ):
             files.pop(rel_path, None)
     data["total_files"] = len(files)
     index_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -271,6 +285,7 @@ def invalidate_cache(index_path: Path, file_paths: list[Path]) -> None:
 # ------------------------------------------------------------------ #
 # 言語別パーサー                                                       #
 # ------------------------------------------------------------------ #
+
 
 def _parse_python(content: str, entry: Dict[str, Any]) -> None:
     """Python ファイルを AST 解析してインデックスエントリを埋める。"""

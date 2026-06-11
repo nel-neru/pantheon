@@ -87,7 +87,11 @@ class SelfCodeWriter(BaseAgent):
         if raw_spec is None:
             return AgentResult(success=False, error="task.input['spec'] is required")
 
-        spec = raw_spec if isinstance(raw_spec, ImplementationSpec) else ImplementationSpec.from_dict(raw_spec)
+        spec = (
+            raw_spec
+            if isinstance(raw_spec, ImplementationSpec)
+            else ImplementationSpec.from_dict(raw_spec)
+        )
         code_output = self.write_code(
             spec,
             existing_code_context=task.input.get("existing_code_context", ""),
@@ -126,7 +130,7 @@ ImplementationSpec:
 {json.dumps(spec.to_dict(), ensure_ascii=False, indent=2)}
 
 Existing code context:
-{existing_code_context or '(none)'}
+{existing_code_context or "(none)"}
 """
         try:
             response = self._llm.invoke(prompt)
@@ -149,7 +153,9 @@ Existing code context:
         try:
             ast.parse(code)
         except SyntaxError as exc:
-            raise ValueError(f"Generated code is not syntactically valid for {file_path}: {exc}") from exc
+            raise ValueError(
+                f"Generated code is not syntactically valid for {file_path}: {exc}"
+            ) from exc
 
     def _warn_on_placeholder_code(self, code: str, spec: ImplementationSpec) -> None:
         if "TODO" in code:
@@ -170,7 +176,8 @@ Existing code context:
         repo_root = Path(__file__).resolve().parents[1]
         project_modules = {path.stem for path in repo_root.glob("*.py")}
         project_modules.update(
-            path.name for path in repo_root.iterdir()
+            path.name
+            for path in repo_root.iterdir()
             if path.is_dir() and (path / "__init__.py").exists()
         )
 
@@ -211,23 +218,25 @@ Existing code context:
             "",
         ]
         lines.extend(self._dedupe_imports(imports))
-        lines.extend([
-            "",
-            "",
-            "def _make_default_specialist() -> SpecialistAgent:",
-            "    return SpecialistAgent(",
-            f'        name="{spec.class_name}",',
-            "        skills=[AgentSkill.PROMPT_ENGINEERING, AgentSkill.TOOL_INTEGRATION],",
-            f'        description="{self._escape_string(spec.description)}",',
-            "    )",
-            "",
-            "",
-            f"class {spec.class_name}(BaseAgent):",
-            f'    """{self._escape_string(spec.description)}"""',
-            "",
-            "    def __init__(self, specialist: SpecialistAgent | None = None) -> None:",
-            "        super().__init__(specialist or _make_default_specialist())",
-        ])
+        lines.extend(
+            [
+                "",
+                "",
+                "def _make_default_specialist() -> SpecialistAgent:",
+                "    return SpecialistAgent(",
+                f'        name="{spec.class_name}",',
+                "        skills=[AgentSkill.PROMPT_ENGINEERING, AgentSkill.TOOL_INTEGRATION],",
+                f'        description="{self._escape_string(spec.description)}",',
+                "    )",
+                "",
+                "",
+                f"class {spec.class_name}(BaseAgent):",
+                f'    """{self._escape_string(spec.description)}"""',
+                "",
+                "    def __init__(self, specialist: SpecialistAgent | None = None) -> None:",
+                "        super().__init__(specialist or _make_default_specialist())",
+            ]
+        )
         for signature in spec.method_signatures:
             lines.extend(["", *self._render_method(signature, spec)])
         return "\n".join(lines) + "\n"
@@ -242,16 +251,18 @@ Existing code context:
             "",
         ]
         lines.extend(self._dedupe_imports(imports))
-        lines.extend([
-            "",
-            "",
-            f"class {spec.class_name}:",
-            f'    """{self._escape_string(spec.description)}"""',
-            "",
-            "    def __init__(self) -> None:",
-            f'        self.spec_id = "{spec.spec_id}"',
-            f'        self.description = "{self._escape_string(spec.description)}"',
-        ])
+        lines.extend(
+            [
+                "",
+                "",
+                f"class {spec.class_name}:",
+                f'    """{self._escape_string(spec.description)}"""',
+                "",
+                "    def __init__(self) -> None:",
+                f'        self.spec_id = "{spec.spec_id}"',
+                f'        self.description = "{self._escape_string(spec.description)}"',
+            ]
+        )
         for signature in spec.method_signatures:
             lines.extend(["", *self._render_method(signature, spec)])
         return "\n".join(lines) + "\n"
@@ -264,23 +275,27 @@ Existing code context:
         method_lines = [f"{indent}{normalized}"]
 
         if method_name == "run":
-            method_lines.extend([
-                f'{body_indent}"""Auto-generated execution entrypoint."""',
-                f"{body_indent}# TODO: Replace the placeholder workflow with the behavior described in the spec.",
-                f"{body_indent}return AgentResult(",
-                f"{body_indent}    success=True,",
-                f"{body_indent}    output={{'status': 'generated_stub', 'spec_id': '{spec.spec_id}', 'task_type': task.task_type}},",
-                f"{body_indent}    thinking_process='Generated stub execution path',",
-                f"{body_indent}    execution_log='SelfCodeWriter generated placeholder run() implementation',",
-                f"{body_indent})",
-            ])
+            method_lines.extend(
+                [
+                    f'{body_indent}"""Auto-generated execution entrypoint."""',
+                    f"{body_indent}# TODO: Replace the placeholder workflow with the behavior described in the spec.",
+                    f"{body_indent}return AgentResult(",
+                    f"{body_indent}    success=True,",
+                    f"{body_indent}    output={{'status': 'generated_stub', 'spec_id': '{spec.spec_id}', 'task_type': task.task_type}},",
+                    f"{body_indent}    thinking_process='Generated stub execution path',",
+                    f"{body_indent}    execution_log='SelfCodeWriter generated placeholder run() implementation',",
+                    f"{body_indent})",
+                ]
+            )
             return method_lines
 
-        method_lines.extend([
-            f'{body_indent}"""Auto-generated stub for {method_name}."""',
-            f"{body_indent}# TODO: Implement according to ImplementationSpec {spec.spec_id}.",
-            f"{body_indent}{self._default_return_statement(normalized)}",
-        ])
+        method_lines.extend(
+            [
+                f'{body_indent}"""Auto-generated stub for {method_name}."""',
+                f"{body_indent}# TODO: Implement according to ImplementationSpec {spec.spec_id}.",
+                f"{body_indent}{self._default_return_statement(normalized)}",
+            ]
+        )
         return method_lines
 
     def _default_return_statement(self, signature: str) -> str:

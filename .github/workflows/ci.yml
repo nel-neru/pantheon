@@ -19,7 +19,7 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Test (pytest)
-        # Windows 既知の 6 失敗（パス区切り・chmod）は Linux では発生しない想定。
+        # Windows 既知の 2 失敗（chmod 0o600）は Linux では発生しない想定。
         # PANTHEON_NO_CLAUDE は tests/conftest.py が設定（claude CLI 不要・完全オフライン）。
         run: python -m pytest tests/ -q
 
