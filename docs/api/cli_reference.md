@@ -171,10 +171,15 @@ pantheon serve [--host HOST] [--port PORT]
 
 | Option | 説明 |
 | --- | --- |
-| `--host` | バインドホスト（default: `0.0.0.0`） |
+| `--host` | バインドホスト（default: `127.0.0.1`=ローカルのみ） |
 | `--port` | ポート番号（default: `7860`） |
 
 `fastapi` / `uvicorn` が必要です。
+
+LAN に公開する場合は `--host 0.0.0.0` とし、併せて環境変数 `PANTHEON_API_TOKEN`
+を設定してください（設定すると `/api/*` と `/ws/*` に Bearer 認証を要求します）。
+GUI には `http://<host>:<port>/?token=<TOKEN>` でアクセスすると以降トークンが
+保存され、API/WS リクエストへ自動付与されます。
 
 ## `pantheon daemon`
 

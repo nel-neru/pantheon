@@ -1,3 +1,5 @@
+import { withAuth } from './token'
+
 const BASE = ''  // same origin — Vite proxies /api to FastAPI
 
 export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
@@ -9,7 +11,7 @@ export async function api<T = unknown>(
 ): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: withAuth(body ? { 'Content-Type': 'application/json' } : {}),
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {
@@ -32,7 +34,7 @@ export function streamSSE(
     try {
       const res = await fetch(`${BASE}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        headers: withAuth({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
         body: JSON.stringify(body),
         signal: ctrl.signal,
       })
