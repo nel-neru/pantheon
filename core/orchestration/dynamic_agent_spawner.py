@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SpawnRequest:
     """新エージェント作成リクエスト。"""
-    required_skills: List[str]           # AgentSkill.value のリスト
-    purpose: str                         # なぜこのエージェントが必要か
+
+    required_skills: List[str]  # AgentSkill.value のリスト
+    purpose: str  # なぜこのエージェントが必要か
     task_type: str = ""
     suggested_name: Optional[str] = None
 
@@ -32,10 +33,11 @@ class SpawnRequest:
 @dataclass
 class SpawnResult:
     """エージェント作成結果。"""
+
     success: bool
     agent: Optional[SpecialistAgent] = None
     reason: str = ""
-    was_cached: bool = False             # 既存エージェントを再利用した場合
+    was_cached: bool = False  # 既存エージェントを再利用した場合
 
 
 class DynamicAgentSpawner:
@@ -89,11 +91,18 @@ class DynamicAgentSpawner:
 
         # Step 2: 要件スキルを AgentSkill に解決
         resolved_skills = self._resolve_skills(request.required_skills)
-        if len(resolved_skills) < 2:
-            # SpecialistAgent は最低2スキル必要 → デフォルトスキルを追加
-            default_fallback = AgentSkill.DEEP_RESEARCH
-            if default_fallback not in resolved_skills:
-                resolved_skills.append(default_fallback)
+        # SpecialistAgent は最低2スキル必要 → 既に含まれていない別スキルで補填する
+        # （解決結果が単一かつそれが既定フォールバックと一致しても 2 個になるよう、
+        #  複数のフォールバック候補から未使用のものを足す）。
+        for fallback in (
+            AgentSkill.DEEP_RESEARCH,
+            AgentSkill.KNOWLEDGE_CURATION,
+            AgentSkill.STRATEGIC_PLANNING,
+        ):
+            if len(resolved_skills) >= 2:
+                break
+            if fallback not in resolved_skills:
+                resolved_skills.append(fallback)
 
         # Step 3: 新エージェントを作成
         name = request.suggested_name or self._generate_agent_name(resolved_skills)
@@ -107,20 +116,28 @@ class DynamicAgentSpawner:
         # Step 4: CapabilityRegistry に登録
         if self._registry:
             from core.intelligence.capability_registry import CapabilityEntry
-            self._registry.register(CapabilityEntry(
-                id=f"agent:dynamic:{agent.id}",
-                name=agent.name,
-                capability_type="agent",
-                description=agent.description,
-                skills=[s.value for s in agent.skills],
-            ))
+
+            self._registry.register(
+                CapabilityEntry(
+                    id=f"agent:dynamic:{agent.id}",
+                    name=agent.name,
+                    capability_type="agent",
+                    description=agent.description,
+                    skills=[s.value for s in agent.skills],
+                )
+            )
 
         logger.info(
             "DynamicAgentSpawner: spawned new agent %s with skills %s",
-            agent.name, [s.value for s in agent.skills],
+            agent.name,
+            [s.value for s in agent.skills],
         )
-        return SpawnResult(success=True, agent=agent, was_cached=False,
-                           reason=f"New agent created with skills: {[s.value for s in agent.skills]}")
+        return SpawnResult(
+            success=True,
+            agent=agent,
+            was_cached=False,
+            reason=f"New agent created with skills: {[s.value for s in agent.skills]}",
+        )
 
     def get_spawned_agents(self) -> List[SpecialistAgent]:
         """このセッションで作成されたエージェントのリストを返す。"""

@@ -1,0 +1,45 @@
+# トレンド収集ソース（RSS/Atom）。無料・公開フィードのみ。X/YouTube は別 collector。
+# ジャンル別エキスパート組織の素材になるよう genre を付ける。`pantheon trends collect`
+# で横断収集する。追加・削除はこのファイルだけで完結する。
+
+sources:
+  - name: Hacker News Front Page
+    url: https://hnrss.org/frontpage
+    type: rss
+    genre: ai
+
+  - name: TechCrunch
+    url: https://techcrunch.com/feed/
+    type: rss
+    genre: ai
+
+  - name: The Verge
+    url: https://www.theverge.com/rss/index.xml
+    type: atom
+    genre: ai
+
+  - name: Indie Hackers
+    url: https://www.indiehackers.com/feed.xml
+    type: rss
+    genre: side_business
+
+  - name: Product Hunt
+    url: https://www.producthunt.com/feed
+    type: atom
+    genre: side_business
+
+  # Claude Code / Anthropic 自体のトレンド監視（リポジトリ設定の進化に反映）
+  - name: Anthropic News
+    url: https://www.anthropic.com/rss.xml
+    type: rss
+    genre: claude_code
+
+# YouTube チャンネル（APIキー不要のチャンネル RSS で最新動画を収集）。
+# channel_id は チャンネルページの「共有」やソースから取得できる UC... 形式。
+youtube_channels:
+  - name: Fireship
+    channel_id: UCsBjURrPoezykLs9EqgamOA
+    genre: ai
+  - name: Two Minute Papers
+    channel_id: UCbfYPyITQ-7l4upoX8nvctg
+    genre: ai

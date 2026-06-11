@@ -89,7 +89,9 @@ class SelfIntegrationTester:
             check=False,
         )
         duration = time.perf_counter() - start
-        combined_output = "\n".join(part for part in [completed.stdout, completed.stderr] if part).strip()
+        combined_output = "\n".join(
+            part for part in [completed.stdout, completed.stderr] if part
+        ).strip()
         test_count = self._parse_test_count(combined_output)
         errors: list[str] = []
         if completed.returncode != 0:
@@ -107,7 +109,9 @@ class SelfIntegrationTester:
         validation_dir = project_root / ".pantheon" / "self_validation"
         validation_dir.mkdir(parents=True, exist_ok=True)
 
-        module_name = f"_pantheon_validation_{code_output.output_id.replace(':', '_').replace('-', '_')}"
+        module_name = (
+            f"_pantheon_validation_{code_output.output_id.replace(':', '_').replace('-', '_')}"
+        )
         temp_file = validation_dir / f"{module_name}.py"
         sys_path_entries = [str(project_root), str(validation_dir)]
 
@@ -119,7 +123,9 @@ class SelfIntegrationTester:
 
             spec = importlib.util.spec_from_file_location(module_name, temp_file)
             if spec is None or spec.loader is None:
-                return ImportTestResult(can_import=False, error_message="Could not create import spec.")
+                return ImportTestResult(
+                    can_import=False, error_message="Could not create import spec."
+                )
 
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
@@ -142,7 +148,9 @@ class SelfIntegrationTester:
             if validation_dir.exists() and not any(validation_dir.iterdir()):
                 validation_dir.rmdir()
 
-    def run_full_validation(self, code_output: CodeOutput, project_root: Path) -> FullValidationResult:
+    def run_full_validation(
+        self, code_output: CodeOutput, project_root: Path
+    ) -> FullValidationResult:
         """構文・import・既存テストをまとめて実行する。"""
         syntax_result = self.validate_syntax(code_output)
         if not syntax_result.is_valid:
@@ -173,5 +181,10 @@ class SelfIntegrationTester:
         )
 
     def _parse_test_count(self, output: str) -> int:
-        counts = [int(value) for value in re.findall(r"(\d+)\s+(?:passed|failed|error|errors|skipped|xfailed|xpassed)", output)]
+        counts = [
+            int(value)
+            for value in re.findall(
+                r"(\d+)\s+(?:passed|failed|error|errors|skipped|xfailed|xpassed)", output
+            )
+        ]
         return sum(counts)

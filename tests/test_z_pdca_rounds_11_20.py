@@ -32,7 +32,9 @@ class DummyAgent(BaseAgent):
         return AgentResult(success=True)
 
 
-def _proposal(*, priority: str = "low", category: str = "style", file_path: str = "src/app.py") -> dict[str, str]:
+def _proposal(
+    *, priority: str = "low", category: str = "style", file_path: str = "src/app.py"
+) -> dict[str, str]:
     return {
         "id": "proposal-1",
         "priority": priority,
@@ -114,7 +116,9 @@ def test_scheduler_persists_auto_applied_proposals(tmp_path: Path, monkeypatch):
     )
 
     improvements_dir = repo_path / ".pantheon" / "improvements"
-    saved = [json.loads(path.read_text(encoding="utf-8")) for path in improvements_dir.glob("*.json")]
+    saved = [
+        json.loads(path.read_text(encoding="utf-8")) for path in improvements_dir.glob("*.json")
+    ]
 
     assert result["auto_applied"] == 1
     assert len(saved) == 1
@@ -259,7 +263,9 @@ def test_policy_engine_category_matching_requires_exact_match(tmp_path: Path):
         yaml.safe_dump(
             {
                 "version": "1.0",
-                "auto_reject": {"conditions": {"empty_file_path": False, "disabled_categories": []}},
+                "auto_reject": {
+                    "conditions": {"empty_file_path": False, "disabled_categories": []}
+                },
                 "human_required": {
                     "conditions": {
                         "min_priority": "high",
@@ -280,8 +286,6 @@ def test_policy_engine_category_matching_requires_exact_match(tmp_path: Path):
         encoding="utf-8",
     )
 
-    verdict = PolicyEngine(policy_path=policy_path).evaluate(
-        _proposal(category="security_review")
-    )
+    verdict = PolicyEngine(policy_path=policy_path).evaluate(_proposal(category="security_review"))
 
     assert verdict.decision == ApprovalDecision.AUTO_APPROVE

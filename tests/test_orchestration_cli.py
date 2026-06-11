@@ -2,6 +2,7 @@
 Tests for N-07/N-10 orchestration CLI commands.
 Patches core.platform.state.get_platform_home to use tmp_path.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,10 +24,12 @@ def _run(coro):
 # cmd_orchestration_analyze (N-07)
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestOrchestrationAnalyzeCLI:
     def test_analyze_code_review(self, capsys, tmp_path):
         """code_review タスクの実行計画が出力される"""
         from main import cmd_orchestration_analyze
+
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             _run(cmd_orchestration_analyze(SimpleNamespace(task_type="code_review")))
         out = capsys.readouterr().out
@@ -37,6 +40,7 @@ class TestOrchestrationAnalyzeCLI:
     def test_analyze_meta_improvement_hierarchical(self, capsys, tmp_path):
         """meta_improvement → hierarchical パターンを推奨する"""
         from main import cmd_orchestration_analyze
+
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             _run(cmd_orchestration_analyze(SimpleNamespace(task_type="meta_improvement")))
         assert "hierarchical" in capsys.readouterr().out
@@ -44,6 +48,7 @@ class TestOrchestrationAnalyzeCLI:
     def test_analyze_unknown_task_falls_back_to_default(self, capsys, tmp_path):
         """未知タスクでもデフォルトで出力する"""
         from main import cmd_orchestration_analyze
+
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             _run(cmd_orchestration_analyze(SimpleNamespace(task_type="unknown_xyz_task")))
         assert "unknown_xyz_task" in capsys.readouterr().out
@@ -51,6 +56,7 @@ class TestOrchestrationAnalyzeCLI:
     def test_analyze_security_audit(self, capsys, tmp_path):
         """security_audit → review_loop パターン"""
         from main import cmd_orchestration_analyze
+
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             _run(cmd_orchestration_analyze(SimpleNamespace(task_type="security_audit")))
         assert "review_loop" in capsys.readouterr().out
@@ -60,10 +66,12 @@ class TestOrchestrationAnalyzeCLI:
 # cmd_orchestration_history (N-07)
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestOrchestrationHistoryCLI:
     def test_history_empty(self, capsys, tmp_path):
         """履歴なしで適切なガイドメッセージ"""
         from main import cmd_orchestration_history
+
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             _run(cmd_orchestration_history(SimpleNamespace()))
         assert "実行履歴がまだありません" in capsys.readouterr().out
@@ -78,14 +86,24 @@ class TestOrchestrationHistoryCLI:
 
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             store = OrchestrationPatternStore()
-            store.record(PatternRecord(
-                task_type="code_review", pattern="review_loop",
-                agent_ids=["R1"], success=True, quality_score=8.0,
-            ))
-            store.record(PatternRecord(
-                task_type="code_review", pattern="review_loop",
-                agent_ids=["R1"], success=False, quality_score=4.0,
-            ))
+            store.record(
+                PatternRecord(
+                    task_type="code_review",
+                    pattern="review_loop",
+                    agent_ids=["R1"],
+                    success=True,
+                    quality_score=8.0,
+                )
+            )
+            store.record(
+                PatternRecord(
+                    task_type="code_review",
+                    pattern="review_loop",
+                    agent_ids=["R1"],
+                    success=False,
+                    quality_score=4.0,
+                )
+            )
             _run(cmd_orchestration_history(SimpleNamespace()))
 
         out = capsys.readouterr().out
@@ -96,15 +114,18 @@ class TestOrchestrationHistoryCLI:
 # cmd_orchestration_capabilities (N-07)
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestOrchestrationCapabilitiesCLI:
     def test_empty_registry_shows_header(self, capsys, tmp_path):
         from main import cmd_orchestration_capabilities
+
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             _run(cmd_orchestration_capabilities(SimpleNamespace()))
         assert "Capability Registry" in capsys.readouterr().out
 
     def test_no_gaps_shows_ok(self, capsys, tmp_path):
         from main import cmd_orchestration_capabilities
+
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             _run(cmd_orchestration_capabilities(SimpleNamespace()))
         assert "ギャップなし" in capsys.readouterr().out
@@ -114,9 +135,11 @@ class TestOrchestrationCapabilitiesCLI:
 # cmd_orchestration_self_review (N-10)
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestOrchestratorSelfReview:
     def test_self_review_empty(self, capsys, tmp_path):
         from main import cmd_orchestration_self_review
+
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             _run(cmd_orchestration_self_review(SimpleNamespace()))
         assert "十分な実行履歴がありません" in capsys.readouterr().out
@@ -131,10 +154,15 @@ class TestOrchestratorSelfReview:
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             store = OrchestrationPatternStore()
             for i in range(5):
-                store.record(PatternRecord(
-                    task_type="code_review", pattern="single_agent",
-                    agent_ids=["A1"], success=(i == 0), quality_score=3.0,
-                ))
+                store.record(
+                    PatternRecord(
+                        task_type="code_review",
+                        pattern="single_agent",
+                        agent_ids=["A1"],
+                        success=(i == 0),
+                        quality_score=3.0,
+                    )
+                )
             _run(cmd_orchestration_self_review(SimpleNamespace()))
 
         out = capsys.readouterr().out
@@ -150,10 +178,18 @@ class TestOrchestratorSelfReview:
         with patch("core.platform.state.get_platform_home", return_value=tmp_path):
             store = OrchestrationPatternStore()
             for _ in range(5):
-                store.record(PatternRecord(
-                    task_type="code_review", pattern="review_loop",
-                    agent_ids=["R1"], success=True, quality_score=9.0,
-                ))
+                store.record(
+                    PatternRecord(
+                        task_type="code_review",
+                        pattern="review_loop",
+                        agent_ids=["R1"],
+                        success=True,
+                        quality_score=9.0,
+                    )
+                )
             _run(cmd_orchestration_self_review(SimpleNamespace()))
 
-        assert "問題のあるオーケストレーションパターンは見つかりませんでした" in capsys.readouterr().out
+        assert (
+            "問題のあるオーケストレーションパターンは見つかりませんでした"
+            in capsys.readouterr().out
+        )

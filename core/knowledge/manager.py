@@ -82,8 +82,7 @@ class KnowledgeManager:
         if tags:
             tag_set = set(tags)
             results = [
-                record for record in results
-                if tag_set.intersection(set(record.get("tags", [])))
+                record for record in results if tag_set.intersection(set(record.get("tags", [])))
             ]
         return results[:limit]
 
@@ -122,7 +121,8 @@ class KnowledgeManager:
 
     def get_best_practices(self, limit: int = 10) -> List[Dict[str, Any]]:
         entries = [
-            record for record in self._load_all_entries()
+            record
+            for record in self._load_all_entries()
             if record.get("importance") == "best_practice"
         ]
         entries.sort(
@@ -166,16 +166,14 @@ class KnowledgeManager:
 
     def get_active_entries(self, limit: int = 50) -> List[Dict[str, Any]]:
         entries = [
-            record for record in self._load_all_entries()
-            if record.get("archived") is not True
+            record for record in self._load_all_entries() if record.get("archived") is not True
         ]
         return entries[:limit]
 
     def get_for_repo(self, repo_name: str, limit: int = 20) -> List[Dict[str, Any]]:
         repo_tag = f"repo:{repo_name}"
         entries = [
-            record for record in self._load_all_entries()
-            if repo_tag in record.get("tags", [])
+            record for record in self._load_all_entries() if repo_tag in record.get("tags", [])
         ]
         entries.sort(
             key=lambda record: (
@@ -194,7 +192,9 @@ class KnowledgeManager:
             return ""
         lines = ["【過去の知見・ベストプラクティス】"]
         for ins in insights:
-            lines.append(f"- [{ins.get('importance', 'medium').upper()}] {ins['title']}: {ins['content'][:150]}")
+            lines.append(
+                f"- [{ins.get('importance', 'medium').upper()}] {ins['title']}: {ins['content'][:150]}"
+            )
         return "\n".join(lines)
 
     def count(self) -> int:

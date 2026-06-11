@@ -74,8 +74,10 @@ class AgentKnowledgeAccumulator:
 
     def get_patterns_for_task(self, task_type, skill_name=None, limit=5) -> list[SuccessPattern]:
         patterns = [
-            pattern for pattern in self._load_patterns()
-            if pattern.task_type == task_type and (skill_name is None or pattern.skill_name == skill_name)
+            pattern
+            for pattern in self._load_patterns()
+            if pattern.task_type == task_type
+            and (skill_name is None or pattern.skill_name == skill_name)
         ]
         patterns.sort(key=lambda p: (p.success_score, p.created_at), reverse=True)
         return patterns[:limit]

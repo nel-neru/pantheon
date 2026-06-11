@@ -14,10 +14,7 @@ TESTS_DIR = PAGES_DIR / "__tests__"
 
 
 def check_coverage() -> int:
-    page_files = [
-        f for f in PAGES_DIR.glob("*.tsx")
-        if not f.name.startswith("_")
-    ]
+    page_files = [f for f in PAGES_DIR.glob("*.tsx") if not f.name.startswith("_")]
 
     missing = []
     for page_file in sorted(page_files):
@@ -38,7 +35,6 @@ def check_coverage() -> int:
     return 0
 
 
-
 def check_help_warnings() -> list[str]:
     check_help_script = Path(__file__).parent / "check_help_coverage.py"
     if not check_help_script.exists():
@@ -51,7 +47,6 @@ def check_help_warnings() -> list[str]:
     check_help = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(check_help)
     return check_help.check_help_coverage()
-
 
 
 def main() -> int:

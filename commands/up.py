@@ -85,7 +85,14 @@ def register(subparsers: Any) -> None:
         "up",
         help="フル起動（Web GUI 監視 + wmux 汎用チャット + ブラウザ）",
     )
-    parser.add_argument("--host", default="0.0.0.0", help="バインドホスト (default: 0.0.0.0)")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help=(
+            "バインドホスト (default: 127.0.0.1=ローカルのみ)。"
+            "LAN 公開する場合は --host 0.0.0.0 と PANTHEON_API_TOKEN の設定を推奨"
+        ),
+    )
     parser.add_argument("--port", type=int, default=7860, help="ポート番号 (default: 7860)")
     parser.add_argument(
         "--no-browser",

@@ -39,9 +39,7 @@ def test_policy_handoff_is_human_required():
 def test_policy_handoff_not_auto_rejected_despite_empty_file_path():
     """引き渡しはファイルを持たない設計。empty_file_path で棄却してはいけない。"""
     engine = PolicyEngine()
-    verdict = engine.evaluate(
-        {"category": "cross_org_handoff", "priority": "low", "file_path": ""}
-    )
+    verdict = engine.evaluate({"category": "cross_org_handoff", "priority": "low", "file_path": ""})
     assert verdict.decision == ApprovalDecision.HUMAN_REQUIRED
 
 
@@ -323,8 +321,7 @@ def test_draft_handoff_deterministic_fallback(tmp_path):
     # 受け手 org の pending に積まれている
     sm = psm.get_org_state_manager(target)
     assert any(
-        p.get("category") == "content_asset"
-        for p in sm.get_pending_improvement_proposals(limit=50)
+        p.get("category") == "content_asset" for p in sm.get_pending_improvement_proposals(limit=50)
     )
 
 

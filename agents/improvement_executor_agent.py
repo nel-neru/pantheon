@@ -60,9 +60,11 @@ class ImprovementExecutorAgent(BaseAgent):
             target_file = self._resolve_repo_file_path(repo_path, file_path)
         except ValueError as exc:
             return AgentResult(success=False, error=str(exc))
-        normalized_file_path = str(target_file.relative_to(repo_path))
+        normalized_file_path = target_file.relative_to(repo_path).as_posix()
         if not target_file.exists():
-            return AgentResult(success=False, error=f"Target file not found: {normalized_file_path}")
+            return AgentResult(
+                success=False, error=f"Target file not found: {normalized_file_path}"
+            )
 
         original_content = target_file.read_text(encoding="utf-8")
 
@@ -75,6 +77,7 @@ class ImprovementExecutorAgent(BaseAgent):
         if github_token and github_repo:
             try:
                 from github_integration.pr_creator import create_improvement_pr
+
                 pr_url = await create_improvement_pr(
                     repo_path=repo_path,
                     github_token=github_token,
@@ -83,7 +86,11 @@ class ImprovementExecutorAgent(BaseAgent):
                     modified_content=modified_content,
                     suggestion=suggestion,
                 )
-                output = {"pr_url": pr_url, "change_summary": change_summary, "file_path": normalized_file_path}
+                output = {
+                    "pr_url": pr_url,
+                    "change_summary": change_summary,
+                    "file_path": normalized_file_path,
+                }
             except Exception as e:
                 return AgentResult(success=False, error=f"PR creation failed: {e}")
         else:
@@ -119,11 +126,13 @@ class ImprovementExecutorAgent(BaseAgent):
         from datetime import datetime, timezone
 
         slug = re.sub(r"[^a-z0-9]+", "-", suggestion.get("title", "improvement").lower())[:40]
-        branch_name = f"pantheon/improvement-{slug}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        branch_name = (
+            f"pantheon/improvement-{slug}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        )
 
         repo_root = repo_path.resolve()
         target = self._resolve_repo_file_path(repo_root, file_path)
-        relative_file_path = str(target.relative_to(repo_root))
+        relative_file_path = target.relative_to(repo_root).as_posix()
 
         repo = git.Repo(repo_root)
         repo.git.checkout("-b", branch_name)
@@ -178,7 +187,12 @@ class ImprovementExecutorAgent(BaseAgent):
             LLMMessage(role="user", content=user_prompt),
         ]
         try:
-            response = await provider.generate(messages=messages, temperature=0.2, max_tokens=8000)
+            response = await provider.generate(
+                messages=messages,
+                temperature=0.2,
+                max_tokens=8000,
+                task_type="improvement_execution",
+            )
             data = json.loads(response.content)
             return data.get("modified_content", ""), data.get("change_summary", "")
         except json.JSONDecodeError as e:

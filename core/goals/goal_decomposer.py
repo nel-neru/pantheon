@@ -24,18 +24,20 @@ logger = logging.getLogger(__name__)
 # データモデル                                                         #
 # ────────────────────────────────────────────────────────────────── #
 
+
 @dataclass
 class TaskSpec:
     """実行可能な最小単位のタスク。"""
+
     task_id: str
     title: str
     description: str
-    required_skills: List[str]         # AgentSkill.value のリスト
-    agent_type: str = "specialist"     # "specialist" | "codebase_explorer" | "code_reviewer"
+    required_skills: List[str]  # AgentSkill.value のリスト
+    agent_type: str = "specialist"  # "specialist" | "codebase_explorer" | "code_reviewer"
     dependencies: List[str] = field(default_factory=list)  # 先行 task_id のリスト
     success_criteria: str = ""
     estimated_tokens: int = 2000
-    is_executable: bool = True         # CapabilityRegistry に対応するエージェントがあるか
+    is_executable: bool = True  # CapabilityRegistry に対応するエージェントがあるか
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -54,6 +56,7 @@ class TaskSpec:
 @dataclass
 class StorySpec:
     """タスクの集まり — Sprint サイズの実行単位。"""
+
     story_id: str
     title: str
     description: str
@@ -71,6 +74,7 @@ class StorySpec:
 @dataclass
 class EpicSpec:
     """大きな機能単位 — 複数の Story を含む。"""
+
     epic_id: str
     title: str
     description: str
@@ -88,6 +92,7 @@ class EpicSpec:
 @dataclass
 class GoalPlan:
     """目標分解の結果 — Epic/Story/Task 階層の実行計画。"""
+
     plan_id: str
     goal_id: str
     goal_description: str
@@ -132,6 +137,7 @@ class GoalPlan:
 # 目標種別ごとのテンプレート化されたタスクツリー                         #
 # ────────────────────────────────────────────────────────────────── #
 
+
 def _make_id(prefix: str) -> str:
     return f"{prefix}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
 
@@ -145,14 +151,26 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "コードベース調査",
                     "tasks": [
-                        {"title": "コードベース全体のセキュリティリスクを調査", "skills": ["codebase_exploration", "deep_research"], "tokens": 3000},
+                        {
+                            "title": "コードベース全体のセキュリティリスクを調査",
+                            "skills": ["codebase_exploration", "deep_research"],
+                            "tokens": 3000,
+                        },
                     ],
                 },
                 {
                     "story": "脆弱性の特定",
                     "tasks": [
-                        {"title": "認証・認可の実装を確認", "skills": ["deep_research", "tool_integration"], "tokens": 2000},
-                        {"title": "入力バリデーションの確認", "skills": ["deep_research", "tool_integration"], "tokens": 2000},
+                        {
+                            "title": "認証・認可の実装を確認",
+                            "skills": ["deep_research", "tool_integration"],
+                            "tokens": 2000,
+                        },
+                        {
+                            "title": "入力バリデーションの確認",
+                            "skills": ["deep_research", "tool_integration"],
+                            "tokens": 2000,
+                        },
                     ],
                 },
             ],
@@ -163,13 +181,23 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "改善提案の生成",
                     "tasks": [
-                        {"title": "セキュリティ改善提案を生成", "skills": ["tool_integration", "prompt_engineering"], "tokens": 3000, "depends_on_prev": True},
+                        {
+                            "title": "セキュリティ改善提案を生成",
+                            "skills": ["tool_integration", "prompt_engineering"],
+                            "tokens": 3000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
                 {
                     "story": "テストと検証",
                     "tasks": [
-                        {"title": "セキュリティテストを実行して改善を確認", "skills": ["tool_integration"], "tokens": 2000, "depends_on_prev": True},
+                        {
+                            "title": "セキュリティテストを実行して改善を確認",
+                            "skills": ["tool_integration"],
+                            "tokens": 2000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
             ],
@@ -182,8 +210,16 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "カバレッジ計測",
                     "tasks": [
-                        {"title": "現在のテストカバレッジを計測", "skills": ["codebase_exploration", "performance_analysis"], "tokens": 2000},
-                        {"title": "テストが不足しているモジュールを特定", "skills": ["deep_research", "performance_analysis"], "tokens": 2000},
+                        {
+                            "title": "現在のテストカバレッジを計測",
+                            "skills": ["codebase_exploration", "performance_analysis"],
+                            "tokens": 2000,
+                        },
+                        {
+                            "title": "テストが不足しているモジュールを特定",
+                            "skills": ["deep_research", "performance_analysis"],
+                            "tokens": 2000,
+                        },
                     ],
                 },
             ],
@@ -194,13 +230,23 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "ユニットテスト追加",
                     "tasks": [
-                        {"title": "優先度の高いモジュールのユニットテストを作成", "skills": ["prompt_engineering", "tool_integration"], "tokens": 4000, "depends_on_prev": True},
+                        {
+                            "title": "優先度の高いモジュールのユニットテストを作成",
+                            "skills": ["prompt_engineering", "tool_integration"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
                 {
                     "story": "統合テスト追加",
                     "tasks": [
-                        {"title": "主要フローの統合テストを作成", "skills": ["prompt_engineering", "agent_workflow_design"], "tokens": 4000, "depends_on_prev": True},
+                        {
+                            "title": "主要フローの統合テストを作成",
+                            "skills": ["prompt_engineering", "agent_workflow_design"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
             ],
@@ -213,8 +259,16 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "ボトルネック特定",
                     "tasks": [
-                        {"title": "処理時間・メモリ使用量を計測", "skills": ["performance_analysis", "deep_research"], "tokens": 3000},
-                        {"title": "ボトルネックの根本原因を分析", "skills": ["performance_analysis", "codebase_exploration"], "tokens": 3000},
+                        {
+                            "title": "処理時間・メモリ使用量を計測",
+                            "skills": ["performance_analysis", "deep_research"],
+                            "tokens": 3000,
+                        },
+                        {
+                            "title": "ボトルネックの根本原因を分析",
+                            "skills": ["performance_analysis", "codebase_exploration"],
+                            "tokens": 3000,
+                        },
                     ],
                 },
             ],
@@ -225,8 +279,18 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "コード最適化",
                     "tasks": [
-                        {"title": "ボトルネック箇所の最適化実装", "skills": ["prompt_engineering", "tool_integration"], "tokens": 4000, "depends_on_prev": True},
-                        {"title": "キャッシュ・非同期処理の導入を検討", "skills": ["strategic_planning", "tool_integration"], "tokens": 3000, "depends_on_prev": True},
+                        {
+                            "title": "ボトルネック箇所の最適化実装",
+                            "skills": ["prompt_engineering", "tool_integration"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
+                        {
+                            "title": "キャッシュ・非同期処理の導入を検討",
+                            "skills": ["strategic_planning", "tool_integration"],
+                            "tokens": 3000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
             ],
@@ -239,7 +303,11 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "現状把握",
                     "tasks": [
-                        {"title": "コードの複雑度・重複を分析", "skills": ["codebase_exploration", "performance_analysis"], "tokens": 3000},
+                        {
+                            "title": "コードの複雑度・重複を分析",
+                            "skills": ["codebase_exploration", "performance_analysis"],
+                            "tokens": 3000,
+                        },
                     ],
                 },
             ],
@@ -250,8 +318,18 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "構造改善",
                     "tasks": [
-                        {"title": "重複コードを抽出・共通化", "skills": ["prompt_engineering", "tool_integration"], "tokens": 4000, "depends_on_prev": True},
-                        {"title": "命名・関数分割を改善", "skills": ["prompt_engineering", "knowledge_curation"], "tokens": 3000, "depends_on_prev": True},
+                        {
+                            "title": "重複コードを抽出・共通化",
+                            "skills": ["prompt_engineering", "tool_integration"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
+                        {
+                            "title": "命名・関数分割を改善",
+                            "skills": ["prompt_engineering", "knowledge_curation"],
+                            "tokens": 3000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
             ],
@@ -264,8 +342,16 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "アーキテクチャ設計",
                     "tasks": [
-                        {"title": "システムアーキテクチャを設計", "skills": ["strategic_planning", "org_design"], "tokens": 4000},
-                        {"title": "APIインターフェースを設計", "skills": ["agent_workflow_design", "strategic_planning"], "tokens": 3000},
+                        {
+                            "title": "システムアーキテクチャを設計",
+                            "skills": ["strategic_planning", "org_design"],
+                            "tokens": 4000,
+                        },
+                        {
+                            "title": "APIインターフェースを設計",
+                            "skills": ["agent_workflow_design", "strategic_planning"],
+                            "tokens": 3000,
+                        },
                     ],
                 },
             ],
@@ -276,15 +362,35 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "コア機能実装",
                     "tasks": [
-                        {"title": "データモデルを実装", "skills": ["prompt_engineering", "tool_integration"], "tokens": 4000, "depends_on_prev": True},
-                        {"title": "ビジネスロジックを実装", "skills": ["prompt_engineering", "tool_integration"], "tokens": 5000, "depends_on_prev": True},
-                        {"title": "APIエンドポイントを実装", "skills": ["prompt_engineering", "tool_integration"], "tokens": 4000, "depends_on_prev": True},
+                        {
+                            "title": "データモデルを実装",
+                            "skills": ["prompt_engineering", "tool_integration"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
+                        {
+                            "title": "ビジネスロジックを実装",
+                            "skills": ["prompt_engineering", "tool_integration"],
+                            "tokens": 5000,
+                            "depends_on_prev": True,
+                        },
+                        {
+                            "title": "APIエンドポイントを実装",
+                            "skills": ["prompt_engineering", "tool_integration"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
                 {
                     "story": "テスト",
                     "tasks": [
-                        {"title": "ユニットテスト・統合テストを作成", "skills": ["prompt_engineering", "agent_workflow_design"], "tokens": 4000, "depends_on_prev": True},
+                        {
+                            "title": "ユニットテスト・統合テストを作成",
+                            "skills": ["prompt_engineering", "agent_workflow_design"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
             ],
@@ -297,14 +403,28 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "コード分析",
                     "tasks": [
-                        {"title": "既存コードからdocstringを収集", "skills": ["codebase_exploration", "knowledge_curation"], "tokens": 3000},
+                        {
+                            "title": "既存コードからdocstringを収集",
+                            "skills": ["codebase_exploration", "knowledge_curation"],
+                            "tokens": 3000,
+                        },
                     ],
                 },
                 {
                     "story": "ドキュメント生成",
                     "tasks": [
-                        {"title": "READMEを更新", "skills": ["knowledge_curation", "prompt_engineering"], "tokens": 3000, "depends_on_prev": True},
-                        {"title": "API仕様書を生成", "skills": ["prompt_engineering", "knowledge_curation"], "tokens": 4000, "depends_on_prev": True},
+                        {
+                            "title": "READMEを更新",
+                            "skills": ["knowledge_curation", "prompt_engineering"],
+                            "tokens": 3000,
+                            "depends_on_prev": True,
+                        },
+                        {
+                            "title": "API仕様書を生成",
+                            "skills": ["prompt_engineering", "knowledge_curation"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
             ],
@@ -317,7 +437,11 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "コードレビュー",
                     "tasks": [
-                        {"title": "コードレビューで改善点を特定", "skills": ["codebase_exploration", "deep_research"], "tokens": 4000},
+                        {
+                            "title": "コードレビューで改善点を特定",
+                            "skills": ["codebase_exploration", "deep_research"],
+                            "tokens": 4000,
+                        },
                     ],
                 },
             ],
@@ -328,7 +452,12 @@ _TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 {
                     "story": "改善適用",
                     "tasks": [
-                        {"title": "優先度の高い改善を適用", "skills": ["prompt_engineering", "tool_integration"], "tokens": 4000, "depends_on_prev": True},
+                        {
+                            "title": "優先度の高い改善を適用",
+                            "skills": ["prompt_engineering", "tool_integration"],
+                            "tokens": 4000,
+                            "depends_on_prev": True,
+                        },
                     ],
                 },
             ],
@@ -344,7 +473,11 @@ _DEFAULT_TEMPLATE = [
             {
                 "story": "調査",
                 "tasks": [
-                    {"title": "目標達成に必要なコンテキストを調査", "skills": ["deep_research", "codebase_exploration"], "tokens": 3000},
+                    {
+                        "title": "目標達成に必要なコンテキストを調査",
+                        "skills": ["deep_research", "codebase_exploration"],
+                        "tokens": 3000,
+                    },
                 ],
             },
         ],
@@ -355,7 +488,12 @@ _DEFAULT_TEMPLATE = [
             {
                 "story": "実行",
                 "tasks": [
-                    {"title": "目標に向けた主要タスクを実行", "skills": ["prompt_engineering", "tool_integration"], "tokens": 4000, "depends_on_prev": True},
+                    {
+                        "title": "目標に向けた主要タスクを実行",
+                        "skills": ["prompt_engineering", "tool_integration"],
+                        "tokens": 4000,
+                        "depends_on_prev": True,
+                    },
                 ],
             },
         ],
@@ -366,6 +504,7 @@ _DEFAULT_TEMPLATE = [
 # ────────────────────────────────────────────────────────────────── #
 # GoalDecomposer クラス                                               #
 # ────────────────────────────────────────────────────────────────── #
+
 
 class GoalDecomposer:
     """
@@ -430,9 +569,15 @@ class GoalDecomposer:
 
                 for task_def in story_def.get("tasks", []):
                     task_id = _make_id("task")
-                    deps = list(prev_task_ids) if task_def.get("depends_on_prev") and prev_task_ids else []
+                    deps = (
+                        list(prev_task_ids)
+                        if task_def.get("depends_on_prev") and prev_task_ids
+                        else []
+                    )
                     skills = task_def.get("skills", ["deep_research"])
-                    is_executable = any(s in available_skills for s in skills) if available_skills else True
+                    is_executable = (
+                        any(s in available_skills for s in skills) if available_skills else True
+                    )
 
                     task = TaskSpec(
                         task_id=task_id,
@@ -485,7 +630,7 @@ class GoalDecomposer:
 目標: {goal.description}
 種別: {goal.goal_type}
 スコープ: {goal.scope}
-成功基準: {', '.join(goal.success_criteria)}
+成功基準: {", ".join(goal.success_criteria)}
 
 以下のJSON形式で分解してください:
 {{
@@ -518,7 +663,7 @@ knowledge_curation, agent_workflow_design, org_design, corporate_research"""
         response = self._llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
 
-        json_match = re.search(r'\{.*?\}', content, re.DOTALL)
+        json_match = re.search(r"\{.*?\}", content, re.DOTALL)
         if not json_match:
             return self._decompose_with_template(goal)
 
@@ -542,8 +687,14 @@ knowledge_curation, agent_workflow_design, org_design, corporate_research"""
                 for task_data in story_data.get("tasks", []):
                     task_id = _make_id("task")
                     skills = task_data.get("required_skills", ["deep_research"])
-                    deps = list(prev_task_ids) if task_data.get("depends_on_prev") and prev_task_ids else []
-                    is_executable = any(s in available_skills for s in skills) if available_skills else True
+                    deps = (
+                        list(prev_task_ids)
+                        if task_data.get("depends_on_prev") and prev_task_ids
+                        else []
+                    )
+                    is_executable = (
+                        any(s in available_skills for s in skills) if available_skills else True
+                    )
                     task = TaskSpec(
                         task_id=task_id,
                         title=task_data.get("title", "Task"),

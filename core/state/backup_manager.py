@@ -35,7 +35,11 @@ class BackupManager:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
         backup_path = self.backups_dir / f"{self._source_key(source)}_{timestamp}.bak"
         if source.is_dir():
-            ignore = shutil.ignore_patterns(self.backups_dir.name) if source.resolve() == self.platform_home.resolve() else None
+            ignore = (
+                shutil.ignore_patterns(self.backups_dir.name)
+                if source.resolve() == self.platform_home.resolve()
+                else None
+            )
             shutil.copytree(source, backup_path, ignore=ignore)
         else:
             shutil.copy2(source, backup_path)

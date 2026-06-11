@@ -1,0 +1,14 @@
+id: 3d
+name: 3D
+description: 立体感・奥行き。質感とライティングで没入感を出す。
+prompt_addon: |
+  視覚トーンは「3D（立体的・没入的）」。奥行き・質感・光の当たり方を意識した
+  描写を用い、テクノロジー感や未来感を演出する。要素の関係を空間的に説明する。
+palette:
+  primary: "#0F172A"
+  secondary: "#38BDF8"
+  background: "#1E293B"
+  accent: "#A855F7"
+font_family: "'Space Grotesk', 'Noto Sans JP', sans-serif"
+image_prompt: "3d render, glossy materials, depth of field, dramatic studio lighting, futuristic, octane render"
+layout: "グラデーション背景、浮遊するカード、影と光で奥行き、ネオン系アクセント"

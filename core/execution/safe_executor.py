@@ -46,7 +46,9 @@ class ChangeResult:
 class SafeChangeExecutor:
     def __init__(self, project_root: Path, backup_dir: Optional[Path] = None):
         self.project_root = Path(project_root).resolve()
-        self.backup_dir = Path(backup_dir) if backup_dir else self.project_root / ".pantheon" / "backups"
+        self.backup_dir = (
+            Path(backup_dir) if backup_dir else self.project_root / ".pantheon" / "backups"
+        )
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self.manifest_path = self.backup_dir / "manifest.json"
         if not self.manifest_path.exists():
@@ -136,9 +138,15 @@ class SafeChangeExecutor:
             text=True,
             timeout=120,
         )
-        output = "\n".join(part for part in [completed.stdout.strip(), completed.stderr.strip()] if part).strip()
+        output = "\n".join(
+            part for part in [completed.stdout.strip(), completed.stderr.strip()] if part
+        ).strip()
         summary = self._parse_pytest_summary(output)
-        tests_passed = completed.returncode == 0 and summary.get("failed", 0) == 0 and summary.get("errors", 0) == 0
+        tests_passed = (
+            completed.returncode == 0
+            and summary.get("failed", 0) == 0
+            and summary.get("errors", 0) == 0
+        )
         return tests_passed, output, summary
 
     def _parse_pytest_summary(self, output: str) -> dict[str, int]:
@@ -150,9 +158,10 @@ class SafeChangeExecutor:
         return summary
 
     def _build_test_error_message(self, output: str, summary: dict[str, int]) -> str:
-        summary_text = ", ".join(
-            f"{count} {name}" for name, count in summary.items() if count
-        ) or "no pytest summary available"
+        summary_text = (
+            ", ".join(f"{count} {name}" for name, count in summary.items() if count)
+            or "no pytest summary available"
+        )
         return f"Tests failed ({summary_text}). {output}".strip()
 
     def _append_manifest(self, record: BackupRecord) -> None:

@@ -139,7 +139,9 @@ class AgentFactory:
                 kwargs = {"specialist": specialist}
                 signature = inspect.signature(cls)
                 if "provider_name" in signature.parameters:
-                    kwargs["provider_name"] = getattr(self._llm, "provider_name", None) or "claude_code"
+                    kwargs["provider_name"] = (
+                        getattr(self._llm, "provider_name", None) or "claude_code"
+                    )
                 if "llm_client" in signature.parameters:
                     kwargs["llm_client"] = self._llm
                 return cls(**kwargs)

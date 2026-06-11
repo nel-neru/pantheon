@@ -23,16 +23,16 @@ class SurfaceStatus:
     DONE = "done"
     FAILED = "failed"
     CLOSED = "closed"
-    RATE_LIMITED = "rate_limited"   # hit a Claude usage limit; awaiting auto-resume
+    RATE_LIMITED = "rate_limited"  # hit a Claude usage limit; awaiting auto-resume
 
 
 @dataclass
 class AgentSpec:
     """One agent to run inside a session as its own surface (small tab)."""
 
-    agent_id: str               # e.g. "agent:code_reviewer"
-    title: str                  # short human label for the tab
-    command: Sequence[str]      # argv to run (typically a `claude -p ...` invocation)
+    agent_id: str  # e.g. "agent:code_reviewer"
+    title: str  # short human label for the tab
+    command: Sequence[str]  # argv to run (typically a `claude -p ...` invocation)
     cwd: Optional[str] = None
     role: str = "agent"
     metadata: Dict[str, str] = field(default_factory=dict)

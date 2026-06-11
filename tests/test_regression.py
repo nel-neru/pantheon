@@ -30,7 +30,9 @@ def _proposal(priority="low", category="style", file_path="src/utils.py"):
 
 class TestPolicyEngineRegression:
     def test_auto_approve_low_priority_non_critical(self):
-        verdict = PolicyEngine().evaluate(_proposal(priority="low", category="comment", file_path="src/docs.py"))
+        verdict = PolicyEngine().evaluate(
+            _proposal(priority="low", category="comment", file_path="src/docs.py")
+        )
 
         assert verdict.decision == ApprovalDecision.AUTO_APPROVE
         assert verdict.rule_name == "auto_approve"
@@ -47,9 +49,26 @@ class TestPolicyEngineRegression:
             yaml.safe_dump(
                 {
                     "version": "1.0",
-                    "auto_reject": {"conditions": {"empty_file_path": True, "disabled_categories": ["self_extension"]}},
-                    "human_required": {"conditions": {"min_priority": "high", "categories": [], "file_patterns": []}},
-                    "auto_approve": {"conditions": {"max_priority": "low", "allowed_categories": ["comment"], "forbidden_patterns": []}},
+                    "auto_reject": {
+                        "conditions": {
+                            "empty_file_path": True,
+                            "disabled_categories": ["self_extension"],
+                        }
+                    },
+                    "human_required": {
+                        "conditions": {
+                            "min_priority": "high",
+                            "categories": [],
+                            "file_patterns": [],
+                        }
+                    },
+                    "auto_approve": {
+                        "conditions": {
+                            "max_priority": "low",
+                            "allowed_categories": ["comment"],
+                            "forbidden_patterns": [],
+                        }
+                    },
                 },
                 allow_unicode=True,
             ),
@@ -92,8 +111,12 @@ class TestStateManagerRegression:
 
     def test_get_pending_returns_only_proposed(self, tmp_path):
         manager = RepoStateManager(tmp_path, "StateOrg")
-        keep = ImprovementProposal(review_id="00000000-0000-0000-0000-000000000002", title="Keep", description="d")
-        done = ImprovementProposal(review_id="00000000-0000-0000-0000-000000000003", title="Done", description="d")
+        keep = ImprovementProposal(
+            review_id="00000000-0000-0000-0000-000000000002", title="Keep", description="d"
+        )
+        done = ImprovementProposal(
+            review_id="00000000-0000-0000-0000-000000000003", title="Done", description="d"
+        )
         manager.save_improvement_proposal(keep)
         manager.save_improvement_proposal(done)
         manager.update_proposal_status(str(done.id), "done")
@@ -132,7 +155,9 @@ class TestOrchestrationRegression:
             )
         )
 
-        payload = yaml.safe_load((tmp_path / "orchestration_patterns.json").read_text(encoding="utf-8"))
+        payload = yaml.safe_load(
+            (tmp_path / "orchestration_patterns.json").read_text(encoding="utf-8")
+        )
 
         assert set(payload) == {"version", "updated_at", "records"}
         assert set(payload["records"][0]) == {

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { appendTokenToWsUrl } from '../lib/token'
+
 export type PlatformUpdate = {
   id?: string
   type?: string
@@ -16,7 +18,7 @@ export type PlatformUpdate = {
 
 function getSocketUrl() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws/updates`
+  return appendTokenToWsUrl(`${protocol}//${window.location.host}/ws/updates`)
 }
 
 export function usePlatformUpdates(url = getSocketUrl()) {

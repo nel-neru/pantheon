@@ -121,3 +121,9 @@ python -m pytest tests/ -q --tb=short
 ```
 
 > Windows では path-separator と `chmod` 由来の **6 件が既知の失敗**（回帰ではありません）。詳細は `CLAUDE.md` / `AGENTS.md` を参照。
+
+## コントリビュート / ライセンス / セキュリティ
+
+- 貢献方法・開発環境・ブランチ運用: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- 脆弱性の報告・セキュリティ特性: [`SECURITY.md`](SECURITY.md)
+- ライセンス: [MIT](LICENSE)

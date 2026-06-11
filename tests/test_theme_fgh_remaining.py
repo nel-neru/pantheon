@@ -43,6 +43,7 @@ def make_proposal(**overrides) -> ImprovementProposal:
 
 # Theme F
 
+
 def test_multi_file_coordinator_detects_import_issue(tmp_path: Path):
     target = tmp_path / "broken.py"
     target.write_text("import missing_module\n", encoding="utf-8")
@@ -69,7 +70,9 @@ def test_diff_reviewer_detects_shorter_file():
 
     issues = DiffQualityReviewer().review_diff(before, after, file_path="short.py")
 
-    assert any(issue.issue_type == "file_too_short" and issue.severity == "error" for issue in issues)
+    assert any(
+        issue.issue_type == "file_too_short" and issue.severity == "error" for issue in issues
+    )
     assert DiffQualityReviewer().is_acceptable(issues) is False
 
 
@@ -118,7 +121,7 @@ def test_impact_analyzer_assess_impact_levels():
 def test_ast_analyzer_finds_function(tmp_path: Path):
     target = tmp_path / "module.py"
     target.write_text(
-        "def alpha(value: int) -> int:\n    \"\"\"demo\"\"\"\n    return value\n",
+        'def alpha(value: int) -> int:\n    """demo"""\n    return value\n',
         encoding="utf-8",
     )
 
@@ -159,6 +162,7 @@ def test_change_size_should_split():
 
 
 # Theme G
+
 
 def test_query_proposals_filters_results(tmp_path: Path):
     manager = SQLiteStateManager(tmp_path / "state.db")
@@ -253,6 +257,7 @@ def test_system_doctor_fix_issues(tmp_path: Path):
 
 # Theme H
 
+
 def test_policy_optimizer_detects_repeated_rejects():
     decisions = [
         {"action": "REJECT", "proposal_id": f"p{idx}", "reason": "risk", "category": "security"}
@@ -267,7 +272,9 @@ def test_policy_optimizer_detects_repeated_rejects():
 def test_config_autotuner_low_health_recommendation():
     recs = ConfigAutoTuner().analyze_and_recommend([20.0, 30.0], [0.5, 0.4])
 
-    assert any(rec.parameter == "low_health_threshold" and rec.recommended_value == 35 for rec in recs)
+    assert any(
+        rec.parameter == "low_health_threshold" and rec.recommended_value == 35 for rec in recs
+    )
 
 
 def test_config_autotuner_low_acceptance_recommendation():
@@ -278,9 +285,9 @@ def test_config_autotuner_low_acceptance_recommendation():
 
 def test_skill_evolution_proposes_security_audit():
     engine = SkillEvolutionEngine()
-    proposals = engine.analyze_task_patterns([
-        {"task_type": "security_audit", "category": "security", "frequency": 5}
-    ])
+    proposals = engine.analyze_task_patterns(
+        [{"task_type": "security_audit", "category": "security", "frequency": 5}]
+    )
 
     assert proposals[0].skill_name == "SECURITY_AUDIT"
     assert engine.get_proposed_skills()[0].skill_name == "SECURITY_AUDIT"

@@ -34,6 +34,8 @@ from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
 from core.llm.base import LLMMessage, LLMResponse
+from core.runtime.rate_limit import RateLimitInfo, detect_rate_limit, detect_rate_limit_strict
+from core.runtime.usage_gate import RateLimitGate, gate_bypassed
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +84,27 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 class ClaudeUnavailableError(RuntimeError):
     """Raised when the ``claude`` CLI cannot be used for a generation call."""
+
+
+class ClaudeRateLimitedError(ClaudeUnavailableError):
+    """Raised when generation is blocked by a Claude usage/rate limit.
+
+    Subclasses :class:`ClaudeUnavailableError` so every existing
+    ``except ClaudeUnavailableError`` fallback keeps working; callers that
+    care about the limit specifically can catch this type and read ``info``.
+    The message embeds the reset time as an ISO timestamp so legacy callers
+    that re-run :func:`detect_rate_limit` over ``str(exc)`` recover it.
+    """
+
+    def __init__(self, message: str, info: Optional[RateLimitInfo] = None):
+        super().__init__(message)
+        self.info = info or RateLimitInfo(limited=True)
+
+
+def _limit_message(info: RateLimitInfo) -> str:
+    reset = info.reset_at.isoformat() if info.reset_at else "unknown"
+    base = f"claude usage limit reached (scope={info.scope}); resets at {reset}"
+    return f"{base}. {info.message}".strip() if info.message else base
 
 
 def _default_timeout() -> float:
@@ -137,14 +160,20 @@ def _log_call_timing(
     returncode: Optional[int],
     timed_out: bool,
     fast: bool,
+    task_type: Optional[str] = None,
+    usage: Optional[dict] = None,
+    total_cost_usd: Optional[float] = None,
 ) -> None:
     """Append one JSONL record of a real ``claude`` call's wall-clock time.
 
     Best-effort: never let logging failures affect the generation result.
+    実測トークン（usage）が取れた呼び出しはレコードに含め、トークン台帳
+    （A-5 TokenLedger）の唯一のソースとなる。フィールド追加のみで後方互換。
     """
     path = _timing_log_path()
     if not path:
         return
+    usage = usage or {}
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "elapsed_ms": elapsed_ms,
@@ -154,6 +183,11 @@ def _log_call_timing(
         "returncode": returncode,
         "timed_out": timed_out,
         "fast": fast,
+        "task_type": task_type,
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+        "cache_read_tokens": usage.get("cache_read_input_tokens"),
+        "total_cost_usd": total_cost_usd,
     }
     try:
         p = Path(path)
@@ -239,29 +273,91 @@ def _resolve(messages: MessageLike, system: Optional[str]) -> tuple[Optional[str
     return (system if system is not None else sys_from_msg), user
 
 
-def _parse_output(stdout: str) -> str:
-    """Extract the assistant text from ``claude -p --output-format json`` output."""
+def _extract_meta(data: dict) -> Optional[dict]:
+    """result JSON から実測メタ（usage / total_cost_usd / modelUsage）を拾う。"""
+    usage = data.get("usage")
+    cost = data.get("total_cost_usd")
+    model_usage = data.get("modelUsage")
+    if not isinstance(usage, dict) and cost is None and not isinstance(model_usage, dict):
+        return None
+    return {
+        "usage": usage if isinstance(usage, dict) else None,
+        "total_cost_usd": cost if isinstance(cost, (int, float)) else None,
+        "model_usage": model_usage if isinstance(model_usage, dict) else None,
+    }
+
+
+def _parse_result(stdout: str) -> tuple[str, bool, Optional[dict]]:
+    """Extract ``(assistant_text, is_error, meta)`` from ``claude -p --output-format json``.
+
+    ``meta`` carries the CLI-reported **measured** usage (input/output tokens,
+    cost) when present — the basis for the token ledger; ``None`` on older CLIs
+    (callers fall back to char-count estimates).
+    """
     text = (stdout or "").strip()
     if not text:
-        return ""
+        return "", False, None
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return text
+        return text, False, None
     if isinstance(data, dict):
+        is_error = bool(data.get("is_error"))
+        meta = _extract_meta(data)
         for key in ("result", "content", "text", "response"):
             value = data.get(key)
             if isinstance(value, str) and value.strip():
-                return value
-        return text
+                return value, is_error, meta
+        return text, is_error, meta
     if isinstance(data, list) and data:
         # stream-json transcripts: take the last textual chunk
         for entry in reversed(data):
             if isinstance(entry, dict):
                 value = entry.get("result") or entry.get("text")
                 if isinstance(value, str) and value.strip():
-                    return value
-    return text
+                    return value, bool(entry.get("is_error")), _extract_meta(entry)
+    return text, False, None
+
+
+def _parse_output(stdout: str) -> str:
+    """Extract the assistant text from ``claude -p --output-format json`` output."""
+    return _parse_result(stdout)[0]
+
+
+# 成功（exit 0）出力に対するレート制限検知の誤検知ガード（検知結果は全プロセス
+# 共有の RateLimitGate に波及するため、誤検知 1 回でプラットフォーム全体が
+# 1h 以上 pause してしまう）:
+#   - is_error=true の結果 → エラーメッセージなので緩い検知（detect_rate_limit）
+#   - is_error=false の結果 → CLI の制限メッセージは常に短い 1〜2 行なので
+#     「短い本文 × アンカー付き定型句のみ（detect_rate_limit_strict）」に限定。
+#     X 投稿等の短い正常生成に "429" / "quota" / "rate limit" が混ざるのは
+#     正当な内容であり、裸の部分一致でゲートしてはならない。
+_SUCCESS_SCAN_MAX_CHARS = 400
+
+
+def _detect_success_rate_limit(content: str, is_error: bool) -> Optional[RateLimitInfo]:
+    if not content:
+        return None
+    if is_error:
+        info = detect_rate_limit(content)
+        return info if info.limited else None
+    if len(content) > _SUCCESS_SCAN_MAX_CHARS:
+        return None
+    info = detect_rate_limit_strict(content)
+    return info if info.limited else None
+
+
+def scan_result_text_for_rate_limit(stdout: str) -> Optional[RateLimitInfo]:
+    """Scan a captured ``claude`` JSON/stream-json output for a usage limit.
+
+    Parses the envelope first and applies the success-path guards to the
+    *extracted result text only* — never the raw JSON line, whose numeric
+    stats (``duration_ms":14290`` …) would false-positive the loose
+    substring signals. For callers that hold a completed agent's log
+    (session orchestrator) rather than a live ``CompletedProcess``.
+    """
+    content, is_error, _meta = _parse_result(stdout)
+    return _detect_success_rate_limit(content, is_error)
 
 
 # --------------------------------------------------------------------------- #
@@ -294,6 +390,26 @@ def _build_cli_args(
     return args
 
 
+def _route_model(
+    task_type: Optional[str], prompt_chars: int, downgrade: bool = False
+) -> Optional[str]:
+    """ModelTierRouter による自動選択（設定不備が生成を止めないよう防御的に）。
+
+    task_type が無い呼び出しはルーティングしない（従来挙動 = env / CLI 既定）。
+    タグ付けされた呼び出しだけがティアリングの対象になる opt-in 設計。
+    ``downgrade`` はクォータ逼迫時（A-5 QuotaGovernor）の 1 ティア降格指示。
+    """
+    if not task_type:
+        return None
+    try:
+        from core.runtime.model_router import select_model
+
+        return select_model(task_type, prompt_chars, downgrade=downgrade)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("model routing unavailable (%s)", exc)
+        return None
+
+
 def run_claude_sync(
     messages: MessageLike,
     *,
@@ -302,11 +418,21 @@ def run_claude_sync(
     cwd: Optional[Any] = None,
     timeout: Optional[float] = None,
     extra_args: Optional[Sequence[str]] = None,
+    task_type: Optional[str] = None,
+    downgrade: bool = False,
 ) -> LLMResponse:
     """Run a single headless ``claude -p`` generation and return an ``LLMResponse``.
 
+    ``task_type`` enables tier routing: 明示 ``model`` 引数 ＞ ModelTierRouter ＞
+    ``PANTHEON_DEFAULT_MODEL`` の優先順位で ``--model`` を決める。``downgrade`` は
+    クォータ逼迫時に 1 ティア下げる（A-5）。
+
     Raises :class:`ClaudeUnavailableError` when the CLI is unavailable, times out,
     or exits non-zero — callers typically catch this and fall back to heuristics.
+    Raises :class:`ClaudeRateLimitedError` (a subclass) when a usage/rate limit
+    is active or newly detected; the limit is shared cross-process via
+    :class:`RateLimitGate` so no further CLI processes are spawned (and no
+    tokens wasted) until the window reopens.
     """
     binary = claude_binary()
     if not binary:
@@ -314,14 +440,20 @@ def run_claude_sync(
             f"`claude` CLI is unavailable (not installed or disabled via {DISABLE_ENV}).",
         )
 
+    gate = RateLimitGate()
+    if not gate_bypassed():
+        active = gate.current()
+        if active is not None:
+            raise ClaudeRateLimitedError(_limit_message(active), active)
+
     system_text, user_text = _resolve(messages, system)
     if not user_text.strip():
         return LLMResponse(content="", model=model or "claude-code", finish_reason="empty")
 
-    chosen_model = model or os.getenv(MODEL_ENV)
-    effective_timeout = timeout or _default_timeout()
     prompt_chars = len(user_text)
     system_chars = len(system_text or "")
+    chosen_model = model or _route_model(task_type, prompt_chars, downgrade) or os.getenv(MODEL_ENV)
+    effective_timeout = timeout or _default_timeout()
 
     def _invoke(use_fast: bool) -> subprocess.CompletedProcess:
         cli_args = _build_cli_args(
@@ -346,6 +478,7 @@ def run_claude_sync(
     started = time.monotonic()
     timed_out = False
     proc: Optional[subprocess.CompletedProcess] = None
+    parsed: Optional[tuple[str, bool, Optional[dict]]] = None
     try:
         try:
             proc = _invoke(fast)
@@ -377,7 +510,12 @@ def run_claude_sync(
                 ) from exc
             except OSError as exc:
                 raise ClaudeUnavailableError(f"failed to launch claude: {exc}") from exc
+
+        if proc.returncode == 0:
+            # finally の計測ログに実測 usage を含めるため、ここでパースしておく。
+            parsed = _parse_result(proc.stdout)
     finally:
+        meta = (parsed[2] if parsed else None) or {}
         _log_call_timing(
             elapsed_ms=int((time.monotonic() - started) * 1000),
             model=chosen_model,
@@ -386,14 +524,35 @@ def run_claude_sync(
             returncode=(proc.returncode if proc is not None else None),
             timed_out=timed_out,
             fast=fast,
+            task_type=task_type,
+            usage=meta.get("usage"),
+            total_cost_usd=meta.get("total_cost_usd"),
         )
 
     if proc.returncode != 0:
+        combined = "\n".join(part for part in (proc.stderr, proc.stdout) if part)
+        # 失敗出力にもスタックトレース等の偶発的な "429"/"quota" が混ざり得るため、
+        # 全プロセスを止める判断はアンカー付き定型句に限定する。
+        info = detect_rate_limit_strict(combined)
+        if info.limited:
+            gate.report(info)
+            raise ClaudeRateLimitedError(_limit_message(info), info)
         detail = (proc.stderr or proc.stdout or "").strip()[:500]
         raise ClaudeUnavailableError(f"claude exited {proc.returncode}: {detail}")
 
-    content = _parse_output(proc.stdout)
-    return LLMResponse(content=content, model=chosen_model or "claude-code", finish_reason="stop")
+    content, is_error, result_meta = parsed if parsed is not None else ("", False, None)
+    # CLI はレート制限を「正常終了 (exit 0) の結果テキスト」として返すことがある。
+    info = _detect_success_rate_limit(content, is_error)
+    if info is not None:
+        gate.report(info)
+        raise ClaudeRateLimitedError(_limit_message(info), info)
+    usage = (result_meta or {}).get("usage")
+    return LLMResponse(
+        content=content,
+        model=chosen_model or "claude-code",
+        usage=usage if isinstance(usage, dict) else None,
+        finish_reason="stop",
+    )
 
 
 async def run_claude(
@@ -404,6 +563,8 @@ async def run_claude(
     cwd: Optional[Any] = None,
     timeout: Optional[float] = None,
     extra_args: Optional[Sequence[str]] = None,
+    task_type: Optional[str] = None,
+    downgrade: bool = False,
 ) -> LLMResponse:
     """Async wrapper around :func:`run_claude_sync` (runs in a worker thread)."""
     return await asyncio.to_thread(
@@ -414,6 +575,8 @@ async def run_claude(
         cwd=cwd,
         timeout=timeout,
         extra_args=extra_args,
+        task_type=task_type,
+        downgrade=downgrade,
     )
 
 
@@ -460,6 +623,8 @@ class ClaudeCodeProvider:
             model=model or self._model,
             cwd=self._cwd,
             timeout=kwargs.get("timeout"),
+            task_type=kwargs.get("task_type"),
+            downgrade=bool(kwargs.get("downgrade", False)),
         )
 
     async def stream(self, messages: MessageLike, model: Optional[str] = None, **kwargs: Any):
@@ -469,10 +634,20 @@ class ClaudeCodeProvider:
 
     # -- LangChain-style helpers -------------------------------------------- #
     def invoke(self, messages: MessageLike, **kwargs: Any) -> LLMResponse:
-        return run_claude_sync(messages, model=kwargs.get("model") or self._model, cwd=self._cwd)
+        return run_claude_sync(
+            messages,
+            model=kwargs.get("model") or self._model,
+            cwd=self._cwd,
+            task_type=kwargs.get("task_type"),
+        )
 
     async def ainvoke(self, messages: MessageLike, **kwargs: Any) -> LLMResponse:
-        return await run_claude(messages, model=kwargs.get("model") or self._model, cwd=self._cwd)
+        return await run_claude(
+            messages,
+            model=kwargs.get("model") or self._model,
+            cwd=self._cwd,
+            task_type=kwargs.get("task_type"),
+        )
 
     def complete(self, messages: MessageLike, **kwargs: Any) -> str:
         return self.invoke(messages, **kwargs).content

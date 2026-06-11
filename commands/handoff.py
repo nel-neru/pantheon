@@ -40,7 +40,9 @@ def _find(store, handoff_id: str):
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        print(f"[ERROR] ID '{handoff_id}' が複数の引き渡しに一致します。より長い ID を指定してください。")
+        print(
+            f"[ERROR] ID '{handoff_id}' が複数の引き渡しに一致します。より長い ID を指定してください。"
+        )
         sys.exit(1)
     return None
 
@@ -114,7 +116,7 @@ async def cmd_handoff(args: argparse.Namespace, *, get_psm: Any) -> None:
         print(f"     受け手 '{updated.target_org}' に{kind_label}提案を自動生成しました:")
         print(f"       [{str(proposal.id)[:8]}] {proposal.title}")
         print(
-            f'     適用するには:  pantheon proposal apply {str(proposal.id)[:8]} '
+            f"     適用するには:  pantheon proposal apply {str(proposal.id)[:8]} "
             f'--org-name "{updated.target_org}"'
         )
         return
@@ -141,12 +143,14 @@ async def cmd_handoff(args: argparse.Namespace, *, get_psm: Any) -> None:
 
         proposal = await draft_handoff(handoff, psm=get_psm())
         if proposal is None:
-            print(f"[ERROR] 受け手 '{handoff.target_org}' が未登録/repo 未設定のため本文生成できません。")
+            print(
+                f"[ERROR] 受け手 '{handoff.target_org}' が未登録/repo 未設定のため本文生成できません。"
+            )
             sys.exit(1)
         print(f"[OK] 本文ドラフトを生成しました（受け手 '{handoff.target_org}'）:")
         print(f"       [{str(proposal.id)[:8]}] {proposal.title}")
         print(
-            f'     適用するには:  pantheon proposal apply {str(proposal.id)[:8]} '
+            f"     適用するには:  pantheon proposal apply {str(proposal.id)[:8]} "
             f'--org-name "{handoff.target_org}"'
         )
         return
@@ -157,7 +161,9 @@ async def cmd_handoff(args: argparse.Namespace, *, get_psm: Any) -> None:
             print(f"[ERROR] 引き渡し '{args.handoff_id}' が見つかりません。")
             sys.exit(1)
         try:
-            updated = store.mark_consumed(handoff.handoff_id, consumed_ref=getattr(args, "ref", "") or "")
+            updated = store.mark_consumed(
+                handoff.handoff_id, consumed_ref=getattr(args, "ref", "") or ""
+            )
         except ValueError as exc:
             print(f"[ERROR] {exc}")
             sys.exit(1)
@@ -200,7 +206,9 @@ def register(subparsers: Any) -> None:
     create.add_argument("--title", required=True, help="引き渡しの要約")
     create.add_argument("--priority", default="medium", help="優先度（low/medium/high）")
     create.add_argument("--note", default="", help="メモ（任意）")
-    create.add_argument("--payload-json", dest="payload_json", default="", help="ペイロード JSON（任意）")
+    create.add_argument(
+        "--payload-json", dest="payload_json", default="", help="ペイロード JSON（任意）"
+    )
     create.set_defaults(handler_name="cmd_handoff")
 
     approve = sub.add_parser("approve", help="承認ボタン（pending → approved）")
@@ -216,7 +224,9 @@ def register(subparsers: Any) -> None:
     reject.add_argument("handoff_id", help="引き渡し ID（先頭一致可）")
     reject.set_defaults(handler_name="cmd_handoff")
 
-    draft = sub.add_parser("draft", help="本文ドラフトを生成（claude 経由、不在時は決定論テンプレ）")
+    draft = sub.add_parser(
+        "draft", help="本文ドラフトを生成（claude 経由、不在時は決定論テンプレ）"
+    )
     draft.add_argument("handoff_id", help="引き渡し ID（先頭一致可）")
     draft.set_defaults(handler_name="cmd_handoff")
 
@@ -228,9 +238,7 @@ def register(subparsers: Any) -> None:
     lst = sub.add_parser("list", help="引き渡しを一覧する")
     lst.add_argument("--from", dest="source", help="送り手で絞り込み")
     lst.add_argument("--to", dest="target", help="受け手で絞り込み")
-    lst.add_argument(
-        "--status", help="状態で絞り込み（pending/approved/consumed/rejected）"
-    )
+    lst.add_argument("--status", help="状態で絞り込み（pending/approved/consumed/rejected）")
     lst.set_defaults(handler_name="cmd_handoff")
 
     # `handoff`（サブコマンド省略時）も list として扱う

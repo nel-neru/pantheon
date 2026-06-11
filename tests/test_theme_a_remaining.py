@@ -82,9 +82,17 @@ def test_skill_proficiency_prompt_enhancement_levels(tmp_path):
     }
     manager._save()
 
-    assert manager.get_prompt_enhancement("agent-1", "low") == "基本的な分析を丁寧に行ってください。"
-    assert manager.get_prompt_enhancement("agent-1", "mid") == "経験を活かした精度の高い分析を行ってください。"
-    assert manager.get_prompt_enhancement("agent-1", "high") == "専門家レベルの深い洞察を提供してください。"
+    assert (
+        manager.get_prompt_enhancement("agent-1", "low") == "基本的な分析を丁寧に行ってください。"
+    )
+    assert (
+        manager.get_prompt_enhancement("agent-1", "mid")
+        == "経験を活かした精度の高い分析を行ってください。"
+    )
+    assert (
+        manager.get_prompt_enhancement("agent-1", "high")
+        == "専門家レベルの深い洞察を提供してください。"
+    )
 
 
 def test_skill_proficiency_persists_records(tmp_path):
@@ -197,7 +205,8 @@ def test_skill_propagator_propagates(tmp_path):
 
     propagated = propagator.propagate("source", "target", "security")
     target_patterns = [
-        pattern for pattern in accumulator._load_patterns()
+        pattern
+        for pattern in accumulator._load_patterns()
         if pattern.agent_id == "target" and pattern.skill_name == "security"
     ]
 
@@ -311,10 +320,12 @@ def test_self_evaluator_should_retry_when_low():
 
 def test_self_evaluator_evaluate_with_retry():
     evaluator = AgentSelfEvaluator()
-    outputs = iter([
-        "失敗",
-        "1. 改善 proposal\n- src/core.py:10 を修正\n十分に詳しい説明を追加して再評価に通すための長い文章です。",
-    ])
+    outputs = iter(
+        [
+            "失敗",
+            "1. 改善 proposal\n- src/core.py:10 を修正\n十分に詳しい説明を追加して再評価に通すための長い文章です。",
+        ]
+    )
 
     final_output, evaluation = evaluator.evaluate_with_retry(lambda: next(outputs), "code_review")
 

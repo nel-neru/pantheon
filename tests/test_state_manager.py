@@ -1,4 +1,5 @@
 """Unit tests for RepoStateManager"""
+
 import json
 from uuid import uuid4
 
@@ -49,10 +50,16 @@ class TestRepoStateManager:
 
     def test_active_proposals_include_proposed_pending_and_in_progress(self, state_manager):
         proposed = ImprovementProposal(review_id=uuid4(), title="Proposed", description="d")
-        pending = ImprovementProposal(review_id=uuid4(), title="Pending", description="d", status="pending")
-        running = ImprovementProposal(review_id=uuid4(), title="Running", description="d", status="in_progress")
+        pending = ImprovementProposal(
+            review_id=uuid4(), title="Pending", description="d", status="pending"
+        )
+        running = ImprovementProposal(
+            review_id=uuid4(), title="Running", description="d", status="in_progress"
+        )
         done = ImprovementProposal(review_id=uuid4(), title="Done", description="d", status="done")
-        rejected = ImprovementProposal(review_id=uuid4(), title="Rejected", description="d", status="rejected")
+        rejected = ImprovementProposal(
+            review_id=uuid4(), title="Rejected", description="d", status="rejected"
+        )
         state_manager.save_improvement_proposal(proposed)
         state_manager.save_improvement_proposal(pending)
         state_manager.save_improvement_proposal(running)
@@ -99,7 +106,9 @@ class TestRepoStateManager:
         assert decisions[0]["title"] == "Decision 1"
 
     def test_save_and_load_session_context(self, state_manager):
-        state_manager.save_session_context("session-1", {"summary": "Shared work", "messages": ["hello"]})
+        state_manager.save_session_context(
+            "session-1", {"summary": "Shared work", "messages": ["hello"]}
+        )
 
         loaded = state_manager.load_session_context("session-1")
 
@@ -121,7 +130,9 @@ class TestRepoStateManager:
     def test_get_cross_org_state(self, state_manager, tmp_path, monkeypatch):
         from core.orchestration import task_queue as task_queue_module
 
-        monkeypatch.setattr(task_queue_module, "get_platform_home", lambda: tmp_path / "platform-home")
+        monkeypatch.setattr(
+            task_queue_module, "get_platform_home", lambda: tmp_path / "platform-home"
+        )
         queue = task_queue_module.TaskQueue()
         queue.add_task("analyze", "CrossOrg", "共有タスク")
 

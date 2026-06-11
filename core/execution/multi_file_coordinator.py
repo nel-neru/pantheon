@@ -50,7 +50,9 @@ class MultiFileChangeCoordinator:
                 )
         return issues
 
-    def check_signature_consistency(self, before: dict[str, str], after: dict[str, str]) -> list[ConsistencyIssue]:
+    def check_signature_consistency(
+        self, before: dict[str, str], after: dict[str, str]
+    ) -> list[ConsistencyIssue]:
         issues: list[ConsistencyIssue] = []
         for file_path in sorted(set(before) & set(after)):
             before_sigs = self._extract_public_signatures(before[file_path])
@@ -94,21 +96,27 @@ class MultiFileChangeCoordinator:
                 imports.extend(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom):
                 if node.level:
-                    base_parts = current_parts[:-node.level]
+                    base_parts = current_parts[: -node.level]
                     if node.module:
                         imports.append(".".join(base_parts + node.module.split(".")))
                     else:
                         imports.extend(
-                            ".".join(base_parts + [alias.name]) for alias in node.names if alias.name != "*"
+                            ".".join(base_parts + [alias.name])
+                            for alias in node.names
+                            if alias.name != "*"
                         )
                     continue
 
                 if node.module:
                     imports.append(node.module)
-                    imports.extend(f"{node.module}.{alias.name}" for alias in node.names if alias.name != "*")
+                    imports.extend(
+                        f"{node.module}.{alias.name}" for alias in node.names if alias.name != "*"
+                    )
         return [name for name in imports if name and name != "__future__"]
 
-    def _module_exists(self, module_name: str, file_path: Path, module_map: dict[str, Path]) -> bool:
+    def _module_exists(
+        self, module_name: str, file_path: Path, module_map: dict[str, Path]
+    ) -> bool:
         if module_name in module_map:
             return True
         if module_name in sys.modules:
@@ -131,7 +139,9 @@ class MultiFileChangeCoordinator:
 
         signatures: dict[str, str] = {}
         for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_"):
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef)
+            ) and not node.name.startswith("_"):
                 signatures[node.name] = self._signature_repr(node)
         return signatures
 
@@ -142,5 +152,9 @@ class MultiFileChangeCoordinator:
         args.extend(arg.arg for arg in node.args.kwonlyargs)
         if node.args.kwarg:
             args.append(f"**{node.args.kwarg.arg}")
-        returns = ast.unparse(node.returns) if node.returns is not None and hasattr(ast, "unparse") else ""
+        returns = (
+            ast.unparse(node.returns)
+            if node.returns is not None and hasattr(ast, "unparse")
+            else ""
+        )
         return f"({', '.join(args)}) -> {returns}"

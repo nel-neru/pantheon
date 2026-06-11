@@ -90,7 +90,11 @@ class TestSQLiteStateManager:
 
         active = manager.get_pending_improvement_proposals()
 
-        assert {proposal.title for proposal in active} == {"Keep proposed", "Keep pending", "Keep running"}
+        assert {proposal.title for proposal in active} == {
+            "Keep proposed",
+            "Keep pending",
+            "Keep running",
+        }
 
 
 class TestStateMigrator:
@@ -274,7 +278,9 @@ class TestSelfImprovementCycle:
         cycle = SelfImprovementCycle(platform_home=tmp_path, meta_analyzer=FakeMetaAnalyzer())
 
         record = cycle.run_meta_analysis_cycle(repo_root)
-        lines = (tmp_path / "core_improvement_history.jsonl").read_text(encoding="utf-8").splitlines()
+        lines = (
+            (tmp_path / "core_improvement_history.jsonl").read_text(encoding="utf-8").splitlines()
+        )
 
         assert len(lines) == 1
         payload = json.loads(lines[0])

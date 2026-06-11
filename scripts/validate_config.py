@@ -18,7 +18,16 @@ from typing import Any
 import yaml
 
 REQUIRED_SKILL_KEYS = ("schema_version", "id", "name", "persona", "focus", "output_hint")
-REQUIRED_AGENT_KEYS = ("schema_version", "name", "capability_id", "description", "skills", "tools", "behavior", "response_format")
+REQUIRED_AGENT_KEYS = (
+    "schema_version",
+    "name",
+    "capability_id",
+    "description",
+    "skills",
+    "tools",
+    "behavior",
+    "response_format",
+)
 REQUIRED_DEFAULT_KEYS = ("self_improvement",)
 
 
@@ -40,7 +49,9 @@ def _ensure_mapping(value: Any, path: Path, context: str) -> list[str]:
     return []
 
 
-def _ensure_sequence(value: Any, path: Path, context: str, *, min_items: int = 0, max_items: int | None = None) -> list[str]:
+def _ensure_sequence(
+    value: Any, path: Path, context: str, *, min_items: int = 0, max_items: int | None = None
+) -> list[str]:
     if not isinstance(value, list):
         return [f"{path}: {context} must be a list"]
     if len(value) < min_items:
@@ -151,7 +162,9 @@ def _validate_department_file(path: Path) -> list[str]:
             if isinstance(required_skills, list):
                 if not 2 <= len(required_skills) <= 3:
                     errors.append(f"{team_prefix}.required_skills must contain 2-3 skills")
-                if any(not isinstance(skill, str) or not skill.strip() for skill in required_skills):
+                if any(
+                    not isinstance(skill, str) or not skill.strip() for skill in required_skills
+                ):
                     errors.append(f"{team_prefix}.required_skills must contain non-empty strings")
             else:
                 errors.append(f"{team_prefix}.required_skills must be a list")

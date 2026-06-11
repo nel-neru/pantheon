@@ -95,14 +95,16 @@ class TestSkillLoader:
 
         skill_yaml = tmp_path / "custom_skill.yaml"
         skill_yaml.write_text(
-            yaml.dump({
-                "schema_version": "1.0",
-                "id": "custom_skill",
-                "name": "Custom Skill",
-                "persona": "あなたはカスタムスキルの専門家です。",
-                "focus": "カスタム分析を行います。",
-                "output_hint": "カスタム形式で返してください。",
-            }),
+            yaml.dump(
+                {
+                    "schema_version": "1.0",
+                    "id": "custom_skill",
+                    "name": "Custom Skill",
+                    "persona": "あなたはカスタムスキルの専門家です。",
+                    "focus": "カスタム分析を行います。",
+                    "output_hint": "カスタム形式で返してください。",
+                }
+            ),
             encoding="utf-8",
         )
         loader = SkillLoader(skills_dir=tmp_path)
@@ -180,7 +182,9 @@ class TestAgentLoader:
 
         loader = AgentLoader()
         agents = loader.all()
-        expected = len(list((Path(__file__).resolve().parent.parent / "agents" / "definitions").glob("*.yaml")))
+        expected = len(
+            list((Path(__file__).resolve().parent.parent / "agents" / "definitions").glob("*.yaml"))
+        )
         assert len(agents) == expected
 
     def test_strategic_planner_loaded(self):
@@ -224,8 +228,9 @@ class TestAgentLoader:
 
         loader = AgentLoader()
         for defn in loader.all():
-            assert defn.capability_id.startswith("agent:"), \
+            assert defn.capability_id.startswith("agent:"), (
                 f"{defn.name!r} has invalid capability_id: {defn.capability_id!r}"
+            )
 
     def test_new_yaml_file_creates_new_agent(self, tmp_path):
         """YAML ファイルを追加するだけで新エージェントが認識される（Pythonコード不要）。"""
@@ -235,15 +240,17 @@ class TestAgentLoader:
 
         # 新エージェント定義を tmp_path に作成
         (tmp_path / "my_new_agent.yaml").write_text(
-            yaml.dump({
-                "schema_version": "1.0",
-                "name": "MyNewAgent",
-                "description": "テスト用カスタムエージェント",
-                "skills": ["strategic_planning", "deep_research"],
-                "tools": ["read_file"],
-                "behavior": "テスト専用の振る舞いです。",
-                "response_format": {"type": "json", "fields": ["result"]},
-            }),
+            yaml.dump(
+                {
+                    "schema_version": "1.0",
+                    "name": "MyNewAgent",
+                    "description": "テスト用カスタムエージェント",
+                    "skills": ["strategic_planning", "deep_research"],
+                    "tools": ["read_file"],
+                    "behavior": "テスト専用の振る舞いです。",
+                    "response_format": {"type": "json", "fields": ["result"]},
+                }
+            ),
             encoding="utf-8",
         )
         loader = AgentLoader(definitions_dir=tmp_path)
@@ -275,7 +282,9 @@ class TestAgentLoader:
         from core.loaders.agent_loader import AgentLoader
 
         (tmp_path / "future_agent.yaml").write_text(
-            yaml.dump({"schema_version": "9.9", "name": "FutureAgent", "behavior": "future behavior"}),
+            yaml.dump(
+                {"schema_version": "9.9", "name": "FutureAgent", "behavior": "future behavior"}
+            ),
             encoding="utf-8",
         )
 

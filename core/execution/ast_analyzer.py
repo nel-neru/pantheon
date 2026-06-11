@@ -47,8 +47,17 @@ class ASTAnalyzer:
                 classes.append(
                     ClassInfo(
                         name=node.name,
-                        methods=[child.name for child in node.body if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))],
-                        bases=[ast.unparse(base) if hasattr(ast, "unparse") else getattr(base, "id", "") for base in node.bases],
+                        methods=[
+                            child.name
+                            for child in node.body
+                            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        ],
+                        bases=[
+                            ast.unparse(base)
+                            if hasattr(ast, "unparse")
+                            else getattr(base, "id", "")
+                            for base in node.bases
+                        ],
                         lineno=node.lineno,
                     )
                 )
@@ -84,7 +93,11 @@ class ASTAnalyzer:
         args.extend(arg.arg for arg in node.args.kwonlyargs)
         if node.args.kwarg:
             args.append(f"**{node.args.kwarg.arg}")
-        returns = ast.unparse(node.returns) if node.returns is not None and hasattr(ast, "unparse") else ""
+        returns = (
+            ast.unparse(node.returns)
+            if node.returns is not None and hasattr(ast, "unparse")
+            else ""
+        )
         return FunctionInfo(
             name=node.name,
             args=args,

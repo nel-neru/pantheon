@@ -186,14 +186,14 @@ async def cmd_hq_outcomes(args: argparse.Namespace, *, get_psm: Any) -> None:
         except (ValueError, OSError) as exc:
             print(f"[ERROR] ファイルを解析できません: {exc}")
             sys.exit(1)
-        added, skipped = store.record_many(
-            rows, default_org=getattr(args, "org_name", "") or ""
-        )
+        added, skipped = store.record_many(rows, default_org=getattr(args, "org_name", "") or "")
         print(f"[OK] 成果を {len(added)} 件取り込みました（スキップ {skipped} 件）。")
         orgs = sorted({e.org_name for e in added})
         for org in orgs:
             summary = store.summary_for_org(org)
-            print(f"  {org}: リーチ計 {summary.total_reach:.0f} / 収益計 {summary.total_revenue:.0f}")
+            print(
+                f"  {org}: リーチ計 {summary.total_reach:.0f} / 収益計 {summary.total_revenue:.0f}"
+            )
         return
 
     # list（既定）
@@ -251,7 +251,8 @@ def register(subparsers: Any) -> None:
     lst.set_defaults(handler_name="cmd_hq_outcomes")
 
     imp = outcomes_sub.add_parser(
-        "import", help="CSV/JSON から成果イベントを一括取り込みする（ダッシュボードのエクスポート等）"
+        "import",
+        help="CSV/JSON から成果イベントを一括取り込みする（ダッシュボードのエクスポート等）",
     )
     imp.add_argument("path", help="取り込むファイル（.csv または .json）")
     imp.add_argument(

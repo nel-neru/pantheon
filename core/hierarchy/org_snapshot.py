@@ -42,7 +42,9 @@ class OrgSnapshotManager:
             label=label,
         )
         path = self.snapshots_dir / f"{snapshot_id}.json"
-        path.write_text(json.dumps(asdict(snapshot), ensure_ascii=False, indent=2), encoding="utf-8")
+        path.write_text(
+            json.dumps(asdict(snapshot), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         return snapshot
 
     def list_snapshots(self, org_name: str) -> list[OrgSnapshot]:

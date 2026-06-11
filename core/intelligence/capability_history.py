@@ -46,7 +46,9 @@ class CapabilityHistoryTracker:
     def get_history(self, limit: int = 20) -> list[CapabilityAddition]:
         if not self.file_path.exists():
             return []
-        lines = [line for line in self.file_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        lines = [
+            line for line in self.file_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
         return [CapabilityAddition(**json.loads(line)) for line in lines[-limit:]]
 
     def format_timeline(self) -> str:
@@ -55,5 +57,7 @@ class CapabilityHistoryTracker:
             return "能力追加履歴はありません。"
         lines = ["Capability Timeline"]
         for item in history:
-            lines.append(f"- {item.added_at[:19]} | {item.capability_name} ({item.capability_type}) | {item.reason}")
+            lines.append(
+                f"- {item.added_at[:19]} | {item.capability_name} ({item.capability_type}) | {item.reason}"
+            )
         return "\n".join(lines)

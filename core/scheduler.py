@@ -22,10 +22,19 @@ from typing import Any, Dict, List, Optional
 
 from core.events.detector import DetectedEvent, EventDetector
 from core.policy.engine import ApprovalDecision, OrgBoundaryContext, PolicyEngine
+from core.runtime.claude_code import ClaudeRateLimitedError
+from core.runtime.heartbeat import write_heartbeat
+from core.runtime.quota_governor import PRIORITY_BACKGROUND, QuotaGovernor
+from core.runtime.rate_limit import DEFAULT_BACKOFF, MAX_BACKOFF, RateLimitInfo
+from core.runtime.usage_gate import RateLimitGate
+
+HEARTBEAT_NAME = "improvement"  # core.runtime.daemon_registry の登録名と一致させる
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_SECONDS = 3600
+# レート制限 pause 中の sleep チャンク（stop() への即応性を保つ）。
+PAUSE_SLEEP_CHUNK_SECONDS = 60.0
 
 
 class AutonomousScheduler:
@@ -56,8 +65,10 @@ class AutonomousScheduler:
         self._max_files = max_files_per_org
         self._detector = EventDetector(platform_home=self._psm.platform_home)
         self._policy = PolicyEngine(policy_path=self._psm.platform_home / "policy.yaml")
+        self._governor = QuotaGovernor()
         self._running = False
         self._cycle_count = 0
+        self._gate = RateLimitGate()
         self._log_path = self._psm.platform_home / "scheduler_log.jsonl"
 
     async def start(self) -> None:
@@ -68,20 +79,74 @@ class AutonomousScheduler:
 
         try:
             while self._running:
-                await self._run_cycle()
+                self._beat("running")
+                # 他プロセス（content daemon 等）が検知した制限も gate 経由で共有される。
+                info = self._gate.current()
+                if info is not None:
+                    await self._pause_until_reset(info)
+                    continue
+                try:
+                    await self._run_cycle()
+                except ClaudeRateLimitedError as exc:
+                    await self._pause_until_reset(exc.info)
+                    continue
+                # サイクル中に検知された制限（agent 内部で捕捉されヒューリスティックに
+                # フォールバックした場合等）は interval を待たずに即 pause へ。
+                if self._gate.current() is not None:
+                    continue
                 await asyncio.sleep(self._interval)
         except asyncio.CancelledError:
             pass
         finally:
             self._running = False
+            self._beat("stopped")
             print("[Scheduler] 停止しました")
 
     def stop(self) -> None:
         self._running = False
 
+    async def _pause_until_reset(self, info: RateLimitInfo) -> None:
+        """レート制限の reset 時刻まで pause し、窓が開いたら自動 resume する。"""
+        now = datetime.now(timezone.utc)
+        reset_at = info.reset_at or (now + DEFAULT_BACKOFF)
+        reset_at = min(max(reset_at, now), now + MAX_BACKOFF)
+        logger.info("AutonomousScheduler paused (rate limit) — resumes at %s", reset_at.isoformat())
+        print(f"[Scheduler] レート制限を検知 — {reset_at.isoformat()} まで待機（解除後に自動再開）")
+        while self._running:
+            remaining = (reset_at - datetime.now(timezone.utc)).total_seconds()
+            if remaining <= 0:
+                break
+            # pause 中も heartbeat を打ち続ける（watchdog に「生きている」と伝える）。
+            self._beat("paused_rate_limit")
+            await asyncio.sleep(min(PAUSE_SLEEP_CHUNK_SECONDS, remaining))
+        if self._running:
+            logger.info("AutonomousScheduler resumed after rate-limit window")
+            print("[Scheduler] レート制限解除 — 自動再開します")
+
+    def _beat(self, status: str) -> None:
+        """heartbeat を更新する（watchdog/health API 用、ベストエフォート）。"""
+        write_heartbeat(
+            HEARTBEAT_NAME,
+            {
+                "status": status,
+                "cycle": self._cycle_count,
+                "interval_seconds": self._interval,
+            },
+            platform_home=self._psm.platform_home,
+        )
+
     async def _run_cycle(self) -> Dict[str, Any]:
         self._cycle_count += 1
         cycle_start = datetime.now(timezone.utc)
+
+        # 改善サイクル全体が最も優先度の低い background。クォータが soft 超過なら
+        # サイクルごと丸ごとスキップし、content 生成・期限投稿などに枠を残す。
+        verdict = self._governor.allow(PRIORITY_BACKGROUND)
+        if not verdict.allowed:
+            print(
+                f"[Scheduler] クォータ逼迫（{verdict.reason}）— サイクル #{self._cycle_count} を見送り"
+            )
+            return {"cycle": self._cycle_count, "skipped_by_quota": True, "reason": verdict.reason}
         print(
             f"\n[Scheduler] サイクル #{self._cycle_count} 開始 — {cycle_start.strftime('%H:%M:%S')}"
         )
@@ -89,26 +154,70 @@ class AutonomousScheduler:
         events = self._detector.detect_all()
         triggered_orgs = {e.org_name for e in events}
 
-        if not triggered_orgs:
-            print("[Scheduler] イベントなし — スキップ")
-            return {"cycle": self._cycle_count, "triggered_orgs": 0}
-
-        print(f"[Scheduler] {len(triggered_orgs)} Org でイベント検知: {', '.join(triggered_orgs)}")
-
         results: List[Dict[str, Any]] = []
-        for org_name in triggered_orgs:
-            result = await self._process_org(org_name, events)
-            results.append(result)
+        if triggered_orgs:
+            print(
+                f"[Scheduler] {len(triggered_orgs)} Org でイベント検知: {', '.join(triggered_orgs)}"
+            )
+            for org_name in triggered_orgs:
+                # org ごとの分析（claude 呼び出し）は長く、サイクル中に heartbeat が
+                # 途切れると watchdog にハングと誤判定されるため 1 org ごとに更新する。
+                self._beat("running")
+                result = await self._process_org(org_name, events)
+                results.append(result)
+        else:
+            print("[Scheduler] イベントなし")
+
+        # 自己改善ループ（任意・既定 off）: 承認フローを経た改善提案を Meta-Improvement
+        # Organization が拾って適用する。承認済み提案はコードイベントとは独立に溜まるため、
+        # イベントの有無に関わらず毎サイクル実行する。設定 daemon_self_improvement=True
+        # のときだけ走らせ、安定確認後に有効化する運用とする。
+        self_improved = await self._maybe_run_self_improvement()
 
         summary = {
             "cycle": self._cycle_count,
             "triggered_orgs": len(triggered_orgs),
             "results": results,
+            "self_improvement": self_improved,
             "started_at": cycle_start.isoformat(),
             "completed_at": datetime.now(timezone.utc).isoformat(),
         }
         self._write_log(summary)
         return summary
+
+    async def _maybe_run_self_improvement(self) -> Dict[str, Any]:
+        """設定で有効なときのみ SelfImprovementLoop を 1 サイクル回す。
+
+        ``~/.pantheon`` の platform config ``daemon_self_improvement`` で gate。
+        Meta-Improvement Organization に対して未対応提案を拾って適用する。例外は
+        握りつぶしてメインの改善サイクルを壊さない。
+        """
+        try:
+            config = self._psm.load_platform_config()
+        except Exception:  # noqa: BLE001
+            return {"enabled": False}
+        if not config.get("daemon_self_improvement"):
+            return {"enabled": False}
+
+        try:
+            org_id = config.get("meta_improvement_org_id") or ""
+            org = None
+            if org_id:
+                org = self._psm.load_organization_by_id(org_id)
+            if org is None:
+                org = self._psm.load_organization_by_name("Meta-Improvement Organization")
+            if org is None:
+                return {"enabled": True, "ran": False, "reason": "meta_org_not_found"}
+
+            from core.quality.self_improvement_loop import SelfImprovementLoop
+
+            sm = self._psm.get_org_state_manager(org)
+            loop = SelfImprovementLoop(org, sm)
+            await loop.run_improvement_cycle()
+            return {"enabled": True, "ran": True, "org": org.name}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("self-improvement loop failed: %s", exc)
+            return {"enabled": True, "ran": False, "error": str(exc)}
 
     async def _process_org(self, org_name: str, events: List[DetectedEvent]) -> Dict[str, Any]:
         """対象 Org を分析して PolicyEngine でルーティングし、自動適用 or 保留を決める"""

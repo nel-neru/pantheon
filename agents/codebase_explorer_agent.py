@@ -178,9 +178,7 @@ class CodebaseExplorerAgent(BaseAgent):
             "elapsed_ms": elapsed_ms,
         }
 
-    async def _analyze_with_llm(
-        self, context: str, repo_name: str, mode: str
-    ) -> Dict[str, Any]:
+    async def _analyze_with_llm(self, context: str, repo_name: str, mode: str) -> Dict[str, Any]:
         """LLM でコードベースを分析する。"""
         if not self._llm:
             return self._fallback_result(mode)
@@ -223,9 +221,7 @@ class CodebaseExplorerAgent(BaseAgent):
             "investigation_notes": "LLM が利用できないため既定の調査結果を返しました",
         }
 
-    def _save_to_knowledge(
-        self, repo_name: str, result: Dict[str, Any], mode: str
-    ) -> None:
+    def _save_to_knowledge(self, repo_name: str, result: Dict[str, Any], mode: str) -> None:
         """調査結果をKnowledgeManagerに保存して次回再利用できるようにする。"""
         try:
             summary = result.get("summary", "")

@@ -1,0 +1,15 @@
+id: pixel
+name: ピクセル
+description: レトロゲーム風。ドット感と遊び心。
+prompt_addon: |
+  視覚トーンは「ピクセル（レトロゲーム風）」。遊び心とノスタルジーを大切にし、
+  軽快でテンポのよい言い回しを用いる。ゲーム的な比喩（レベルアップ・クエスト等）を
+  適度に織り交ぜる。
+palette:
+  primary: "#22223B"
+  secondary: "#4CC9F0"
+  background: "#1A1A2E"
+  accent: "#F72585"
+font_family: "'Press Start 2P', 'DotGothic16', monospace"
+image_prompt: "8-bit pixel art, retro game sprite, limited palette, dithering, nostalgic arcade aesthetic"
+layout: "ドット風フォント、ビビッドな原色、タイル状レイアウト、ピクセルボーダー"

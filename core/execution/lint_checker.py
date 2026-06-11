@@ -35,7 +35,9 @@ class LintChecker:
                 check=False,
             )
 
-        output = "\n".join(part for part in [completed.stdout.strip(), completed.stderr.strip()] if part)
+        output = "\n".join(
+            part for part in [completed.stdout.strip(), completed.stderr.strip()] if part
+        )
         issues = [line for line in output.splitlines() if line.strip()]
         return LintResult(file_path=str(path), issues=issues, passed=completed.returncode == 0)
 

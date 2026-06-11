@@ -26,7 +26,9 @@ class LLMMessage:
 class LLMResponse:
     content: str
     model: str = "claude-code"
-    usage: Optional[Dict[str, int]] = None  # prompt_tokens, completion_tokens, total_tokens
+    # claude CLI の実測 usage（input_tokens / output_tokens / cache_read_input_tokens …）。
+    # 旧 CLI で実測が取れない場合は None（呼び出し側が文字数概算にフォールバック）。
+    usage: Optional[Dict[str, int]] = None
     finish_reason: Optional[str] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
 

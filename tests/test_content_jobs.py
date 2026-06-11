@@ -181,7 +181,7 @@ def test_scheduler_self_stops_on_rate_limit(tmp_path, monkeypatch):
     sched = ContentScheduler(platform_home=tmp_path / "home", run_pdca=False)
     sched._store.add_job(ContentJob(org_name=org.name, theme="t"))
 
-    async def fake_run(job, _psm):
+    async def fake_run(job, _psm, **_kwargs):
         return {"ok": False, "status": "rate_limited", "detail": "limit", "retry_at": None}
 
     monkeypatch.setattr("core.content.content_scheduler.run_content_job", fake_run)

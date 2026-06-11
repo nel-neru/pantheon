@@ -66,7 +66,9 @@ class TestCalculateGroupMetrics:
         m1 = calculate_organization_metrics(o1)
         m2 = calculate_organization_metrics(o2)
         gm = calculate_group_metrics(hq, [m1, m2])
-        assert gm.group_health_score == pytest.approx((m1.health_score + m2.health_score) / 2, abs=1.0)
+        assert gm.group_health_score == pytest.approx(
+            (m1.health_score + m2.health_score) / 2, abs=1.0
+        )
 
     def test_weakest_and_strongest(self):
         hq = GroupHQState()

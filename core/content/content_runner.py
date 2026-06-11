@@ -36,6 +36,37 @@ _KIND_SYSTEM = {
 }
 
 
+def _persona_design_addon(org: Any) -> str:
+    """org の persona_id / design_style を system prompt の追記文へ変換する。
+
+    persona は config/personas/<id>.yaml の口調/役割、design_style は
+    config/design_styles/<id>.yaml のトーン指針を注入する（いずれも欠落時は無視）。
+    これにより「ペルソナ・デザインなんでも適応」を組織単位で実現する。
+    """
+    parts: list[str] = []
+    persona_id = (getattr(org, "persona_id", "") or "").strip()
+    if persona_id:
+        try:
+            from core.intelligence.persona_loader import PersonaLoader
+
+            addon = PersonaLoader().get_system_prompt_addon(persona_id)
+            if addon:
+                parts.append(f"【ペルソナ: {persona_id}】{addon}")
+        except Exception:  # noqa: BLE001
+            pass
+    design_style = (getattr(org, "design_style", "") or "").strip()
+    if design_style and design_style != "minimal":
+        try:
+            from core.content.design_style_loader import get_style_prompt_addon
+
+            addon = get_style_prompt_addon(design_style)
+            if addon:
+                parts.append(f"【デザイン: {design_style}】{addon}")
+        except Exception:  # noqa: BLE001
+            pass
+    return "\n\n".join(parts)
+
+
 def _deterministic_draft(job: ContentJob, label: str, stamp: str) -> str:
     theme = job.theme or "(テーマ未設定)"
     pr_note = "\n\n#PR" if job.kind == "monetization_lead" else ""
@@ -51,14 +82,17 @@ def _deterministic_draft(job: ContentJob, label: str, stamp: str) -> str:
     )
 
 
-async def _generate_body(job: ContentJob, label: str, stamp: str):
+async def _generate_body(
+    job: ContentJob, label: str, stamp: str, downgrade: bool = False, org: Any = None
+):
     """(markdown 本文, llm_used, rate_info) を返す。
 
     rate_info は :class:`RateLimitInfo`（``limited=True`` ならレート制限検知）または None。
-    claude 不在/通常失敗時は決定論テンプレ。
+    claude 不在/通常失敗時は決定論テンプレ。``downgrade`` はクォータ逼迫時に light
+    ティアへ降格する（A-5）。``org`` を渡すと persona/design を system prompt に注入する。
     """
     from core.runtime.claude_code import claude_available
-    from core.runtime.rate_limit import detect_rate_limit
+    from core.runtime.rate_limit import detect_rate_limit, detect_rate_limit_strict
 
     if not claude_available():
         return _deterministic_draft(job, label, stamp), False, None
@@ -67,6 +101,10 @@ async def _generate_body(job: ContentJob, label: str, stamp: str):
 
         provider = get_llm_provider()
         system = _KIND_SYSTEM.get(job.kind, _KIND_SYSTEM["generic"])
+        if org is not None:
+            addon = _persona_design_addon(org)
+            if addon:
+                system = f"{system}\n\n{addon}"
         user = f"テーマ: {job.theme or '(未設定)'}\n対象組織: {job.org_name}\nMarkdown で出力。"
         response = await provider.generate(
             messages=[
@@ -75,11 +113,14 @@ async def _generate_body(job: ContentJob, label: str, stamp: str):
             ],
             temperature=0.6,
             max_tokens=2000,
+            task_type="content_generation",
+            downgrade=downgrade,
         )
         body = (getattr(response, "content", "") or "").strip()
         # claude CLI はレート制限を「正常終了(returncode 0)の結果テキスト」として返すことがある。
-        # 例外時だけでなく成功本文も検査し、レート制限ならループ停止を上位へ伝える（誤生成も防ぐ）。
-        info = detect_rate_limit(body)
+        # 例外時だけでなく成功本文も検査するが、正常なドラフトが "rate limit"/"429" に
+        # 言及しただけで誤検知しないよう、アンカー付き定型句（strict）に限定する。
+        info = detect_rate_limit_strict(body)
         if info.limited:
             return "", False, info
         if body:
@@ -110,11 +151,12 @@ def _publish_block(job: ContentJob) -> Dict[str, Any] | None:
     return {"platform": platform, "mode": mode}
 
 
-async def run_content_job(job: ContentJob, psm: Any) -> Dict[str, Any]:
+async def run_content_job(job: ContentJob, psm: Any, *, downgrade: bool = False) -> Dict[str, Any]:
     """ContentJob を1回実行し、生成した content_asset 提案を受け手 org の repo に保存する。
 
     戻り値: {"ok": bool, "status": str, "detail": str, "proposal_id": str|None, "file_path": str|None}
     外部公開はせず、提案は human_required（承認待ち）として保存される。
+    ``downgrade`` はクォータ逼迫時に生成を light ティアへ降格する（A-5）。
     """
     from core.orchestration.asset_application import build_content_asset_proposal
 
@@ -137,7 +179,9 @@ async def run_content_job(job: ContentJob, psm: Any) -> Dict[str, Any]:
     file_stamp = now.strftime("%Y%m%d-%H%M%S")
     label = _KIND_LABEL.get(job.kind, _KIND_LABEL["generic"])
 
-    body, llm_used, rate_info = await _generate_body(job, label, stamp)
+    body, llm_used, rate_info = await _generate_body(
+        job, label, stamp, downgrade=downgrade, org=org
+    )
     if rate_info is not None and rate_info.limited:
         # レート制限検知時は提案を作らず、上位（スケジューラ）にループ停止を促す。
         return {

@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 import web.server as server
@@ -88,21 +89,118 @@ def test_get_storage_info(tmp_path, monkeypatch):
     assert data["storage"]["organizations"]["file_count"] == 1
 
 
+def test_api_token_guard_disabled_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("PANTHEON_API_TOKEN", raising=False)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    assert client.get("/api/daemon/status").status_code == 200
+
+
+def test_api_token_guard_requires_bearer_when_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("PANTHEON_API_TOKEN", "sekrit-token")
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    assert client.get("/api/daemon/status").status_code == 401
+    assert (
+        client.get("/api/daemon/status", headers={"Authorization": "Bearer wrong"}).status_code
+        == 401
+    )
+    assert (
+        client.get(
+            "/api/daemon/status", headers={"Authorization": "Bearer sekrit-token"}
+        ).status_code
+        == 200
+    )
+
+
+def test_token_matches_handles_non_ascii_without_raising():
+    """compare_digest は str に非 ASCII があると TypeError を投げるため、
+    _token_matches は必ず bytes 比較する（攻撃者制御ヘッダで 500 にしない）。
+    httpx TestClient は非 ASCII ヘッダを送れないのでヘルパーを直接検証する。"""
+    # latin-1 由来の非 ASCII を含む値でも例外を投げず False を返す
+    assert server._token_matches("Bearer café", "sekrit-token") is False
+    assert server._token_matches("caféé", "caféé") is True
+    assert server._token_matches("right", "right") is True
+    assert server._token_matches("wrong", "right") is False
+
+
+def test_ws_updates_rejects_without_token_when_set(tmp_path, monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+
+    monkeypatch.setenv("PANTHEON_API_TOKEN", "sekrit-token")
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws/updates"):
+            pass
+
+
+def test_ws_updates_accepts_with_query_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("PANTHEON_API_TOKEN", "sekrit-token")
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    with client.websocket_connect("/ws/updates?token=sekrit-token") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "status"
+
+
+def test_ws_chat_rejects_without_token_when_set(tmp_path, monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+
+    monkeypatch.setenv("PANTHEON_API_TOKEN", "sekrit-token")
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws/chat"):
+            pass
+
+
+def test_ws_updates_open_without_token_config(tmp_path, monkeypatch):
+    monkeypatch.delenv("PANTHEON_API_TOKEN", raising=False)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    with client.websocket_connect("/ws/updates") as ws:
+        assert ws.receive_json()["type"] == "status"
+
+
 def test_daemon_status_reports_running(tmp_path, monkeypatch):
     pid_file = tmp_path / "daemon.pid"
     pid_file.write_text("4321", encoding="utf-8")
 
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     monkeypatch.setattr(server.os, "kill", lambda pid, sig: None)
 
     response = client.get("/api/daemon/status")
 
     assert response.status_code == 200
+    # retry_at は None のため response_model_exclude_none で応答から省かれる
     assert response.json() == {
         "running": True,
         "pid": 4321,
         "log_path": str(tmp_path / "daemon.log"),
+        "rate_limited": False,
     }
+
+
+def test_daemon_status_reports_rate_limited_from_gate(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from core.runtime.rate_limit import RateLimitInfo
+    from core.runtime.usage_gate import RateLimitGate
+
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    reset = datetime.now(timezone.utc) + timedelta(minutes=5)
+    RateLimitGate().report(
+        RateLimitInfo(limited=True, reset_at=reset, scope="session", message="usage limit")
+    )
+
+    response = client.get("/api/daemon/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["rate_limited"] is True
+    assert data["retry_at"] == reset.isoformat()
+    assert data["rate_limit_scope"] == "session"
 
 
 def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
@@ -119,8 +217,11 @@ def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
         calls["stdout_name"] = Path(stdout.name)
         return DummyProc()
 
+    import core.runtime.daemon_registry as registry
+
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
-    monkeypatch.setattr(server.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(registry.subprocess, "Popen", fake_popen)
 
     response = client.post("/api/daemon/start")
 
@@ -156,8 +257,11 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
         killed["pid"] = pid
         killed["sig"] = sig
 
+    import core.runtime.daemon_registry as registry
+
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
-    monkeypatch.setattr(server.os, "kill", fake_kill)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(registry.os, "kill", fake_kill)
 
     response = client.post("/api/daemon/stop")
 
@@ -168,8 +272,9 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
         "running": False,
         "pid": 2222,
         "log_path": str(tmp_path / "daemon.log"),
+        "rate_limited": False,
     }
-    assert killed == {"pid": 2222, "sig": server.signal.SIGTERM}
+    assert killed == {"pid": 2222, "sig": registry.signal.SIGTERM}
     assert not pid_file.exists()
 
 
@@ -1790,6 +1895,134 @@ def test_content_job_requires_existing_org(tmp_path, monkeypatch):
 
 def test_content_daemon_status_reports_stopped(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     resp = client.get("/api/content-daemon/status")
     assert resp.status_code == 200
     assert resp.json()["running"] is False
+
+
+def test_content_daemon_start_keeps_action_status(tmp_path, monkeypatch):
+    """前回の scheduler state（status=stopped）が残っていても、start の応答の
+    \"status\" はアクション結果（started）であり、scheduler 状態は別キーで返る。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    (tmp_path / "content_scheduler_state.json").write_text(
+        json.dumps({"running": False, "status": "stopped", "rate_limited": False}),
+        encoding="utf-8",
+    )
+
+    import core.runtime.daemon_registry as registry
+
+    class DummyProc:
+        pid = 4242
+
+    monkeypatch.setattr(registry.subprocess, "Popen", lambda *a, **k: DummyProc())
+
+    resp = client.post("/api/content-daemon/start")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "started"
+    assert data["scheduler_status"] == "stopped"
+
+
+def test_design_styles_endpoint():
+    resp = client.get("/api/design-styles")
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = [s["id"] for s in data]
+    assert "luxury" in ids and "pixel" in ids
+    luxury = next(s for s in data if s["id"] == "luxury")
+    assert luxury["palette"]["primary"].startswith("#")
+
+
+def test_personas_endpoint():
+    resp = client.get("/api/personas")
+    assert resp.status_code == 200
+    ids = [p["id"] for p in resp.json()]
+    assert "sns_growth_hacker" in ids
+
+
+def test_trends_list_endpoint_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    resp = client.get("/api/trends")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_trends_list_endpoint_returns_stored(tmp_path, monkeypatch):
+    from core.trends.models import TrendItem
+    from core.trends.store import TrendStore
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    TrendStore(platform_home=tmp_path).add(
+        TrendItem(source="web", url="https://x/1", title="T", score=8.0, genre="ai")
+    )
+    resp = client.get("/api/trends?min_score=5")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "T"
+
+
+def test_usage_summary_endpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    resp = client.get("/api/usage/summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "session_5h" in data["usage"]
+    assert "weekly_7d" in data["usage"]
+    assert data["governor"]["level"] in {"ok", "soft_limit", "hard_limit", "rate_limited"}
+    assert data["rate_limited"] is False
+
+
+def test_daemons_status_lists_registry(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    resp = client.get("/api/daemons/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rate_limited"] is False
+    names = [d["name"] for d in data["daemons"]]
+    assert names == ["content", "improvement", "trend", "watchdog"]
+    for d in data["daemons"]:
+        assert d["running"] is False
+        assert d["heartbeat_stale"] is True
+        assert d["healthy"] is False
+
+
+def test_daemons_start_unknown_name_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    resp = client.post("/api/daemons/ghost/start")
+    assert resp.status_code == 404
+    assert client.post("/api/daemons/ghost/stop").status_code == 404
+
+
+def test_daemons_start_and_stop_roundtrip(tmp_path, monkeypatch):
+    import core.runtime.daemon_registry as registry
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    class DummyProc:
+        pid = 7777
+
+    monkeypatch.setattr(registry.subprocess, "Popen", lambda *a, **k: DummyProc())
+
+    resp = client.post("/api/daemons/content/start")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "content"
+    assert data["status"] == "started"
+    assert data["pid"] == 7777
+    # desired state が ON になった（watchdog 復元の対象）
+    assert registry.load_enabled(platform_home=tmp_path)["content"]["enabled"] is True
+
+    killed: dict[str, int] = {}
+    monkeypatch.setattr(registry.os, "kill", lambda pid, sig: killed.update(pid=pid, sig=sig))
+    resp = client.post("/api/daemons/content/stop")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "stopped"
+    assert killed["pid"] == 7777
+    # 明示 stop で desired state は OFF（watchdog は復元しない）
+    assert registry.load_enabled(platform_home=tmp_path)["content"]["enabled"] is False

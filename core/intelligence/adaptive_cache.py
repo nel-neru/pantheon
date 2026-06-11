@@ -62,7 +62,9 @@ class AdaptiveCacheManager:
     def get_stats(self) -> dict:
         most_accessed_key = None
         if self._entries:
-            most_accessed_key = max(self._entries.values(), key=lambda entry: entry.access_count).key
+            most_accessed_key = max(
+                self._entries.values(), key=lambda entry: entry.access_count
+            ).key
         return {
             "size": len(self._entries),
             "hit_rate": self.get_hit_rate(),

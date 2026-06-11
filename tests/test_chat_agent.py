@@ -89,7 +89,9 @@ def test_handle_agent_task_routes_through_pre_task_orchestrator(monkeypatch):
     # available=True simulates a machine where the `claude` CLI is installed.
     config = {"provider": "claude_code", "model": "", "available": True}
 
-    result = asyncio.run(chat_agent._handle_agent_task("このリポジトリのコードをレビューして", config))
+    result = asyncio.run(
+        chat_agent._handle_agent_task("このリポジトリのコードをレビューして", config)
+    )
 
     assert "🧭 PreTaskOrchestrator: code_review" in result
     assert "🤖 推奨エージェント: agent:code_reviewer" in result
@@ -127,7 +129,9 @@ def test_agent_factory_passes_provider_name_to_implementation(monkeypatch):
                 implementation="dummy.module.DummyImplementation",
             )
 
-    factory = agent_factory_module.AgentFactory(llm_client=SimpleNamespace(provider_name="claude_code"))
+    factory = agent_factory_module.AgentFactory(
+        llm_client=SimpleNamespace(provider_name="claude_code")
+    )
     monkeypatch.setattr(factory, "_get_agent_loader", lambda: FakeLoader())
     monkeypatch.setattr(agent_factory_module, "_import_class", lambda path: DummyImplementation)
 

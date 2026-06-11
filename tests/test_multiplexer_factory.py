@@ -25,14 +25,17 @@ def test_wmux_falls_back_to_headless_when_unavailable(monkeypatch):
 
 
 def test_shell_command_prefers_explicit():
-    spec = AgentSpec(agent_id="a", title="A", command=["claude", "-p", "hi"],
-                     shell_command="& claude -p (Get-Content x)")
+    spec = AgentSpec(
+        agent_id="a",
+        title="A",
+        command=["claude", "-p", "hi"],
+        shell_command="& claude -p (Get-Content x)",
+    )
     assert shell_command_for(spec) == "& claude -p (Get-Content x)"
 
 
 def test_shell_command_quotes_argv():
-    spec = AgentSpec(agent_id="a", title="A",
-                     command=["claude", "-p", "two words", "--model", "x"])
+    spec = AgentSpec(agent_id="a", title="A", command=["claude", "-p", "two words", "--model", "x"])
     line = shell_command_for(spec)
     assert "'two words'" in line
     assert "--model x" in line

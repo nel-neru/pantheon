@@ -15,7 +15,11 @@ class TestSelfImprovementGraph:
         assert graph is not None
 
     def test_review_node_processes_state(self):
-        proposal = {"title": "Critical fix", "priority": "high", "expected_impact": "large stability gain"}
+        proposal = {
+            "title": "Critical fix",
+            "priority": "high",
+            "expected_impact": "large stability gain",
+        }
         result = prioritize_proposals({"pending_proposals": [proposal]})
         assert result["current_proposal"]["title"] == "Critical fix"
         assert result["human_approval_required"] is True

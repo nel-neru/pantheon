@@ -26,9 +26,10 @@ OPERATION_LOG_FILE = "operation_log.jsonl"
 @dataclass
 class OperationRecord:
     """単一操作の記録。"""
-    operation_type: str           # "code_review" | "codebase_scan" | "improvement" | ...
+
+    operation_type: str  # "code_review" | "codebase_scan" | "improvement" | ...
     agent_name: str
-    target: str = ""              # 対象ファイル・リポジトリなど
+    target: str = ""  # 対象ファイル・リポジトリなど
     tokens_used: int = 0
     success: bool = True
     duration_ms: int = 0
@@ -47,7 +48,8 @@ class OperationRecord:
 @dataclass
 class RepeatedPattern:
     """繰り返しが検出された操作パターン。"""
-    pattern_key: str              # "operation_type:agent_name" or broader
+
+    pattern_key: str  # "operation_type:agent_name" or broader
     operation_type: str
     repeat_count: int
     total_tokens: int
@@ -80,6 +82,7 @@ class OperationPatternDetector:
             self._log_path = repo_path / ".pantheon" / OPERATION_LOG_FILE
         else:
             from core.platform.state import get_platform_home
+
             self._log_path = (platform_home or get_platform_home()) / OPERATION_LOG_FILE
         self._log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -137,16 +140,18 @@ class OperationPatternDetector:
             avg_tokens = total_tokens / len(recs) if recs else 0
             targets = list({r.target for r in recs if r.target})[:5]
             timestamps = sorted(r.timestamp for r in recs)
-            patterns.append(RepeatedPattern(
-                pattern_key=op_type,
-                operation_type=op_type,
-                repeat_count=len(recs),
-                total_tokens=total_tokens,
-                avg_tokens=avg_tokens,
-                example_targets=targets,
-                first_seen=timestamps[0],
-                last_seen=timestamps[-1],
-            ))
+            patterns.append(
+                RepeatedPattern(
+                    pattern_key=op_type,
+                    operation_type=op_type,
+                    repeat_count=len(recs),
+                    total_tokens=total_tokens,
+                    avg_tokens=avg_tokens,
+                    example_targets=targets,
+                    first_seen=timestamps[0],
+                    last_seen=timestamps[-1],
+                )
+            )
 
         # repeat_count 降順でソート
         patterns.sort(key=lambda p: p.repeat_count, reverse=True)

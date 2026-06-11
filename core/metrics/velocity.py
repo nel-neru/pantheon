@@ -6,7 +6,9 @@ from __future__ import annotations
 
 
 class VelocityCalculator:
-    def calculate(self, accepted_count: int, days_elapsed: float, normalization: float = 10.0) -> float:
+    def calculate(
+        self, accepted_count: int, days_elapsed: float, normalization: float = 10.0
+    ) -> float:
         velocity = (accepted_count / max(1, days_elapsed)) * normalization
         return round(max(0.0, min(100.0, velocity)), 1)
 

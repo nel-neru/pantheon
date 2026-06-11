@@ -80,7 +80,9 @@ def _proposal_from_suggestion(suggestion: CodeImprovementSuggestion) -> Improvem
     )
 
 
-def _register_agent(registry: CapabilityRegistry, agent_id: str, name: str, skills: list[str]) -> None:
+def _register_agent(
+    registry: CapabilityRegistry, agent_id: str, name: str, skills: list[str]
+) -> None:
     registry.register(
         CapabilityEntry(
             id=agent_id,
@@ -98,7 +100,9 @@ class TestCodeReviewToProposalFlow:
         agent = CodeReviewAgent(_make_specialist())
         suggestions = [_make_suggestion("型ヒントを追加")]
 
-        with patch.object(CodeReviewAgent, "_generate_suggestions", new=AsyncMock(return_value=suggestions)):
+        with patch.object(
+            CodeReviewAgent, "_generate_suggestions", new=AsyncMock(return_value=suggestions)
+        ):
             result = _run(
                 agent.run(
                     AgentTask(
@@ -116,7 +120,9 @@ class TestCodeReviewToProposalFlow:
     def test_review_leads_to_proposals(self):
         suggestions = [
             _make_suggestion("ドキュメント更新", category="documentation"),
-            _make_suggestion("認証を強化", priority="high", category="security", file_path="core/auth.py"),
+            _make_suggestion(
+                "認証を強化", priority="high", category="security", file_path="core/auth.py"
+            ),
         ]
 
         proposals = [_proposal_from_suggestion(suggestion) for suggestion in suggestions]
@@ -140,7 +146,12 @@ class TestCodeReviewToProposalFlow:
         engine = PolicyEngine()
         low_risk = _proposal_from_suggestion(_make_suggestion("コメント整備", category="comment"))
         high_risk = _proposal_from_suggestion(
-            _make_suggestion("秘密情報の扱いを修正", priority="high", category="security", file_path="core/secrets.py")
+            _make_suggestion(
+                "秘密情報の扱いを修正",
+                priority="high",
+                category="security",
+                file_path="core/secrets.py",
+            )
         )
 
         low_verdict = engine.evaluate(low_risk.model_dump(mode="json"))
@@ -156,10 +167,14 @@ class TestCodeReviewToProposalFlow:
         agent = CodeReviewAgent(_make_specialist())
         suggestions = [
             _make_suggestion("コメント整備", category="comment"),
-            _make_suggestion("認証境界の見直し", priority="high", category="security", file_path="core/auth.py"),
+            _make_suggestion(
+                "認証境界の見直し", priority="high", category="security", file_path="core/auth.py"
+            ),
         ]
 
-        with patch.object(CodeReviewAgent, "_generate_suggestions", new=AsyncMock(return_value=suggestions)):
+        with patch.object(
+            CodeReviewAgent, "_generate_suggestions", new=AsyncMock(return_value=suggestions)
+        ):
             result = _run(
                 agent.run(
                     AgentTask(
@@ -170,13 +185,27 @@ class TestCodeReviewToProposalFlow:
                 )
             )
 
-        proposals = [_proposal_from_suggestion(CodeImprovementSuggestion(**item)) for item in result.output["suggestions"]]
+        proposals = [
+            _proposal_from_suggestion(CodeImprovementSuggestion(**item))
+            for item in result.output["suggestions"]
+        ]
         for proposal in proposals:
             manager.save_proposal(proposal)
 
-        decisions = {proposal.title: engine.evaluate(proposal.model_dump(mode="json")) for proposal in proposals}
-        auto_titles = [title for title, verdict in decisions.items() if verdict.decision == ApprovalDecision.AUTO_APPROVE]
-        human_titles = [title for title, verdict in decisions.items() if verdict.decision == ApprovalDecision.HUMAN_REQUIRED]
+        decisions = {
+            proposal.title: engine.evaluate(proposal.model_dump(mode="json"))
+            for proposal in proposals
+        }
+        auto_titles = [
+            title
+            for title, verdict in decisions.items()
+            if verdict.decision == ApprovalDecision.AUTO_APPROVE
+        ]
+        human_titles = [
+            title
+            for title, verdict in decisions.items()
+            if verdict.decision == ApprovalDecision.HUMAN_REQUIRED
+        ]
 
         assert auto_titles == ["コメント整備"]
         assert human_titles == ["認証境界の見直し"]
@@ -199,7 +228,9 @@ class TestCodeReviewToProposalFlow:
         (repo_path / "src" / "app.py").write_text("print('hello')\n", encoding="utf-8")
 
         scheduler = AutonomousScheduler(platform_home=tmp_path, max_files_per_org=5)
-        org = Organization(name="PDCA Org", purpose="Test end-to-end flow", target_repo_path=str(repo_path))
+        org = Organization(
+            name="PDCA Org", purpose="Test end-to-end flow", target_repo_path=str(repo_path)
+        )
         scheduler._psm.save_organization(org)
 
         suggestion = {
@@ -236,11 +267,17 @@ class TestCodeReviewToProposalFlow:
         result = asyncio.run(
             scheduler._process_org(
                 org.name,
-                [DetectedEvent(event_type=EventType.SCHEDULED, org_name=org.name, org_id=str(org.id))],
+                [
+                    DetectedEvent(
+                        event_type=EventType.SCHEDULED, org_name=org.name, org_id=str(org.id)
+                    )
+                ],
             )
         )
 
-        saved_proposals = scheduler._psm.get_org_state_manager(org).get_pending_improvement_proposals(limit=10)
+        saved_proposals = scheduler._psm.get_org_state_manager(
+            org
+        ).get_pending_improvement_proposals(limit=10)
         proposal_files = list((repo_path / ".pantheon" / "improvements").glob("*.json"))
 
         assert result == {
@@ -258,7 +295,9 @@ class TestCodeReviewToProposalFlow:
 class TestOrchestrationFlow:
     def test_pre_task_orchestrator_analyzes_task(self, tmp_path):
         registry = CapabilityRegistry(platform_home=tmp_path)
-        _register_agent(registry, "agent:reviewer", "Reviewer", ["codebase_exploration", "performance_analysis"])
+        _register_agent(
+            registry, "agent:reviewer", "Reviewer", ["codebase_exploration", "performance_analysis"]
+        )
 
         analysis = PreTaskOrchestrator(capability_registry=registry).analyze(
             "code_review", "コードレビューを実行する"
@@ -270,8 +309,12 @@ class TestOrchestrationFlow:
 
     def test_task_router_selects_agent(self, tmp_path):
         registry = CapabilityRegistry(platform_home=tmp_path)
-        _register_agent(registry, "agent:security", "Security", ["tool_integration", "deep_research"])
-        _register_agent(registry, "agent:writer", "Writer", ["knowledge_curation", "prompt_engineering"])
+        _register_agent(
+            registry, "agent:security", "Security", ["tool_integration", "deep_research"]
+        )
+        _register_agent(
+            registry, "agent:writer", "Writer", ["knowledge_curation", "prompt_engineering"]
+        )
 
         decision = TaskRouter(capability_registry=registry).route("security_audit")
 

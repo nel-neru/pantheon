@@ -31,7 +31,9 @@ class GoalLibrary:
         self.platform_home = Path(platform_home) if platform_home else get_platform_home()
         self.file_path = self.platform_home / "goal_library.json"
 
-    def save_achieved_goal(self, goal_type: str, description: str, task_count: int, exec_time: float) -> GoalTemplate:
+    def save_achieved_goal(
+        self, goal_type: str, description: str, task_count: int, exec_time: float
+    ) -> GoalTemplate:
         templates = self._load_all()
         template = GoalTemplate(
             template_id=f"goal:{uuid4().hex[:8]}",
@@ -68,4 +70,6 @@ class GoalLibrary:
     def _save_all(self, templates: list[GoalTemplate]) -> None:
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"templates": [asdict(template) for template in templates]}
-        self.file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.file_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )

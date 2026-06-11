@@ -30,6 +30,7 @@ def _migrate_legacy_home(new_home: Path) -> None:
     legacy = Path.home() / ".repocorp"
     if legacy.is_dir():
         import shutil
+
         try:
             shutil.copytree(legacy, new_home)
         except OSError:
@@ -130,9 +131,7 @@ class PlatformStateManager:
     def save_organization(self, org: Organization) -> None:
         """Organization をグローバルストアに保存する"""
         path = self.orgs_dir / f"{org.id}.json"
-        path.write_text(
-            org.model_dump_json(indent=2), encoding="utf-8"
-        )
+        path.write_text(org.model_dump_json(indent=2), encoding="utf-8")
 
     def load_organizations(self) -> List[Organization]:
         """全 Organization を読み込む"""
@@ -154,9 +153,10 @@ class PlatformStateManager:
         """指定ワークスペース（repo パス）に紐づく Organization を返す（重複登録判定用）。"""
         target = str(Path(repo_path)).rstrip("\\/").lower()
         for org in self.load_organizations():
-            if org.target_repo_path and str(
-                Path(org.target_repo_path)
-            ).rstrip("\\/").lower() == target:
+            if (
+                org.target_repo_path
+                and str(Path(org.target_repo_path)).rstrip("\\/").lower() == target
+            ):
                 return org
         return None
 
@@ -198,6 +198,7 @@ class PlatformStateManager:
         tags: Optional[List[str]] = None,
     ) -> str:
         from core.knowledge.manager import KnowledgeManager
+
         km = KnowledgeManager(self.platform_home)
         return km.save_insight(title, content, tags=tags or [], source_org=source_org)
 
@@ -205,5 +206,6 @@ class PlatformStateManager:
         self, tags: Optional[List[str]] = None, limit: int = 10
     ) -> List[Dict[str, Any]]:
         from core.knowledge.manager import KnowledgeManager
+
         km = KnowledgeManager(self.platform_home)
         return km.get_insights(limit=limit, tags=tags)

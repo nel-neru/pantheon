@@ -1,4 +1,5 @@
 """グローバルタスクキュー - 複数組織のタスクをJSONで永続管理する。"""
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,9 @@ class TaskQueue:
     """JSON ファイルベースのグローバルタスクキュー。"""
 
     def __init__(self, queue_file: Path | None = None):
-        self.queue_file = Path(queue_file) if queue_file is not None else get_platform_home() / "task_queue.json"
+        self.queue_file = (
+            Path(queue_file) if queue_file is not None else get_platform_home() / "task_queue.json"
+        )
         self.queue_file.parent.mkdir(parents=True, exist_ok=True)
         self.lock_file = self.queue_file.with_suffix(f"{self.queue_file.suffix}.lock")
 
@@ -219,7 +222,10 @@ class TaskQueue:
                 t
                 for t in data["tasks"]
                 if t["status"] in (TaskStatus.PENDING.value, TaskStatus.RUNNING.value)
-                or ((completed_at := self._parse_timestamp(t.get("completed_at"))) is not None and completed_at > cutoff)
+                or (
+                    (completed_at := self._parse_timestamp(t.get("completed_at"))) is not None
+                    and completed_at > cutoff
+                )
             ]
             removed = before - len(data["tasks"])
             if removed:

@@ -41,15 +41,22 @@ flowchart TD
 
 ### hooks (`.claude/hooks/`, Node)
 See `.claude/hooks/README.md`. Summary: `guard-bash` + `protect-secrets` (PreToolUse deny),
-`format` (PostToolUse ruff format, async), `session-context` (SessionStart git snapshot),
+`format` (PostToolUse ruff format, async), `post-edit-checks` (PostToolUse dispatcher — runs
+config-validation / flows / planning-doc checks in **one** node process, each gated by file path;
+replaced 3 separate serial hooks), `session-context` (SessionStart git snapshot),
 `auto-commit` (Stop; branches off main, commits with Co-Authored-By, pushes).
 
 ### CC-subagents (`.claude/agents/`)
-Model-tiered, mostly read-only:
-- `code-reviewer` (Opus, read-only) — reviews the working diff.
-- `test-triage` (Sonnet) — runs both suites, separates the 6 known failures from real regressions.
-- `debugger` (Opus) — root-cause + minimal fix.
-- `frontend-dev` (Sonnet) — React/Vite/TS implementer.
+Model-tiered by cognitive load — heavy reasoning on Opus, implementation on Sonnet,
+mechanical/monitoring on Haiku — so routine work doesn't burn the expensive tier:
+- **Opus** (deep reasoning): `code-reviewer` (read-only diff review), `debugger` (root-cause + minimal fix).
+- **Sonnet** (implementation / judgment): `frontend-dev` (React/Vite/TS), `flow-auditor` (per-flow health).
+- **Haiku** (mechanical / monitoring, low-cost): `test-triage` (run suites, match against the 6 known
+  failures), `trend-watcher` (surface Claude Code/Anthropic trends → `.claude/` config suggestions,
+  read-only), `doc-writer` (keep docs in sync; honors the planning-doc hygiene rule).
+
+Pick the tier by the task's hardest sub-step, not its length: a long-but-mechanical task (run tests,
+match a known list) is Haiku; a short-but-subtle one (is this a real security bug?) is Opus.
 
 ### CC-skills (`.claude/skills/`)
 - `run-pantheon` — launch/smoke-check recipe.

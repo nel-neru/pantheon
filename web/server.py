@@ -13,10 +13,9 @@ import hashlib
 import json
 import logging
 import os
-import signal
+import secrets
 import stat
 import subprocess
-import sys
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -158,6 +157,57 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 任意の API トークン認証: PANTHEON_API_TOKEN を設定した場合のみ /api/* と
+# /ws/* に Bearer 認証を要求する（未設定なら従来どおり認証なし＝ローカル利用前提）。
+# LAN 公開（--host 0.0.0.0）時の必須ガード。
+API_TOKEN_ENV = "PANTHEON_API_TOKEN"
+
+
+def _configured_api_token() -> str:
+    return os.getenv(API_TOKEN_ENV, "").strip()
+
+
+def _token_matches(provided: str, token: str) -> bool:
+    # ヘッダ/クエリは latin-1 由来で非 ASCII を含み得る。compare_digest は
+    # str に非 ASCII があると TypeError を投げるため、必ず bytes 同士で比較する
+    # （latin-1 文字列の UTF-8 エンコードは決して例外を投げない）。
+    return secrets.compare_digest(provided.encode("utf-8"), token.encode("utf-8"))
+
+
+@app.middleware("http")
+async def _api_token_guard(request, call_next):
+    token = _configured_api_token()
+    # OPTIONS（CORS preflight）は仕様上 Authorization を運ばないため除外する
+    # （この guard は CORSMiddleware より外側で実行されるので、ここで弾くと
+    # クロスオリジン構成の preflight が 401 になり UI が壊れる）。
+    if token and request.method != "OPTIONS" and request.url.path.startswith("/api"):
+        auth = request.headers.get("authorization") or ""
+        provided = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+        if not _token_matches(provided, token):
+            return Response(
+                content='{"detail": "Unauthorized"}',
+                status_code=401,
+                media_type="application/json",
+            )
+    return await call_next(request)
+
+
+async def _reject_ws_if_unauthorized(websocket: WebSocket) -> bool:
+    """トークン設定時、未認証 WS を accept 前に 1008 で閉じる。
+
+    ブラウザは WebSocket に Authorization ヘッダを付けられないため、トークンは
+    クエリ文字列（``?token=``）で受け取る。``True`` を返したら呼び出し側は即 return。
+    """
+    token = _configured_api_token()
+    if not token:
+        return False
+    provided = (websocket.query_params.get("token") or "").strip()
+    if _token_matches(provided, token):
+        return False
+    await websocket.close(code=1008)  # policy violation
+    return True
+
 
 # Serve React build (dist/) when available, fallback to legacy static/
 _serve_dir = DIST_DIR if DIST_DIR.is_dir() else STATIC_DIR
@@ -425,6 +475,13 @@ class DaemonStartRequest(ApiRequestModel):
     max_files: int = Field(default=10, ge=1, le=1000)
 
 
+class DaemonsActionRequest(ApiRequestModel):
+    """統合 daemon API（/api/daemons/{name}/start）の起動オプション。"""
+
+    interval: int | None = Field(default=None, ge=1)
+    max_files: int | None = Field(default=None, ge=1, le=1000)
+
+
 class TaskQueueRequest(ApiRequestModel):
     task_type: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
     org_name: str = Field(min_length=1, max_length=120)
@@ -494,6 +551,10 @@ class DaemonStatusResponse(BaseModel):
     log_path: str | None
     interval: int | None = None
     max_files: int | None = None
+    # プロセス横断レート制限ゲート（~/.pantheon/rate_limit_state.json）の状態。
+    rate_limited: bool = False
+    retry_at: str | None = None
+    rate_limit_scope: str | None = None
 
 
 class PlatformInitResponse(BaseModel):
@@ -599,6 +660,7 @@ DAEMON_STATUS_EXAMPLE = {
     "running": True,
     "pid": 4321,
     "log_path": str(Path.home() / ".pantheon" / "daemon.log"),
+    "rate_limited": False,
 }
 DAEMON_ACTION_EXAMPLE = {
     "status": "started",
@@ -1173,10 +1235,25 @@ def _is_process_running(pid: int) -> bool:
         return False
 
 
+def _rate_gate_payload() -> dict[str, Any]:
+    """プロセス横断のレート制限ゲート状態（daemon status 表示用）。"""
+    from core.runtime.usage_gate import RateLimitGate
+
+    info = RateLimitGate().current()
+    if info is None:
+        return {"rate_limited": False, "retry_at": None}
+    return {
+        "rate_limited": True,
+        "retry_at": info.reset_at.isoformat() if info.reset_at else None,
+        "rate_limit_scope": info.scope,
+    }
+
+
 def _daemon_status_payload() -> dict[str, Any]:
     pid_file, log_file = _daemon_paths()
     pid = _read_daemon_pid(pid_file)
     return {
+        **_rate_gate_payload(),
         "running": bool(pid is not None and _is_process_running(pid)),
         "pid": pid,
         "log_path": str(log_file),
@@ -1797,11 +1874,15 @@ async def api_daemon_status() -> Dict[str, Any]:
     responses={200: {"content": {"application/json": {"example": DAEMON_ACTION_EXAMPLE}}}},
 )
 async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, Any]:
+    from core.runtime.daemon_registry import spawn_daemon
+
     req = req or DaemonStartRequest()
-    pid_file, log_file = _daemon_paths()
-    pid = _read_daemon_pid(pid_file)
-    if pid is not None and _is_process_running(pid):
-        status = "already_running"
+    result = spawn_daemon(
+        "improvement",
+        args=[f"--interval={req.interval}", f"--max-files={req.max_files}"],
+    )
+    status = result["status"]
+    if status == "already_running":
         return {
             "status": status,
             "message": _daemon_action_message(status),
@@ -1809,33 +1890,12 @@ async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, A
             "interval": req.interval,
             "max_files": req.max_files,
         }
-    if pid is not None:
-        pid_file.unlink(missing_ok=True)
-
-    pid_file.parent.mkdir(parents=True, exist_ok=True)
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    with log_file.open("a", encoding="utf-8") as log_handle:
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "core._daemon_runner",
-                f"--interval={req.interval}",
-                f"--max-files={req.max_files}",
-            ],
-            cwd=PROJECT_ROOT,
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    pid_file.write_text(str(proc.pid), encoding="utf-8")
-    status = "started"
     return {
         "status": status,
         "message": _daemon_action_message(status),
         "running": True,
-        "pid": proc.pid,
-        "log_path": str(log_file),
+        "pid": result["pid"],
+        "log_path": result["log_path"],
         "interval": req.interval,
         "max_files": req.max_files,
     }
@@ -1857,32 +1917,119 @@ async def api_daemon_start(req: DaemonStartRequest | None = None) -> Dict[str, A
     },
 )
 async def api_daemon_stop() -> Dict[str, Any]:
-    pid_file, log_file = _daemon_paths()
-    pid = _read_daemon_pid(pid_file)
-    if pid is None:
-        pid_file.unlink(missing_ok=True)
-        status = "not_running"
-        return {
-            "status": status,
-            "message": _daemon_action_message(status),
-            "running": False,
-            "pid": None,
-            "log_path": str(log_file),
-        }
+    from core.runtime.daemon_registry import stop_daemon
 
-    try:
-        os.kill(pid, signal.SIGTERM)
-        status = "stopped"
-    except OSError:
-        status = "already_stopped"
-    pid_file.unlink(missing_ok=True)
+    result = stop_daemon("improvement")
     return {
-        "status": status,
-        "message": _daemon_action_message(status),
+        "status": result["status"],
+        "message": _daemon_action_message(result["status"]),
         "running": False,
-        "pid": pid,
-        "log_path": str(log_file),
+        "pid": result["pid"],
+        "log_path": result["log_path"],
     }
+
+
+# --------------------------------------------------------------------------- #
+# 統合 daemon API（registry ベース） — 個別 API（/api/daemon, /api/content-daemon）
+# は後方互換のため残し、新規利用はこちらを推奨。
+# --------------------------------------------------------------------------- #
+def _require_daemon(name: str) -> None:
+    from core.runtime.daemon_registry import KNOWN_DAEMONS
+
+    if name not in KNOWN_DAEMONS:
+        raise HTTPException(status_code=404, detail=f"Daemon '{name}' が見つかりません")
+
+
+@app.get("/api/daemons/status", tags=["platform"])
+async def api_daemons_status() -> Dict[str, Any]:
+    """全 daemon の health（pid 生死 × heartbeat 鮮度 × desired state）＋レート制限状態。"""
+    from core.runtime.daemon_registry import all_statuses
+
+    return {**_rate_gate_payload(), "daemons": all_statuses()}
+
+
+@app.get("/api/usage/summary", tags=["platform"])
+async def api_usage_summary() -> Dict[str, Any]:
+    """実測トークン使用量（5h/7d 窓）＋クォータガバナーの状態。"""
+    from core.runtime.quota_governor import QuotaGovernor
+    from core.runtime.token_ledger import TokenLedger
+
+    return {
+        "usage": TokenLedger().summary(),
+        "governor": QuotaGovernor().status(),
+        **_rate_gate_payload(),
+    }
+
+
+@app.get("/api/design-styles", tags=["org"])
+async def api_list_design_styles() -> List[Dict[str, Any]]:
+    """利用可能なデザインスタイル（id/name/description/palette）の一覧。"""
+    from core.content.design_style_loader import list_style_summaries
+
+    return list_style_summaries()
+
+
+@app.get("/api/personas", tags=["org"])
+async def api_list_personas() -> List[Dict[str, Any]]:
+    """利用可能なペルソナ（id/name/role）の一覧。"""
+    from core.intelligence.persona_loader import PersonaLoader
+
+    loader = PersonaLoader()
+    out: List[Dict[str, Any]] = []
+    for pid in loader.list_personas():
+        p = loader.load_persona(pid) or {}
+        out.append({"id": pid, "name": p.get("name", pid), "role": p.get("role", "")})
+    return out
+
+
+@app.get("/api/trends", tags=["trends"])
+async def api_list_trends(
+    limit: int = 50, source: str | None = None, genre: str | None = None, min_score: float = 0.0
+) -> List[Dict[str, Any]]:
+    """収集済みトレンドをスコア順に返す。"""
+    from core.trends.store import TrendStore
+
+    items = TrendStore().list(limit=limit, source=source, genre=genre, min_score=min_score)
+    return [i.to_dict() for i in items]
+
+
+@app.post("/api/trends/collect", tags=["trends"])
+async def api_collect_trends() -> Dict[str, Any]:
+    """トレンドを今すぐ収集・採点・保存する（手動トリガー）。"""
+    from core.trends.runner import collect_and_store
+
+    return await collect_and_store()
+
+
+@app.post("/api/trends/convert", tags=["trends"])
+async def api_convert_trends() -> Dict[str, Any]:
+    """高スコアトレンドを承認ゲート付き ContentJob/提案へ変換する。"""
+    from core.trends.trend_to_jobs import convert_trends
+
+    return convert_trends()
+
+
+@app.post("/api/daemons/{name}/start", tags=["platform"])
+async def api_daemons_start(name: str, req: DaemonsActionRequest | None = None) -> Dict[str, Any]:
+    from core.runtime.daemon_registry import get_spec, spawn_daemon
+
+    _require_daemon(name)
+    req = req or DaemonsActionRequest()
+    spec = get_spec(name)
+    args = [f"--interval={req.interval or spec.default_interval}"]
+    if name == "improvement":
+        args.append(f"--max-files={req.max_files or 10}")
+    result = spawn_daemon(name, args=args)
+    return {"name": name, **result}
+
+
+@app.post("/api/daemons/{name}/stop", tags=["platform"])
+async def api_daemons_stop(name: str) -> Dict[str, Any]:
+    from core.runtime.daemon_registry import stop_daemon
+
+    _require_daemon(name)
+    result = stop_daemon(name)
+    return {"name": name, **result}
 
 
 # ============================================================
@@ -1938,12 +2085,17 @@ def _content_daemon_status_payload() -> dict[str, Any]:
             state = json.loads(state_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             state = {}
+    gate = _rate_gate_payload()
     return {
         "running": running,
         "pid": pid,
         "log_path": str(log_file),
-        "rate_limited": bool(state.get("rate_limited", False)),
-        "retry_at": state.get("retry_at"),
+        # scheduler 自身の state とプロセス横断ゲートのどちらかが制限中なら制限中。
+        "rate_limited": bool(state.get("rate_limited", False)) or gate["rate_limited"],
+        "retry_at": state.get("retry_at") or gate["retry_at"],
+        # "status" はアクション系応答（{"status": "started", **payload}）の
+        # アクション結果キーと衝突するため、scheduler の状態は別名で返す。
+        "scheduler_status": state.get("status"),
         "cycle_count": state.get("cycle_count", 0),
         "interval_seconds": state.get("interval_seconds"),
     }
@@ -2033,41 +2185,20 @@ async def api_content_daemon_status() -> Dict[str, Any]:
 
 @app.post("/api/content-daemon/start", tags=["content"])
 async def api_content_daemon_start(req: ContentDaemonStartRequest | None = None) -> Dict[str, Any]:
-    req = req or ContentDaemonStartRequest()
-    pid_file, log_file, _ = _content_daemon_paths()
-    pid = _read_daemon_pid(pid_file)
-    if pid is not None and _is_process_running(pid):
-        return {"status": "already_running", **_content_daemon_status_payload()}
-    if pid is not None:
-        pid_file.unlink(missing_ok=True)
+    from core.runtime.daemon_registry import spawn_daemon
 
-    pid_file.parent.mkdir(parents=True, exist_ok=True)
-    with log_file.open("a", encoding="utf-8") as log_handle:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "core._content_daemon_runner", f"--interval={req.interval}"],
-            cwd=PROJECT_ROOT,
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    pid_file.write_text(str(proc.pid), encoding="utf-8")
-    return {"status": "started", **_content_daemon_status_payload()}
+    req = req or ContentDaemonStartRequest()
+    result = spawn_daemon("content", args=[f"--interval={req.interval}"])
+    # 注意: "status" はアクション結果。payload 側の scheduler 状態は scheduler_status。
+    return {**_content_daemon_status_payload(), "status": result["status"]}
 
 
 @app.post("/api/content-daemon/stop", tags=["content"])
 async def api_content_daemon_stop() -> Dict[str, Any]:
-    pid_file, _, _ = _content_daemon_paths()
-    pid = _read_daemon_pid(pid_file)
-    if pid is None:
-        pid_file.unlink(missing_ok=True)
-        return {"status": "not_running", **_content_daemon_status_payload()}
-    try:
-        os.kill(pid, signal.SIGTERM)
-        status = "stopped"
-    except OSError:
-        status = "already_stopped"
-    pid_file.unlink(missing_ok=True)
-    return {"status": status, **_content_daemon_status_payload()}
+    from core.runtime.daemon_registry import stop_daemon
+
+    result = stop_daemon("content")
+    return {**_content_daemon_status_payload(), "status": result["status"]}
 
 
 @app.get("/api/content-daemon/logs", tags=["content"])
@@ -4013,6 +4144,8 @@ async def add_chat_message(session_id: str, body: ChatMessageCreate) -> Dict[str
 async def ws_chat(websocket: WebSocket) -> None:
     from agents.chat_agent import ChatSession
 
+    if await _reject_ws_if_unauthorized(websocket):
+        return
     await websocket.accept()
     session = ChatSession(has_llm=_has_llm())
     await websocket.send_json({"type": "status", "has_llm": session.has_llm})
@@ -4041,6 +4174,8 @@ async def ws_chat(websocket: WebSocket) -> None:
 
 @app.websocket("/ws/updates")
 async def ws_updates(websocket: WebSocket) -> None:
+    if await _reject_ws_if_unauthorized(websocket):
+        return
     await _updates_hub.connect(websocket)
     await websocket.send_json(
         {
@@ -4089,7 +4224,7 @@ def _open_browser_when_ready(port: int, *, timeout: float = 15.0) -> None:
     threading.Thread(target=_wait_and_open, daemon=True).start()
 
 
-def run_server(host: str = "0.0.0.0", port: int = 7860, open_browser: bool = False) -> None:
+def run_server(host: str = "127.0.0.1", port: int = 7860, open_browser: bool = False) -> None:
     import uvicorn
 
     # 実サーバ起動時のみライブセッション監視と task drain を有効化する

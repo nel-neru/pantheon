@@ -151,6 +151,7 @@ async def _generate_llm_response(
             LLMMessage(role=message["role"], content=message["content"]) for message in messages
         ],
         model=config.get("model") or None,
+        task_type="conversation",
     )
     return {"content": response.content, "tool_calls": []}
 

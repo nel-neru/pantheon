@@ -62,7 +62,9 @@ def test_classifier_detects_security_domain():
 def test_classifier_auto_tag_entry():
     classifier = KnowledgeClassifier()
 
-    entry = classifier.auto_tag_entry({"content": "pytest coverage improves test quality", "tags": ["existing"]})
+    entry = classifier.auto_tag_entry(
+        {"content": "pytest coverage improves test quality", "tags": ["existing"]}
+    )
 
     assert entry["tags"] == ["existing", "testing"]
 
@@ -223,7 +225,10 @@ def test_health_calculator_basic_score():
     snapshot = calculator.calculate(
         "OrgA",
         proposals=[{"status": "pending"}, {"status": "done"}],
-        decisions=[{"status": "accepted", "decided_at": recent}, {"status": "rejected", "decided_at": recent}],
+        decisions=[
+            {"status": "accepted", "decided_at": recent},
+            {"status": "rejected", "decided_at": recent},
+        ],
     )
 
     assert snapshot.pending_proposals == 1
@@ -248,8 +253,22 @@ def test_health_calculator_clamps_to_100():
 
 def test_growth_recorder_saves_and_loads(tmp_path):
     recorder = GrowthHistoryRecorder(tmp_path)
-    recorder.record("OrgA", autonomy_score=40, improvement_velocity=20, knowledge_count=3, proposal_count=4, accepted_count=1)
-    recorder.record("OrgA", autonomy_score=45, improvement_velocity=22, knowledge_count=4, proposal_count=5, accepted_count=2)
+    recorder.record(
+        "OrgA",
+        autonomy_score=40,
+        improvement_velocity=20,
+        knowledge_count=3,
+        proposal_count=4,
+        accepted_count=1,
+    )
+    recorder.record(
+        "OrgA",
+        autonomy_score=45,
+        improvement_velocity=22,
+        knowledge_count=4,
+        proposal_count=5,
+        accepted_count=2,
+    )
 
     history = recorder.get_history("OrgA")
 
@@ -260,7 +279,14 @@ def test_growth_recorder_saves_and_loads(tmp_path):
 def test_growth_trend_summary(tmp_path):
     recorder = GrowthHistoryRecorder(tmp_path)
     for score in [40, 43, 46, 49, 52]:
-        recorder.record("OrgA", autonomy_score=score, improvement_velocity=20, knowledge_count=1, proposal_count=1, accepted_count=1)
+        recorder.record(
+            "OrgA",
+            autonomy_score=score,
+            improvement_velocity=20,
+            knowledge_count=1,
+            proposal_count=1,
+            accepted_count=1,
+        )
 
     assert recorder.get_trend_summary("OrgA") == "成長中"
 
@@ -297,8 +323,22 @@ def test_velocity_classify():
 
 def test_predict_score_requires_3_points(tmp_path):
     recorder = GrowthHistoryRecorder(tmp_path)
-    recorder.record("OrgA", autonomy_score=40, improvement_velocity=10, knowledge_count=1, proposal_count=1, accepted_count=1)
-    recorder.record("OrgA", autonomy_score=45, improvement_velocity=10, knowledge_count=1, proposal_count=1, accepted_count=1)
+    recorder.record(
+        "OrgA",
+        autonomy_score=40,
+        improvement_velocity=10,
+        knowledge_count=1,
+        proposal_count=1,
+        accepted_count=1,
+    )
+    recorder.record(
+        "OrgA",
+        autonomy_score=45,
+        improvement_velocity=10,
+        knowledge_count=1,
+        proposal_count=1,
+        accepted_count=1,
+    )
 
     assert recorder.predict_score("OrgA") is None
 
@@ -335,7 +375,10 @@ def test_predict_score_projects_growth(tmp_path):
             "accepted_count": 2,
         },
     ]
-    path.write_text("\n".join(json.dumps(record, ensure_ascii=False) for record in records) + "\n", encoding="utf-8")
+    path.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False) for record in records) + "\n",
+        encoding="utf-8",
+    )
 
     prediction = recorder.predict_score("OrgA", days_ahead=10)
 
@@ -345,7 +388,9 @@ def test_predict_score_projects_growth(tmp_path):
 def test_milestone_first_awarded(tmp_path):
     tracker = MilestoneTracker(tmp_path)
 
-    achieved = tracker.check_and_award("OrgA", autonomy_score=40, accepted_count=1, knowledge_count=0)
+    achieved = tracker.check_and_award(
+        "OrgA", autonomy_score=40, accepted_count=1, knowledge_count=0
+    )
 
     assert [milestone.milestone_id for milestone in achieved] == ["first_proposal"]
     assert tracker.get_achieved("OrgA")[0].milestone_id == "first_proposal"
@@ -355,6 +400,8 @@ def test_milestone_not_awarded_twice(tmp_path):
     tracker = MilestoneTracker(tmp_path)
     tracker.check_and_award("OrgA", autonomy_score=85, accepted_count=2, knowledge_count=12)
 
-    achieved = tracker.check_and_award("OrgA", autonomy_score=90, accepted_count=3, knowledge_count=12)
+    achieved = tracker.check_and_award(
+        "OrgA", autonomy_score=90, accepted_count=3, knowledge_count=12
+    )
 
     assert achieved == []

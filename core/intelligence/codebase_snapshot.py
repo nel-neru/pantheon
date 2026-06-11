@@ -43,7 +43,17 @@ SNAPSHOT_MODES: Dict[str, Dict[str, Any]] = {
     },
 }
 
-SECURITY_KEYWORDS = {"auth", "token", "password", "secret", "key", "crypt", "hash", "login", "session"}
+SECURITY_KEYWORDS = {
+    "auth",
+    "token",
+    "password",
+    "secret",
+    "key",
+    "crypt",
+    "hash",
+    "login",
+    "session",
+}
 CORE_DIRS = {"core", "lib", "src", "pkg"}
 
 
@@ -127,9 +137,7 @@ class CodebaseSnapshot:
     # 内部実装                                                             #
     # ------------------------------------------------------------------ #
 
-    def _rank_files(
-        self, files: Dict[str, Any], mode: str
-    ) -> List[Tuple[str, Dict[str, Any]]]:
+    def _rank_files(self, files: Dict[str, Any], mode: str) -> List[Tuple[str, Dict[str, Any]]]:
         """モードに応じてファイルをスコアリングしてソートする。"""
         from pathlib import Path as P
 
@@ -175,6 +183,7 @@ class CodebaseSnapshot:
 # ユーティリティ                                                       #
 # ------------------------------------------------------------------ #
 
+
 def _format_entry(rel_path: str, entry: Dict[str, Any]) -> str:
     """インデックスエントリを1行のスナップショット行にフォーマットする。"""
     parts = [f"- **{rel_path}**"]
@@ -198,9 +207,7 @@ def _format_entry(rel_path: str, entry: Dict[str, Any]) -> str:
     return line
 
 
-def _find_most_imported(
-    dep_map: Dict[str, List[str]], top_k: int = 5
-) -> List[Tuple[str, int]]:
+def _find_most_imported(dep_map: Dict[str, List[str]], top_k: int = 5) -> List[Tuple[str, int]]:
     """最も多くのファイルからimportされているモジュールを返す。"""
     counts: Dict[str, int] = {}
     for imports in dep_map.values():

@@ -86,7 +86,9 @@ class ImpactAnalyzer:
                 modules.extend(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 modules.append(node.module)
-                modules.extend(f"{node.module}.{alias.name}" for alias in node.names if alias.name != "*")
+                modules.extend(
+                    f"{node.module}.{alias.name}" for alias in node.names if alias.name != "*"
+                )
         return modules
 
     def _resolve_module_path(self, module_name: str, module_to_path: dict[str, str]) -> str | None:

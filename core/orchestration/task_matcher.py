@@ -26,11 +26,13 @@ class TaskMatcher:
             skills = set(agent.get("skills", []))
             matched_skills = sorted(required_skills & skills)
             score = len(matched_skills) * 2 + float(agent.get("performance_score", 0.0))
-            ranked.append({
-                **agent,
-                "matched_skills": matched_skills,
-                "match_score": score,
-            })
+            ranked.append(
+                {
+                    **agent,
+                    "matched_skills": matched_skills,
+                    "match_score": score,
+                }
+            )
 
         return sorted(ranked, key=lambda a: a.get("match_score", 0.0), reverse=True)
 
@@ -43,7 +45,6 @@ class TaskMatcher:
             return 0.0
 
         matched_agents = sum(
-            1 for agent in agents
-            if required_skills & set(agent.get("skills", []))
+            1 for agent in agents if required_skills & set(agent.get("skills", []))
         )
         return matched_agents / len(agents)

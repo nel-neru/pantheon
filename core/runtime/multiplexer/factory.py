@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 def _make_wmux() -> Optional[MultiplexerDriver]:
     try:
         from core.runtime.multiplexer.wmux_driver import WmuxDriver
+
         drv = WmuxDriver()
         return drv if drv.is_available() else None
     except Exception as exc:  # pragma: no cover - defensive
@@ -41,6 +42,7 @@ def _make_wmux() -> Optional[MultiplexerDriver]:
 def _make_cmux() -> Optional[MultiplexerDriver]:
     try:
         from core.runtime.multiplexer.cmux_driver import CmuxDriver
+
         drv = CmuxDriver()
         return drv if drv.is_available() else None
     except Exception as exc:  # pragma: no cover - defensive
@@ -48,7 +50,9 @@ def _make_cmux() -> Optional[MultiplexerDriver]:
         return None
 
 
-def get_driver(prefer: Optional[str] = None, *, log_root: Optional[os.PathLike] = None) -> MultiplexerDriver:
+def get_driver(
+    prefer: Optional[str] = None, *, log_root: Optional[os.PathLike] = None
+) -> MultiplexerDriver:
     """Return a driver. ``prefer`` (or ``PANTHEON_MULTIPLEXER``) forces a backend.
 
     Falls back to :class:`HeadlessDriver` whenever the GUI multiplexer is not

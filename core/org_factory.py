@@ -60,10 +60,16 @@ def create_organization_from_template(
     repo_path: str | Path | None = None,
     isolation_level: str = "standard",
     allowed_path_scope: Optional[List[str]] = None,
+    industry_genre: Optional[str] = None,
+    persona_id: Optional[str] = None,
+    design_style: Optional[str] = None,
 ) -> Organization:
     """
     YAML テンプレートから Organization を作成する。
     template_path が None の場合は meta_improvement.yaml を使用。
+
+    industry_genre / persona_id / design_style は引数優先、未指定ならテンプレの
+    ``meta:`` セクション（meta.industry_genre 等）から読む（いずれも無ければ既定）。
     """
     path = template_path or DEFAULT_TEMPLATE_PATH
 
@@ -83,6 +89,18 @@ def create_organization_from_template(
         data = yaml.safe_load(f) or {}
 
     departments = data.get("departments", [])
+    meta = data.get("meta", {}) if isinstance(data.get("meta"), dict) else {}
+    org_kwargs: dict = {}
+    genre = industry_genre or meta.get("industry_genre")
+    if genre:
+        org_kwargs["industry_genre"] = str(genre)
+    persona = persona_id or meta.get("persona_id")
+    if persona:
+        org_kwargs["persona_id"] = str(persona)
+    style = design_style or meta.get("design_style")
+    if style:
+        org_kwargs["design_style"] = str(style)
+
     org = Organization(
         name=name,
         purpose=purpose,
@@ -91,6 +109,7 @@ def create_organization_from_template(
         is_system=is_system,
         isolation_level=isolation_level,
         allowed_path_scope=list(allowed_path_scope or []),
+        **org_kwargs,
     )
 
     for dept in departments:

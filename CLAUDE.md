@@ -38,13 +38,14 @@ Bash-tool equivalents use forward slashes: `.venv/Scripts/python -m pytest tests
 
 ## Test baseline — DO NOT treat these as regressions
 
-On Windows the full backend suite has **6 long-standing failures** unrelated to any change
+On Windows the full backend suite has **2 long-standing failures** unrelated to any change
 (verified against a clean tree). Only NEW failures beyond these count:
 
-- Path-separator (`\` vs `/`): `test_apply_local_change_writes_only_inside_repo`,
-  `test_repo_reader_finds_code_files`, `test_save_and_load_organization`, `test_dependency_graph_build`
 - POSIX `chmod 0o600` not honored on Windows: `test_get_settings_warns_on_open_permissions`,
   `test_update_settings_sets_restrictive_permissions`
+
+(4 former path-separator failures were fixed 2026-06-12 by normalizing relative paths to
+POSIX with `as_posix()` in `repo_reader` / `dependency_graph` / `improvement_executor_agent`.)
 
 Two tests are order-flaky (pass in isolation, fail only in full-suite runs):
 `test_backup_manager_cleanup_old`, `test_get_improvement_history`.
@@ -88,13 +89,17 @@ Two tests are order-flaky (pass in isolation, fail only in full-suite runs):
 > "Pantheon-agent/skill" = the app's *own* in-product framework (`agents/`, `core/intelligence`).
 > "CC-agent/skill/command" = the Claude Code helpers below. They are different things.
 
-- **Subagents** (`.claude/agents/`): `code-reviewer` (Opus, read-only), `test-triage`
-  (runs both suites, separates the 6 known failures from real regressions), `debugger`,
-  `frontend-dev`.
+- **Subagents** (`.claude/agents/`), model-tiered by cognitive load: Opus —
+  `code-reviewer` (read-only diff), `debugger`; Sonnet — `frontend-dev`, `flow-auditor`;
+  Haiku (mechanical/monitoring) — `test-triage` (separates the 6 known failures from real
+  regressions), `trend-watcher` (Claude Code trends → `.claude/` config suggestions),
+  `doc-writer` (keep docs in sync).
 - **Skills** (`.claude/skills/`): `run-pantheon` (launch recipe), `pantheon-agent`
   (how to add a Pantheon-agent + skill correctly), `improvement-proposal-flow`,
   `fastapi-endpoint` (add/modify a FastAPI route + test).
-- **Commands** (`.claude/commands/`): `/add-cli-command`, `/add-web-page`, `/triage-tests`.
+- **Commands** (`.claude/commands/`): `/add-cli-command`, `/add-web-page`, `/triage-tests`,
+  `/daemon-status` (24h 自律基盤の状態), `/trend-report` (トレンド収集状況), `/spawn-org`
+  (ジャンル別 Organization を1コマンド量産).
 - **Rules** (`.claude/rules/`): path-scoped guidance for `*.py`, frontend, and `web/server.py`.
 - **MCP** (`.mcp.json`): Context7 (version-pinned docs) + Playwright (drive the frontend).
 - Full description: `docs/claude-code-setup.md`.

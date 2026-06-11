@@ -238,6 +238,12 @@ async def cmd_org_add(args) -> None:
     await _cmd_org_add_impl(args, get_psm=_get_psm, project_root=PROJECT_ROOT)
 
 
+async def cmd_org_create(args) -> None:
+    from commands.org import cmd_org_create as _impl
+
+    await _impl(args, get_psm=_get_psm, project_root=PROJECT_ROOT)
+
+
 async def cmd_org_list(args) -> None:
     await _cmd_org_list_impl(args, get_psm=_get_psm)
 
@@ -462,9 +468,70 @@ async def cmd_session_doctor(args) -> None:
     await _impl(args)
 
 
+async def cmd_daemons_status(args) -> None:
+    from commands.daemons import cmd_daemons_status as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_start(args) -> None:
+    from commands.daemons import cmd_daemons_start as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_stop(args) -> None:
+    from commands.daemons import cmd_daemons_stop as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_enable(args) -> None:
+    from commands.daemons import cmd_daemons_enable as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_disable(args) -> None:
+    from commands.daemons import cmd_daemons_disable as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_watchdog_install(args) -> None:
+    from commands.daemons import cmd_daemons_watchdog_install as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_watchdog_uninstall(args) -> None:
+    from commands.daemons import cmd_daemons_watchdog_uninstall as _impl
+
+    await _impl(args)
+
+
+async def cmd_daemons_watchdog_status(args) -> None:
+    from commands.daemons import cmd_daemons_watchdog_status as _impl
+
+    await _impl(args)
+
+
+async def cmd_trends_collect(args) -> None:
+    from commands.trends import cmd_trends_collect as _impl
+
+    await _impl(args)
+
+
+async def cmd_trends_list(args) -> None:
+    from commands.trends import cmd_trends_list as _impl
+
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
+    "cmd_org_create": cmd_org_create,
     "cmd_org_list": cmd_org_list,
     "cmd_org_scan": cmd_org_scan,
     "cmd_org_show": cmd_org_show,
@@ -511,6 +578,16 @@ HANDLERS = {
     "cmd_session_stop": cmd_session_stop,
     "cmd_session_resume": cmd_session_resume,
     "cmd_session_doctor": cmd_session_doctor,
+    "cmd_daemons_status": cmd_daemons_status,
+    "cmd_daemons_start": cmd_daemons_start,
+    "cmd_daemons_stop": cmd_daemons_stop,
+    "cmd_daemons_enable": cmd_daemons_enable,
+    "cmd_daemons_disable": cmd_daemons_disable,
+    "cmd_daemons_watchdog_install": cmd_daemons_watchdog_install,
+    "cmd_daemons_watchdog_uninstall": cmd_daemons_watchdog_uninstall,
+    "cmd_daemons_watchdog_status": cmd_daemons_watchdog_status,
+    "cmd_trends_collect": cmd_trends_collect,
+    "cmd_trends_list": cmd_trends_list,
 }
 
 
@@ -534,6 +611,22 @@ def main() -> None:
 
         sys.argv = [sys.argv[0], *argv[1:]]
         _content_daemon_runner.main()
+        return
+
+    # watchdog（daemon 監視・自動復旧）の frozen 自己再起動エントリ。
+    if argv and argv[0] == "--watchdog-run":
+        from core import _watchdog_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _watchdog_runner.main()
+        return
+
+    # trend daemon（トレンド収集・変換）の frozen 自己再起動エントリ。
+    if argv and argv[0] == "--trend-daemon-run":
+        from core import _trend_daemon_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _trend_daemon_runner.main()
         return
 
     # 引数なし起動（exe をダブルクリックした場合など）はフル起動（up）する:

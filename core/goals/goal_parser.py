@@ -24,40 +24,44 @@ logger = logging.getLogger(__name__)
 # データモデル                                                         #
 # ────────────────────────────────────────────────────────────────── #
 
+
 class GoalType:
     """目標の種別定数。"""
-    NEW_SERVICE     = "new_service"       # 新サービス・アプリの作成
-    IMPROVEMENT     = "improvement"       # 既存コードの改善
-    SECURITY        = "security"          # セキュリティ強化
-    PERFORMANCE     = "performance"       # パフォーマンス改善
-    TEST_COVERAGE   = "test_coverage"     # テストカバレッジ向上
-    REFACTORING     = "refactoring"       # リファクタリング
-    DOCUMENTATION   = "documentation"    # ドキュメント整備
-    MIGRATION       = "migration"         # 移行・アップグレード
-    AUTOMATION      = "automation"        # 自動化
-    GENERAL         = "general"           # その他
+
+    NEW_SERVICE = "new_service"  # 新サービス・アプリの作成
+    IMPROVEMENT = "improvement"  # 既存コードの改善
+    SECURITY = "security"  # セキュリティ強化
+    PERFORMANCE = "performance"  # パフォーマンス改善
+    TEST_COVERAGE = "test_coverage"  # テストカバレッジ向上
+    REFACTORING = "refactoring"  # リファクタリング
+    DOCUMENTATION = "documentation"  # ドキュメント整備
+    MIGRATION = "migration"  # 移行・アップグレード
+    AUTOMATION = "automation"  # 自動化
+    GENERAL = "general"  # その他
 
 
 class GoalScale:
     """目標の規模定数。"""
-    SMALL  = "small"    # 1〜2日
-    MEDIUM = "medium"   # 1〜2週間
-    LARGE  = "large"    # 1ヶ月以上
+
+    SMALL = "small"  # 1〜2日
+    MEDIUM = "medium"  # 1〜2週間
+    LARGE = "large"  # 1ヶ月以上
 
 
 @dataclass
 class StructuredGoal:
     """パース済みの構造化された目標。"""
+
     goal_id: str
     raw_text: str
     goal_type: str
-    scope: str                              # 変更範囲（"repository", "module", "function"）
-    description: str                        # 1〜2文の明確な目標記述
-    success_criteria: List[str]             # 達成判定基準（箇条書き）
-    constraints: List[str]                  # 制約（後方互換性維持 etc.）
-    suggested_categories: List[str]         # 関連するImprovementProposalカテゴリ
+    scope: str  # 変更範囲（"repository", "module", "function"）
+    description: str  # 1〜2文の明確な目標記述
+    success_criteria: List[str]  # 達成判定基準（箇条書き）
+    constraints: List[str]  # 制約（後方互換性維持 etc.）
+    suggested_categories: List[str]  # 関連するImprovementProposalカテゴリ
     scale: str = GoalScale.MEDIUM
-    domain: str = ""                        # ドメイン（ecommerce, api, cli etc.）
+    domain: str = ""  # ドメイン（ecommerce, api, cli etc.）
     features: List[str] = field(default_factory=list)
     parsed_at: str = ""
 
@@ -101,7 +105,10 @@ _CLASSIFICATION_RULES: List[Dict[str, Any]] = [
         "goal_type": GoalType.SECURITY,
         "scope": "module",
         "categories": ["security"],
-        "criteria": ["既知の脆弱性パターンが解消されている", "セキュリティ監査ツールでエラーが出ない"],
+        "criteria": [
+            "既知の脆弱性パターンが解消されている",
+            "セキュリティ監査ツールでエラーが出ない",
+        ],
     },
     {
         "keywords": ["テスト", "test", "カバレッジ", "coverage", "pytest", "unittest"],
@@ -111,7 +118,16 @@ _CLASSIFICATION_RULES: List[Dict[str, Any]] = [
         "criteria": ["テストカバレッジが目標値以上になっている", "CI/CDがパスする"],
     },
     {
-        "keywords": ["パフォーマンス", "performance", "速度", "speed", "最適化", "optimize", "遅い", "slow"],
+        "keywords": [
+            "パフォーマンス",
+            "performance",
+            "速度",
+            "speed",
+            "最適化",
+            "optimize",
+            "遅い",
+            "slow",
+        ],
         "goal_type": GoalType.PERFORMANCE,
         "scope": "module",
         "categories": ["performance"],
@@ -132,7 +148,15 @@ _CLASSIFICATION_RULES: List[Dict[str, Any]] = [
         "criteria": ["主要APIが文書化されている", "README が最新状態になっている"],
     },
     {
-        "keywords": ["移行", "migration", "アップグレード", "upgrade", "バージョン", "python", "framework"],
+        "keywords": [
+            "移行",
+            "migration",
+            "アップグレード",
+            "upgrade",
+            "バージョン",
+            "python",
+            "framework",
+        ],
         "goal_type": GoalType.MIGRATION,
         "scope": "repository",
         "categories": ["dependency_upgrade", "migration"],
@@ -146,7 +170,18 @@ _CLASSIFICATION_RULES: List[Dict[str, Any]] = [
         "criteria": ["パイプラインが正常に動作する", "手動作業が削減されている"],
     },
     {
-        "keywords": ["作りたい", "作成", "新しい", "new", "サービス", "service", "アプリ", "app", "API", "システム"],
+        "keywords": [
+            "作りたい",
+            "作成",
+            "新しい",
+            "new",
+            "サービス",
+            "service",
+            "アプリ",
+            "app",
+            "API",
+            "システム",
+        ],
         "goal_type": GoalType.NEW_SERVICE,
         "scope": "repository",
         "categories": ["feature", "architecture"],
@@ -162,12 +197,24 @@ _CLASSIFICATION_RULES: List[Dict[str, Any]] = [
 ]
 
 # スケール判定キーワード
-_SCALE_LARGE  = ["全体", "全面", "完全", "complete", "entire", "architecture", "アーキテクチャ", "リアーキ"]
-_SCALE_SMALL  = ["ちょっと", "少し", "小さ", "minor", "simple", "単純", "1つ", "one"]
+_SCALE_LARGE = [
+    "全体",
+    "全面",
+    "完全",
+    "complete",
+    "entire",
+    "architecture",
+    "アーキテクチャ",
+    "リアーキ",
+]
+_SCALE_SMALL = ["ちょっと", "少し", "小さ", "minor", "simple", "単純", "1つ", "one"]
 
 # ドメイン検出
 _DOMAIN_RULES: List[Dict[str, Any]] = [
-    {"keywords": ["ecommerce", "EC", "Eコマース", "ショッピング", "shopping", "cart", "カート"], "domain": "ecommerce"},
+    {
+        "keywords": ["ecommerce", "EC", "Eコマース", "ショッピング", "shopping", "cart", "カート"],
+        "domain": "ecommerce",
+    },
     {"keywords": ["api", "REST", "GraphQL", "endpoint"], "domain": "api"},
     {"keywords": ["cli", "コマンド", "command", "terminal"], "domain": "cli"},
     {"keywords": ["web", "フロント", "frontend", "html", "css"], "domain": "web"},
@@ -179,6 +226,7 @@ _DOMAIN_RULES: List[Dict[str, Any]] = [
 # ────────────────────────────────────────────────────────────────── #
 # GoalParser クラス                                                    #
 # ────────────────────────────────────────────────────────────────── #
+
 
 class GoalParser:
     """
@@ -303,7 +351,7 @@ class GoalParser:
         """テキストから機能リストを抽出する。"""
         features: List[str] = []
         # 「〜機能」パターン
-        for match in re.finditer(r'[\w・/]+機能', raw_text):
+        for match in re.finditer(r"[\w・/]+機能", raw_text):
             features.append(match.group())
         # 箇条書き（・ - * など）
         for line in raw_text.splitlines():
@@ -337,7 +385,7 @@ class GoalParser:
         response = self._llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
 
-        json_match = re.search(r'\{.*?\}', content, re.DOTALL)
+        json_match = re.search(r"\{.*?\}", content, re.DOTALL)
         if not json_match:
             logger.warning("LLM returned no JSON, falling back to heuristic")
             return self._parse_heuristic(raw_text)

@@ -4,6 +4,7 @@
 src/pages/*.tsx（HelpPage以外）が存在する場合、
 HelpPage.tsx でそのページへの言及があるかチェックする。
 """
+
 import sys
 from pathlib import Path
 
@@ -52,7 +53,6 @@ def check_help_coverage() -> list[str]:
             )
 
     return warnings
-
 
 
 def main() -> int:

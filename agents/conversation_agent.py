@@ -65,7 +65,9 @@ class ConversationAgent:
             if "platform:pending_proposals" not in sources and pending_count:
                 sources.append("platform:pending_proposals")
         elif any(token in question for token in ("提案", "改善")):
-            answer = f"現在の未処理提案は{pending_count}件です。優先順位を確認して改善を進められます。"
+            answer = (
+                f"現在の未処理提案は{pending_count}件です。優先順位を確認して改善を進められます。"
+            )
             confidence = 0.85 if pending_count or sources else 0.5
             suggested_actions = ["pantheon proposals list", "pantheon analyze"]
             if "platform:pending_proposals" not in sources:

@@ -42,13 +42,15 @@ class SkillGapDetector:
             skill_name = self.FAILURE_SKILL_MAP.get(category)
             if failure_count < 3 or not skill_name or category in self._reported_categories:
                 continue
-            gaps.append(SkillGap(
-                gap_id=str(uuid4()),
-                detected_skill_name=skill_name,
-                reason=f"{category} カテゴリで {failure_count} 件の失敗が発生しました。",
-                evidence_count=failure_count,
-                detected_at=datetime.now(timezone.utc).isoformat(),
-            ))
+            gaps.append(
+                SkillGap(
+                    gap_id=str(uuid4()),
+                    detected_skill_name=skill_name,
+                    reason=f"{category} カテゴリで {failure_count} 件の失敗が発生しました。",
+                    evidence_count=failure_count,
+                    detected_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
             self._reported_categories.add(category)
         return gaps
 

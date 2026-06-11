@@ -31,7 +31,14 @@ def _is_accepted_proposal(proposal: dict[str, Any]) -> bool:
 def _proposal_timestamp(proposal: dict[str, Any]) -> Optional[datetime]:
     # last_updated は status 変更時刻（=承認/適用時刻）。created_at（作成時刻）より優先し、
     # recency/last_improvement が「いつ改善が入ったか」を正しく反映するようにする。
-    for key in ("updated_at", "applied_at", "decided_at", "last_updated", "created_at", "timestamp"):
+    for key in (
+        "updated_at",
+        "applied_at",
+        "decided_at",
+        "last_updated",
+        "created_at",
+        "timestamp",
+    ):
         value = proposal.get(key)
         if value:
             try:

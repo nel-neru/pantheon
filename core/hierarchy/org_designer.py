@@ -117,7 +117,10 @@ class OrganizationDesigner:
                     team_name="OptimizationTeam",
                     team_mission="Identify bottlenecks and optimize critical flows.",
                     agent_name="PerformanceSpecialist",
-                    skills=[AgentSkill.PERFORMANCE_ANALYSIS.value, AgentSkill.CODEBASE_EXPLORATION.value],
+                    skills=[
+                        AgentSkill.PERFORMANCE_ANALYSIS.value,
+                        AgentSkill.CODEBASE_EXPLORATION.value,
+                    ],
                     description="Specialist focused on performance analysis and optimization.",
                 )
             )
@@ -174,7 +177,9 @@ class OrganizationDesigner:
                     mission=team_spec.mission,
                 )
 
-                agent_specs = team_spec.agents or [self._default_agent_spec_for_division(division_type, team_spec.name)]
+                agent_specs = team_spec.agents or [
+                    self._default_agent_spec_for_division(division_type, team_spec.name)
+                ]
                 for agent_spec in agent_specs:
                     skills = self._resolve_skills(agent_spec.skills)
                     team.agents.append(
@@ -231,7 +236,11 @@ class OrganizationDesigner:
                     for agent in team.agents
                 ]
 
-                avg_score = sum(agent.performance_score for agent in team.agents) / len(team.agents) if team.agents else 0.0
+                avg_score = (
+                    sum(agent.performance_score for agent in team.agents) / len(team.agents)
+                    if team.agents
+                    else 0.0
+                )
                 if avg_score < threshold:
                     agent_specs.append(
                         AgentSpec(
@@ -268,7 +277,9 @@ class OrganizationDesigner:
             divisions=divisions,
         )
 
-    def _design_with_llm(self, purpose: str, org_name: Optional[str]) -> Optional[OrganizationDesignSpec]:
+    def _design_with_llm(
+        self, purpose: str, org_name: Optional[str]
+    ) -> Optional[OrganizationDesignSpec]:
         if self.llm_client is None or not hasattr(self.llm_client, "design_organization"):
             return None
 
@@ -338,7 +349,9 @@ class OrganizationDesigner:
             divisions.append(
                 DivisionSpec(
                     name=division_data.get("name", "Unnamed Division"),
-                    division_type=division_data.get("division_type", DivisionType.ORG_EVOLUTION.value),
+                    division_type=division_data.get(
+                        "division_type", DivisionType.ORG_EVOLUTION.value
+                    ),
                     mission=division_data.get("mission", ""),
                     teams=teams,
                 )
@@ -366,7 +379,8 @@ class OrganizationDesigner:
             normalized = (raw_skill or "").strip().lower()
             match = next(
                 (
-                    skill for skill in AgentSkill
+                    skill
+                    for skill in AgentSkill
                     if normalized in {skill.value.lower(), skill.name.lower()}
                 ),
                 None,
@@ -385,17 +399,39 @@ class OrganizationDesigner:
 
         return resolved[:3]
 
-    def _default_agent_spec_for_division(self, division_type: DivisionType, team_name: str) -> AgentSpec:
+    def _default_agent_spec_for_division(
+        self, division_type: DivisionType, team_name: str
+    ) -> AgentSpec:
         skill_map = {
-            DivisionType.QUALITY_ASSURANCE: [AgentSkill.DEEP_RESEARCH.value, AgentSkill.CODEBASE_EXPLORATION.value],
-            DivisionType.PERFORMANCE_OPTIMIZATION: [AgentSkill.PERFORMANCE_ANALYSIS.value, AgentSkill.CODEBASE_EXPLORATION.value],
-            DivisionType.KNOWLEDGE_MANAGEMENT: [AgentSkill.KNOWLEDGE_CURATION.value, AgentSkill.DEEP_RESEARCH.value],
-            DivisionType.TOOL_INTEGRATION: [AgentSkill.TOOL_INTEGRATION.value, AgentSkill.PROMPT_ENGINEERING.value],
-            DivisionType.AGENT_ARCHITECTURE: [AgentSkill.AGENT_WORKFLOW_DESIGN.value, AgentSkill.ORG_DESIGN.value],
-            DivisionType.ORG_EVOLUTION: [AgentSkill.STRATEGIC_PLANNING.value, AgentSkill.ORG_DESIGN.value],
+            DivisionType.QUALITY_ASSURANCE: [
+                AgentSkill.DEEP_RESEARCH.value,
+                AgentSkill.CODEBASE_EXPLORATION.value,
+            ],
+            DivisionType.PERFORMANCE_OPTIMIZATION: [
+                AgentSkill.PERFORMANCE_ANALYSIS.value,
+                AgentSkill.CODEBASE_EXPLORATION.value,
+            ],
+            DivisionType.KNOWLEDGE_MANAGEMENT: [
+                AgentSkill.KNOWLEDGE_CURATION.value,
+                AgentSkill.DEEP_RESEARCH.value,
+            ],
+            DivisionType.TOOL_INTEGRATION: [
+                AgentSkill.TOOL_INTEGRATION.value,
+                AgentSkill.PROMPT_ENGINEERING.value,
+            ],
+            DivisionType.AGENT_ARCHITECTURE: [
+                AgentSkill.AGENT_WORKFLOW_DESIGN.value,
+                AgentSkill.ORG_DESIGN.value,
+            ],
+            DivisionType.ORG_EVOLUTION: [
+                AgentSkill.STRATEGIC_PLANNING.value,
+                AgentSkill.ORG_DESIGN.value,
+            ],
         }
         return AgentSpec(
             name=f"{team_name} Specialist",
-            skills=skill_map.get(division_type, [AgentSkill.DEEP_RESEARCH.value, AgentSkill.STRATEGIC_PLANNING.value]),
+            skills=skill_map.get(
+                division_type, [AgentSkill.DEEP_RESEARCH.value, AgentSkill.STRATEGIC_PLANNING.value]
+            ),
             description=f"Specialist supporting {team_name}.",
         )

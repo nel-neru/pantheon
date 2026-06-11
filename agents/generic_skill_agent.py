@@ -140,10 +140,7 @@ class GenericSkillAgent(BaseAgent):
         return AgentResult(
             success=True,
             output={
-                "result": (
-                    f"{self.name} ({skills_str}) が "
-                    f"タスク '{task.task_type}' を処理します"
-                ),
+                "result": (f"{self.name} ({skills_str}) が タスク '{task.task_type}' を処理します"),
                 "key_findings": [f"スキル [{skills_str}] が適用されます"],
                 "recommendations": [],
                 "confidence": 0.8,

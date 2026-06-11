@@ -63,6 +63,7 @@ class EventDetector:
         pending_spike_limit: int = 10,
     ):
         from core.platform.state import get_platform_home
+
         self._platform_home = platform_home or get_platform_home()
         self._health_threshold = health_drop_threshold
         self._pending_limit = pending_spike_limit
@@ -111,32 +112,41 @@ class EventDetector:
                 new_sha = self._get_latest_commit(org.target_repo_path)
                 old_sha = self._last_commits.get(str(org.id))
                 if new_sha and new_sha != old_sha:
-                    events.append(DetectedEvent(
-                        event_type=EventType.NEW_COMMIT,
-                        org_name=org.name,
-                        org_id=str(org.id),
-                        details={"old_sha": old_sha, "new_sha": new_sha},
-                    ))
+                    events.append(
+                        DetectedEvent(
+                            event_type=EventType.NEW_COMMIT,
+                            org_name=org.name,
+                            org_id=str(org.id),
+                            details={"old_sha": old_sha, "new_sha": new_sha},
+                        )
+                    )
                     self._last_commits[str(org.id)] = new_sha
 
             # 2. 健康スコア低下検知
             m = calculate_organization_metrics(org, pending_proposals_count=pending_count)
             if m.health_score < self._health_threshold:
-                events.append(DetectedEvent(
-                    event_type=EventType.HEALTH_DROP,
-                    org_name=org.name,
-                    org_id=str(org.id),
-                    details={"health_score": m.health_score, "threshold": self._health_threshold},
-                ))
+                events.append(
+                    DetectedEvent(
+                        event_type=EventType.HEALTH_DROP,
+                        org_name=org.name,
+                        org_id=str(org.id),
+                        details={
+                            "health_score": m.health_score,
+                            "threshold": self._health_threshold,
+                        },
+                    )
+                )
 
             # 3. 未対応提案急増検知
             if pending_count >= self._pending_limit:
-                events.append(DetectedEvent(
-                    event_type=EventType.PENDING_SPIKE,
-                    org_name=org.name,
-                    org_id=str(org.id),
-                    details={"pending_count": pending_count, "limit": self._pending_limit},
-                ))
+                events.append(
+                    DetectedEvent(
+                        event_type=EventType.PENDING_SPIKE,
+                        org_name=org.name,
+                        org_id=str(org.id),
+                        details={"pending_count": pending_count, "limit": self._pending_limit},
+                    )
+                )
 
         self._save_commit_cache()
         return events

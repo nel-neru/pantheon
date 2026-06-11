@@ -132,8 +132,12 @@ class ToolDesignAgent(BaseAgent):
             return ImplementationSpec(
                 spec_id=data.get("spec_id", f"spec:{gap.gap_id}"),
                 class_name=data.get("class_name", gap.suggested_name),
-                file_path=data.get("file_path", self._suggest_file_path(gap.suggested_name, gap.suggested_type)),
-                method_signatures=data.get("method_signatures", self._suggest_methods(gap.suggested_type)),
+                file_path=data.get(
+                    "file_path", self._suggest_file_path(gap.suggested_name, gap.suggested_type)
+                ),
+                method_signatures=data.get(
+                    "method_signatures", self._suggest_methods(gap.suggested_type)
+                ),
                 description=data.get("description", gap.description),
                 integration_points=data.get(
                     "integration_points",
@@ -142,8 +146,12 @@ class ToolDesignAgent(BaseAgent):
                         gap.suggested_type,
                     ),
                 ),
-                required_imports=data.get("required_imports", self._suggest_imports(gap.suggested_type)),
-                estimated_lines=int(data.get("estimated_lines", self._estimate_lines(gap.suggested_type, 2))),
+                required_imports=data.get(
+                    "required_imports", self._suggest_imports(gap.suggested_type)
+                ),
+                estimated_lines=int(
+                    data.get("estimated_lines", self._estimate_lines(gap.suggested_type, 2))
+                ),
                 gap_id=gap.gap_id,
                 created_at=data.get("created_at", datetime.now(timezone.utc).isoformat()),
             )
@@ -182,7 +190,11 @@ Existing code patterns:
     def _read_existing_patterns(self) -> str:
         repo_root = Path(__file__).resolve().parents[1]
         samples: list[str] = []
-        for rel_path in ("agents/base.py", "agents/codebase_explorer_agent.py", "agents/improvement_executor_agent.py"):
+        for rel_path in (
+            "agents/base.py",
+            "agents/codebase_explorer_agent.py",
+            "agents/improvement_executor_agent.py",
+        ):
             path = repo_root / rel_path
             if not path.exists():
                 continue
@@ -237,7 +249,9 @@ Existing code patterns:
             "SelfExtensionPipeline から生成・レビュー対象として扱えるようにする",
         ]
         if suggested_type.lower() == "agent":
-            integration_points.append("BaseAgent.run() 契約に従って AgentTask / AgentResult を受け渡す")
+            integration_points.append(
+                "BaseAgent.run() 契約に従って AgentTask / AgentResult を受け渡す"
+            )
         return integration_points
 
     def _suggest_imports(self, suggested_type: str) -> list[str]:
@@ -251,7 +265,9 @@ Existing code patterns:
         return ["from typing import Any"]
 
     def _estimate_lines(self, suggested_type: str, method_count: int) -> int:
-        base = {"agent": 85, "tool": 55, "skill": 45, "mcp_tool": 50}.get(suggested_type.lower(), 50)
+        base = {"agent": 85, "tool": 55, "skill": 45, "mcp_tool": 50}.get(
+            suggested_type.lower(), 50
+        )
         return base + max(method_count - 1, 0) * 12
 
     def _extract_json_object(self, content: str) -> Optional[dict[str, Any]]:
