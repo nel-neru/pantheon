@@ -189,6 +189,8 @@ async def test_collect_and_store_e2e(tmp_path, monkeypatch):
         "core.trends.runner.load_sources",
         lambda path=None: [TrendSource(name="a", url="https://a/feed", genre="ai")],
     )
+    # YouTube は実ネットワークを叩かないよう空に（B-2 collector は別テストで検証）
+    monkeypatch.setattr("core.trends.runner.load_channels", lambda path=None: [])
     monkeypatch.setattr("core.trends.collectors.web._fetch", lambda url, **kw: RSS_FIXTURE)
     result = await collect_and_store(platform_home=tmp_path)
     assert result["collected"] == 2
