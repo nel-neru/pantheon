@@ -59,3 +59,7 @@ web/frontend/.vite/
 *.log
 *.bak
 *.tmp
+
+# ジャンル別に自動生成される組織テンプレート（pantheon org create の出力、ユーザー固有）
+config/departments/generated/*.yaml
+!config/departments/generated/.gitkeep

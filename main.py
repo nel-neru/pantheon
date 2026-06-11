@@ -238,6 +238,12 @@ async def cmd_org_add(args) -> None:
     await _cmd_org_add_impl(args, get_psm=_get_psm, project_root=PROJECT_ROOT)
 
 
+async def cmd_org_create(args) -> None:
+    from commands.org import cmd_org_create as _impl
+
+    await _impl(args, get_psm=_get_psm, project_root=PROJECT_ROOT)
+
+
 async def cmd_org_list(args) -> None:
     await _cmd_org_list_impl(args, get_psm=_get_psm)
 
@@ -525,6 +531,7 @@ async def cmd_trends_list(args) -> None:
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
+    "cmd_org_create": cmd_org_create,
     "cmd_org_list": cmd_org_list,
     "cmd_org_scan": cmd_org_scan,
     "cmd_org_show": cmd_org_show,
