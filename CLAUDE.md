@@ -47,8 +47,9 @@ On Windows the full backend suite has **2 long-standing failures** unrelated to 
 (4 former path-separator failures were fixed 2026-06-12 by normalizing relative paths to
 POSIX with `as_posix()` in `repo_reader` / `dependency_graph` / `improvement_executor_agent`.)
 
-Two tests are order-flaky (pass in isolation, fail only in full-suite runs):
-`test_backup_manager_cleanup_old`, `test_get_improvement_history`.
+(The 2 former order-flaky tests — `test_backup_manager_cleanup_old`,
+`test_get_improvement_history` — were root-fixed 2026-06-12: wall-clock timestamps used as
+uniqueness keys collided within one Windows clock tick; now disambiguated. If they fail, it IS a regression.)
 
 ## Git & commits
 

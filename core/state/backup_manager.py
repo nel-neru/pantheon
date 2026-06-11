@@ -33,7 +33,14 @@ class BackupManager:
     def backup_now(self, source_path: Path) -> Path:
         source = Path(source_path)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
-        backup_path = self.backups_dir / f"{self._source_key(source)}_{timestamp}.bak"
+        key = self._source_key(source)
+        backup_path = self.backups_dir / f"{key}_{timestamp}.bak"
+        # 同一クロック刻み（Windows で ~1-16ms）の連続呼び出しで同名になり前のバックアップを
+        # 上書きしてしまうため、既存ならカウンタで一意化する（list_backups の glob とは互換）
+        n = 1
+        while backup_path.exists():
+            backup_path = self.backups_dir / f"{key}_{timestamp}-{n}.bak"
+            n += 1
         if source.is_dir():
             ignore = (
                 shutil.ignore_patterns(self.backups_dir.name)

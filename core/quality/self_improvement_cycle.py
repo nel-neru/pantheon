@@ -11,6 +11,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from core.platform.state import get_platform_home
 from core.quality.meta_improvement_analyzer import MetaImprovementAnalyzer
@@ -65,7 +66,10 @@ class SelfImprovementCycle:
         next_version = self._increment_version(current_version.version)
         completed_at = datetime.now(timezone.utc).isoformat()
         improvements = [proposal.title for proposal in proposals]
-        cycle_id = f"cycle:{started_at.replace(':', '').replace('-', '').replace('.', '')}"
+        # 壁時計だけでは同一クロック刻み（Windows で ~1-16ms）の連続実行で衝突するため、
+        # 短い乱数サフィックスで一意性を保証する（cycle_id は不透明文字列・パースされない）
+        stamp = started_at.replace(":", "").replace("-", "").replace(".", "")
+        cycle_id = f"cycle:{stamp}-{uuid4().hex[:8]}"
         record = SelfImprovementRecord(
             cycle_id=cycle_id,
             improvements=improvements,
