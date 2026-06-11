@@ -2,7 +2,7 @@
 name: test-triage
 description: Runs Pantheon's full test suites (backend pytest + frontend vitest) and triages failures, distinguishing REAL regressions from the 6 known pre-existing Windows failures. Use PROACTIVELY after backend changes, before pushing, or whenever the user asks to run/check tests. Returns a concise pass/fail + regression verdict (keeps verbose output out of the main context).
 tools: Bash, Read, Grep, Glob
-model: sonnet
+model: haiku
 color: cyan
 ---
 

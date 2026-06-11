@@ -2,7 +2,7 @@
 name: flow-auditor
 description: Audits one or more Pantheon usage flows end-to-end against the Atlas catalog — runs each flow's verification tests, inspects its components for the known issues recorded in flows.json, and reports honest per-flow health (solid/partial/fragile) with concrete next steps. Use when asked to verify a flow works, re-check flow health, or confirm a known issue is fixed.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 color: cyan
 ---
 
