@@ -1,0 +1,29 @@
+# トレンド収集ソース（RSS/Atom）。無料・公開フィードのみ。X/YouTube は別 collector。
+# ジャンル別エキスパート組織の素材になるよう genre を付ける。`pantheon trends collect`
+# で横断収集する。追加・削除はこのファイルだけで完結する。
+
+sources:
+  - name: Hacker News Front Page
+    url: https://hnrss.org/frontpage
+    type: rss
+    genre: ai
+
+  - name: TechCrunch
+    url: https://techcrunch.com/feed/
+    type: rss
+    genre: ai
+
+  - name: The Verge
+    url: https://www.theverge.com/rss/index.xml
+    type: atom
+    genre: ai
+
+  - name: Indie Hackers
+    url: https://www.indiehackers.com/feed.xml
+    type: rss
+    genre: side_business
+
+  - name: Product Hunt
+    url: https://www.producthunt.com/feed
+    type: atom
+    genre: side_business

@@ -510,6 +510,18 @@ async def cmd_daemons_watchdog_status(args) -> None:
     await _impl(args)
 
 
+async def cmd_trends_collect(args) -> None:
+    from commands.trends import cmd_trends_collect as _impl
+
+    await _impl(args)
+
+
+async def cmd_trends_list(args) -> None:
+    from commands.trends import cmd_trends_list as _impl
+
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
@@ -567,6 +579,8 @@ HANDLERS = {
     "cmd_daemons_watchdog_install": cmd_daemons_watchdog_install,
     "cmd_daemons_watchdog_uninstall": cmd_daemons_watchdog_uninstall,
     "cmd_daemons_watchdog_status": cmd_daemons_watchdog_status,
+    "cmd_trends_collect": cmd_trends_collect,
+    "cmd_trends_list": cmd_trends_list,
 }
 
 
