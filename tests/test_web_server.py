@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 import web.server as server
@@ -111,6 +112,52 @@ def test_api_token_guard_requires_bearer_when_set(tmp_path, monkeypatch):
         ).status_code
         == 200
     )
+
+
+def test_token_matches_handles_non_ascii_without_raising():
+    """compare_digest は str に非 ASCII があると TypeError を投げるため、
+    _token_matches は必ず bytes 比較する（攻撃者制御ヘッダで 500 にしない）。
+    httpx TestClient は非 ASCII ヘッダを送れないのでヘルパーを直接検証する。"""
+    # latin-1 由来の非 ASCII を含む値でも例外を投げず False を返す
+    assert server._token_matches("Bearer café", "sekrit-token") is False
+    assert server._token_matches("caféé", "caféé") is True
+    assert server._token_matches("right", "right") is True
+    assert server._token_matches("wrong", "right") is False
+
+
+def test_ws_updates_rejects_without_token_when_set(tmp_path, monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+
+    monkeypatch.setenv("PANTHEON_API_TOKEN", "sekrit-token")
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws/updates"):
+            pass
+
+
+def test_ws_updates_accepts_with_query_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("PANTHEON_API_TOKEN", "sekrit-token")
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    with client.websocket_connect("/ws/updates?token=sekrit-token") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "status"
+
+
+def test_ws_chat_rejects_without_token_when_set(tmp_path, monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+
+    monkeypatch.setenv("PANTHEON_API_TOKEN", "sekrit-token")
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws/chat"):
+            pass
+
+
+def test_ws_updates_open_without_token_config(tmp_path, monkeypatch):
+    monkeypatch.delenv("PANTHEON_API_TOKEN", raising=False)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    with client.websocket_connect("/ws/updates") as ws:
+        assert ws.receive_json()["type"] == "status"
 
 
 def test_daemon_status_reports_running(tmp_path, monkeypatch):

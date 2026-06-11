@@ -158,28 +158,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 任意の API トークン認証: PANTHEON_API_TOKEN を設定した場合のみ /api/* に
-# Bearer 認証を要求する（未設定なら従来どおり認証なし＝ローカル利用前提）。
+# 任意の API トークン認証: PANTHEON_API_TOKEN を設定した場合のみ /api/* と
+# /ws/* に Bearer 認証を要求する（未設定なら従来どおり認証なし＝ローカル利用前提）。
 # LAN 公開（--host 0.0.0.0）時の必須ガード。
 API_TOKEN_ENV = "PANTHEON_API_TOKEN"
 
 
+def _configured_api_token() -> str:
+    return os.getenv(API_TOKEN_ENV, "").strip()
+
+
+def _token_matches(provided: str, token: str) -> bool:
+    # ヘッダ/クエリは latin-1 由来で非 ASCII を含み得る。compare_digest は
+    # str に非 ASCII があると TypeError を投げるため、必ず bytes 同士で比較する
+    # （latin-1 文字列の UTF-8 エンコードは決して例外を投げない）。
+    return secrets.compare_digest(provided.encode("utf-8"), token.encode("utf-8"))
+
+
 @app.middleware("http")
 async def _api_token_guard(request, call_next):
-    token = os.getenv(API_TOKEN_ENV, "").strip()
+    token = _configured_api_token()
     # OPTIONS（CORS preflight）は仕様上 Authorization を運ばないため除外する
     # （この guard は CORSMiddleware より外側で実行されるので、ここで弾くと
     # クロスオリジン構成の preflight が 401 になり UI が壊れる）。
     if token and request.method != "OPTIONS" and request.url.path.startswith("/api"):
         auth = request.headers.get("authorization") or ""
         provided = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-        if not secrets.compare_digest(provided, token):
+        if not _token_matches(provided, token):
             return Response(
                 content='{"detail": "Unauthorized"}',
                 status_code=401,
                 media_type="application/json",
             )
     return await call_next(request)
+
+
+async def _reject_ws_if_unauthorized(websocket: WebSocket) -> bool:
+    """トークン設定時、未認証 WS を accept 前に 1008 で閉じる。
+
+    ブラウザは WebSocket に Authorization ヘッダを付けられないため、トークンは
+    クエリ文字列（``?token=``）で受け取る。``True`` を返したら呼び出し側は即 return。
+    """
+    token = _configured_api_token()
+    if not token:
+        return False
+    provided = (websocket.query_params.get("token") or "").strip()
+    if _token_matches(provided, token):
+        return False
+    await websocket.close(code=1008)  # policy violation
+    return True
 
 
 # Serve React build (dist/) when available, fallback to legacy static/
@@ -3814,6 +3841,8 @@ async def add_chat_message(session_id: str, body: ChatMessageCreate) -> Dict[str
 async def ws_chat(websocket: WebSocket) -> None:
     from agents.chat_agent import ChatSession
 
+    if await _reject_ws_if_unauthorized(websocket):
+        return
     await websocket.accept()
     session = ChatSession(has_llm=_has_llm())
     await websocket.send_json({"type": "status", "has_llm": session.has_llm})
@@ -3842,6 +3871,8 @@ async def ws_chat(websocket: WebSocket) -> None:
 
 @app.websocket("/ws/updates")
 async def ws_updates(websocket: WebSocket) -> None:
+    if await _reject_ws_if_unauthorized(websocket):
+        return
     await _updates_hub.connect(websocket)
     await websocket.send_json(
         {
