@@ -12,7 +12,7 @@ Planning Document Hygiene）を強制する。
   - 恒久的な設計ドキュメント（architecture-overview, wireframes 等）は対象外。
 
 scripts/check_flows.py と同じスタイル（check_*() -> list[str] / main() -> int）。
-PostToolUse フック（.claude/hooks/check-planning-docs.mjs）と test から呼ばれる。
+PostToolUse の統合フック（.claude/hooks/post-edit-checks.mjs）と test から呼ばれる。
 """
 
 from __future__ import annotations

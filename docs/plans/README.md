@@ -12,7 +12,7 @@
   1. 重要な決定・設計は `docs/design/`、`docs/architecture.md` など恒久ドキュメントへ統合する。
   2. このディレクトリ内のファイルは削除するか `docs/archive/plans/` へアーカイブする（ゴミを残さない）。
 - 検証: `python scripts/check_planning_docs.py`（`docs/design/` への計画ドキュメント誤配置を検知。
-  `docs/` の .md 編集時に PostToolUse フック `check-planning-docs.mjs` が自動実行）。
+  `docs/` の .md 編集時に PostToolUse の統合フック `post-edit-checks.mjs` が自動実行）。
 
 ## 現在のアクティブな計画
 

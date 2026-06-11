@@ -41,7 +41,9 @@ flowchart TD
 
 ### hooks (`.claude/hooks/`, Node)
 See `.claude/hooks/README.md`. Summary: `guard-bash` + `protect-secrets` (PreToolUse deny),
-`format` (PostToolUse ruff format, async), `session-context` (SessionStart git snapshot),
+`format` (PostToolUse ruff format, async), `post-edit-checks` (PostToolUse dispatcher — runs
+config-validation / flows / planning-doc checks in **one** node process, each gated by file path;
+replaced 3 separate serial hooks), `session-context` (SessionStart git snapshot),
 `auto-commit` (Stop; branches off main, commits with Co-Authored-By, pushes).
 
 ### CC-subagents (`.claude/agents/`)
