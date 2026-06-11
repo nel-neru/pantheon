@@ -154,29 +154,70 @@ class AutonomousScheduler:
         events = self._detector.detect_all()
         triggered_orgs = {e.org_name for e in events}
 
-        if not triggered_orgs:
-            print("[Scheduler] イベントなし — スキップ")
-            return {"cycle": self._cycle_count, "triggered_orgs": 0}
-
-        print(f"[Scheduler] {len(triggered_orgs)} Org でイベント検知: {', '.join(triggered_orgs)}")
-
         results: List[Dict[str, Any]] = []
-        for org_name in triggered_orgs:
-            # org ごとの分析（claude 呼び出し）は長く、サイクル中に heartbeat が
-            # 途切れると watchdog にハングと誤判定されるため 1 org ごとに更新する。
-            self._beat("running")
-            result = await self._process_org(org_name, events)
-            results.append(result)
+        if triggered_orgs:
+            print(
+                f"[Scheduler] {len(triggered_orgs)} Org でイベント検知: {', '.join(triggered_orgs)}"
+            )
+            for org_name in triggered_orgs:
+                # org ごとの分析（claude 呼び出し）は長く、サイクル中に heartbeat が
+                # 途切れると watchdog にハングと誤判定されるため 1 org ごとに更新する。
+                self._beat("running")
+                result = await self._process_org(org_name, events)
+                results.append(result)
+        else:
+            print("[Scheduler] イベントなし")
+
+        # 自己改善ループ（任意・既定 off）: 承認フローを経た改善提案を Meta-Improvement
+        # Organization が拾って適用する。承認済み提案はコードイベントとは独立に溜まるため、
+        # イベントの有無に関わらず毎サイクル実行する。設定 daemon_self_improvement=True
+        # のときだけ走らせ、安定確認後に有効化する運用とする。
+        self_improved = await self._maybe_run_self_improvement()
 
         summary = {
             "cycle": self._cycle_count,
             "triggered_orgs": len(triggered_orgs),
             "results": results,
+            "self_improvement": self_improved,
             "started_at": cycle_start.isoformat(),
             "completed_at": datetime.now(timezone.utc).isoformat(),
         }
         self._write_log(summary)
         return summary
+
+    async def _maybe_run_self_improvement(self) -> Dict[str, Any]:
+        """設定で有効なときのみ SelfImprovementLoop を 1 サイクル回す。
+
+        ``~/.pantheon`` の platform config ``daemon_self_improvement`` で gate。
+        Meta-Improvement Organization に対して未対応提案を拾って適用する。例外は
+        握りつぶしてメインの改善サイクルを壊さない。
+        """
+        try:
+            config = self._psm.load_platform_config()
+        except Exception:  # noqa: BLE001
+            return {"enabled": False}
+        if not config.get("daemon_self_improvement"):
+            return {"enabled": False}
+
+        try:
+            org_id = config.get("meta_improvement_org_id") or ""
+            org = None
+            if org_id:
+                org = self._psm.load_organization_by_id(org_id)
+            if org is None:
+                org = self._psm.load_organization_by_name("Meta-Improvement Organization")
+            if org is None:
+                return {"enabled": True, "ran": False, "reason": "meta_org_not_found"}
+
+            from core.quality.self_improvement_loop import SelfImprovementLoop
+
+            sm = self._psm.get_org_state_manager(org)
+            loop = SelfImprovementLoop(org, sm)
+            await loop.run_improvement_cycle()
+            return {"enabled": True, "ran": True, "org": org.name}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("self-improvement loop failed: %s", exc)
+            return {"enabled": True, "ran": False, "error": str(exc)}
 
     async def _process_org(self, org_name: str, events: List[DetectedEvent]) -> Dict[str, Any]:
         """対象 Org を分析して PolicyEngine でルーティングし、自動適用 or 保留を決める"""
