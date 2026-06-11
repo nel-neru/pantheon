@@ -96,7 +96,9 @@ Two tests are order-flaky (pass in isolation, fail only in full-suite runs):
 - **Skills** (`.claude/skills/`): `run-pantheon` (launch recipe), `pantheon-agent`
   (how to add a Pantheon-agent + skill correctly), `improvement-proposal-flow`,
   `fastapi-endpoint` (add/modify a FastAPI route + test).
-- **Commands** (`.claude/commands/`): `/add-cli-command`, `/add-web-page`, `/triage-tests`.
+- **Commands** (`.claude/commands/`): `/add-cli-command`, `/add-web-page`, `/triage-tests`,
+  `/daemon-status` (24h 自律基盤の状態), `/trend-report` (トレンド収集状況), `/spawn-org`
+  (ジャンル別 Organization を1コマンド量産).
 - **Rules** (`.claude/rules/`): path-scoped guidance for `*.py`, frontend, and `web/server.py`.
 - **MCP** (`.mcp.json`): Context7 (version-pinned docs) + Playwright (drive the frontend).
 - Full description: `docs/claude-code-setup.md`.
