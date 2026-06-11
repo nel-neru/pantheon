@@ -1,0 +1,20 @@
+# トークンクォータ統治設定 — レート制限ヒットを未然に防ぐ先回り throttle。
+#
+# A-1 の RateLimitGate は「制限に当たってから」pause する事後対応。これに対し
+# QuotaGovernor は claude_calls.jsonl の実測トークン（A-4）を 5 時間ローリング窓で
+# 集計し、サブスク枠の概算上限に近づいたら優先度の低いタスクから順に自動スキップ
+# する事前対応。優先度クラス:
+#   critical   — 期限到達の自動投稿など、落とすと機会損失になるもの（常に許可）
+#   standard   — 通常のコンテンツ生成（soft 超過まで許可）
+#   background — 改善サイクル・PDCA 介入提案（soft 超過で停止）
+#
+# 上限はサブスク種別により異なるため概算。実測 summary（/api/usage/summary）を見て
+# 調整する。PANTHEON_QUOTA_GOVERNOR=0 でガバナー全体を無効化（キルスイッチ）。
+
+window_hours: 5
+
+# 5 時間窓の input+output トークン合計のしきい値。
+# soft 超過 → background を拒否＋standard/critical を light ティアへ降格指示。
+# hard 超過 → critical のみ許可（全て light ティア）。
+soft_limit_tokens: 3000000
+hard_limit_tokens: 5000000

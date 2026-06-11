@@ -51,11 +51,12 @@ def _deterministic_draft(job: ContentJob, label: str, stamp: str) -> str:
     )
 
 
-async def _generate_body(job: ContentJob, label: str, stamp: str):
+async def _generate_body(job: ContentJob, label: str, stamp: str, downgrade: bool = False):
     """(markdown 本文, llm_used, rate_info) を返す。
 
     rate_info は :class:`RateLimitInfo`（``limited=True`` ならレート制限検知）または None。
-    claude 不在/通常失敗時は決定論テンプレ。
+    claude 不在/通常失敗時は決定論テンプレ。``downgrade`` はクォータ逼迫時に light
+    ティアへ降格する（A-5）。
     """
     from core.runtime.claude_code import claude_available
     from core.runtime.rate_limit import detect_rate_limit, detect_rate_limit_strict
@@ -76,6 +77,7 @@ async def _generate_body(job: ContentJob, label: str, stamp: str):
             temperature=0.6,
             max_tokens=2000,
             task_type="content_generation",
+            downgrade=downgrade,
         )
         body = (getattr(response, "content", "") or "").strip()
         # claude CLI はレート制限を「正常終了(returncode 0)の結果テキスト」として返すことがある。
@@ -95,11 +97,12 @@ async def _generate_body(job: ContentJob, label: str, stamp: str):
         return _deterministic_draft(job, label, stamp), False, None
 
 
-async def run_content_job(job: ContentJob, psm: Any) -> Dict[str, Any]:
+async def run_content_job(job: ContentJob, psm: Any, *, downgrade: bool = False) -> Dict[str, Any]:
     """ContentJob を1回実行し、生成した content_asset 提案を受け手 org の repo に保存する。
 
     戻り値: {"ok": bool, "status": str, "detail": str, "proposal_id": str|None, "file_path": str|None}
     外部公開はせず、提案は human_required（承認待ち）として保存される。
+    ``downgrade`` はクォータ逼迫時に生成を light ティアへ降格する（A-5）。
     """
     from core.orchestration.asset_application import build_content_asset_proposal
 
@@ -122,7 +125,7 @@ async def run_content_job(job: ContentJob, psm: Any) -> Dict[str, Any]:
     file_stamp = now.strftime("%Y%m%d-%H%M%S")
     label = _KIND_LABEL.get(job.kind, _KIND_LABEL["generic"])
 
-    body, llm_used, rate_info = await _generate_body(job, label, stamp)
+    body, llm_used, rate_info = await _generate_body(job, label, stamp, downgrade=downgrade)
     if rate_info is not None and rate_info.limited:
         # レート制限検知時は提案を作らず、上位（スケジューラ）にループ停止を促す。
         return {

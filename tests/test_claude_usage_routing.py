@@ -59,6 +59,21 @@ def test_heavy_task_routes_opus(monkeypatch):
     assert args[args.index("--model") + 1] == "opus"
 
 
+def test_downgrade_drops_one_tier(monkeypatch):
+    """クォータ逼迫の downgrade 指示で 1 ティア下げる（standard→light）。"""
+    captured = _capture_args(monkeypatch)
+    cc.run_claude_sync("hi", task_type="content_generation", downgrade=True)
+    args = captured["args"]
+    assert args[args.index("--model") + 1] == "haiku"  # sonnet → haiku
+
+
+def test_no_downgrade_keeps_tier(monkeypatch):
+    captured = _capture_args(monkeypatch)
+    cc.run_claude_sync("hi", task_type="content_generation", downgrade=False)
+    args = captured["args"]
+    assert args[args.index("--model") + 1] == "sonnet"
+
+
 def test_explicit_model_beats_router(monkeypatch):
     captured = _capture_args(monkeypatch)
     cc.run_claude_sync("hi", model="opus", task_type="conversation")

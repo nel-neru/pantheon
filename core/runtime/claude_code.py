@@ -390,18 +390,21 @@ def _build_cli_args(
     return args
 
 
-def _route_model(task_type: Optional[str], prompt_chars: int) -> Optional[str]:
+def _route_model(
+    task_type: Optional[str], prompt_chars: int, downgrade: bool = False
+) -> Optional[str]:
     """ModelTierRouter による自動選択（設定不備が生成を止めないよう防御的に）。
 
     task_type が無い呼び出しはルーティングしない（従来挙動 = env / CLI 既定）。
     タグ付けされた呼び出しだけがティアリングの対象になる opt-in 設計。
+    ``downgrade`` はクォータ逼迫時（A-5 QuotaGovernor）の 1 ティア降格指示。
     """
     if not task_type:
         return None
     try:
         from core.runtime.model_router import select_model
 
-        return select_model(task_type, prompt_chars)
+        return select_model(task_type, prompt_chars, downgrade=downgrade)
     except Exception as exc:  # noqa: BLE001
         logger.debug("model routing unavailable (%s)", exc)
         return None
@@ -416,11 +419,13 @@ def run_claude_sync(
     timeout: Optional[float] = None,
     extra_args: Optional[Sequence[str]] = None,
     task_type: Optional[str] = None,
+    downgrade: bool = False,
 ) -> LLMResponse:
     """Run a single headless ``claude -p`` generation and return an ``LLMResponse``.
 
     ``task_type`` enables tier routing: 明示 ``model`` 引数 ＞ ModelTierRouter ＞
-    ``PANTHEON_DEFAULT_MODEL`` の優先順位で ``--model`` を決める。
+    ``PANTHEON_DEFAULT_MODEL`` の優先順位で ``--model`` を決める。``downgrade`` は
+    クォータ逼迫時に 1 ティア下げる（A-5）。
 
     Raises :class:`ClaudeUnavailableError` when the CLI is unavailable, times out,
     or exits non-zero — callers typically catch this and fall back to heuristics.
@@ -447,7 +452,7 @@ def run_claude_sync(
 
     prompt_chars = len(user_text)
     system_chars = len(system_text or "")
-    chosen_model = model or _route_model(task_type, prompt_chars) or os.getenv(MODEL_ENV)
+    chosen_model = model or _route_model(task_type, prompt_chars, downgrade) or os.getenv(MODEL_ENV)
     effective_timeout = timeout or _default_timeout()
 
     def _invoke(use_fast: bool) -> subprocess.CompletedProcess:
@@ -559,6 +564,7 @@ async def run_claude(
     timeout: Optional[float] = None,
     extra_args: Optional[Sequence[str]] = None,
     task_type: Optional[str] = None,
+    downgrade: bool = False,
 ) -> LLMResponse:
     """Async wrapper around :func:`run_claude_sync` (runs in a worker thread)."""
     return await asyncio.to_thread(
@@ -570,6 +576,7 @@ async def run_claude(
         timeout=timeout,
         extra_args=extra_args,
         task_type=task_type,
+        downgrade=downgrade,
     )
 
 
@@ -617,6 +624,7 @@ class ClaudeCodeProvider:
             cwd=self._cwd,
             timeout=kwargs.get("timeout"),
             task_type=kwargs.get("task_type"),
+            downgrade=bool(kwargs.get("downgrade", False)),
         )
 
     async def stream(self, messages: MessageLike, model: Optional[str] = None, **kwargs: Any):

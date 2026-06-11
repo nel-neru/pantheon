@@ -24,6 +24,7 @@ from core.events.detector import DetectedEvent, EventDetector
 from core.policy.engine import ApprovalDecision, OrgBoundaryContext, PolicyEngine
 from core.runtime.claude_code import ClaudeRateLimitedError
 from core.runtime.heartbeat import write_heartbeat
+from core.runtime.quota_governor import PRIORITY_BACKGROUND, QuotaGovernor
 from core.runtime.rate_limit import DEFAULT_BACKOFF, MAX_BACKOFF, RateLimitInfo
 from core.runtime.usage_gate import RateLimitGate
 
@@ -64,6 +65,7 @@ class AutonomousScheduler:
         self._max_files = max_files_per_org
         self._detector = EventDetector(platform_home=self._psm.platform_home)
         self._policy = PolicyEngine(policy_path=self._psm.platform_home / "policy.yaml")
+        self._governor = QuotaGovernor()
         self._running = False
         self._cycle_count = 0
         self._gate = RateLimitGate()
@@ -136,6 +138,15 @@ class AutonomousScheduler:
     async def _run_cycle(self) -> Dict[str, Any]:
         self._cycle_count += 1
         cycle_start = datetime.now(timezone.utc)
+
+        # 改善サイクル全体が最も優先度の低い background。クォータが soft 超過なら
+        # サイクルごと丸ごとスキップし、content 生成・期限投稿などに枠を残す。
+        verdict = self._governor.allow(PRIORITY_BACKGROUND)
+        if not verdict.allowed:
+            print(
+                f"[Scheduler] クォータ逼迫（{verdict.reason}）— サイクル #{self._cycle_count} を見送り"
+            )
+            return {"cycle": self._cycle_count, "skipped_by_quota": True, "reason": verdict.reason}
         print(
             f"\n[Scheduler] サイクル #{self._cycle_count} 開始 — {cycle_start.strftime('%H:%M:%S')}"
         )

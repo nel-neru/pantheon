@@ -142,7 +142,7 @@ async def test_content_run_cycle_keeps_running_state_on_rate_limit(isolated_home
 
     monkeypatch.setattr(sched._store, "due_jobs", lambda: [_Job()])
 
-    async def fake_run_content_job(job, psm):
+    async def fake_run_content_job(job, psm, **_kwargs):
         return {"status": "rate_limited", "retry_at": _future_iso(), "detail": "usage limit"}
 
     monkeypatch.setattr("core.content.content_scheduler.run_content_job", fake_run_content_job)
@@ -174,6 +174,79 @@ async def test_autonomous_loop_pauses_on_rate_limit_then_resumes(isolated_home, 
     await asyncio.wait_for(sched.start(), timeout=10)
 
     assert len(calls) >= 2  # 例外で止まらず、reset 後に自動 resume して再実行された
+
+
+async def test_content_cycle_skips_generation_when_quota_exceeded(isolated_home, monkeypatch):
+    """クォータ逼迫時、generation（standard）はスキップされ next_run_at を進めない。"""
+    from core.runtime.quota_governor import Verdict
+
+    sched = ContentScheduler(platform_home=isolated_home, interval_seconds=1, run_pdca=False)
+    sched._running = True
+
+    class _Job:
+        job_id = "j1"
+
+    monkeypatch.setattr(sched._store, "due_jobs", lambda: [_Job()])
+    monkeypatch.setattr(
+        sched._governor, "allow", lambda prio, **kw: Verdict(False, False, "soft_limit")
+    )
+
+    async def fail_run(job, psm):
+        raise AssertionError("run_content_job must not run when quota denies")
+
+    monkeypatch.setattr("core.content.content_scheduler.run_content_job", fail_run)
+
+    limited = await sched.run_cycle()
+    assert limited is False
+    state = json.loads(
+        (isolated_home / "content_scheduler_log.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert state["skipped_by_quota"] == 1
+    assert any(r["status"] == "skipped_by_quota" for r in state["results"])
+
+
+async def test_content_generation_downgrades_under_soft_pressure(isolated_home, monkeypatch):
+    """soft 超過時、生成は許可されるが downgrade=True が run_content_job に渡る。"""
+    from core.runtime.quota_governor import Verdict
+
+    sched = ContentScheduler(platform_home=isolated_home, interval_seconds=1, run_pdca=False)
+    sched._running = True
+
+    class _Job:
+        job_id = "j1"
+
+    monkeypatch.setattr(sched._store, "due_jobs", lambda: [_Job()])
+    monkeypatch.setattr(
+        sched._governor, "allow", lambda prio, **kw: Verdict(True, True, "soft_limit")
+    )
+
+    seen: dict = {}
+
+    async def fake_run(job, psm, *, downgrade=False):
+        seen["downgrade"] = downgrade
+        return {"ok": True, "status": "generated", "detail": ""}
+
+    monkeypatch.setattr("core.content.content_scheduler.run_content_job", fake_run)
+
+    await sched.run_cycle()
+    assert seen["downgrade"] is True
+
+
+async def test_autonomous_cycle_skipped_when_quota_exceeded(isolated_home, monkeypatch):
+    from core.runtime.quota_governor import Verdict
+
+    sched = AutonomousScheduler(platform_home=isolated_home, interval_seconds=1)
+    monkeypatch.setattr(
+        sched._governor, "allow", lambda prio, **kw: Verdict(False, False, "soft_limit")
+    )
+    monkeypatch.setattr(
+        sched._detector,
+        "detect_all",
+        lambda: (_ for _ in ()).throw(AssertionError("detect must not run when quota denies")),
+    )
+
+    result = await sched._run_cycle()
+    assert result["skipped_by_quota"] is True
 
 
 async def test_autonomous_loop_blocks_cycle_while_gate_limited(isolated_home, monkeypatch):

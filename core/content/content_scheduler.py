@@ -20,6 +20,11 @@ from typing import Any, Dict, List, Optional
 from core.content.content_jobs import ContentJobStore
 from core.content.content_runner import run_content_job
 from core.runtime.heartbeat import write_heartbeat
+from core.runtime.quota_governor import (
+    PRIORITY_BACKGROUND,
+    PRIORITY_STANDARD,
+    QuotaGovernor,
+)
 from core.runtime.rate_limit import DEFAULT_BACKOFF, MAX_BACKOFF
 from core.runtime.usage_gate import RateLimitGate
 
@@ -63,6 +68,7 @@ class ContentScheduler:
         self._retry_at: Optional[str] = None
         self._status = STATUS_STOPPED
         self._gate = RateLimitGate()
+        self._governor = QuotaGovernor()
         self._log_path = self.platform_home / "content_scheduler_log.jsonl"
         self._state_path = self.platform_home / "content_scheduler_state.json"
 
@@ -143,12 +149,23 @@ class ContentScheduler:
         results: List[Dict[str, Any]] = []
         rate_limited = False
 
+        skipped_by_quota = 0
         for job in due:
             # ジョブ（claude 生成）は数分かかり得るので、1件ごとに heartbeat を更新し
             # 長いバッチ実行中に watchdog から「ハング」と誤判定されないようにする。
             self._beat()
+            # クォータ逼迫時は通常生成（standard）をスキップして次サイクルへ繰越す
+            # （next_run_at を進めないので、窓が空けば再試行される）。
+            verdict = self._governor.allow(PRIORITY_STANDARD)
+            if not verdict.allowed:
+                skipped_by_quota += 1
+                results.append(
+                    {"job_id": job.job_id, "status": "skipped_by_quota", "detail": verdict.reason}
+                )
+                continue
             try:
-                res = await run_content_job(job, self._psm)
+                # soft 超過時は生成を light ティアへ降格してトークンを節約する。
+                res = await run_content_job(job, self._psm, downgrade=verdict.downgrade)
             except Exception as exc:  # noqa: BLE001
                 self._store.mark_run(job.job_id, status="error", detail=str(exc))
                 results.append({"job_id": job.job_id, "status": "error", "detail": str(exc)})
@@ -168,14 +185,19 @@ class ContentScheduler:
             results.append({"job_id": job.job_id, **res})
 
         # PDCA Act: 成果（reach>0/revenue<=0 等）に基づく構造介入提案（人間承認待ち）。
+        # 最も優先度の低い background 扱い: クォータが soft 超過なら丸ごとスキップする。
         interventions = 0
+        pdca_skipped = False
         if self._run_pdca and not rate_limited:
-            try:
-                from core.hierarchy.hq_interventions import HQInterventionProposer
+            if not self._governor.allow(PRIORITY_BACKGROUND).allowed:
+                pdca_skipped = True
+            else:
+                try:
+                    from core.hierarchy.hq_interventions import HQInterventionProposer
 
-                interventions = len(HQInterventionProposer(self._psm).propose_all())
-            except Exception:  # noqa: BLE001 - 最小環境では無視
-                interventions = 0
+                    interventions = len(HQInterventionProposer(self._psm).propose_all())
+                except Exception:  # noqa: BLE001 - 最小環境では無視
+                    interventions = 0
 
         summary = {
             "cycle": self._cycle_count,
@@ -183,7 +205,9 @@ class ContentScheduler:
             "completed_at": _now_iso(),
             "due_jobs": len(due),
             "generated": sum(1 for r in results if r.get("status") == "generated"),
+            "skipped_by_quota": skipped_by_quota,
             "interventions": interventions,
+            "pdca_skipped_by_quota": pdca_skipped,
             "rate_limited": rate_limited,
             "retry_at": self._retry_at,
             "results": results,

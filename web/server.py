@@ -1948,6 +1948,19 @@ async def api_daemons_status() -> Dict[str, Any]:
     return {**_rate_gate_payload(), "daemons": all_statuses()}
 
 
+@app.get("/api/usage/summary", tags=["platform"])
+async def api_usage_summary() -> Dict[str, Any]:
+    """実測トークン使用量（5h/7d 窓）＋クォータガバナーの状態。"""
+    from core.runtime.quota_governor import QuotaGovernor
+    from core.runtime.token_ledger import TokenLedger
+
+    return {
+        "usage": TokenLedger().summary(),
+        "governor": QuotaGovernor().status(),
+        **_rate_gate_payload(),
+    }
+
+
 @app.post("/api/daemons/{name}/start", tags=["platform"])
 async def api_daemons_start(name: str, req: DaemonsActionRequest | None = None) -> Dict[str, Any]:
     from core.runtime.daemon_registry import get_spec, spawn_daemon
