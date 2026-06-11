@@ -389,7 +389,14 @@ def register(subparsers: Any) -> None:
     restore_parser.set_defaults(handler_name="cmd_platform_restore")
 
     serve_parser = subparsers.add_parser("serve", help="Web GUI を起動する")
-    serve_parser.add_argument("--host", default="0.0.0.0", help="バインドホスト (default: 0.0.0.0)")
+    serve_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help=(
+            "バインドホスト (default: 127.0.0.1=ローカルのみ)。"
+            "LAN 公開する場合は --host 0.0.0.0 と PANTHEON_API_TOKEN の設定を推奨"
+        ),
+    )
     serve_parser.add_argument("--port", type=int, default=7860, help="ポート番号 (default: 7860)")
     serve_parser.add_argument(
         "--no-browser",

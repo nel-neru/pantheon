@@ -88,6 +88,31 @@ def test_get_storage_info(tmp_path, monkeypatch):
     assert data["storage"]["organizations"]["file_count"] == 1
 
 
+def test_api_token_guard_disabled_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("PANTHEON_API_TOKEN", raising=False)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    assert client.get("/api/daemon/status").status_code == 200
+
+
+def test_api_token_guard_requires_bearer_when_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("PANTHEON_API_TOKEN", "sekrit-token")
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    assert client.get("/api/daemon/status").status_code == 401
+    assert (
+        client.get("/api/daemon/status", headers={"Authorization": "Bearer wrong"}).status_code
+        == 401
+    )
+    assert (
+        client.get(
+            "/api/daemon/status", headers={"Authorization": "Bearer sekrit-token"}
+        ).status_code
+        == 200
+    )
+
+
 def test_daemon_status_reports_running(tmp_path, monkeypatch):
     pid_file = tmp_path / "daemon.pid"
     pid_file.write_text("4321", encoding="utf-8")
