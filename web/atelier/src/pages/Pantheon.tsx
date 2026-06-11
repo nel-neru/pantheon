@@ -38,12 +38,13 @@ export function Pantheon() {
         }
         lede="一つひとつの組織が、固有の星座を持ちます。健全度・自律度・改善速度を一枚のプレートに刻んだ、生きたカタログ。"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {(['all', 'live', 'system'] as Filter[]).map((f) => (
               <button
                 key={f}
                 type="button"
                 className="btn"
+                aria-pressed={filter === f}
                 style={
                   filter === f
                     ? { borderColor: 'var(--gold)', color: 'var(--gold)' }
@@ -64,6 +65,7 @@ export function Pantheon() {
         <EmptyState title="まだ組織がありません" hint="pantheon org create で最初の星を据えましょう" />
       ) : null}
 
+      <h2 className="sr-only">Organizations</h2>
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
         {orgs.map((org, i) => (
           <OrgPlate key={org.id} org={org} index={i + 1} />
@@ -127,7 +129,15 @@ function Meter({ label, value, tone }: { label: string; value: number; tone: str
           {Math.round(value)}
         </span>
       </div>
-      <div className="mt-1.5 h-px w-full" style={{ background: 'var(--line)' }}>
+      <div
+        className="mt-1.5 h-px w-full"
+        style={{ background: 'var(--line)' }}
+        role="progressbar"
+        aria-label={label}
+        aria-valuenow={Math.round(value)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div className="h-px" style={{ width: `${value}%`, background: tone }} />
       </div>
     </div>

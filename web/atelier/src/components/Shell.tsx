@@ -84,12 +84,15 @@ export function Shell() {
     <ThemeProvider>
       <LiveProvider>
         <div className="atelier-shell">
+          <a href="#main" className="skip-link">
+            本文へスキップ
+          </a>
           <Rail />
           <div className="stage">
             <Masthead />
-            <div className="stage-inner">
+            <main id="main" className="stage-inner">
               <Outlet />
-            </div>
+            </main>
           </div>
         </div>
       </LiveProvider>

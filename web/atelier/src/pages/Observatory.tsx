@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 import { Firmament } from '@/components/Firmament'
 import { ArrowIcon } from '@/components/Icon'
 import { Exhibit, ErrorNote, Loading, Plate, Stat, Tag } from '@/components/ui'
@@ -37,6 +39,7 @@ export function Observatory() {
     (counts?.pending_handoffs ?? 0)
   const tokens5h = usage.data?.usage?.session_5h?.total_tokens ?? 0
   const govLevel = usage.data?.governor?.level ?? 'ok'
+  const usageDown = Boolean(usage.error && !usage.data)
   const rateLimited = Boolean(usage.data?.rate_limited ?? daemons.data?.rate_limited)
 
   if (orchestra.loading && orgs.loading) {
@@ -87,6 +90,21 @@ export function Observatory() {
         </div>
       </Plate>
 
+      {/* Text equivalent of the canvas for keyboard / screen-reader users */}
+      <ul className="sr-only">
+        {orgList.map((o) => (
+          <li key={o.id}>
+            組織 {o.name} — 状態 {o.status}、健全度 {Math.round(o.health_score)}、エージェント{' '}
+            {o.total_agents}
+          </li>
+        ))}
+        {sessionList.map((s) => (
+          <li key={s.id}>
+            稼働セッション {s.name} — {s.status}、エージェント {s.agents.length}
+          </li>
+        ))}
+      </ul>
+
       {/* Headline figures */}
       <section className="mt-12 grid grid-cols-2 gap-y-10 gap-x-6 md:grid-cols-4">
         <Stat label="Organizations" value={orgList.length} tone="gold" sub="観測中の組織" />
@@ -104,9 +122,9 @@ export function Observatory() {
         />
         <Stat
           label="Tokens · 5h"
-          value={compactNumber(tokens5h)}
+          value={usageDown ? '—' : compactNumber(tokens5h)}
           tone="plain"
-          sub={`governor: ${govLevel}`}
+          sub={`governor: ${usageDown ? '—' : govLevel}`}
         />
       </section>
 
@@ -159,6 +177,8 @@ export function Observatory() {
             <h2 className="serif text-2xl">Systems</h2>
             {rateLimited ? (
               <Tag tone="rose">rate-limited</Tag>
+            ) : usageDown ? (
+              <Tag tone="neutral">unknown</Tag>
             ) : (
               <Tag tone={GOVERNOR_TONE[govLevel] ?? 'green'}>{govLevel}</Tag>
             )}
@@ -187,12 +207,12 @@ export function Observatory() {
               <li className="text-dim text-sm py-4">デーモン情報を取得できません。</li>
             ) : null}
           </ul>
-          <a
-            href="/pantheon"
+          <Link
+            to="/pantheon"
             className="mt-5 inline-flex items-center gap-2 text-gold mono text-[11px] tracking-[0.16em] uppercase"
           >
             組織を巡る <ArrowIcon size={15} />
-          </a>
+          </Link>
         </Plate>
       </section>
     </>

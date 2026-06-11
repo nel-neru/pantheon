@@ -16,14 +16,6 @@ export function percent(value: number, digits = 0): string {
   return `${v.toFixed(digits)}%`
 }
 
-// "2026-06-11T20:09:44Z" → "6月11日 20:09" (best-effort, locale-light)
-export function shortTime(iso: string | undefined | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
-}
-
 export function relativeTime(iso: string | undefined | null): string {
   if (!iso) return '—'
   const d = new Date(iso)

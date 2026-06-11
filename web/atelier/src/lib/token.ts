@@ -23,7 +23,7 @@ function captureTokenFromUrl(): void {
 
 captureTokenFromUrl()
 
-export function getApiToken(): string {
+function getApiToken(): string {
   if (typeof window === 'undefined') return ''
   try {
     return localStorage.getItem(STORAGE_KEY) ?? ''

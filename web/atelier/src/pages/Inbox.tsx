@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { ArrowIcon } from '@/components/Icon'
-import { Exhibit, EmptyState, Loading, Plate, Stat, Tag } from '@/components/ui'
+import { Exhibit, EmptyState, ErrorNote, Loading, Plate, Stat, Tag } from '@/components/ui'
 import { useApi } from '@/hooks/useApi'
 import { api } from '@/lib/api'
 import { relativeTime } from '@/lib/format'
@@ -19,35 +19,53 @@ export function Inbox() {
   const [proposals, setProposals] = useState<OrgProposal[]>([])
   const [loadingProps, setLoadingProps] = useState(true)
   const [busy, setBusy] = useState<Set<string>>(new Set())
+  const reqRef = useRef(0)
 
-  const loadProposals = useCallback(async (orgList: OrgSummary[]) => {
-    const targets = orgList.filter((o) => (o.pending_proposals || 0) > 0)
+  // 提案を持つ組織集合が「実際に変わったとき」だけ再フェッチする安定シグネチャ。
+  // useApi の 45s ポーリングは毎回新しい配列を返すため、配列参照ではなく内容で依存する。
+  const orgsSig = orgs.data
+    ? orgs.data
+        .filter((o) => (o.pending_proposals || 0) > 0)
+        .map((o) => `${o.name}:${o.pending_proposals}`)
+        .join('|')
+    : null
+
+  useEffect(() => {
+    if (orgsSig === null) return // 組織一覧がまだ読み込まれていない（ローディング維持）
+    const targets = (orgs.data ?? []).filter((o) => (o.pending_proposals || 0) > 0)
     if (targets.length === 0) {
       setProposals([])
       setLoadingProps(false)
       return
     }
+    let cancelled = false
+    const reqId = ++reqRef.current
     setLoadingProps(true)
-    const results = await Promise.all(
-      targets.map(async (o) => {
-        try {
-          const list = await api<Proposal[]>(
-            'GET',
-            `/api/organizations/${encodeURIComponent(o.name)}/proposals`,
-          )
-          return list.map((proposal) => ({ org: o.name, proposal }))
-        } catch {
-          return [] as OrgProposal[]
-        }
-      }),
-    )
-    setProposals(results.flat())
-    setLoadingProps(false)
-  }, [])
-
-  useEffect(() => {
-    if (orgs.data) void loadProposals(orgs.data)
-  }, [orgs.data, loadProposals])
+    void (async () => {
+      const results = await Promise.all(
+        targets.map(async (o) => {
+          try {
+            const list = await api<Proposal[]>(
+              'GET',
+              `/api/organizations/${encodeURIComponent(o.name)}/proposals`,
+            )
+            return list.map((proposal) => ({ org: o.name, proposal }))
+          } catch {
+            return [] as OrgProposal[]
+          }
+        }),
+      )
+      // アンマウント済み or 後続リクエストが先行した場合は破棄（順序逆転による復活を防ぐ）。
+      if (cancelled || reqId !== reqRef.current) return
+      setProposals(results.flat())
+      setLoadingProps(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+    // orgsSig が変わったときだけ再フェッチ（orgs.data の参照変化では走らせない）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgsSig])
 
   const mark = (key: string, on: boolean) =>
     setBusy((cur) => {
@@ -146,7 +164,7 @@ export function Inbox() {
                   </span>
                 </div>
               ) : null}
-              <div className="mt-auto flex items-center gap-3 pt-5">
+              <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
                 <button
                   type="button"
                   className="btn btn-gold"
@@ -173,6 +191,7 @@ export function Inbox() {
       <div className="mt-20" />
       <SectionLabel title="Cross-Org Handoffs" note="集客 → 販売 → 収益化" />
       {handoffs.loading && !handoffs.data ? <Loading label="引き渡しを確認" /> : null}
+      {handoffs.error && !handoffs.data ? <ErrorNote message={handoffs.error} /> : null}
       {handoffs.data && pendingHandoffs.length === 0 ? (
         <EmptyState title="承認待ちの引き渡しはありません" />
       ) : null}
@@ -196,7 +215,7 @@ export function Inbox() {
                     priority: {h.priority} · {relativeTime(h.created_at)}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     className="btn btn-gold"

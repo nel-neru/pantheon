@@ -13,9 +13,13 @@ const SOURCE_TONE: Record<string, 'gold' | 'ice' | 'green' | 'rose' | 'neutral'>
 }
 
 function scoreIndex(score: number): number {
-  // スコアは 0..1 想定。万一 1 超なら 100 上限に丸める。
-  const v = score <= 1 ? score * 100 : score
-  return Math.round(clamp(v, 0, 100))
+  // バックエンドのトレンドスコアは 0..10（core/trends/scoring.py）。0..100 のインデックスへ写像。
+  return Math.round(clamp(score * 10, 0, 100))
+}
+
+// スクレイピング由来の url を href に出す前にスキーム検証（javascript:/data: を弾く）。
+function safeUrl(url: string): string | undefined {
+  return /^https?:\/\//i.test(url) ? url : undefined
 }
 
 export function Signals() {
@@ -31,10 +35,11 @@ export function Signals() {
         'POST',
         kind === 'collect' ? '/api/trends/collect' : '/api/trends/convert',
       )
+      const num = (k: string) => (typeof res[k] === 'number' ? (res[k] as number) : undefined)
       setNote(
         kind === 'collect'
-          ? `収集完了: ${JSON.stringify(res)}`
-          : `変換完了: ${JSON.stringify(res)}`,
+          ? `収集完了 — 新規 ${num('added') ?? num('collected') ?? 0} 件を取り込みました。`
+          : `変換完了 — ジョブ ${num('content_jobs') ?? num('converted') ?? 0} 件 / 提案 ${num('proposals') ?? 0} 件を作成しました。`,
       )
       trends.refetch()
     } catch (e) {
@@ -59,7 +64,7 @@ export function Signals() {
         }
         lede="Web・RSS・YouTube から集めた潮流を、スコア順に組んだ号外。高スコアの兆しは、承認ゲートを通って次の一手（記事・新規事業）に変わります。"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="btn btn-gold" disabled={busy !== null} onClick={() => run('collect')}>
               {busy === 'collect' ? '収集中…' : '今すぐ収集'}
             </button>
@@ -107,7 +112,7 @@ function Lead({ trend }: { trend: Trend }) {
               {relativeTime(trend.collected_at)}
             </span>
           </div>
-          <a href={trend.url} target="_blank" rel="noreferrer" className="block">
+          <a href={safeUrl(trend.url)} target="_blank" rel="noreferrer" className="block">
             <h2 className="serif text-3xl leading-tight hover:text-gold transition-colors">
               {trend.title || '(無題)'}
             </h2>
@@ -129,7 +134,7 @@ function Lead({ trend }: { trend: Trend }) {
 function TrendRow({ trend }: { trend: Trend }) {
   return (
     <a
-      href={trend.url}
+      href={safeUrl(trend.url)}
       target="_blank"
       rel="noreferrer"
       className="block p-6 transition-colors hover:bg-[color:var(--ink-2)]"

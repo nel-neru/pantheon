@@ -44,6 +44,7 @@ export function Atelier() {
       <div className="mt-20" />
       <SectionLabel n={2} title="Personas" note="voices" />
       {personas.loading && !personas.data ? <Loading label="声を集める" /> : null}
+      {personas.error && !personas.data ? <ErrorNote message={personas.error} /> : null}
       {personas.data && personas.data.length === 0 ? (
         <EmptyState title="ペルソナがありません" hint="config/personas に追加できます" />
       ) : null}
@@ -79,10 +80,11 @@ function StyleSpecimen({ style, index }: { style: DesignStyle; index: number }) 
               key={k}
               className="group relative flex-1 transition-[flex] duration-500"
               style={{ background: color }}
-              title={`${k} ${color}`}
+              tabIndex={0}
+              aria-label={`${k} ${color}`}
             >
               <span
-                className="absolute bottom-2 left-2 mono text-[9px] tracking-wider opacity-0 transition-opacity group-hover:opacity-100"
+                className="absolute bottom-2 left-2 mono text-[9px] tracking-wider opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                 style={{ color: 'rgba(255,255,255,0.9)', mixBlendMode: 'difference' }}
               >
                 {color}
