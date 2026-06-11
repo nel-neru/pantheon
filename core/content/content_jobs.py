@@ -42,6 +42,8 @@ class ContentJob:
     last_status: str = "scheduled"
     last_detail: str = ""
     run_count: int = 0
+    # 由来トレンドの hash（トレンド→ジョブ変換の重複排除に使う。空=トレンド由来でない）。
+    source_trend_hash: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

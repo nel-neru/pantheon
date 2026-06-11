@@ -104,6 +104,35 @@ def test_convert_partial_failure_no_duplicate_job(tmp_path, monkeypatch):
     assert len(ContentJobStore(home).list_jobs()) == 1  # job は依然 1 件
 
 
+def test_convert_dedup_by_hash_not_url_substring(tmp_path, monkeypatch):
+    """URL が prefix 関係（/1 と /11）でも、別トレンドの job は誤って抑制されない。"""
+    home, psm, org = _setup(tmp_path, monkeypatch)
+    store = TrendStore(platform_home=home)
+    store.add(TrendItem(source="web", url="https://ex.com/11", title="A", score=9.0, genre="ai"))
+    store.add(TrendItem(source="web", url="https://ex.com/1", title="B", score=8.0, genre="ai"))
+
+    result = convert_trends(platform_home=home, min_score=7.0)
+    assert result["content_jobs"] == 2  # prefix 関係でも両方 job 化される
+
+    # 再実行で二重生成しない
+    again = convert_trends(platform_home=home, min_score=7.0)
+    assert again["content_jobs"] == 0
+    assert len(ContentJobStore(home).list_jobs()) == 2
+
+
+def test_convert_long_title_preserves_dedup(tmp_path, monkeypatch):
+    """超長タイトルでも source_trend_hash で dedup されるため二重生成しない。"""
+    home, psm, org = _setup(tmp_path, monkeypatch)
+    store = TrendStore(platform_home=home)
+    store.add(
+        TrendItem(source="web", url="https://ex.com/x", title="超長" * 400, score=9.0, genre="ai")
+    )
+    first = convert_trends(platform_home=home, min_score=7.0)
+    assert first["content_jobs"] == 1
+    second = convert_trends(platform_home=home, min_score=7.0)
+    assert second["content_jobs"] == 0  # タイトルが長くても二重生成しない
+
+
 def test_convert_respects_max_per_run(tmp_path, monkeypatch):
     home, psm, org = _setup(tmp_path, monkeypatch)
     _seed_trends(home, [9.0, 8.9, 8.8, 8.7, 8.6, 8.5])

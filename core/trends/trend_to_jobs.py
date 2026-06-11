@@ -78,12 +78,15 @@ def _existing_dedupe_keys(sm) -> set[str]:
 def _content_job_for(trend: TrendItem, org_name: str):
     from core.content.content_jobs import ContentJob
 
-    theme = f"トレンド「{trend.title}」を題材にしたコンテンツ（出典: {trend.url}）"
+    # タイトルを先に切り詰めてから URL を付与する（全体切り詰めで出典が消えないように）。
+    title = (trend.title or "")[:300]
+    theme = f"トレンド「{title}」を題材にしたコンテンツ（出典: {trend.url}）"
     return ContentJob(
         org_name=org_name,
         kind="content_brief",
-        theme=theme[:500],
+        theme=theme,
         enabled=False,  # 人間が有効化するまで自動実行しない（承認ゲート）
+        source_trend_hash=trend.hash,  # 重複排除は theme ではなくこの hash で行う
     )
 
 
@@ -100,7 +103,8 @@ def _imitation_proposal(trend: TrendItem, org_name: str):
         "Organization/コンテンツ施策へ展開する。"
     )
     return ImprovementProposal(
-        # dedupe_key から決定論的に導出 → 再生成でも同一 id（重複排除が効く）
+        # review_id を dedupe_key から決定論化（来歴の安定化）。実際の重複排除は
+        # 呼び出し側の dedupe_key 突合で行う（id は uuid4 のまま）。
         review_id=uuid5(_TREND_NS, f"trend:{trend.hash}"),
         priority="high" if trend.score >= 8.5 else "medium",
         category="new_business",
@@ -152,29 +156,28 @@ def convert_trends(
     job_store = ContentJobStore(platform_home)
     sm = psm.get_org_state_manager(org)
 
-    # アーティファクト単位の冪等化: ContentJob は既存 theme に出典 URL が含まれるかで、
-    # 提案は dedupe_key で重複判定する。これにより processed.json はあくまで最適化であり、
-    # 部分失敗（job 成功・proposal 失敗等）でも二重生成しない。
-    existing_job_themes = [j.theme for j in job_store.list_jobs()]
+    # アーティファクト単位の冪等化: ContentJob は source_trend_hash の完全一致で、
+    # 提案は dedupe_key で重複判定する（theme の部分一致や切り詰めに依存しない）。
+    # これにより processed.json はあくまで最適化であり、部分失敗でも二重生成しない。
+    existing_job_hashes = {
+        h for j in job_store.list_jobs() if (h := getattr(j, "source_trend_hash", ""))
+    }
     existing_dedupe = _existing_dedupe_keys(sm)
 
     content_jobs = 0
     proposals = 0
     for trend in candidates[:max_per_run]:
         marker = f"trend:{trend.hash}"
-        # ContentJob ドラフト（出典 URL 既出なら成功扱いでスキップ）
-        job_ok = bool(trend.url) and any(trend.url in theme for theme in existing_job_themes)
-        if trend.url and not job_ok:
+        # ContentJob ドラフト（同 trend hash の job が既存なら成功扱いでスキップ）
+        job_ok = trend.hash in existing_job_hashes
+        if not job_ok:
             try:
-                job = _content_job_for(trend, org.name)
-                job_store.add_job(job)
-                existing_job_themes.append(job.theme)
+                job_store.add_job(_content_job_for(trend, org.name))
+                existing_job_hashes.add(trend.hash)
                 content_jobs += 1
                 job_ok = True
             except Exception as exc:  # noqa: BLE001
                 logger.info("trend job creation failed for %s: %s", trend.hash, exc)
-        elif not trend.url:
-            job_ok = True  # URL 無しは job 対象外（提案のみ）
         # 模倣候補 ImprovementProposal（dedupe_key 既出なら成功扱いでスキップ）
         proposal_ok = marker in existing_dedupe
         if not proposal_ok:
@@ -186,7 +189,7 @@ def convert_trends(
             except Exception as exc:  # noqa: BLE001
                 logger.info("trend proposal creation failed for %s: %s", trend.hash, exc)
         # 両アーティファクトが揃ったトレンドだけ processed に記録する（部分失敗は次回
-        # 再試行され、URL/dedupe_key の冪等チェックが二重生成を防ぐ）。
+        # 再試行され、hash/dedupe_key の冪等チェックが二重生成を防ぐ）。
         if job_ok and proposal_ok:
             processed.add(trend.hash)
 
