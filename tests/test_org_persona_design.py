@@ -73,6 +73,15 @@ def test_persona_design_addon_empty_for_neutral():
     assert _persona_design_addon(org) == ""
 
 
+def test_design_style_injected_into_addon():
+    from core.content.content_runner import _persona_design_addon
+
+    org = Organization(name="X", purpose="p", design_style="luxury")
+    addon = _persona_design_addon(org)
+    assert "デザイン" in addon
+    assert "高級感" in addon or "ラグジュアリー" in addon
+
+
 def test_generate_body_injects_persona_into_system(monkeypatch):
     from core.content import content_runner
     from core.content.content_jobs import ContentJob

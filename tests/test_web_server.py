@@ -1745,6 +1745,23 @@ def test_content_daemon_start_keeps_action_status(tmp_path, monkeypatch):
     assert data["scheduler_status"] == "stopped"
 
 
+def test_design_styles_endpoint():
+    resp = client.get("/api/design-styles")
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = [s["id"] for s in data]
+    assert "luxury" in ids and "pixel" in ids
+    luxury = next(s for s in data if s["id"] == "luxury")
+    assert luxury["palette"]["primary"].startswith("#")
+
+
+def test_personas_endpoint():
+    resp = client.get("/api/personas")
+    assert resp.status_code == 200
+    ids = [p["id"] for p in resp.json()]
+    assert "sns_growth_hacker" in ids
+
+
 def test_trends_list_endpoint_empty(tmp_path, monkeypatch):
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     resp = client.get("/api/trends")
