@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -122,6 +123,68 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
     for agent in agents:
         skills = " / ".join(getattr(skill, "value", skill) for skill in agent.skills)
         print(f"    - {agent.name} [{skills}]")
+    print(f'\n次のステップ: pantheon analyze --org-name "{org.name}"')
+
+
+async def cmd_org_create(args: argparse.Namespace, *, get_psm: Any, project_root: Path) -> None:
+    """ジャンル/ペルソナ/デザインを指定して外部 Organization を 1 コマンドで量産する。
+
+    --repo 未指定なら workspaces_root（無ければ ~/.pantheon/workspaces）配下に
+    新規 git リポジトリを作成し、LLM でジャンル別テンプレを設計→検証→保存してから
+    Organization を登録する。デフォルトで isolation_level=external（本体を汚さない）。
+    """
+    import subprocess
+
+    from core.bootstrap import bootstrap_platform
+    from core.orchestration.org_template_designer import design_and_save
+    from core.org_factory import create_organization_from_template
+
+    psm = bootstrap_platform()
+    if psm.load_organization_by_name(args.name):
+        print(f"[WARN] Organization '{args.name}' はすでに存在します")
+        return
+
+    # ワークスペース（git repo）の決定・作成
+    if args.repo:
+        repo_path = Path(args.repo).resolve()
+    else:
+        root = psm.get_workspaces_root() or (psm.platform_home / "workspaces")
+        safe = re.sub(r"[^A-Za-z0-9_-]+", "-", args.name).strip("-") or "org"
+        repo_path = Path(root).resolve() / safe
+    repo_path.mkdir(parents=True, exist_ok=True)
+    if not (repo_path / ".git").exists():
+        try:
+            subprocess.run(["git", "init"], cwd=repo_path, capture_output=True, check=False)
+        except OSError as exc:
+            print(f"[WARN] git init をスキップ: {exc}")
+
+    # LLM でジャンル別テンプレを設計→検証→保存（claude 不在時は決定論フォールバック）
+    print(f"[..] ジャンル '{args.genre}' の組織構成を設計中...")
+    template_path, departments = await design_and_save(args.genre)
+    print(f"[OK] テンプレート保存: {template_path}（{len(departments)} 部門）")
+
+    org = create_organization_from_template(
+        args.name,
+        args.purpose or f"{args.genre} 領域の自律 AI 組織",
+        template_path,
+        repo_path=repo_path,
+        isolation_level=args.isolation_level,
+        allowed_path_scope=[],
+        industry_genre=args.genre,
+        persona_id=args.persona or None,
+        design_style=args.design or None,
+    )
+    psm.save_organization(org)
+
+    agents = org.get_all_agents()
+    print("\n[OK] Organization を量産しました\n")
+    print(f"  名前        : {org.name}")
+    print(f"  ジャンル    : {org.industry_genre}")
+    print(f"  ペルソナ    : {org.persona_id or '(なし)'}")
+    print(f"  デザイン    : {org.design_style}")
+    print(f"  ワークスペース: {org.target_repo_path}")
+    print(f"  分離レベル  : {org.isolation_level}")
+    print(f"  Division: {len(org.divisions)} / Agent: {len(agents)}")
     print(f'\n次のステップ: pantheon analyze --org-name "{org.name}"')
 
 
@@ -703,6 +766,34 @@ def register(subparsers: Any) -> None:
         help="組織の分離レベル（external=外部目的・自ワークスペース外への変更を制限）",
     )
     add_parser.set_defaults(handler_name="cmd_org_add")
+
+    create_parser = org_sub.add_parser(
+        "create",
+        help="ジャンル/ペルソナ/デザインを指定して外部 Organization を1コマンド量産する",
+    )
+    create_parser.add_argument("--name", required=True, help="Organization 名")
+    create_parser.add_argument(
+        "--genre",
+        required=True,
+        help="業界ジャンル（ai / side_business / video_edit / game_dev / business 等）",
+    )
+    create_parser.add_argument("--persona", default=None, help="ペルソナ id（config/personas）")
+    create_parser.add_argument(
+        "--design", default=None, help="デザインスタイル id（config/design_styles）"
+    )
+    create_parser.add_argument("--purpose", default="", help="Organization の目的（省略可）")
+    create_parser.add_argument(
+        "--repo",
+        default=None,
+        help="ワークスペース絶対パス（省略時は workspaces_root 配下に自動作成）",
+    )
+    create_parser.add_argument(
+        "--isolation-level",
+        choices=["core", "standard", "external"],
+        default="external",
+        help="分離レベル（既定 external=本体を汚さない外部組織）",
+    )
+    create_parser.set_defaults(handler_name="cmd_org_create")
 
     list_parser = org_sub.add_parser("list", help="Organization の一覧を表示する")
     list_parser.set_defaults(handler_name="cmd_org_list")
