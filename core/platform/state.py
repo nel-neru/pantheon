@@ -10,12 +10,15 @@ Core（本社）のグローバルストア（~/.pantheon/）を管理する。
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.models.organization import Organization
+
+logger = logging.getLogger(__name__)
 
 
 def _migrate_legacy_home(new_home: Path) -> None:
@@ -134,12 +137,23 @@ class PlatformStateManager:
         path.write_text(org.model_dump_json(indent=2), encoding="utf-8")
 
     def load_organizations(self) -> List[Organization]:
-        """全 Organization を読み込む"""
+        """全 Organization を読み込む。
+
+        壊れた/検証に失敗した JSON は耐性のためスキップするが（旧データや手書きファイルで
+        全体を壊さない）、黙って消えると「組織が音もなく消失した」ように見えるため
+        warning で観測可能にする。ファイルは削除しない（修復すれば次回読み込まれる）。
+        """
         result = []
         for f in sorted(self.orgs_dir.glob("*.json")):
             try:
                 result.append(Organization.model_validate_json(f.read_text(encoding="utf-8")))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 — 1ファイルの破損で全体を壊さない
+                logger.warning(
+                    "Organization ファイルの読み込みをスキップ: %s (%s: %s)",
+                    f,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
         return result
 
