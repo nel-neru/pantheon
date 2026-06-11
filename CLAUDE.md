@@ -88,9 +88,11 @@ Two tests are order-flaky (pass in isolation, fail only in full-suite runs):
 > "Pantheon-agent/skill" = the app's *own* in-product framework (`agents/`, `core/intelligence`).
 > "CC-agent/skill/command" = the Claude Code helpers below. They are different things.
 
-- **Subagents** (`.claude/agents/`): `code-reviewer` (Opus, read-only), `test-triage`
-  (runs both suites, separates the 6 known failures from real regressions), `debugger`,
-  `frontend-dev`.
+- **Subagents** (`.claude/agents/`), model-tiered by cognitive load: Opus —
+  `code-reviewer` (read-only diff), `debugger`; Sonnet — `frontend-dev`, `flow-auditor`;
+  Haiku (mechanical/monitoring) — `test-triage` (separates the 6 known failures from real
+  regressions), `trend-watcher` (Claude Code trends → `.claude/` config suggestions),
+  `doc-writer` (keep docs in sync).
 - **Skills** (`.claude/skills/`): `run-pantheon` (launch recipe), `pantheon-agent`
   (how to add a Pantheon-agent + skill correctly), `improvement-proposal-flow`,
   `fastapi-endpoint` (add/modify a FastAPI route + test).
