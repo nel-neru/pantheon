@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
+import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
 
 type InboxKind = 'proposal' | 'handoff' | 'publish'
 
@@ -77,9 +78,10 @@ export function InboxPage() {
   const [error, setError] = useState<string | null>(null)
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const [actionId, setActionId] = useState<string | null>(null)
+  const { events } = usePlatformUpdates()
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
     try {
       const data = await api<InboxResponse>('GET', '/api/inbox')
       setItems(data.items)
@@ -99,17 +101,29 @@ export function InboxPage() {
     void load()
   }, [load])
 
+  useEffect(() => {
+    const latest = events[0]
+    if (
+      latest?.type &&
+      (latest.type.startsWith('publish') ||
+        latest.type.startsWith('proposal') ||
+        latest.type.startsWith('handoff'))
+    ) {
+      void load(true)
+    }
+  }, [events, load])
+
   const visibleItems = useMemo(
     () => (kindFilter === 'all' ? items : items.filter((item) => item.kind === kindFilter)),
     [items, kindFilter],
   )
 
-  const runAction = async (key: string, fn: () => Promise<void>, successMsg: string) => {
+  const runAction = async (key: string, fn: () => Promise<void>, successMsg: string, reload = true) => {
     setActionId(key)
     try {
       await fn()
       toast.success(successMsg)
-      await load()
+      if (reload) await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '操作に失敗しました。')
     } finally {
@@ -182,6 +196,7 @@ export function InboxPage() {
         await api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/run?dry_run=true`)
       },
       'プレビュー（dry-run）を実行しました。投稿はしていません。',
+      false,
     )
   }
 

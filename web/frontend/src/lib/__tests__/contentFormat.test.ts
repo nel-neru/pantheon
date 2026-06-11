@@ -40,6 +40,19 @@ describe('splitIntoThread', () => {
       expect(countChars(tweet)).toBeLessThanOrEqual(X_LIMIT)
     }
   })
+
+  it('100チャンク超でも全チャンク（接尾辞込み）が X_LIMIT 以下', () => {
+    // 100 チャンクを確実に超えるよう、ユニット境界なしの連続テキストを使う。
+    // 区切り文字なし・270字/チャンク × 120 チャンク分 = ~32400字
+    const long = 'a'.repeat(270 * 120)
+    const thread = splitIntoThread(long)
+    expect(thread.length).toBeGreaterThan(100)
+    for (const tweet of thread) {
+      expect(countChars(tweet)).toBeLessThanOrEqual(X_LIMIT)
+    }
+    // 末尾チャンクの番号が3桁以上であることを確認
+    expect(thread[thread.length - 1]).toMatch(/\(\d{3,}\/\d{3,}\)$/)
+  })
 })
 
 describe('readingStats', () => {

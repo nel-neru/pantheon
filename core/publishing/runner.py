@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.publishing.adapters import get_adapter
-from core.publishing.base import PublishContent, PublishResult, PublishTarget
+from core.publishing.base import PUBLISH_MODE_AUTO, PublishContent, PublishResult, PublishTarget
 from core.publishing.publish_jobs import PublishJob, PublishJobStore
 
 
@@ -124,10 +124,21 @@ async def process_due_publish_jobs(
     platform_home: Optional[Path] = None,
     limit: int = 20,
 ) -> List[Dict[str, Any]]:
-    """予約時刻に達した queued ジョブをまとめて実行する（daemon から呼ぶ）。"""
+    """予約時刻に達した auto モードの queued ジョブをまとめて実行する。
+
+    assisted モードは「最終送信は人間」が契約のため、どの自動実行経路からも
+    絶対に発火させない（承認＝唯一の出荷ゲート。content_scheduler 側の
+    _process_due_publish_jobs と同じ不変条件）。
+    """
     results: List[Dict[str, Any]] = []
-    for job in store.due_jobs()[: max(0, limit)]:
+    executed = 0
+    for job in store.due_jobs():
+        if executed >= max(0, limit):
+            break
+        if job.mode != PUBLISH_MODE_AUTO:
+            continue
         results.append(
             await run_publish_job(job, store=store, platform_home=platform_home, dry_run=False)
         )
+        executed += 1
     return results

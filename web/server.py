@@ -21,6 +21,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -1378,7 +1379,7 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
             org_name=org.name,
             entity_type="proposal",
             entity_id=str(proposal.id),
-            route=f"/proposals?org={org.name}",
+            route=f"/proposals?org={quote(org.name)}",
             metadata={"file_path": proposal.file_path, "priority": proposal.priority},
         )
 
@@ -1651,7 +1652,7 @@ def _search_results(query: str, limit: int = 20) -> list[dict[str, Any]]:
                     "type": "proposal",
                     "title": str(proposal.get("title") or "改善提案"),
                     "subtitle": str(proposal.get("description") or proposal.get("file_path") or ""),
-                    "route": f"/proposals?org={org_name}",
+                    "route": f"/proposals?org={quote(org_name)}",
                     "org_name": org_name or None,
                     "status": proposal.get("status"),
                     "metadata": {
@@ -2325,7 +2326,7 @@ async def api_inbox() -> Dict[str, Any]:
                         "title": p.get("title", ""),
                         "category": p.get("category", "general"),
                         "priority": p.get("priority", "medium"),
-                        "route": f"/proposals?org={org.name}",
+                        "route": f"/proposals?org={quote(org.name)}",
                     }
                 )
         except Exception:  # noqa: BLE001 — 1 組織の読み取り失敗で全体を落とさない
@@ -3385,7 +3386,7 @@ async def _approve_proposal_internal(
         org_name=org_name,
         entity_type="proposal",
         entity_id=str(target.get("id", "")),
-        route=f"/proposals?org={org_name}",
+        route=f"/proposals?org={quote(org_name)}",
         metadata={"file_path": target.get("file_path")},
     )
 
@@ -3410,7 +3411,7 @@ async def _approve_proposal_internal(
             org_name=org_name,
             entity_type="proposal",
             entity_id=str(target.get("id", "")),
-            route=f"/proposals?org={org_name}",
+            route=f"/proposals?org={quote(org_name)}",
             metadata={"file_path": target.get("file_path")},
         )
         raise HTTPException(status_code=500, detail=result.error or "改善提案の適用に失敗しました")
@@ -3436,7 +3437,7 @@ async def _approve_proposal_internal(
         org_name=org_name,
         entity_type="proposal",
         entity_id=str(target.get("id", "")),
-        route=f"/proposals?org={org_name}",
+        route=f"/proposals?org={quote(org_name)}",
         metadata={
             "file_path": target.get("file_path"),
             "branch": result.output.get("branch"),
@@ -3453,7 +3454,7 @@ async def _approve_proposal_internal(
             "org_name": org_name,
             "entity_type": "proposal",
             "entity_id": str(target.get("id", "")),
-            "route": f"/proposals?org={org_name}",
+            "route": f"/proposals?org={quote(org_name)}",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
@@ -3485,7 +3486,7 @@ async def _reject_proposal_internal(org_name: str, proposal_id: str) -> Dict[str
         org_name=org_name,
         entity_type="proposal",
         entity_id=str(target.get("id", "")),
-        route=f"/proposals?org={org_name}",
+        route=f"/proposals?org={quote(org_name)}",
         metadata={"file_path": target.get("file_path")},
     )
     return payload

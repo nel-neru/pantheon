@@ -91,16 +91,38 @@ async def test_process_due_publish_jobs_runs_only_due(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
 
     store = PublishJobStore(platform_home=tmp_path)
-    store.add_job(PublishJob(org_name="o", platform="note", title="now", body="b"))  # due
+    store.add_job(
+        PublishJob(org_name="o", platform="note", title="now", body="b", mode="auto")
+    )  # due
     future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     store.add_job(
-        PublishJob(org_name="o", platform="x", title="later", body="b", scheduled_at=future)
+        PublishJob(
+            org_name="o", platform="x", title="later", body="b", mode="auto", scheduled_at=future
+        )
     )
     monkeypatch.setattr("core.publishing.runner.get_adapter", lambda p: _FakePublisher(platform=p))
 
     results = await process_due_publish_jobs(store, platform_home=tmp_path)
     assert len(results) == 1
     assert results[0]["ok"] is True
+
+
+async def test_process_due_publish_jobs_never_runs_assisted(tmp_path, monkeypatch):
+    """assisted は『最終送信は人間』が契約 — 自動実行経路から絶対に発火しない（回帰防止）。"""
+    store = PublishJobStore(platform_home=tmp_path)
+    store.add_job(
+        PublishJob(org_name="o", platform="note", title="manual", body="b")
+    )  # 既定 assisted・即 due
+    store.add_job(PublishJob(org_name="o", platform="x", title="auto", body="b", mode="auto"))
+    monkeypatch.setattr("core.publishing.runner.get_adapter", lambda p: _FakePublisher(platform=p))
+
+    results = await process_due_publish_jobs(store, platform_home=tmp_path)
+
+    assert len(results) == 1
+    assert results[0]["platform"] == "x"  # auto モードのジョブだけが実行される
+    statuses = {j.title: j.status for j in store.list_jobs()}
+    assert statuses["manual"] == "queued"  # assisted は手つかずで人間待ちのまま
+    assert statuses["auto"] == "published"
 
 
 async def test_scheduler_auto_publishes_only_auto_mode_jobs(tmp_path, monkeypatch):
