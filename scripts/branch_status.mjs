@@ -14,16 +14,25 @@
  *   node scripts/branch_status.mjs --stale-days 21   # stale 判定の日数(既定14)
  */
 import { execFileSync } from "node:child_process";
+import { resolveGit } from "./lib/git_exec.mjs";
 
 const argv = process.argv.slice(2);
 const PRUNE = argv.includes("--prune");
 const staleIdx = argv.indexOf("--stale-days");
 const STALE_DAYS = staleIdx >= 0 ? Number(argv[staleIdx + 1]) || 14 : 14;
 
+const GIT = resolveGit();
+
 function git(args) {
   try {
-    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return execFileSync(GIT, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   } catch (e) {
+    // git コマンド自体の失敗（存在しない ref 等）は stdout を返して続行するが、
+    // git が実行できない（ENOENT）のを握りつぶすと「全ブランチ 0 件」と誤報告するため fail-fast。
+    if (e.code === "ENOENT") {
+      console.error(`[branch_status] git を実行できません (${GIT}): ${e.message}`);
+      process.exit(2);
+    }
     return e.stdout?.toString() ?? "";
   }
 }

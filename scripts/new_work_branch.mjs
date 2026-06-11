@@ -12,13 +12,16 @@
  *   node scripts/new_work_branch.mjs <slug> --from-current   # main へ ff せず現在地から切る
  */
 import { execFileSync } from "node:child_process";
+import { resolveGit } from "./lib/git_exec.mjs";
 
 const argv = process.argv.slice(2);
 const FROM_CURRENT = argv.includes("--from-current");
 const rawSlug = argv.find((a) => !a.startsWith("--"));
 
+const GIT = resolveGit();
+
 function git(args, { capture = true } = {}) {
-  return execFileSync("git", args, {
+  return execFileSync(GIT, args, {
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
   });
