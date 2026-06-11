@@ -5,6 +5,7 @@ import { ThemeProvider, useThemeCtx } from '@/hooks/useThemeContext'
 import { LiveProvider, useLive } from '@/hooks/useLiveContext'
 import {
   AtelierIcon,
+  HandbookIcon,
   InboxIcon,
   MoonIcon,
   ObservatoryIcon,
@@ -22,6 +23,7 @@ const NAV: Nav[] = [
   { to: '/atelier', label: 'Atelier', Icon: AtelierIcon },
   { to: '/signals', label: 'Signals', Icon: SignalsIcon },
   { to: '/inbox', label: 'Inbox', Icon: InboxIcon },
+  { to: '/handbook', label: 'Handbook', Icon: HandbookIcon },
 ]
 
 function Rail() {

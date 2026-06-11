@@ -19,6 +19,7 @@ backend** on `:8000` — no new endpoints, just a new way of seeing.
 | 03 | `/atelier` | **Atelier** | Design styles as **palette specimens** + personas as voices — "wear any aesthetic, any voice". |
 | 04 | `/signals` | **Signals** | Collected trends as a scored broadsheet, with *collect now* / *convert to proposals*. |
 | 05 | `/inbox` | **Inbox** | The review desk — approve/reject improvement proposals (across all orgs) and cross-org handoffs. |
+| 06 | `/handbook` | **Handbook** | The monetization operating manual — WEB flow vs CLI flow (toggle), the end-to-end flywheel, approval gates, the "draft factory → manual publish" reality, and 24h-autonomy tips. Source-verified. |
 
 ## Run it
 

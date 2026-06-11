@@ -94,6 +94,16 @@ export function ArrowIcon(p: IconProps) {
   )
 }
 
+export function HandbookIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v15H5.5A1.5 1.5 0 0 0 4 20.5Z" />
+      <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v15h5.5A1.5 1.5 0 0 1 20 20.5Z" />
+      <path d="M12 5.5V19" />
+    </svg>
+  )
+}
+
 export function PantheonMark(p: IconProps) {
   // ブランドマーク：万神殿のペディメント＋柱（星座にも見える幾何）
   return (

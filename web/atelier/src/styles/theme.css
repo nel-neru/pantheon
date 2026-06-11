@@ -611,3 +611,41 @@ a {
     display: none;
   }
 }
+
+/* ----------------------------------------------------------------------------
+   Code — inline keys and command blocks (Handbook)
+---------------------------------------------------------------------------- */
+.code-block {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  color: var(--text);
+  white-space: pre;
+  tab-size: 2;
+}
+.code-inline {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+/* Callout — a plate with a colored spine, for warnings/notes */
+.callout {
+  position: relative;
+  background: var(--ink-1);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+

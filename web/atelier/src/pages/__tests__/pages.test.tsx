@@ -6,6 +6,7 @@ import { Pantheon } from '../Pantheon'
 import { Atelier } from '../Atelier'
 import { Signals } from '../Signals'
 import { Inbox } from '../Inbox'
+import { Handbook } from '../Handbook'
 
 // 全ページは展示ヘッダー（kicker）を同期描画する。ネットワークは空配列を返す。
 beforeEach(() => {
@@ -39,5 +40,10 @@ describe('Atelier pages render their exhibition header', () => {
   it('Inbox', () => {
     render(<Inbox />)
     expect(screen.getByText('The Review Desk')).toBeInTheDocument()
+  })
+
+  it('Handbook', () => {
+    render(<Handbook />)
+    expect(screen.getByText('The Handbook')).toBeInTheDocument()
   })
 })
