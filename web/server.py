@@ -2275,12 +2275,19 @@ async def api_run_publish_job(job_id: str, dry_run: bool = False) -> Dict[str, A
         job, store=store, platform_home=get_platform_home(), dry_run=dry_run
     )
     if not dry_run:
+        handed_off = bool(result.get("ok")) and bool(result.get("handed_off"))
+        if handed_off:
+            event_type, title_prefix = "publish_handed_off", "下書きを引き渡しました"
+        elif result["ok"]:
+            event_type, title_prefix = "publish_succeeded", "投稿成功"
+        else:
+            event_type, title_prefix = "publish_failed", "投稿失敗"
         await _updates_hub.broadcast(
             {
-                "type": "publish_succeeded" if result["ok"] else "publish_failed",
+                "type": event_type,
                 "status": "success" if result["ok"] else "error",
-                "title": f"{'投稿成功' if result['ok'] else '投稿失敗'}: {job.title or job.platform}",
-                "details": result.get("url") or result.get("error") or "",
+                "title": f"{title_prefix}: {job.title or job.platform}",
+                "details": result.get("url") or result.get("detail") or result.get("error") or "",
                 "org_name": job.org_name,
                 "entity_type": "publish_job",
                 "entity_id": job.job_id,

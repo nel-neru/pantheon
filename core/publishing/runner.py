@@ -45,6 +45,7 @@ def _result_dict(job: PublishJob, result: PublishResult) -> Dict[str, Any]:
         "dry_run": result.dry_run,
         "mode": result.mode,
         "detail": result.detail,
+        "handed_off": result.handed_off,
     }
 
 
@@ -109,7 +110,11 @@ async def run_publish_job(
             ok=False, platform=job.platform, error=f"{type(exc).__name__}: {exc}", mode=job.mode
         )
 
-    if result.ok:
+    if result.ok and result.handed_off:
+        # assisted のハンドオフ: 下書き流し込みまで成功し最終公開は人間待ち。
+        # published とは区別し、未公開のものを成果（posts）には数えない。
+        store.mark_status(job.job_id, status="handed_off", result_url=result.url)
+    elif result.ok:
         store.mark_status(job.job_id, status="published", result_url=result.url)
         _record_outcome(job, result, home)
     else:

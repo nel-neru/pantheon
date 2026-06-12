@@ -19,6 +19,30 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 11 — note 実投稿 Phase 1: assisted ハンドオフ（handed_off 意味論）  (2026-06-12 11:05)
+  Plan   : Cycle 10 の接続フローに続き、最重要タスク _publish_live の note 実装。受け入れ基準 =
+           接続済みセッションでエディタに流し込み「最終公開は人間」までフェイク検証で緑 /
+           assisted live 成功は published と区別する handed_off（成果に数えない）/
+           承認ゲート+mode ガード回帰テスト全維持。落とした候補: X アダプタ / 接続 GUI ページ。
+  Did    : work/note-publish-live-20260612。NotePublisher._publish_live（auto=未実装の正直な失敗、
+           未接続=connect 誘導、assisted=storage_state 復元→エディタ fill→**ブラウザ開いたまま
+           ハンドオフ**。セレクタ/URL は実機検証待ちとしてモジュール定数に隔離）。
+           PublishResult.handed_off + PUBLISH_JOB_STATUSES に handed_off（is_due は queued のみ＝
+           再実行されない）。runner: handed_off は OutcomeEvent 未記録（未公開を収益に数えない）・
+           監査ログには記録。WS は publish_handed_off（InboxPage は type.startsWith('publish') で
+           live 更新が機能）。PlaywrightLauncher に storage_state 復元。docs/publishing.md 新設
+           （運用手順+実機 E2E チェックリスト）。
+  Check  : test-triage GREEN（1078 passed / 基線 chmod 2 件のみ）/ ruff 緑。code-reviewer
+           APPROVE-WITH-NITS（不変条件: 承認なしジョブ生成なし・assisted は自動経路から発火せず・
+           handed_off は terminal、を全て検証済み）→ 所見2件反映: (1) _HANDOFF_KEEPALIVE の
+           無制限成長 → 次回ハンドオフ時に is_alive() で死んだ残骸を close+prune（人間使用中には
+           触れない、テスト追加） (2) Timeout 時は「セッション期限切れの可能性」と明示。
+           残リスク（正直に記録）: NOTE_BODY_SELECTOR は最初の contenteditable にマッチするため
+           実機で誤ノード流し込みの可能性 — E2E チェックリスト項目4で検証する。
+  Act    : merged（結果は下記追記）。学び: 「下書き流し込み成功」と「公開」を status で区別する
+           handed_off 意味論は、収益指標の正直さ（未公開を数えない）と自動再実行防止を同時に解決。
+  Next   : 実機 E2E（ユーザー同席時、docs/publishing.md 手順）/ X _publish_live / 接続 GUI ページ。
+
 Cycle 10 — ヘッドフルログイン接続フロー（Track E コア）  (2026-06-12 10:35)
   Plan   : publishing を「下書き工場」から実投稿チェーンへ進める第一歩。_publish_live の前提
            となる接続フロー（SessionStore.is_connected が常に false の構造的欠落）を先に埋める。
@@ -38,7 +62,8 @@ Cycle 10 — ヘッドフルログイン接続フロー（Track E コア）  (20
            0o600/dir 0o700（best-effort、settings ファイルと同基準） (2) cookie 名だけの
            一致は他ドメイン同名 cookie を誤検知 → 発行ドメイン照合を追加+負のテスト
            (3) _login_tasks の完了エントリを done callback で identity ガード付き pop。
-  Act    : merged（結果は下記追記）。学び: 「資格情報を保存しない」設計でも storage_state は
+  Act    : merged ✅（a405bd2..9bcbd6b push 済み、done ブランチ 6 本 prune）。
+           学び: 「資格情報を保存しない」設計でも storage_state は
            ベアラ秘密 — 秘密相当ファイルは保存経路で必ず 0o600 基準に合わせる。
            実機 E2E（実ログイン）は無人ループでは行わずユーザー同席時に委ねる、を明文化。
   Next   : note _publish_live（assisted、handed_off 意味論）→ Cycle 11 / X _publish_live /
