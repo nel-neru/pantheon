@@ -19,8 +19,9 @@ from core.publishing.base import (
     SUPPORTED_PLATFORMS,
 )
 
-# ジョブのライフサイクル。
-PUBLISH_JOB_STATUSES = ("queued", "publishing", "published", "failed", "cancelled")
+# ジョブのライフサイクル。handed_off は「assisted の下書き流し込みまで完了し、
+# 最終公開を人間に引き渡した」状態（published とは区別し、成果指標にも数えない）。
+PUBLISH_JOB_STATUSES = ("queued", "publishing", "published", "handed_off", "failed", "cancelled")
 
 
 def _now() -> datetime:

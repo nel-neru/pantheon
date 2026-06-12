@@ -59,7 +59,11 @@ class PublishTarget:
 
 @dataclass
 class PublishResult:
-    """投稿の結果。``ok`` が False のときは ``error`` に理由を入れる。"""
+    """投稿の結果。``ok`` が False のときは ``error`` に理由を入れる。
+
+    ``handed_off=True`` は「自動化パート（下書き流し込み）は成功したが、最終公開は
+    人間に引き渡した」状態。公開済み（published）とは区別され、成果指標にも数えない。
+    """
 
     ok: bool
     platform: str
@@ -68,6 +72,7 @@ class PublishResult:
     dry_run: bool = False
     mode: str = PUBLISH_MODE_ASSISTED
     detail: str = ""
+    handed_off: bool = False
 
 
 @runtime_checkable

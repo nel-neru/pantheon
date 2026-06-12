@@ -60,17 +60,22 @@ class PlaywrightLauncher:
 
     契約は ``launch() -> context`` / ``close()`` の 2 メソッドのみ。テストは
     同じ契約のフェイクを ``interactive_login(launcher=...)`` に注入する。
+    ``storage_state`` を渡すと保存済みセッションを復元した context を開く
+    （アダプタの実投稿/ハンドオフでも再利用する）。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, storage_state: Optional[str] = None) -> None:
         self._pw: Any = None
         self._browser: Any = None
+        self._storage_state = storage_state
 
     async def launch(self) -> Any:
         from playwright.async_api import async_playwright
 
         self._pw = await async_playwright().start()
         self._browser = await self._pw.chromium.launch(headless=False)
+        if self._storage_state is not None:
+            return await self._browser.new_context(storage_state=self._storage_state)
         return await self._browser.new_context()
 
     async def close(self) -> None:
