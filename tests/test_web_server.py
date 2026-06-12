@@ -1932,6 +1932,74 @@ def test_inbox_aggregates_publish_jobs(tmp_path, monkeypatch):
     assert any(i["kind"] == "publish" and i["title"] == "投稿待ち" for i in body["items"])
 
 
+def test_inbox_includes_handed_off_jobs_with_status(tmp_path, monkeypatch):
+    """handed_off（公開→確認待ち）も人間アクション待ちとして inbox に載る。"""
+    from core.publishing.publish_jobs import PublishJob, PublishJobStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    store = PublishJobStore(platform_home=tmp_path)
+    handed = store.add_job(PublishJob(org_name="o", platform="note", title="確認待ち"))
+    store.mark_status(handed.job_id, status="handed_off")
+    published = store.add_job(PublishJob(org_name="o", platform="x", title="公開済み"))
+    store.mark_status(published.job_id, status="published")
+
+    body = client.get("/api/inbox").json()
+    items = {i["title"]: i for i in body["items"] if i["kind"] == "publish"}
+    assert items["確認待ち"]["status"] == "handed_off"
+    assert "公開済み" not in items  # published はもう人間アクション不要
+
+
+def test_confirm_publish_job_endpoint(tmp_path, monkeypatch):
+    """確認エンドポイント: handed_off のみ 200、それ以外 409、不在 404、成果は 1 回だけ。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.publishing.publish_jobs import PublishJob, PublishJobStore
+
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    store = PublishJobStore(platform_home=tmp_path)
+    job = store.add_job(PublishJob(org_name="Note Sales", platform="note", title="t", body="b"))
+
+    assert client.post(f"/api/publish-jobs/{job.job_id}/confirm").status_code == 409  # queued
+
+    store.mark_status(job.job_id, status="handed_off")
+    res = client.post(
+        f"/api/publish-jobs/{job.job_id}/confirm", json={"result_url": "https://note.com/n/abc"}
+    )
+    assert res.status_code == 200
+    assert res.json()["ok"] is True
+    assert store.get_job(job.job_id).status == "published"
+    assert store.get_job(job.job_id).result_url.endswith("abc")
+
+    assert client.post(f"/api/publish-jobs/{job.job_id}/confirm").status_code == 409  # 再確認
+    assert client.post("/api/publish-jobs/nonexistent/confirm").status_code == 404
+
+    summary = OutcomeStore(platform_home=tmp_path).summary_for_org("Note Sales")
+    assert summary.by_metric.get("posts", {}).get("sum") == 1  # 二重記録なし
+
+
+def test_run_rejects_handed_off_job(tmp_path, monkeypatch):
+    """handed_off ジョブへの /run は 409（再ハンドオフ＝二重下書きを全経路で防ぐ）。
+
+    フロントはボタンを隠すが、API 直叩きでも出口は /confirm だけ。
+    dry_run はジョブ status 不変・無害なので許可のまま。
+    """
+    from core.publishing.publish_jobs import PublishJob, PublishJobStore
+
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    store = PublishJobStore(platform_home=tmp_path)
+    job = store.add_job(PublishJob(org_name="o", platform="note", title="t", body="b"))
+    store.mark_status(job.job_id, status="handed_off")
+
+    resp = client.post(f"/api/publish-jobs/{job.job_id}/run")
+    assert resp.status_code == 409
+    assert "handed_off" in resp.json()["detail"]
+    assert store.get_job(job.job_id).status == "handed_off"  # 変更されない
+
+    dry = client.post(f"/api/publish-jobs/{job.job_id}/run?dry_run=true")
+    assert dry.status_code == 200  # プレビューは無害なので通る
+
+
 def test_revenue_metrics_flags_reach_without_revenue(tmp_path, monkeypatch):
     from core.metrics.outcomes import OutcomeStore
 

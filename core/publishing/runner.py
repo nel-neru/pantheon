@@ -123,6 +123,54 @@ async def run_publish_job(
     return _result_dict(job, result)
 
 
+def confirm_handed_off(
+    job_id: str,
+    *,
+    store: PublishJobStore,
+    platform_home: Optional[Path] = None,
+    result_url: str = "",
+) -> Dict[str, Any]:
+    """handed_off（人間が最終公開する待ち）のジョブを「公開済み」として確定する。
+
+    人間がブラウザで実際に公開した後に呼ぶ確認ステップ。ここで初めて published に
+    遷移し、成果（posts）を記録する — 未公開のものを収益指標に数えない、という
+    handed_off 意味論の出口側。handed_off 以外の status では何もしない（ok=False）。
+    """
+    home = Path(platform_home) if platform_home else store.platform_home
+    job = store.get_job(job_id)
+    if job is None:
+        return {"ok": False, "job_id": job_id, "error": "投稿ジョブが見つかりません"}
+    if job.status != "handed_off":
+        return {
+            "ok": False,
+            "job_id": job_id,
+            "error": f"handed_off のジョブだけ確認できます（現在: {job.status}）",
+            "status": job.status,
+        }
+    store.mark_status(job_id, status="published", result_url=result_url)
+    result = PublishResult(
+        ok=True, platform=job.platform, url=result_url, mode=job.mode, detail="公開を人間が確認"
+    )
+    # 成果はジョブ固有 source で冪等に記録する（並行/再送の confirm でも二重計上しない。
+    # status ゲートに加えた防御の深層化）。
+    from core.metrics.outcomes import OutcomeStore
+
+    try:
+        OutcomeStore(platform_home=home).record(
+            job.org_name,
+            "posts",
+            1,
+            unit="count",
+            source=f"publish-confirm:{job.job_id}",
+            note=result_url,
+            dedupe_on_source=True,
+        )
+    except (OSError, ValueError, TypeError):
+        pass  # 成果記録失敗で確認フローを壊さない（_record_outcome と同方針）
+    _log_publish(home, {**_result_dict(job, result), "confirmed_by_human": True})
+    return {"ok": True, "job_id": job_id, "status": "published", "url": result_url}
+
+
 async def process_due_publish_jobs(
     store: PublishJobStore,
     *,

@@ -99,7 +99,14 @@ class OutcomeStore:
         source: str = "",
         note: str = "",
         occurred_at: str = "",
+        dedupe_on_source: bool = False,
     ) -> OutcomeEvent:
+        """成果イベントを 1 件追記する。
+
+        ``dedupe_on_source=True`` は同じ ``source`` のイベントが既にあれば追記せず
+        既存を返す（冪等）。「1 回しか起きない事象」（例: 投稿の公開確認）を
+        ジョブ固有の source で記録するときの二重計上ガード。
+        """
         event = OutcomeEvent(
             org_name=org_name,
             metric=str(metric).strip().lower(),
@@ -110,6 +117,10 @@ class OutcomeStore:
             occurred_at=occurred_at,
         )
         events = self._load()
+        if dedupe_on_source and source:
+            for existing in events:
+                if existing.source == source:
+                    return existing
         events.append(event)
         self._save(events)
         return event

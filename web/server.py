@@ -2271,6 +2271,14 @@ async def api_run_publish_job(job_id: str, dry_run: bool = False) -> Dict[str, A
     job = store.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="投稿ジョブが見つかりません")
+    if job.status == "handed_off" and not dry_run:
+        # 防御の深層化: フロントはボタンを隠すが、API 直叩きでも再ハンドオフ
+        # （二重下書き流し込み）を起こさせない。出口は /confirm だけ。
+        raise HTTPException(
+            status_code=409,
+            detail="人間の最終公開待ち（handed_off）のジョブは再実行できません。"
+            "公開済みなら確認（confirm）してください",
+        )
     result = await run_publish_job(
         job, store=store, platform_home=get_platform_home(), dry_run=dry_run
     )
@@ -2295,6 +2303,51 @@ async def api_run_publish_job(job_id: str, dry_run: bool = False) -> Dict[str, A
                 "route": "/inbox",
             }
         )
+    return result
+
+
+class ConfirmPublishBody(BaseModel):
+    """公開確認の任意情報（実際に公開された URL があれば成果に紐づける）。"""
+
+    result_url: str = ""
+
+
+@app.post("/api/publish-jobs/{job_id}/confirm", tags=["publishing"])
+async def api_confirm_publish_job(
+    job_id: str, body: Optional[ConfirmPublishBody] = None
+) -> Dict[str, Any]:
+    """handed_off（人間の最終公開待ち）のジョブを公開済みとして確定する。
+
+    人間がブラウザで実際に公開した後の確認ステップ。ここで初めて published に遷移し、
+    成果（posts）が記録される。handed_off 以外の status は 409。
+    """
+    from core.publishing.runner import confirm_handed_off
+
+    store = _publish_job_store()
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="投稿ジョブが見つかりません")
+    result = confirm_handed_off(
+        job_id,
+        store=store,
+        platform_home=get_platform_home(),
+        result_url=(body.result_url if body else ""),
+    )
+    if not result["ok"]:
+        raise HTTPException(status_code=409, detail=result.get("error") or "確認できません")
+    await _updates_hub.broadcast(
+        {
+            "type": "publish_succeeded",
+            "status": "success",
+            "title": f"公開を確認: {job.title or job.platform}",
+            "details": result.get("url") or "",
+            "org_name": job.org_name,
+            "entity_type": "publish_job",
+            "entity_id": job.job_id,
+            "platform": job.platform,
+            "route": "/inbox",
+        }
+    )
     return result
 
 
@@ -2427,8 +2480,10 @@ async def api_inbox() -> Dict[str, Any]:
             }
         )
 
+    # queued（これから投稿）に加え handed_off（人間が公開→確認待ち）も人間アクション
+    # 待ちとして集約する（dead end にしない — 確認で初めて published+成果記録）。
     for j in _publish_job_store().list_jobs():
-        if j.status != "queued":
+        if j.status not in ("queued", "handed_off"):
             continue
         items.append(
             {
@@ -2440,6 +2495,7 @@ async def api_inbox() -> Dict[str, Any]:
                 "priority": "high",
                 "platform": j.platform,
                 "scheduled_at": j.scheduled_at,
+                "status": j.status,
                 "route": "/inbox",
             }
         )
