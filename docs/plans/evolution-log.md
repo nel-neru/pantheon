@@ -19,6 +19,34 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 15 — handed_off の公開確認フロー（出口側を配線、中断から再開）  (2026-06-12 22:21)
+  Plan   : handed_off 意味論の出口側 — 人間が実公開した後に published へ確定し、そこで初めて
+           成果 posts を記録する確認ステップ。これが無いと handed_off は dead end（成果が永遠に
+           0 のまま・inbox からも消える）。受け入れ基準 = confirm で published+成果記録が厳密
+           1 回 / 非 handed_off は 409 / 再ハンドオフ防止 / GUI から確認可能。
+           ※前セッションが実装途中でレート制限中断 → evolve_resume.ps1（Cycle 7 の成果）経由で
+           自動再開し、Check フェーズから続行。
+  Did    : work/handedoff-confirm-20260612。runner.confirm_handed_off()（status ゲート +
+           OutcomeStore.record の新フラグ dedupe_on_source=True でジョブ固有 source
+           "publish-confirm:<job_id>" の冪等記録 = 並行/再送でも二重計上しない防御の深層化）。
+           POST /api/publish-jobs/{id}/confirm（404/409 明示）。/run は handed_off に 409
+           （API 直叩きの再ハンドオフ＝二重下書き防止。dry_run は無害なので許可）。
+           /api/inbox に handed_off を「公開確認待ち」として集約（status フィールド追加）。
+           InboxPage: handed_off は 投稿/プレビュー の代わりに「公開を確認」ボタン+バッジ。
+           テスト: backend 6 本 + frontend 2 本。
+  Check  : test-triage GREEN（1093 passed / 基線 chmod 2 件のみ）/ frontend 91/91 + build 緑 /
+           ruff 緑。code-reviewer APPROVE（成果は確認時のみ・厳密 1 回・due_jobs 再進入なし・
+           承認ゲート不変・明示 404 維持・WS live 更新・result_url 永続化を実コードで全件検証。
+           所見は対応不要 nit 3 件: operation 欠落は /run と同型 / O(n) dedupe は既存パターン
+           準拠 / 非アトミック mark_status は既存全呼出と同許容で source-dedupe が backstop）。
+  Act    : merged ✅（7b7e42d..06d96b4 push、ブランチ削除）。これで収益化チェーンが一周:
+           生成→承認→assisted ハンドオフ→人間公開→確認→成果記録。学び: 「人間に引き渡す」
+           status を導入したら、必ず**人間が完了を報告する出口**も同時に設計する（さもなくば
+           正直さのための status が成果の計上漏れに変わる）。evolve_resume.ps1 による中断→
+           自動再開→merge の全行程が実地で機能した（Cycle 7 への投資が回収された初の実例）。
+  Next   : 実機 E2E（ユーザー同席、docs/publishing.md）/ プラットフォーム接続 GUI ページ /
+           atelier 残ページ移植 / wordpress Phase 2。
+
 Cycle 14 — exe に atelier dist を同梱（Cycle 8 follow-up 完済）  (2026-06-12 12:50)
   Plan   : 記録済み残債の最小候補。--ui atelier が exe（PyInstaller onedir）で legacy に
            fallback してしまう穴を 1 タプルで閉じる。受け入れ基準 = spec 構文 OK +
