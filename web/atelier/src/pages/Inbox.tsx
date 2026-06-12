@@ -5,7 +5,7 @@ import { Exhibit, EmptyState, ErrorNote, Loading, Plate, Stat, Tag } from '@/com
 import { useApi } from '@/hooks/useApi'
 import { api } from '@/lib/api'
 import { relativeTime } from '@/lib/format'
-import type { HandoffFull, OrgSummary, Proposal } from '@/lib/types'
+import type { HandoffFull, InboxItem, InboxPayload, OrgSummary, Proposal } from '@/lib/types'
 
 type OrgProposal = { org: string; proposal: Proposal }
 
@@ -16,6 +16,7 @@ function proposalId(p: Proposal): string {
 export function Inbox() {
   const orgs = useApi<OrgSummary[]>('/api/organizations', 45000)
   const handoffs = useApi<HandoffFull[]>('/api/handoffs', 30000)
+  const inbox = useApi<InboxPayload>('/api/inbox', 30000)
   const [proposals, setProposals] = useState<OrgProposal[]>([])
   const [loadingProps, setLoadingProps] = useState(true)
   const [busy, setBusy] = useState<Set<string>>(new Set())
@@ -106,6 +107,27 @@ export function Inbox() {
     }
   }
 
+  const actOnPublish = async (id: string, action: 'run' | 'confirm' | 'cancel') => {
+    const key = `pub:${id}:${action}`
+    mark(key, true)
+    try {
+      if (action === 'cancel') {
+        await api('DELETE', `/api/publish-jobs/${encodeURIComponent(id)}`)
+      } else {
+        await api('POST', `/api/publish-jobs/${encodeURIComponent(id)}/${action}`)
+      }
+      inbox.refetch()
+    } catch {
+      // 失敗時はリフェッチで整合（既存パターンに合わせる）
+    } finally {
+      mark(key, false)
+    }
+  }
+
+  const publishItems = (inbox.data?.items ?? []).filter(
+    (item): item is InboxItem & { kind: 'publish' } => item.kind === 'publish',
+  )
+
   const pendingHandoffs = (handoffs.data ?? []).filter((h) => h.status === 'pending')
 
   return (
@@ -121,7 +143,7 @@ export function Inbox() {
         lede="自律的に生まれた改善提案と、組織間の引き渡し。人の承認を一枚通すことで、Pantheon は暴走せず、意図に沿って前へ進みます。"
       />
 
-      <section className="mb-12 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3">
+      <section className="mb-12 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4">
         <Stat label="Proposals" value={proposals.length} tone="gold" sub="承認待ちの提案" />
         <Stat label="Handoffs" value={pendingHandoffs.length} tone="ice" sub="承認待ちの引き渡し" />
         <Stat
@@ -129,6 +151,12 @@ export function Inbox() {
           value={(orgs.data ?? []).length}
           tone="plain"
           sub="登録済みの組織"
+        />
+        <Stat
+          label="Publishing"
+          value={publishItems.length}
+          tone="plain"
+          sub="投稿・公開確認待ち"
         />
       </section>
 
@@ -232,6 +260,78 @@ export function Inbox() {
                   >
                     却下
                   </button>
+                </div>
+              </div>
+            </Plate>
+          )
+        })}
+      </div>
+
+      {/* Publishing */}
+      <div className="mt-20" />
+      <SectionLabel title="Publishing" note="投稿 → 公開確認" />
+      {inbox.loading && !inbox.data ? <Loading label="投稿キューを確認" /> : null}
+      {inbox.error && !inbox.data ? <ErrorNote message={inbox.error} /> : null}
+      {inbox.data && publishItems.length === 0 ? (
+        <EmptyState title="投稿・公開確認待ちのジョブはありません" hint="すべて完了しています" />
+      ) : null}
+
+      <div className="flex flex-col gap-4">
+        {publishItems.map((item) => {
+          const runKey = `pub:${item.id}:run`
+          const confirmKey = `pub:${item.id}:confirm`
+          const cancelKey = `pub:${item.id}:cancel`
+          const isHandedOff = item.status === 'handed_off'
+          const working = busy.has(runKey) || busy.has(confirmKey) || busy.has(cancelKey)
+          return (
+            <Plate key={item.id} className="rise">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="mb-2 flex items-center gap-2 flex-wrap">
+                    {item.platform ? <Tag tone="ice">{item.platform}</Tag> : null}
+                    <Tag tone="neutral">{item.category}</Tag>
+                    {isHandedOff ? (
+                      <Tag tone="rose">公開確認待ち</Tag>
+                    ) : (
+                      <Tag tone="gold">投稿待ち</Tag>
+                    )}
+                  </div>
+                  <div className="serif text-lg leading-snug">{item.title || '(無題の投稿)'}</div>
+                  <div className="mono text-faint text-[10px] tracking-wide mt-1">
+                    {item.org_name}
+                    {item.scheduled_at ? ` · ${relativeTime(item.scheduled_at)}` : ''}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {isHandedOff ? (
+                    <button
+                      type="button"
+                      className="btn btn-gold"
+                      disabled={busy.has(confirmKey)}
+                      onClick={() => void actOnPublish(item.id, 'confirm')}
+                    >
+                      {busy.has(confirmKey) ? '…' : '公開を確認'}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-gold"
+                        disabled={working}
+                        onClick={() => void actOnPublish(item.id, 'run')}
+                      >
+                        {busy.has(runKey) ? '…' : '投稿'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={working}
+                        onClick={() => void actOnPublish(item.id, 'cancel')}
+                      >
+                        取消
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </Plate>
