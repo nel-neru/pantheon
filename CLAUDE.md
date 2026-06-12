@@ -24,6 +24,7 @@ Backend (project venv at `.venv/`):
 .\.venv\Scripts\python.exe -m ruff check . --fix            # autofix imports/lint
 .\.venv\Scripts\python.exe -m ruff format .                 # format
 pantheon serve --port 7860                                  # run the app (FastAPI, serves web/dist)
+pantheon serve --ui atelier                                 # serve the new Atelier GUI instead (web/atelier/dist; PANTHEON_UI env also works)
 ```
 
 Frontend (`web/frontend/`; Node v24 installed via winget — see `.claude/settings.local.json` `env.PATH`):

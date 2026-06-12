@@ -19,6 +19,25 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 8 — atelier を pantheon serve から配信（--ui atelier）  (2026-06-12 09:35)
+  Plan   : 新 GUI を dev server 無しで使える導線。サブパス配信は Vite base/Router 再ビルドが
+           必要で壊れやすいため「配信 dist の差し替え」方式。受け入れ基準 = 既定 legacy 不変 /
+           --ui atelier で atelier 配信（未ビルド時は警告して legacy fallback）/ 単体テスト /
+           明示 404 維持 / 実機 smoke。落とした候補: trend-watcher / _publish_live。
+  Did    : work/atelier-serve-20260612。web/server.py に _resolve_serve_dir()（PANTHEON_UI 判定・
+           fallback 警告）+ assets mount の条件を _serve_dir 基準に修正。serve/up 両コマンドに
+           --ui（web.server import 前に環境変数へ反映）。テスト3本。docs（CLAUDE.md / atelier
+           README）。**副発見の fix-forward**: PS5.1 Start-Process -ArgumentList は空白含む配列
+           要素を自動クォートしない（argdump で実証）→ Cycle 7 の evolve_resume.ps1 の claude
+           起動が引数分割で壊れていた → 手動クォート1本文字列に修正＋AGENTS.md に規約固定化。
+           Cycle 7 レビューの「配列形式は自動クォートされる」判断は誤りだった（dry-run 検証は
+           引数マーシャリングまで届かない、という教訓）。
+  Check  : test_web_server 92 passed（基線2のみ）/ lint 緑 / 実機 smoke: PANTHEON_UI=atelier で
+           「Pantheon Atelier」index 配信 + /api 明示 404 維持を確認 / クォート修正も argdump で
+           実証。レビューは下記（結果はマージ後追記）。
+  Act    : （マージ後追記）
+  Next   : trend-watcher で CC 設定更新 / _publish_live 前進 / atelier 残ページ移植。
+
 Cycle 7 — レート制限解除後の /evolve 自動再開（ユーザー要望）  (2026-06-12 09:15)
   Plan   : 「5hレート制限解除後に自動再開されない」へのOSレベル対処。受け入れ基準 =
            再開判定スクリプト（fresh/stale/disabled 3分岐検証）+ schtasks 登録 + レビュー + merge。

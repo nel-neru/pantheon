@@ -63,9 +63,11 @@ npm run preview    # serve the production build locally
   (legacy is 5173), so both can run side by side.
 - Uses the same API contract and the same `pantheon_api_token` localStorage key, so if you
   set `PANTHEON_API_TOKEN` on the backend, opening `…/?token=xxx` once authorizes both GUIs.
-- The backend still serves the **legacy** build from `web/dist` by default. Atelier is opt-in
-  (run its dev server, or point a static host at `web/atelier/dist`). Nothing about the
-  existing GUI changes.
+- The backend still serves the **legacy** build from `web/dist` by default. Atelier is opt-in:
+  `pantheon serve --ui atelier` (or `PANTHEON_UI=atelier`) serves `web/atelier/dist` at the
+  root instead — build it first (`cd web/atelier && npm run build`); if the build is missing
+  the server warns and falls back to legacy. The dev-server route (port 5273 proxying :8000)
+  also still works. Nothing about the existing GUI changes.
 
 ## Status (iteration 1)
 
