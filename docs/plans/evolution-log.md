@@ -19,6 +19,29 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 17 — atelier Inbox に Publishing セクション（収益化フローの新 GUI parity）  (2026-06-12 22:43)
+  Plan   : 新フラッグシップ GUI（atelier）の Inbox が提案+handoff のみで publishing チェーン
+           （投稿待ち/公開確認待ち）が完全欠落 — legacy でしか収益化フローを回せない状態の解消。
+           Cycle 15/16 で完成済みの API をそのまま使う parity = 高レバレッジ・高確信度・可逆。
+           受け入れ基準 = queued→投稿/取消、handed_off→公開を確認 が atelier で完結 /
+           vitest+build 緑 / レビュー通過。落とした候補: wordpress Phase 2（資格情報設計が
+           無人運転に不適）/ 実機 E2E（ユーザー同席要）/ CLI confirm parity（GUI が主経路）。
+  Did    : work/atelier-publish-inbox-20260612。frontend-dev に委譲: Inbox.tsx に第3セクション
+           Publishing（/api/inbox 30s ポーリング、kind=publish フィルタ、busy-key
+           pub:{id}:{action}）、handed_off には /run が 409 するボタンを出さない設計、
+           4 つ目の Stat。types.ts に InboxItem/InboxPayload。テストは fetch モック
+           （api ラッパと URL 構築まで実走）で 9 本。
+  Check  : code-reviewer APPROVE-WITH-NITS だが **major 1 件**: busy-key 非対称 — 取消
+           (DELETE) in-flight 中も 投稿 が押せて同一ジョブに並行 run/delete が走り得る
+           （バックエンドの 409/404 防御で被害は限定、だが busy 機構の目的そのもの）→
+           disabled を working に広げ + in-flight を保留 Promise で観察する回帰テスト追加。
+           最終: atelier 24/24 + build 緑 / merge gate 通過。
+  Act    : merged ✅。学び: 複数アクションを持つカードの busy 制御は「自ボタンのみ lock」が
+           罠 — 同一エンティティへの全 mutating アクションを相互排他にする（レビューが
+           2 サイクル連続で frontend の状態管理バグを実害確定している — 省略不可の網）。
+  Next   : 接続ページの atelier parity 判断 / 24h 基盤・トレンドの健全性監査（flow-audit）/
+           wordpress Phase 2 設計メモ（実装はユーザー同席時）。
+
 Cycle 16 — プラットフォーム接続 GUI ページ（/connections）  (2026-06-12 22:33)
   Plan   : Cycle 10/11/13/15 の Next に毎回積み残していた接続 GUI。API 3 本
            （list/login/disconnect）は実装済みで GUI だけ欠落 = レバレッジ高・確信度高・可逆。
