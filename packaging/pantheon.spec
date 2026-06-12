@@ -3,6 +3,7 @@
 
 ビルド手順（リポジトリルートから）:
     1. web/frontend で `npm run build`（→ web/dist を生成）
+       （任意）web/atelier でも `npm run build`（→ web/atelier/dist。--ui atelier 用）
     2. `.venv/Scripts/python.exe -m PyInstaller packaging/pantheon.spec --noconfirm`
     出力: dist/Pantheon/Pantheon.exe + dist/Pantheon/_internal/...
 
@@ -29,6 +30,9 @@ def _src(*parts: str) -> str:
 _raw_datas = [
     # 人間用可視化サイト（ビルド済み SPA）と静的フォールバック
     (_src("web", "dist"), os.path.join("web", "dist")),
+    # 新 GUI（pantheon serve --ui atelier / PANTHEON_UI=atelier が配信する dist）。
+    # 未ビルドなら下の exists フィルタで自然に外れ、serve 側は legacy に fallback する。
+    (_src("web", "atelier", "dist"), os.path.join("web", "atelier", "dist")),
     (_src("web", "static"), os.path.join("web", "static")),
     # YAML テンプレート・スキル・ナレッジ
     (_src("config"), "config"),

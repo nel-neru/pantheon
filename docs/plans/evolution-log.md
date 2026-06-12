@@ -19,6 +19,19 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 14 — exe に atelier dist を同梱（Cycle 8 follow-up 完済）  (2026-06-12 12:50)
+  Plan   : 記録済み残債の最小候補。--ui atelier が exe（PyInstaller onedir）で legacy に
+           fallback してしまう穴を 1 タプルで閉じる。受け入れ基準 = spec 構文 OK +
+           同梱先と server.py の resource_path 契約の一致 + レビュー。
+  Did    : work/pyinstaller-atelier-dist-20260612。packaging/pantheon.spec の datas に
+           (web/atelier/dist, web/atelier/dist) を追加（既存 exists フィルタで未ビルド時は
+           自然に外れ、serve の警告つき fallback と整合）。docstring に atelier ビルド手順1行。
+  Check  : spec compile() OK / ATELIER_DIST_DIR=resource_path("web","atelier","dist") と
+           完全一致を確認。code-reviewer APPROVE（所見ゼロ — dist に .map/秘密なしも確認済み）。
+  Act    : merged（結果は下記追記）。Cycle 8 レビュー由来の follow-up はこれで完済。
+  Next   : 実機 E2E（note セレクタ + X intent、docs/publishing.md）/ 接続 GUI ページ /
+           atelier 残ページ移植。
+
 Cycle 13 — X 実投稿 Phase 1: web intent で assisted ハンドオフ  (2026-06-12 12:25)
   Plan   : 収益化チェーンの残り主要アダプタ。note（Cycle 11）と同型の assisted ハンドオフを
            X に展開。受け入れ基準 = フェイク検証で緑 / handed_off 意味論・不変条件の維持 /
