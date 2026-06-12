@@ -19,6 +19,28 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 16 — プラットフォーム接続 GUI ページ（/connections）  (2026-06-12 22:33)
+  Plan   : Cycle 10/11/13/15 の Next に毎回積み残していた接続 GUI。API 3 本
+           （list/login/disconnect）は実装済みで GUI だけ欠落 = レバレッジ高・確信度高・可逆。
+           受け入れ基準 = 接続状態一覧 + 接続（ヘッドフルログイン起動→ポーリング完了検知）+
+           切断が GUI で完結 / vitest + build 緑 / レビュー通過。落とした候補: 実機 E2E
+           （ユーザー同席要）/ wordpress Phase 2・atelier 残ページ（1 サイクルに収まらない）。
+  Did    : work/connections-gui-20260612。frontend-dev subagent に委譲: ConnectionsPage.tsx
+           （3s ポーリング+120s タイムアウト、poller は useRef Map+unmount 掃除+多重起動ガード、
+           capability はハードコードせず API の status/detail をそのまま表示）、/connections
+           ルート+nav（Plug、インボックスの隣）、テスト 7 本（fake timers は
+           shouldAdvanceTime + advanceTimers で userEvent と両立）。
+  Check  : code-reviewer APPROVE-WITH-NITS（poller リーク/stale closure/URL エンコード/XSS/
+           契約一致を全検証）→ 確定 minor 1 件反映: ポーリング中バッジを render から
+           ref 参照→state ミラーに（タイムアウト経路はsetState を伴わずバッジ残留するため）。
+           提案 1 件も採用: ポーリング完了検知の happy path テスト追加。
+           最終: vitest 98/98 + build 緑 / merge gate の backend テストも通過。
+  Act    : merged ✅（--delete-branch）。学び: 「ref を render で読む」は変更が描画に反映
+           されない時限バグ — 表示に使う進行状態は state にミラーする（rules/frontend.md は
+           既にこの語彙だが、レビューで毎回掴まえるのが現実的な網）。
+  Next   : atelier への接続/確認フロー parity 判断 / wordpress Phase 2 REST /
+           24h 基盤の硬化（roadmap B/C トラック）。
+
 Cycle 15 — handed_off の公開確認フロー（出口側を配線、中断から再開）  (2026-06-12 22:21)
   Plan   : handed_off 意味論の出口側 — 人間が実公開した後に published へ確定し、そこで初めて
            成果 posts を記録する確認ステップ。これが無いと handed_off は dead end（成果が永遠に

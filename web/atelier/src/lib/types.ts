@@ -158,3 +158,22 @@ export type Proposal = {
   created_at?: string
   [key: string]: unknown
 }
+
+// /api/inbox — 投稿承認・公開確認キュー
+export type InboxItem = {
+  kind: string
+  id: string
+  org_name: string
+  title: string
+  category: string
+  priority: string
+  platform?: string
+  scheduled_at?: string | null
+  status?: 'queued' | 'handed_off' | string
+  route?: string
+}
+
+export type InboxPayload = {
+  items: InboxItem[]
+  counts: Record<string, number>
+}
