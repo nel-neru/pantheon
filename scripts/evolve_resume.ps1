@@ -38,17 +38,32 @@ if (Test-Path $disablePath) {
 }
 
 # --- 多重起動ガード（前回の headless 実行がまだ生きていれば何もしない） ---
+# ただし lock が閾値の2倍より古ければ「生きているが進んでいない」(permission 待ち等の
+# ハング) とみなして旧プロセスを止め、再開を続行する（永久 wedge の防止）。
 if (Test-Path $lockPath) {
-    $oldPid = (Get-Content $lockPath -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $oldPid = (Get-Content $lockPath -ErrorAction SilentlyContinue | Select-Object -First 1) -as [int]
+    $lockAgeMin = [int](((Get-Date) - (Get-Item $lockPath).LastWriteTime).TotalMinutes)
     if ($oldPid -and (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) {
-        Write-Log "skip: 前回の再開プロセス (pid=$oldPid) が実行中"
-        exit 0
+        if ($lockAgeMin -lt (2 * $StaleMinutes)) {
+            Write-Log "skip: 前回の再開プロセス (pid=$oldPid, lock ${lockAgeMin}分前) が実行中"
+            exit 0
+        }
+        Write-Log "stale-lock: pid=$oldPid が ${lockAgeMin}分 >= $(2 * $StaleMinutes)分 進捗なし → 停止して再開する"
+        try { Stop-Process -Id $oldPid -Force -ErrorAction Stop } catch {}
     }
+    Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
 }
 
 # --- heartbeat: リポジトリの最終コミットからの経過分 ---
 $git = "C:\Program Files\Git\cmd\git.exe"
-if (-not (Test-Path $git)) { $git = "git" }
+if (-not (Test-Path $git)) {
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitCmd) {
+        Write-Log "skip: git が見つかりません（repo=$repo）"
+        exit 0
+    }
+    $git = $gitCmd.Source
+}
 $lastCommitEpoch = & $git -C $repo log -1 --format=%ct 2>$null
 if (-not $lastCommitEpoch) {
     Write-Log "skip: git log が取得できません（repo=$repo）"
@@ -74,12 +89,30 @@ if (-not (Test-Path $ClaudeBin)) {
 
 $prompt = "/evolve 自動再開（evolve_resume.ps1 から）: 前回のセッションが中断している。docs/plans/evolution-log.md と git 状態（現在ブランチ・未コミット・未マージの work ブランチ）を確認し、中断点から PDCA サイクルを再開せよ。不変の制約（work ブランチ運用・テストゲート・敵対的レビュー・claude CLI のみ・資格情報に触れない）は /evolve 本文どおり。"
 
+# headless では permission プロンプトに誰も答えられないため、編集系を自動許可する
+# （Bash 等は .claude/settings.local.json の allow リストでカバー）。出力形式は
+# 製品の生成経路（core/runtime/claude_code.py）と同じ json に揃える。
+$claudeArgs = @("-p", $prompt, "--output-format", "json", "--permission-mode", "acceptEdits")
+
 if ($DryRun) {
-    Write-Log "dry-run: 最終コミット ${ageMinutes}分前 >= ${StaleMinutes}分 → 再開対象。実行コマンド: `"$ClaudeBin`" -p <prompt> (cwd=$repo)"
+    Write-Log "dry-run: 最終コミット ${ageMinutes}分前 >= ${StaleMinutes}分 → 再開対象。実行コマンド: `"$ClaudeBin`" $($claudeArgs -join ' ') (cwd=$repo)"
     exit 0
 }
 
+# 実行ごとにタイムスタンプ付きログ（前回分の上書き・ファイルロック衝突を回避）。14日より古い分は掃除。
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$outLog = Join-Path $pantheonHome "evolve_resume.$stamp.out.log"
+$errLog = Join-Path $pantheonHome "evolve_resume.$stamp.err.log"
+Get-ChildItem $pantheonHome -Filter "evolve_resume.*.log" -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-14) } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+
 Write-Log "resume: 最終コミット ${ageMinutes}分前 >= ${StaleMinutes}分 → headless /evolve を起動（bin=$ClaudeBin）"
-$proc = Start-Process -FilePath $ClaudeBin -ArgumentList @("-p", $prompt) -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput (Join-Path $pantheonHome "evolve_resume.out.log") -RedirectStandardError (Join-Path $pantheonHome "evolve_resume.err.log") -PassThru
-Set-Content -Path $lockPath -Value $proc.Id -Encoding utf8
-Write-Log "resume: 起動済み pid=$($proc.Id)（制限中なら即失敗し、次の毎時実行が再試行する）"
+try {
+    $proc = Start-Process -FilePath $ClaudeBin -ArgumentList $claudeArgs -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
+} catch {
+    Write-Log "error: 起動に失敗しました（次の毎時実行が再試行します）: $_"
+    exit 1
+}
+Set-Content -Path $lockPath -Value $proc.Id -Encoding ascii
+Write-Log "resume: 起動済み pid=$($proc.Id) log=$outLog（制限中なら即失敗し、次の毎時実行が再試行する）"
