@@ -19,6 +19,36 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 7 — レート制限解除後の /evolve 自動再開（ユーザー要望）  (2026-06-12 09:15)
+  Plan   : 「5hレート制限解除後に自動再開されない」へのOSレベル対処。受け入れ基準 =
+           再開判定スクリプト（fresh/stale/disabled 3分岐検証）+ schtasks 登録 + レビュー + merge。
+           セッション内の暫定網として CronCreate（毎時:17、session-only と判明）も併設。
+  Did    : work/evolve-auto-resume-20260612。scripts/evolve_resume.ps1（最終コミット時刻を
+           heartbeat に使う: auto-commit フックが毎ターン commit するため生きたセッションが
+           あれば必ず新しい。90分超で claude -p headless 再開、pid lock + disabled キルスイッチ）、
+           install/uninstall_evolve_resume_task.ps1（毎時タスク）。タスク登録・PANTHEON_CLAUDE_BIN
+           を setx で恒久化（watchdog 起動のデーモンも claude へ到達可能に）。
+           付随発見: (1) settings.local.json env.PATH の ${PATH} がハーネスで展開されず
+           セッション PATH が激狭だった（git/claude/powershell 不可視の根因）→明示列挙に修正
+           (2) 日本語 .ps1 は UTF-8 BOM 必須（PS5.1 が cp932 誤読でパース崩壊）
+           (3) このセッション自体が約4時間レート制限停止していた（263分前コミットで実証）
+  Check  : dry-run 3分岐（fresh=skip / stale=再開対象 / disabled=skip）+ claude.exe --version 疎通。
+           レビューと merge はこの後（結果は追記）。
+  Act    : schtasks 'Pantheon Evolve Resume' 稼働開始。学び: 「auto-commit の毎ターン commit」は
+           セッション生存の heartbeat として再利用できる。
+  Next   : atelier serve 導線 / trend-watcher で CC 設定更新 / _publish_live（承認ゲート付き）。
+
+Cycle 6 — Organization load の silent-drop を観測可能に  (2026-06-12 05:20)
+  Plan   : 壊れた組織 JSON が黙って消える堅牢性の穴（Cycle 3 で発見）。受け入れ基準 =
+           警告ログ + 他組織は読める + テスト。落とした候補: serve 導線。
+  Did    : work/org-load-warn-20260612。platform/state.py に warn_skipped_org_file
+           （path+mtime デデュープ: 常時ポーリング環境で警告洪水を防ぎ初回のみ WARNING）、
+           per-repo 側 RepoStateManager にも同ヘルパを配線（レビュー所見）。テスト2本更新。
+  Check  : 31 passed / lint 緑。code-reviewer APPROVE（hot path 洪水と sibling 整合の
+           提案2件 → 両方対応）。
+  Act    : merged ✅（7737bd9..）。学び: 耐性のための握りつぶしは「観測可能な握りつぶし」にする。
+  Next   : evolve 自動再開（→ Cycle 7 で実施）/ serve 導線。
+
 Cycle 5 — 順序フレーク2件の根治（基線 2 件=chmod のみへ）  (2026-06-12 05:05)
   Plan   : test_get_improvement_history（単体でも 25-35% 失敗へ悪化）と
            test_backup_manager_cleanup_old（12-15%）の根治。受け入れ基準 = 20回反復+全件で安定
