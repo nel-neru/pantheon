@@ -89,3 +89,64 @@ it('承認待ちが無いとき空状態を表示する', async () => {
   renderWithRouter(<InboxPage />)
   expect(await screen.findByText('承認待ちはありません')).toBeInTheDocument()
 })
+
+it('handed_off アイテムは「公開を確認」ボタンを表示し「投稿」「プレビュー」は非表示', async () => {
+  const handedOffResponse = {
+    items: [
+      {
+        kind: 'publish',
+        id: 'job-ho',
+        org_name: 'Note Sales',
+        title: '公開確認テスト記事',
+        category: 'external_action',
+        priority: 'high',
+        platform: 'note',
+        scheduled_at: null,
+        route: '/inbox',
+        status: 'handed_off',
+      },
+    ],
+    counts: { proposal: 0, handoff: 0, publish: 1, total: 1 },
+  }
+  mockApi.mockResolvedValueOnce(handedOffResponse)
+  renderWithRouter(<InboxPage />)
+  await screen.findByText('公開確認テスト記事')
+
+  expect(screen.getByRole('button', { name: /公開を確認/ })).toBeInTheDocument()
+  expect(screen.getByText('公開確認待ち')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^投稿$/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /プレビュー/ })).not.toBeInTheDocument()
+})
+
+it('handed_off アイテムの「公開を確認」クリックで /confirm を叩く', async () => {
+  const handedOffResponse = {
+    items: [
+      {
+        kind: 'publish',
+        id: 'job-ho',
+        org_name: 'Note Sales',
+        title: '公開確認テスト記事',
+        category: 'external_action',
+        priority: 'high',
+        platform: 'note',
+        scheduled_at: null,
+        route: '/inbox',
+        status: 'handed_off',
+      },
+    ],
+    counts: { proposal: 0, handoff: 0, publish: 1, total: 1 },
+  }
+  mockApi.mockResolvedValueOnce(handedOffResponse) // initial GET
+  renderWithRouter(<InboxPage />)
+  await screen.findByText('公開確認テスト記事')
+
+  mockApi.mockResolvedValueOnce({ ok: true }) // confirm
+  mockApi.mockResolvedValueOnce({ items: [], counts: { proposal: 0, handoff: 0, publish: 0, total: 0 } }) // reload
+
+  await userEvent.click(screen.getByRole('button', { name: /公開を確認/ }))
+
+  await waitFor(() => {
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/publish-jobs/job-ho/confirm')
+  })
+  expect(mockedToast.success).toHaveBeenCalled()
+})

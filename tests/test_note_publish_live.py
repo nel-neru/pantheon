@@ -190,6 +190,74 @@ async def test_runner_marks_handed_off_without_recording_outcome(tmp_path, monke
     assert json.loads(log_lines[-1])["handed_off"] is True  # 監査ログには残る
 
 
+def test_confirm_handed_off_publishes_and_records_outcome(tmp_path):
+    """人間の公開確認で初めて published + 成果記録（handed_off 意味論の出口側）。"""
+    from core.publishing.runner import confirm_handed_off
+
+    store = PublishJobStore(platform_home=tmp_path)
+    job = store.add_job(PublishJob(org_name="Note Sales", platform="note", title="t", body="b"))
+    store.mark_status(job.job_id, status="handed_off")
+
+    result = confirm_handed_off(
+        job.job_id, store=store, platform_home=tmp_path, result_url="https://note.com/x/n/abc"
+    )
+
+    assert result["ok"] is True
+    updated = store.get_job(job.job_id)
+    assert updated.status == "published"
+    assert updated.result_url.endswith("abc")
+
+    from core.metrics.outcomes import OutcomeStore
+
+    summary = OutcomeStore(platform_home=tmp_path).summary_for_org("Note Sales")
+    assert summary.by_metric.get("posts", {}).get("sum") == 1  # 確認で初めて成果に数える
+
+    log_lines = (tmp_path / "publish_log.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert json.loads(log_lines[-1])["confirmed_by_human"] is True
+
+
+def test_confirm_outcome_is_idempotent_even_without_status_gate(tmp_path):
+    """成果記録自体がジョブ固有 source で冪等（status ゲートを素通りした並行系でも二重計上しない）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    store = OutcomeStore(platform_home=tmp_path)
+    first = store.record(
+        "o", "posts", 1, unit="count", source="publish-confirm:job1", dedupe_on_source=True
+    )
+    second = store.record(
+        "o", "posts", 1, unit="count", source="publish-confirm:job1", dedupe_on_source=True
+    )
+    other = store.record(
+        "o", "posts", 1, unit="count", source="publish-confirm:job2", dedupe_on_source=True
+    )
+
+    assert second.event_id == first.event_id  # 既存イベントが返る（追記なし）
+    assert other.event_id != first.event_id  # 別ジョブは別イベント
+    assert store.summary_for_org("o").by_metric["posts"]["sum"] == 2
+
+
+def test_confirm_rejects_non_handed_off_and_unknown(tmp_path):
+    """queued/published 等は確認できない（成果の二重記録を防ぐ）。不在 ID も正直に失敗。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.publishing.runner import confirm_handed_off
+
+    store = PublishJobStore(platform_home=tmp_path)
+    job = store.add_job(PublishJob(org_name="o", platform="note", title="t", body="b"))
+
+    result = confirm_handed_off(job.job_id, store=store, platform_home=tmp_path)
+    assert result["ok"] is False
+    assert store.get_job(job.job_id).status == "queued"  # 変更されない
+
+    assert confirm_handed_off("nonexistent", store=store, platform_home=tmp_path)["ok"] is False
+
+    # 確認 → 再確認は拒否（published は handed_off ではない）= 成果は 1 回だけ
+    store.mark_status(job.job_id, status="handed_off")
+    assert confirm_handed_off(job.job_id, store=store, platform_home=tmp_path)["ok"] is True
+    assert confirm_handed_off(job.job_id, store=store, platform_home=tmp_path)["ok"] is False
+    summary = OutcomeStore(platform_home=tmp_path).summary_for_org("o")
+    assert summary.by_metric.get("posts", {}).get("sum") == 1
+
+
 async def test_handed_off_job_is_not_due_again(tmp_path, monkeypatch):
     """handed_off は人間待ちであり、自動実行経路（due_jobs）に二度と乗らない。"""
     store = PublishJobStore(platform_home=tmp_path)

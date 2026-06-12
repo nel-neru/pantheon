@@ -29,6 +29,7 @@ type InboxItem = {
   platform?: string
   scheduled_at?: string | null
   route: string
+  status?: string
 }
 
 type InboxCounts = {
@@ -200,6 +201,16 @@ export function InboxPage() {
     )
   }
 
+  const confirmPublish = (item: InboxItem) => {
+    void runAction(
+      `confirm:${item.id}`,
+      async () => {
+        await api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/confirm`)
+      },
+      '公開を確認しました。',
+    )
+  }
+
   return (
     <>
       <header className="page-header">
@@ -282,7 +293,8 @@ export function InboxPage() {
         {!loading && !error
           ? visibleItems.map((item) => {
               const key = `${item.kind}:${item.id}`
-              const busy = actionId === key || actionId === `preview:${item.id}`
+              const isHandedOff = item.kind === 'publish' && item.status === 'handed_off'
+              const busy = actionId === key || actionId === `preview:${item.id}` || actionId === `confirm:${item.id}`
               return (
                 <div key={key} className="proposal-card">
                   <div className="proposal-header">
@@ -292,6 +304,12 @@ export function InboxPage() {
                           <KindIcon kind={item.kind} />
                           {kindLabel(item.kind)}
                         </span>
+                        {isHandedOff ? (
+                          <span className="badge badge-yellow flex items-center gap-1">
+                            <CheckCircle size={12} />
+                            公開確認待ち
+                          </span>
+                        ) : null}
                         <div className="font-semibold truncate">{item.title}</div>
                         <span className={`badge ${priorityBadge(item.priority)}`}>{item.priority}</span>
                         {item.platform ? <span className="badge badge-neutral">{item.platform}</span> : null}
@@ -303,27 +321,41 @@ export function InboxPage() {
                     </div>
                   </div>
                   <div className="proposal-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm text-green"
-                      onClick={() => approveItem(item)}
-                      disabled={busy}
-                    >
-                      <CheckCircle size={14} />
-                      {item.kind === 'publish' ? '投稿' : '承認'}
-                    </button>
-                    {item.kind === 'publish' ? (
+                    {isHandedOff ? (
                       <button
                         type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => previewPublish(item)}
+                        className="btn btn-secondary btn-sm text-green"
+                        onClick={() => confirmPublish(item)}
                         disabled={busy}
-                        title="dry-run。外部には投稿しません。"
                       >
-                        <Eye size={14} />
-                        プレビュー
+                        <CheckCircle size={14} />
+                        公開を確認
                       </button>
-                    ) : null}
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm text-green"
+                          onClick={() => approveItem(item)}
+                          disabled={busy}
+                        >
+                          <CheckCircle size={14} />
+                          {item.kind === 'publish' ? '投稿' : '承認'}
+                        </button>
+                        {item.kind === 'publish' ? (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => previewPublish(item)}
+                            disabled={busy}
+                            title="dry-run。外部には投稿しません。"
+                          >
+                            <Eye size={14} />
+                            プレビュー
+                          </button>
+                        ) : null}
+                      </>
+                    )}
                     <button
                       type="button"
                       className="btn btn-danger btn-sm"
