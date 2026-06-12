@@ -19,6 +19,26 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 13 — X 実投稿 Phase 1: web intent で assisted ハンドオフ  (2026-06-12 12:25)
+  Plan   : 収益化チェーンの残り主要アダプタ。note（Cycle 11）と同型の assisted ハンドオフを
+           X に展開。受け入れ基準 = フェイク検証で緑 / handed_off 意味論・不変条件の維持 /
+           note との共通部（keepalive）の重複排除。落とした候補: PyInstaller datas / 接続 GUI。
+  Did    : work/x-publish-live-20260612。XPublisher._publish_live: **web intent URL
+           （x.com/intent/post?text=urlencoded）でプリフィル** — 公開エンドポイントのため
+           contenteditable fill よりUI 変更に強い。body 優先・空は起動前に正直な失敗・280字超は
+           detail 警告（len() は粗い近似と明記、自動分割 Phase 2）。adapters/handoff.py 新設で
+           keepalive を note/X 共有化（プロセス全体・横断の単一リストと意図を明記）。
+           docs/publishing.md に X 追記。**プロセス反省**: ブランチ作成を忘れ main 上で編集
+           （未コミットだったため checkout -b で無害に是正。Stop hook の防御も健在だった）。
+  Check  : test-triage GREEN（1086 passed / 基線 chmod 2 件のみ）/ ruff 緑。code-reviewer
+           APPROVE-WITH-NITS（不変条件・quote() エンコーディング・URL 長・handoff 移設の
+           回帰なしを実証検証済み）→ nits 3 件反映: len() 近似コメント / keepalive の
+           横断設計コメント / 共有契約の直接ユニットテスト追加。
+  Act    : merged（結果は下記追記）。学び: プラットフォームが公開している intent/share URL が
+           あるなら、セレクタ自動化より先にそれを使う（壊れにくさが段違い）。
+  Next   : 実機 E2E（note+X まとめて docs/publishing.md 手順）/ 接続 GUI ページ /
+           PyInstaller datas（web/atelier/dist）。
+
 Cycle 12 — branch_status --prune の偽成功報告を根治  (2026-06-12 11:45)
   Plan   : Cycle 11 後の掃除で発覚した確定バグ。git() ラッパ（失敗時も stdout 返却・表示系には
            正しい設計）を削除操作に流用していたため、`git branch -d` の拒否（ローカルが自分の

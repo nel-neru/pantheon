@@ -15,9 +15,10 @@ assisted の契約（``base.py`` の PUBLISH_MODE_ASSISTED コメントと同じ
 
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Optional
 
 from core.publishing.adapters.base import BrowserPublisher
+from core.publishing.adapters.handoff import keep_alive, prune_handoff_keepalive
 from core.publishing.base import (
     PLATFORM_NOTE,
     PUBLISH_MODE_AUTO,
@@ -33,29 +34,6 @@ NOTE_EDITOR_URL = "https://editor.note.com/new"
 NOTE_TITLE_SELECTOR = 'textarea[placeholder="記事タイトル"]'
 NOTE_BODY_SELECTOR = 'div[contenteditable="true"]'
 EDITOR_READY_TIMEOUT_MS = 30_000
-
-# assisted ハンドオフ中のブラウザを生かしておくための参照（GC で閉じない）。
-# 人間がウィンドウを閉じるまで開いたままになる（Phase 1 の意図的な挙動）。
-# 閉じ終わった残骸は次のハンドオフ時に _prune_handoff_keepalive で解放する。
-_HANDOFF_KEEPALIVE: List[Any] = []
-
-
-async def _prune_handoff_keepalive() -> None:
-    """人間が閉じ終わったハンドオフの残骸（駆動プロセス）を後始末する。
-
-    launcher が ``is_alive()`` を持たない場合（テストのフェイク等）は生存扱いで残す。
-    """
-    still_open: List[Any] = []
-    for launcher in _HANDOFF_KEEPALIVE:
-        checker = getattr(launcher, "is_alive", None)
-        if checker is None or checker():
-            still_open.append(launcher)
-            continue
-        try:
-            await launcher.close()  # ブラウザは閉鎖済み — 駆動プロセスだけ解放
-        except Exception:  # noqa: BLE001
-            pass
-    _HANDOFF_KEEPALIVE[:] = still_open
 
 
 class NotePublisher(BrowserPublisher):
@@ -89,7 +67,7 @@ class NotePublisher(BrowserPublisher):
 
         state_path = str(store.state_path(self.platform))
         factory = self._launcher_factory or (lambda: PlaywrightLauncher(storage_state=state_path))
-        await _prune_handoff_keepalive()
+        await prune_handoff_keepalive()
         launcher = factory()
         try:
             context = await launcher.launch()
@@ -120,7 +98,7 @@ class NotePublisher(BrowserPublisher):
             )
 
         # assisted の契約どおり、最終公開は人間 — ブラウザは開いたままハンドオフする。
-        _HANDOFF_KEEPALIVE.append(launcher)
+        keep_alive(launcher)
         return PublishResult(
             ok=True,
             platform=self.platform,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-import core.publishing.adapters.note as note_mod
+import core.publishing.adapters.handoff as handoff_mod
 from core.publishing.adapters.note import (
     NOTE_BODY_SELECTOR,
     NOTE_EDITOR_URL,
@@ -96,7 +96,7 @@ async def test_not_connected_fails_with_connect_hint(tmp_path):
 
 
 async def test_assisted_fills_editor_and_hands_off_with_browser_open(tmp_path, monkeypatch):
-    monkeypatch.setattr(note_mod, "_HANDOFF_KEEPALIVE", [])
+    monkeypatch.setattr(handoff_mod, "_HANDOFF_KEEPALIVE", [])
     page = _FakePage()
     launcher = _FakeLauncher(page)
     publisher = NotePublisher(
@@ -113,7 +113,7 @@ async def test_assisted_fills_editor_and_hands_off_with_browser_open(tmp_path, m
     assert page.filled[NOTE_BODY_SELECTOR] == "本文"
     # assisted の契約: 最終公開は人間 — ブラウザは閉じずに開いたまま引き渡す。
     assert launcher.closed is False
-    assert note_mod._HANDOFF_KEEPALIVE == [launcher]
+    assert handoff_mod._HANDOFF_KEEPALIVE == [launcher]
 
 
 async def test_next_handoff_prunes_closed_browsers(tmp_path, monkeypatch):
@@ -129,7 +129,7 @@ async def test_next_handoff_prunes_closed_browsers(tmp_path, monkeypatch):
 
     dead = _DeadLauncher(_FakePage())
     live = _LiveLauncher(_FakePage())
-    monkeypatch.setattr(note_mod, "_HANDOFF_KEEPALIVE", [dead, live])
+    monkeypatch.setattr(handoff_mod, "_HANDOFF_KEEPALIVE", [dead, live])
     new_launcher = _FakeLauncher(_FakePage())
     publisher = NotePublisher(
         session_store=_connected_store(tmp_path), launcher_factory=lambda: new_launcher
@@ -140,11 +140,11 @@ async def test_next_handoff_prunes_closed_browsers(tmp_path, monkeypatch):
     assert result.ok is True
     assert dead.closed is True  # 死んだ残骸は close で駆動プロセスを解放
     assert live.closed is False  # 人間が使用中のブラウザには触れない
-    assert note_mod._HANDOFF_KEEPALIVE == [live, new_launcher]
+    assert handoff_mod._HANDOFF_KEEPALIVE == [live, new_launcher]
 
 
 async def test_fill_failure_closes_browser_and_is_honest(tmp_path, monkeypatch):
-    monkeypatch.setattr(note_mod, "_HANDOFF_KEEPALIVE", [])
+    monkeypatch.setattr(handoff_mod, "_HANDOFF_KEEPALIVE", [])
     page = _FakePage()
     page.fill_error = RuntimeError("selector not found")
     launcher = _FakeLauncher(page)
@@ -158,7 +158,7 @@ async def test_fill_failure_closes_browser_and_is_honest(tmp_path, monkeypatch):
     assert result.handed_off is False
     assert "流し込みに失敗" in result.error
     assert launcher.closed is True  # 失敗時はハンドオフせず必ず後始末
-    assert note_mod._HANDOFF_KEEPALIVE == []
+    assert handoff_mod._HANDOFF_KEEPALIVE == []
 
 
 async def test_runner_marks_handed_off_without_recording_outcome(tmp_path, monkeypatch):
