@@ -19,6 +19,22 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 9 — trend-watcher 査定: 適用すべき確定変更なし  (2026-06-12 09:40)
+  Plan   : 毎回先送りしていた「CC ベストプラクティス採用」カテゴリ。trend-watcher で
+           .claude/ 設定の更新提案を収集し、検証済みのものだけ適用する方針。
+  Did    : trend-watcher が6提案を返したが敵対的査定で大半を棄却:
+           (1)「Fable は Haiku より低コスト」は事実誤認（Fable 5 は Opus 上位の最上位
+           モデル）→ 棄却。有効な核は「agent の model: に fable が指定可能になった」事実
+           のみで、code-reviewer/debugger の opus→fable 昇格はコスト判断つきの将来候補。
+           (2) /goal・security-guidance plugin は本ハーネスで未確認の伝聞 → 見送り。
+           (3) nested sub-agents は既に .claude/workflows/ で運用中 → 新規性なし。
+           設定変更ゼロ（強引に出荷しない判断もログに残す）。
+  Check  : n/a（変更なし）
+  Act    : 学び: haiku ティアの trend-watcher は伝聞とコスト系の誤った断定を混ぜてくる —
+           モデル/価格の主張は必ず一次情報で検証してから適用する。
+  Next   : exe 配布時の PyInstaller datas に web/atelier/dist 追加 / _publish_live /
+           atelier 残ページ移植 / code-reviewer・debugger の fable 昇格判断。
+
 Cycle 8 — atelier を pantheon serve から配信（--ui atelier）  (2026-06-12 09:35)
   Plan   : 新 GUI を dev server 無しで使える導線。サブパス配信は Vite base/Router 再ビルドが
            必要で壊れやすいため「配信 dist の差し替え」方式。受け入れ基準 = 既定 legacy 不変 /
@@ -34,9 +50,11 @@ Cycle 8 — atelier を pantheon serve から配信（--ui atelier）  (2026-06-
            引数マーシャリングまで届かない、という教訓）。
   Check  : test_web_server 92 passed（基線2のみ）/ lint 緑 / 実機 smoke: PANTHEON_UI=atelier で
            「Pantheon Atelier」index 配信 + /api 明示 404 維持を確認 / クォート修正も argdump で
-           実証。レビューは下記（結果はマージ後追記）。
-  Act    : （マージ後追記）
-  Next   : trend-watcher で CC 設定更新 / _publish_live 前進 / atelier 残ページ移植。
+           実証。code-reviewer APPROVE-WITH-NITS（非ブロッキング2件: プロンプト禁止文字
+           コメント拡大=対応済み / exe 化時の PyInstaller datas=follow-up 記録）。
+  Act    : merged ✅。memory atelier-gui に serve 導線を記録。固定化: AGENTS.md に
+           Start-Process 非クォート規約。
+  Next   : trend-watcher で CC 設定更新（→ Cycle 9）/ _publish_live / atelier 残ページ移植。
 
 Cycle 7 — レート制限解除後の /evolve 自動再開（ユーザー要望）  (2026-06-12 09:15)
   Plan   : 「5hレート制限解除後に自動再開されない」へのOSレベル対処。受け入れ基準 =
