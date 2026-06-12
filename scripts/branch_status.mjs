@@ -41,7 +41,20 @@ function git(args) {
 const haveOriginMain = git(["rev-parse", "--verify", "origin/main"]).trim();
 const MAIN = haveOriginMain ? "origin/main" : "main";
 
-git(["fetch", "origin", "--quiet"]); // best-effort
+// fetch は成否を検証して記録する（--prune の -D フォールバックは「origin/main が
+// 最新」という前提に依存するため、fetch 失敗時はフォールバックを無効化する）。
+function fetchOrigin() {
+  try {
+    execFileSync(GIT, ["fetch", "origin", "--quiet"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+const FETCH_OK = fetchOrigin();
 
 const currentBranch = git(["rev-parse", "--abbrev-ref", "HEAD"]).trim();
 
@@ -105,17 +118,73 @@ active.forEach((b) => console.log(fmt(b)));
 console.log(`\n💤 stale（未統合だが ${STALE_DAYS}日以上更新なし・要確認）: ${stale.length}`);
 stale.forEach((b) => console.log(fmt(b)));
 
+// git() は失敗時も stdout を返して続行する設計（表示系には正しい）ため、削除のような
+// 「成否が結果そのもの」の操作には使わない — かつて -d の拒否を「削除:」と誤報告していた。
+function deleteBranch(name, flag) {
+  try {
+    execFileSync(GIT, ["branch", flag, name], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      // -D 昇格判定が stderr の英語定型句に依存するため、メッセージをロケール非依存に固定する。
+      env: { ...process.env, LC_ALL: "C" },
+    });
+    return null;
+  } catch (e) {
+    return (e.stderr?.toString() || e.message || "unknown error").trim();
+  }
+}
+
 if (PRUNE) {
   const prunable = done.filter((b) => b.local && b.name.startsWith("work/") && b.name !== currentBranch);
   console.log(`\n--prune: done なローカル work/* を削除します（${prunable.length} 件）`);
+  // -D フォールバックの安全性根拠は「done = origin/main..branch が 0 件 → upstream
+  // 未同期の先行分も origin/main に含まれている」。この論証は MAIN が実際に
+  // origin/main で、かつ fetch が成功して最新であるときだけ成り立つ。
+  // どちらかが欠けるなら -d のみ（git 自身の保護に任せ、拒否は正直に失敗報告）。
+  const forceOk = MAIN === "origin/main" && FETCH_OK;
+  if (!forceOk) {
+    console.log(
+      `  注意: -D フォールバック無効（MAIN=${MAIN}, fetch=${FETCH_OK ? "ok" : "failed"}）— -d で拒否されたものは失敗として報告します`,
+    );
+  }
+  let failures = 0;
+  const remoteLeft = [];
   for (const b of prunable) {
-    try {
-      git(["branch", "-d", b.name]);
+    let err = deleteBranch(b.name, "-d");
+    let usedForce = false;
+    // -D へ昇格するのは「merge 済みでないと拒否された」場合だけ（worktree 使用中や
+    // ロック等の予期しない失敗を力業で踏み抜かない）。
+    if (err && forceOk && /not fully merged/.test(err)) {
+      const err2 = deleteBranch(b.name, "-D");
+      if (err2 === null) {
+        usedForce = true;
+        err = null;
+      } else {
+        err = err2;
+      }
+    }
+    if (err) {
+      failures += 1;
+      console.error(`  失敗: ${b.name}: ${err}`);
+      continue;
+    }
+    if (usedForce) {
+      console.log(`  削除: ${b.name}（upstream 未同期のため -D。コミットは origin/main 統合済み）`);
+    } else {
       console.log(`  削除: ${b.name}`);
-    } catch (e) {
-      console.error(`  失敗: ${b.name} (${e.message})`);
+      // リモート削除のヒントは通常 -d で消せたものだけに出す。-D 経路はローカルと
+      // upstream の食い違いを示しており、リモート tip の削除を一律に誘導しない。
+      if (b.remote) remoteLeft.push(b.name);
     }
   }
+  if (remoteLeft.length > 0) {
+    console.log(
+      `  残りのリモートブランチ（消す場合は手動で）: ${remoteLeft
+        .map((n) => `git push origin --delete ${n}`)
+        .join(" / ")}`,
+    );
+  }
+  if (failures > 0) process.exitCode = 1;
 }
 
 console.log(
