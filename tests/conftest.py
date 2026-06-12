@@ -19,6 +19,12 @@ import tempfile
 
 os.environ.setdefault("PANTHEON_NO_CLAUDE", "1")
 
+# テスト中に実ブラウザ（Playwright ヘッドフル）が起動しないよう全体で無効化する。
+# playwright が導入された環境で suite を回しても、接続フロー/実投稿系のコードパスは
+# 「未導入」と同じ正直な失敗側に倒れる。実ブラウザを使うテストを書く場合は
+# monkeypatch.delenv("PANTHEON_NO_BROWSER") で明示的にオプトインする。
+os.environ.setdefault("PANTHEON_NO_BROWSER", "1")
+
 # テストセッション全体で PANTHEON_HOME を一時ディレクトリに隔離する。
 # これが無いと、get_platform_home() をパッチも platform_home 注入もしないテストが
 # 実ユーザーの ~/.pantheon に Organization 等を書き込んで汚染する（重複 org の温床）。

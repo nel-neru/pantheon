@@ -72,7 +72,15 @@ class SessionStore:
         return False
 
     def ensure_dir(self, platform: str) -> Path:
-        """接続フローが storage_state を書き込めるようディレクトリを用意する。"""
+        """接続フローが storage_state を書き込めるようディレクトリを用意する。
+
+        state.json はログイン済みセッション cookie（実質ベアラ秘密）を含むため、
+        ディレクトリも所有者限定にする（Windows では best-effort）。
+        """
         d = self.session_dir(platform)
         d.mkdir(parents=True, exist_ok=True)
+        try:
+            d.chmod(0o700)
+        except OSError:
+            pass
         return d
