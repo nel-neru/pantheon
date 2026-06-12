@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -256,6 +257,10 @@ async def cmd_platform_restore(args: argparse.Namespace, *, get_psm: Any) -> Non
 
 def cmd_serve(args: argparse.Namespace) -> None:
     """Web GUI サーバーを起動する"""
+    # 配信 UI の選択は web.server の import 時（_serve_dir 解決）に効くため、
+    # import より先に環境変数へ反映する。
+    if getattr(args, "ui", None):
+        os.environ["PANTHEON_UI"] = args.ui
     try:
         from web.server import run_server
     except ImportError:
@@ -402,6 +407,15 @@ def register(subparsers: Any) -> None:
         "--no-browser",
         action="store_true",
         help="起動時にブラウザを自動で開かない（既定は自動で開く）",
+    )
+    serve_parser.add_argument(
+        "--ui",
+        choices=("legacy", "atelier"),
+        default=None,
+        help=(
+            "配信する GUI (default: legacy=web/dist)。atelier=新 GUI（web/atelier/dist、"
+            "要 `cd web/atelier && npm run build`）。環境変数 PANTHEON_UI でも指定可"
+        ),
     )
     serve_parser.set_defaults(handler_name="cmd_serve")
 
