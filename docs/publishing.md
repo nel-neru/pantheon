@@ -28,17 +28,22 @@ pantheon publish disconnect note   # セッション state を削除
   完了は `GET /api/publishing/connections` に反映）。
 - wordpress は接続フロー対象外（Phase 2 で REST API 接続を予定）。
 
-## assisted 投稿（Phase 1: note）
+## assisted 投稿（Phase 1: note / X）
 
 /inbox で承認済み投稿ジョブを「投稿」実行すると:
 
-1. 保存済みセッションで note エディタが開き、タイトル/本文が流し込まれる
-2. **ブラウザは開いたまま**になる — 内容を確認して、人間が「公開」を押す（最終送信は人間、が契約）
+1. 保存済みセッションでブラウザが開き、本文が流し込まれる
+   - **note**: エディタ（`editor.note.com/new`）にタイトル/本文を fill
+   - **X**: web intent（`x.com/intent/post?text=…`）でコンポーズ画面にプリフィル
+     （公開エンドポイントのためセレクタ fill より UI 変更に強い。280 字超は
+     detail で警告 — 編集/スレッド化は人間、自動分割は Phase 2）
+2. **ブラウザは開いたまま**になる — 内容を確認して、人間が「公開/ポスト」を押す（最終送信は人間、が契約）
 3. ジョブ status は `handed_off` になる（`published` とは区別。未公開のものは
    成果指標 posts に数えない。`due_jobs` にも二度と乗らない）
 
-auto モード（完全自動公開）は note では未実装（Phase 2）。assisted はどの自動実行経路
-（daemon / `process_due_publish_jobs`）からも発火しない。
+auto モード（完全自動公開）は note / X とも未実装（Phase 2）。assisted はどの自動実行経路
+（daemon / `process_due_publish_jobs`）からも発火しない。wordpress の `_publish_live` は
+未実装のまま（Phase 2 で REST API）。
 
 ## 実機 E2E チェックリスト（ユーザー同席時に1回）
 
