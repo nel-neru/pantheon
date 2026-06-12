@@ -78,6 +78,13 @@ class PlaywrightLauncher:
             return await self._browser.new_context(storage_state=self._storage_state)
         return await self._browser.new_context()
 
+    def is_alive(self) -> bool:
+        """ブラウザがまだ開いているか（ハンドオフ残骸の後始末判定に使う）。"""
+        try:
+            return bool(self._browser is not None and self._browser.is_connected())
+        except Exception:  # noqa: BLE001
+            return False
+
     async def close(self) -> None:
         try:
             if self._browser is not None:

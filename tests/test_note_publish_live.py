@@ -116,6 +116,33 @@ async def test_assisted_fills_editor_and_hands_off_with_browser_open(tmp_path, m
     assert note_mod._HANDOFF_KEEPALIVE == [launcher]
 
 
+async def test_next_handoff_prunes_closed_browsers(tmp_path, monkeypatch):
+    """人間が閉じ終わったハンドオフの残骸は、次のハンドオフ時に解放される。"""
+
+    class _DeadLauncher(_FakeLauncher):
+        def is_alive(self) -> bool:
+            return False
+
+    class _LiveLauncher(_FakeLauncher):
+        def is_alive(self) -> bool:
+            return True
+
+    dead = _DeadLauncher(_FakePage())
+    live = _LiveLauncher(_FakePage())
+    monkeypatch.setattr(note_mod, "_HANDOFF_KEEPALIVE", [dead, live])
+    new_launcher = _FakeLauncher(_FakePage())
+    publisher = NotePublisher(
+        session_store=_connected_store(tmp_path), launcher_factory=lambda: new_launcher
+    )
+
+    result = await publisher._publish_live(_content(), _target())
+
+    assert result.ok is True
+    assert dead.closed is True  # 死んだ残骸は close で駆動プロセスを解放
+    assert live.closed is False  # 人間が使用中のブラウザには触れない
+    assert note_mod._HANDOFF_KEEPALIVE == [live, new_launcher]
+
+
 async def test_fill_failure_closes_browser_and_is_honest(tmp_path, monkeypatch):
     monkeypatch.setattr(note_mod, "_HANDOFF_KEEPALIVE", [])
     page = _FakePage()
