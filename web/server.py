@@ -2306,19 +2306,68 @@ async def api_list_publishing_connections() -> List[Dict[str, Any]]:
     return [asdict(c) for c in _session_store().list_connections()]
 
 
+# 進行中の手動ログインフロー（platform → asyncio.Task）。同一プラットフォームへの
+# 多重起動でヘッドフルブラウザが乱立しないようにする。
+_login_tasks: Dict[str, "asyncio.Task[Any]"] = {}
+
+
 @app.post("/api/publishing/connections/{platform}/login", tags=["publishing"])
 async def api_publishing_login(platform: str) -> Dict[str, Any]:
-    """手動ログイン接続フローの起点（Phase 1 でヘッドフルブラウザ起動を実装）。"""
-    from core.publishing.base import SUPPORTED_PLATFORMS
+    """手動ログイン接続フローを背景で起動する（ヘッドフルブラウザ）。
+
+    サーバはユーザーの PC 上（既定 127.0.0.1）で動くため、ヘッドフルブラウザを
+    そのまま開ける。完了は GET /api/publishing/connections のポーリングで観測する。
+    """
+    from core.publishing.base import SUPPORTED_PLATFORMS, playwright_available
+    from core.publishing.connect import LOGIN_URLS, interactive_login
 
     if platform not in SUPPORTED_PLATFORMS:
         raise HTTPException(status_code=404, detail=f"未対応のプラットフォーム: {platform}")
-    store = _session_store()
-    store.ensure_dir(platform)
+    if platform not in LOGIN_URLS:
+        return {
+            "platform": platform,
+            "status": "unsupported",
+            "detail": "このプラットフォームは接続フロー未対応です（wordpress は Phase 2 で REST 接続を予定）。",
+        }
+    if not playwright_available():
+        return {
+            "platform": platform,
+            "status": "unavailable",
+            "detail": (
+                "Playwright 未導入（または PANTHEON_NO_BROWSER=1）のため接続フローを起動できません。"
+                "`pip install playwright && playwright install chromium` で導入できます。"
+            ),
+        }
+
+    existing = _login_tasks.get(platform)
+    if existing is not None and not existing.done():
+        return {
+            "platform": platform,
+            "status": "login_in_progress",
+            "detail": "ログインフローは既に進行中です。開いているブラウザでログインしてください。",
+        }
+
+    task = asyncio.create_task(interactive_login(platform, session_store=_session_store()))
+
+    def _log_result(t: "asyncio.Task[Any]") -> None:
+        try:
+            r = t.result()
+            logger.info("publishing login %s: ok=%s %s", r.platform, r.ok, r.error or r.detail)
+        except asyncio.CancelledError:
+            logger.info("publishing login %s: cancelled", platform)
+        except Exception:  # noqa: BLE001 — interactive_login は例外を返さない契約だが念のため
+            logger.exception("publishing login %s: unexpected failure", platform)
+        finally:
+            # 完了したフローはレジストリから除く（後続の login で上書きされた場合は触らない）。
+            if _login_tasks.get(platform) is t:
+                _login_tasks.pop(platform, None)
+
+    task.add_done_callback(_log_result)
+    _login_tasks[platform] = task
     return {
         "platform": platform,
-        "status": store.status(platform).status,
-        "detail": "手動ログイン接続フロー（ヘッドフルブラウザ）は Phase 1 で実装予定です。",
+        "status": "login_started",
+        "detail": "ヘッドフルブラウザを起動しました。開いたウィンドウでログインしてください（完了は接続一覧に反映されます）。",
     }
 
 

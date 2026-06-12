@@ -528,6 +528,24 @@ async def cmd_trends_list(args) -> None:
     await _impl(args)
 
 
+async def cmd_publish_connect(args) -> None:
+    from commands.publish import cmd_publish_connect as _impl
+
+    await _impl(args)
+
+
+async def cmd_publish_status(args) -> None:
+    from commands.publish import cmd_publish_status as _impl
+
+    await _impl(args)
+
+
+async def cmd_publish_disconnect(args) -> None:
+    from commands.publish import cmd_publish_disconnect as _impl
+
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
@@ -588,6 +606,9 @@ HANDLERS = {
     "cmd_daemons_watchdog_status": cmd_daemons_watchdog_status,
     "cmd_trends_collect": cmd_trends_collect,
     "cmd_trends_list": cmd_trends_list,
+    "cmd_publish_connect": cmd_publish_connect,
+    "cmd_publish_status": cmd_publish_status,
+    "cmd_publish_disconnect": cmd_publish_disconnect,
 }
 
 

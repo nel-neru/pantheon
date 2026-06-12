@@ -19,6 +19,31 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 10 — ヘッドフルログイン接続フロー（Track E コア）  (2026-06-12 10:35)
+  Plan   : publishing を「下書き工場」から実投稿チェーンへ進める第一歩。_publish_live の前提
+           となる接続フロー（SessionStore.is_connected が常に false の構造的欠落）を先に埋める。
+           受け入れ基準 = `pantheon publish connect note` でヘッドフル起動→手動ログイン→
+           storage_state 保存→connections が connected、フェイク注入テストで緑。
+           落とした候補: _publish_live 直行（接続なしでは E2E 不能）/ PyInstaller datas / atelier 残ページ。
+  Did    : work/publish-connect-20260612。core/publishing/connect.py 新設（interactive_login:
+           遅延 import、セッション cookie 名+発行ドメインのポーリング検知、launcher= フェイク注入、
+           例外を投げず ConnectResult で正直に返す契約）。commands/publish.py（connect/status/
+           disconnect、choices ハードコード+同期強制テスト）。web/server.py の login スタブを
+           背景タスク起動に昇格（_login_tasks 多重起動防止+done callback で自己掃除、wordpress=
+           unsupported、明示 404 維持）。tests/conftest.py に PANTHEON_NO_BROWSER=1 セッション
+           ガード（playwright 導入環境でも suite が実ブラウザを起動しない）。
+  Check  : test-triage GREEN（1071 passed / 基線 chmod 2 件のみ）/ ruff 緑 / CLI smoke
+           （status 一覧+connect の正直な失敗）。code-reviewer APPROVE-WITH-NITS →
+           確定所見3件を全て修正: (1) state.json はログイン済み cookie=実質ベアラ秘密 →
+           0o600/dir 0o700（best-effort、settings ファイルと同基準） (2) cookie 名だけの
+           一致は他ドメイン同名 cookie を誤検知 → 発行ドメイン照合を追加+負のテスト
+           (3) _login_tasks の完了エントリを done callback で identity ガード付き pop。
+  Act    : merged（結果は下記追記）。学び: 「資格情報を保存しない」設計でも storage_state は
+           ベアラ秘密 — 秘密相当ファイルは保存経路で必ず 0o600 基準に合わせる。
+           実機 E2E（実ログイン）は無人ループでは行わずユーザー同席時に委ねる、を明文化。
+  Next   : note _publish_live（assisted、handed_off 意味論）→ Cycle 11 / X _publish_live /
+           接続 GUI ページ。
+
 Cycle 9 — trend-watcher 査定: 適用すべき確定変更なし  (2026-06-12 09:40)
   Plan   : 毎回先送りしていた「CC ベストプラクティス採用」カテゴリ。trend-watcher で
            .claude/ 設定の更新提案を収集し、検証済みのものだけ適用する方針。

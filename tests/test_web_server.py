@@ -1864,9 +1864,56 @@ def test_publishing_connections_endpoints(tmp_path, monkeypatch):
     assert {c["platform"] for c in data} == {"note", "x", "wordpress"}
     assert all(c["status"] == "disconnected" for c in data)
 
-    assert client.post("/api/publishing/connections/note/login").status_code == 200
     assert client.post("/api/publishing/connections/instagram/login").status_code == 404
     assert client.delete("/api/publishing/connections/note").status_code == 200
+
+
+def test_publishing_login_unavailable_without_playwright(tmp_path, monkeypatch):
+    """Playwright 無し（conftest が PANTHEON_NO_BROWSER=1）では正直に unavailable を返す。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setenv("PANTHEON_NO_BROWSER", "1")
+    res = client.post("/api/publishing/connections/note/login")
+    assert res.status_code == 200
+    assert res.json()["status"] == "unavailable"
+
+
+def test_publishing_login_wordpress_unsupported(tmp_path, monkeypatch):
+    """wordpress はサイト URL 依存のため接続フロー対象外（Phase 2 で REST）。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    res = client.post("/api/publishing/connections/wordpress/login")
+    assert res.status_code == 200
+    assert res.json()["status"] == "unsupported"
+
+
+def test_publishing_login_starts_background_flow(tmp_path, monkeypatch):
+    """Playwright が使える環境では背景タスクで interactive_login を起動する。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.publishing.base.playwright_available", lambda: True)
+
+    async def _fake_login(platform, **kwargs):
+        from core.publishing.connect import ConnectResult
+
+        return ConnectResult(ok=True, platform=platform)
+
+    monkeypatch.setattr("core.publishing.connect.interactive_login", _fake_login)
+    res = client.post("/api/publishing/connections/note/login")
+    assert res.status_code == 200
+    assert res.json()["status"] == "login_started"
+
+
+def test_publishing_login_dedupes_concurrent_flows(tmp_path, monkeypatch):
+    """同一プラットフォームのログインフロー進行中は多重起動しない。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.publishing.base.playwright_available", lambda: True)
+
+    class _PendingTask:
+        def done(self) -> bool:
+            return False
+
+    monkeypatch.setitem(server._login_tasks, "note", _PendingTask())
+    res = client.post("/api/publishing/connections/note/login")
+    assert res.status_code == 200
+    assert res.json()["status"] == "login_in_progress"
 
 
 def test_inbox_aggregates_publish_jobs(tmp_path, monkeypatch):
