@@ -101,12 +101,14 @@ class TrendScheduler:
             self._write_log(summary)
             return summary
 
+        from core.trends.business_pipeline import scan_business_proposals
         from core.trends.runner import collect_and_store
         from core.trends.trend_to_jobs import convert_trends, propose_claude_code_updates
 
         collect = {}
         convert = {}
         cc = {}
+        biz = {}
         try:
             collect = await collect_and_store(platform_home=self.platform_home)
         except Exception as exc:  # noqa: BLE001
@@ -120,6 +122,13 @@ class TrendScheduler:
             cc = propose_claude_code_updates(platform_home=self.platform_home)
         except Exception as exc:  # noqa: BLE001
             logger.info("cc trend monitoring failed: %s", exc)
+        try:
+            # 高スコアトレンド → 新規会社候補提案（承認ゲート付き・WIRE-B）
+            biz = scan_business_proposals(
+                platform_home=self.platform_home, min_score=self._min_score
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.info("business proposal scan failed: %s", exc)
 
         summary = {
             "cycle": self._cycle_count,
@@ -130,6 +139,7 @@ class TrendScheduler:
             "content_jobs": convert.get("content_jobs", 0),
             "proposals": convert.get("proposals", 0),
             "cc_proposals": cc.get("proposals", 0),
+            "business_proposals": biz.get("proposals", 0),
         }
         self._write_log(summary)
         return summary

@@ -34,8 +34,8 @@
 > 並列ワークフロー（wf_4acbfaf7）で P2.1〜P2.4 + P1.5 の **コア（純粋ロジック/ストア+テスト）を出荷済み**。
 > API/HQ/daemon/GUI への**配線は後続の直列サイクル WIRE-A/B** で行う（既存ファイル改修を伴うため）。
 
-- 🟩 P2.1 トレンド→新規事業提案（コア✅ `core/trends/business_proposal.trend_to_business_proposal` +
-  `is_business_worthy`＋テスト。承認ゲート→org 生成の配線は WIRE-B）
+- ✅ P2.1 トレンド→新規事業提案（コア✅ `core/trends/business_proposal.trend_to_business_proposal` +
+  `is_business_worthy`。**承認ゲート配線は WIRE-B で完了**）
 - 🟩 P2.2 会社プラグイン manifest（コア✅ `config/company_plugins.yaml` + `core/orchestration/company_plugins`
   ローダ＋テスト。**install→完全な org 起動フローは P2.2b＝次の本丸**、GUI は WIRE-B）
 - 🟩 P2.3 Self-Evolution / Playbook（コア✅ `core/intelligence/playbook` Entry/Store/採点/top＋テスト。
@@ -50,7 +50,11 @@
   + マーケットプレイス「この会社を作成」ボタン。backend 3 + API 1 + frontend 2 テスト。
 - ✅ **WIRE-A 収益コアの配線**: `build_portfolio_proposals` を `GET /api/hq/portfolio`（OutcomeStore から
   org_stats を集計→提案）に配線し、RevenuePage に「ポートフォリオ提案（HQ）」カードを表示。backend+frontend テスト。
-- ⬜ **WIRE-B 自己拡大の配線**: business_proposal→承認ゲート、company manifest→マーケットGUI 表示。✅ 一部完了（manifest→install→マーケットGUI は P2.2b で済）。
+- ✅ **WIRE-B 自己拡大の配線**: `core/trends/business_pipeline.scan_business_proposals`
+  （TrendStore→`trend_to_business_proposal`→`new_business` ImprovementProposal 承認ゲート、冪等・score 0..10↔0..1 橋渡し）
+  ＋ `POST/GET /api/hq/business-proposals[/scan]` ＋ trend daemon サイクルに組込み（summary.business_proposals）
+  ＋ CLI `pantheon trends business-scan` ＋ MarketplacePage「新規会社候補（トレンド発）」カード。
+  backend 7 + API 1 + frontend 2 テスト。company manifest→マーケットGUI は P2.2b で済。
 
 ## §6 プラグインテンプレ化（§6.2 / §7.4）
 

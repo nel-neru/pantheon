@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Blocks, Building2, Plus, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Blocks, Building2, Plus, RefreshCw, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
@@ -20,28 +20,41 @@ type DivisionPlugin = {
   description: string
 }
 
+type BusinessProposal = {
+  id: string
+  org_name: string
+  title: string
+  priority: string
+  expected_impact: string
+  route: string
+}
+
 type OrgRow = { id: string; name: string }
 
 export function MarketplacePage() {
   const [manifests, setManifests] = useState<CompanyManifest[]>([])
   const [division, setDivision] = useState<DivisionPlugin[]>([])
   const [orgs, setOrgs] = useState<OrgRow[]>([])
+  const [bizProposals, setBizProposals] = useState<BusinessProposal[]>([])
   const [selectedOrg, setSelectedOrg] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
+  const [scanning, setScanning] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [man, div, orgList] = await Promise.all([
+      const [man, div, orgList, biz] = await Promise.all([
         api<{ manifests: CompanyManifest[] }>('GET', '/api/company-plugin-manifests'),
         api<{ plugins: DivisionPlugin[] }>('GET', '/api/division-plugins'),
         api<OrgRow[]>('GET', '/api/organizations'),
+        api<{ items: BusinessProposal[] }>('GET', '/api/hq/business-proposals'),
       ])
       setManifests(man.manifests)
       setDivision(div.plugins)
       setOrgs(orgList)
+      setBizProposals(biz.items)
       if (orgList.length > 0) setSelectedOrg((prev) => prev || orgList[0].name)
       setError(null)
     } catch (err) {
@@ -52,6 +65,27 @@ export function MarketplacePage() {
       setLoading(false)
     }
   }, [])
+
+  const scanBusiness = useCallback(async () => {
+    setScanning(true)
+    try {
+      const res = await api<{ proposals: number; reason?: string }>(
+        'POST',
+        '/api/hq/business-proposals/scan',
+        { min_score: 7.0 }
+      )
+      if (res.reason === 'no_org') {
+        toast.error('受け手の組織がありません。先に会社を作成してください。')
+      } else {
+        toast.success(`トレンドから新規会社候補を ${res.proposals} 件起票しました。`)
+      }
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'スキャンに失敗しました。')
+    } finally {
+      setScanning(false)
+    }
+  }, [load])
 
   useEffect(() => {
     void load()
@@ -175,6 +209,56 @@ export function MarketplacePage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-body flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={16} />
+                    <div className="font-semibold">新規会社候補（トレンド発・要承認）</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={scanning}
+                    onClick={() => void scanBusiness()}
+                  >
+                    <Sparkles size={14} />
+                    {scanning ? 'スキャン中…' : 'トレンドからスキャン'}
+                  </button>
+                </div>
+                <p className="text-muted text-sm">
+                  高スコアトレンドから「新しい収益モデル会社」候補を自動起票します（自動採用はせず、
+                  承認インボックスで人間が承認して初めて会社化）。
+                </p>
+                {bizProposals.length === 0 ? (
+                  <div className="text-muted text-sm">
+                    候補はまだありません。「トレンドからスキャン」で生成できます。
+                  </div>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>候補</th>
+                        <th>優先度</th>
+                        <th>期待インパクト</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bizProposals.map((b) => (
+                        <tr key={b.id}>
+                          <td className="font-medium">{b.title}</td>
+                          <td>
+                            <span className="badge badge-neutral">{b.priority}</span>
+                          </td>
+                          <td className="text-muted text-sm">{b.expected_impact}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
 

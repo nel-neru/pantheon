@@ -40,6 +40,20 @@ async def cmd_trends_list(args: argparse.Namespace) -> None:
         print(f"        {i.url}")
 
 
+async def cmd_trends_business_scan(args: argparse.Namespace) -> None:
+    """高スコアトレンドを新規会社候補提案へ変換し承認キューへ積む（WIRE-B・自動採用しない）。"""
+    from core.trends.business_pipeline import scan_business_proposals
+
+    result = scan_business_proposals(min_score=args.min_score, max_per_run=args.max_per_run)
+    if result.get("reason") == "no_org":
+        print("[trends] 受け手の Organization がありません（先に org を作成してください）")
+        return
+    print(
+        f"[trends] 新規会社候補提案を {result.get('proposals', 0)} 件起票"
+        f"（走査 {result.get('scanned', 0)} 件・承認キュー /inbox で確認）"
+    )
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("trends", help="外部トレンドの収集・一覧")
     sub = parser.add_subparsers(dest="trends_command", required=True)
@@ -53,3 +67,12 @@ def register(subparsers: Any) -> None:
     sp.add_argument("--genre", default=None, help="ジャンルで絞り込み")
     sp.add_argument("--min-score", type=float, default=0.0, dest="min_score", help="最低スコア")
     sp.set_defaults(handler_name="cmd_trends_list")
+
+    sp = sub.add_parser("business-scan", help="高スコアトレンド→新規会社候補提案を承認キューへ起票")
+    sp.add_argument(
+        "--min-score", type=float, default=7.0, dest="min_score", help="最低スコア(0..10)"
+    )
+    sp.add_argument(
+        "--max-per-run", type=int, default=5, dest="max_per_run", help="1回の最大起票数"
+    )
+    sp.set_defaults(handler_name="cmd_trends_business_scan")
