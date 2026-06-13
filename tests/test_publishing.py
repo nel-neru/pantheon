@@ -143,3 +143,135 @@ async def test_scheduler_auto_publishes_only_auto_mode_jobs(tmp_path, monkeypatc
 
     assert store.get_job(auto_job.job_id).status == "published"
     assert store.get_job(assisted_job.job_id).status == "queued"
+
+
+# --------------------------------------------------------------------------- #
+# _publish_live（assisted ブラウザ自動操作）の直接ユニットテスト                   #
+# 実ブラウザは起動せず、launcher_factory にフェイクを注入してフロー論理を検証する。 #
+# --------------------------------------------------------------------------- #
+
+
+class _FakePage:
+    def __init__(self):
+        self.goto_url = None
+        self.fills = []
+
+    async def goto(self, url, **_kw):
+        self.goto_url = url
+
+    async def wait_for_selector(self, _selector, **_kw):
+        return True
+
+    async def fill(self, selector, value, **_kw):
+        self.fills.append((selector, value))
+
+
+class _FakeContext:
+    def __init__(self, page):
+        self._page = page
+
+    async def new_page(self):
+        return self._page
+
+
+class _FakeLauncher:
+    def __init__(self):
+        self.page = _FakePage()
+        self.launched = False
+        self.closed = False
+
+    async def launch(self):
+        self.launched = True
+        return _FakeContext(self.page)
+
+    async def close(self):
+        self.closed = True
+
+
+class _FakeSessionStore:
+    def __init__(self, connected: bool = True):
+        self._connected = connected
+
+    def is_connected(self, _platform):
+        return self._connected
+
+    def state_path(self, platform):
+        from pathlib import Path
+
+        return Path(f"/tmp/{platform}/state.json")
+
+
+async def test_note_publish_live_fills_editor_and_hands_off():
+    from core.publishing.adapters.note import NOTE_EDITOR_URL, NOTE_TITLE_SELECTOR, NotePublisher
+
+    launcher = _FakeLauncher()
+    pub = NotePublisher(session_store=_FakeSessionStore(True), launcher_factory=lambda: launcher)
+    result = await pub._publish_live(
+        PublishContent(title="タイトル", body="本文"), PublishTarget(platform="note")
+    )
+    assert result.ok is True and result.handed_off is True
+    assert launcher.launched is True and launcher.closed is False  # 開いたままハンドオフ
+    assert launcher.page.goto_url == NOTE_EDITOR_URL
+    assert (NOTE_TITLE_SELECTOR, "タイトル") in launcher.page.fills
+
+
+async def test_x_publish_live_prefills_intent_and_hands_off():
+    from core.publishing.adapters.x import X_COMPOSE_INTENT_URL, XPublisher
+
+    launcher = _FakeLauncher()
+    pub = XPublisher(session_store=_FakeSessionStore(True), launcher_factory=lambda: launcher)
+    result = await pub._publish_live(
+        PublishContent(title="t", body="ポスト本文"), PublishTarget(platform="x")
+    )
+    assert result.ok is True and result.handed_off is True
+    assert launcher.page.goto_url.startswith(X_COMPOSE_INTENT_URL)
+    assert "text=" in launcher.page.goto_url
+
+
+async def test_wordpress_publish_live_opens_editor_and_hands_off():
+    from core.publishing.adapters.wordpress import WP_ADMIN_NEW_POST_PATH, WordPressPublisher
+
+    launcher = _FakeLauncher()
+    pub = WordPressPublisher(
+        session_store=_FakeSessionStore(True), launcher_factory=lambda: launcher
+    )
+    result = await pub._publish_live(
+        PublishContent(title="記事", body="本文"),
+        PublishTarget(platform="wordpress", account="https://example.com/"),
+    )
+    assert result.ok is True and result.handed_off is True
+    assert launcher.page.goto_url == f"https://example.com{WP_ADMIN_NEW_POST_PATH}"
+
+
+async def test_wordpress_publish_live_requires_site_url():
+    from core.publishing.adapters.wordpress import WordPressPublisher
+
+    pub = WordPressPublisher(session_store=_FakeSessionStore(True), launcher_factory=_FakeLauncher)
+    result = await pub._publish_live(
+        PublishContent(title="t", body="b"), PublishTarget(platform="wordpress", account="")
+    )
+    assert result.ok is False
+    assert "サイトURL" in result.error
+
+
+async def test_publish_live_fails_when_not_connected():
+    from core.publishing.adapters.note import NotePublisher
+
+    pub = NotePublisher(session_store=_FakeSessionStore(connected=False))
+    result = await pub._publish_live(
+        PublishContent(title="t", body="b"), PublishTarget(platform="note")
+    )
+    assert result.ok is False
+    assert "未接続" in result.error
+
+
+async def test_publish_live_auto_mode_is_rejected_until_phase2():
+    from core.publishing.adapters.wordpress import WordPressPublisher
+
+    pub = WordPressPublisher(session_store=_FakeSessionStore(True))
+    result = await pub._publish_live(
+        PublishContent(title="t", body="b"),
+        PublishTarget(platform="wordpress", account="https://example.com", mode="auto"),
+    )
+    assert result.ok is False
+    assert "auto" in result.error
