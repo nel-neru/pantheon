@@ -74,21 +74,24 @@ def find_untapped_genres(
     covered: set[str],
     *,
     min_evidence: int = 1,
+    min_score: float = 7.0,
 ) -> List[str]:
     """被覆ジャンルを除き、事業化に値する未開拓ジャンルを返す（純粋・決定論）。
 
     - covered は呼び出し側で slug 化済み（既定 'general' は含めない）想定。
-    - 各ジャンルは top trend が ``is_business_worthy``（0..1 換算）を満たし、かつ
-      証拠件数 >= ``min_evidence`` のものだけ残す。
+    - 各ジャンルは top trend が ``is_business_worthy`` を満たし、かつ証拠件数 >= ``min_evidence``。
+      ``min_score``（0..10 スケール）を ``business_pipeline`` と同様 0..1 へ橋渡しして閾値に使う
+      （固定 0.6 floor で呼び出し側の min_score を無視しないため）。
     - 並びは (max_score 降順, genre 昇順) で決定論的。
     """
+    threshold = float(min_score) / 10.0  # business_pipeline._SCORE_SCALE と整合
     result: List[str] = []
     for genre, ev in genre_evidence.items():
         if genre in covered:
             continue
         if int(ev.get("count", 0)) < int(min_evidence):
             continue
-        if not is_business_worthy(_trend_to_dict(ev["top_trend"])):
+        if not is_business_worthy(_trend_to_dict(ev["top_trend"]), min_score=threshold):
             continue
         result.append(genre)
     result.sort(key=lambda g: (-float(genre_evidence[g]["max_score"]), g))
@@ -162,7 +165,9 @@ def scan_untapped_genre_proposals(
     store = TrendStore(platform_home)
     evidence = enumerate_genre_evidence(store, min_score=min_score)
     covered = _covered_genres(psm)
-    untapped = find_untapped_genres(evidence, covered, min_evidence=min_evidence)
+    untapped = find_untapped_genres(
+        evidence, covered, min_evidence=min_evidence, min_score=min_score
+    )
 
     processed = _load_processed(platform_home)
     sm = psm.get_org_state_manager(org)

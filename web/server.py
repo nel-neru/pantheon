@@ -2676,11 +2676,18 @@ async def api_scan_portfolio_plan(body: PortfolioScanRequest) -> Dict[str, Any]:
 
 
 @app.get("/api/hq/portfolio/plan", tags=["hq"])
-async def api_preview_portfolio_plan(target: float, source_org_name: str = "HQ") -> Dict[str, Any]:
-    """月収益目標に対するギャップと計画を返す（**起票しない** プレビュー・P4.1）。"""
+async def api_preview_portfolio_plan(
+    target: float, source_org_name: str = "HQ", min_reach: float = 0.0
+) -> Dict[str, Any]:
+    """月収益目標に対するギャップと計画を返す（**起票しない** プレビュー・P4.1）。
+
+    ``min_reach`` を受けて POST /scan と同じ計画（new_business エスカレーション含む）を返す。
+    """
     from core.hierarchy.portfolio_pipeline import preview_portfolio_plan
 
-    return preview_portfolio_plan(target=target, source_org_name=source_org_name)
+    return preview_portfolio_plan(
+        target=target, source_org_name=source_org_name, min_reach=min_reach
+    )
 
 
 class UntappedGenreScanRequest(BaseModel):
@@ -2719,7 +2726,9 @@ async def api_list_untapped_genres(min_score: float = 7.0, min_evidence: int = 1
     home = get_platform_home()
     evidence = enumerate_genre_evidence(TrendStore(home), min_score=min_score)
     covered = _covered_genres(_psm())
-    untapped = find_untapped_genres(evidence, covered, min_evidence=min_evidence)
+    untapped = find_untapped_genres(
+        evidence, covered, min_evidence=min_evidence, min_score=min_score
+    )
     items = [
         {
             "genre": g,

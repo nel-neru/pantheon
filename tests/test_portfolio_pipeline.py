@@ -91,6 +91,42 @@ def test_scan_is_idempotent_even_when_metrics_change(tmp_path, monkeypatch):
     assert second["proposals"] == 0
 
 
+def test_scan_handoff_idempotent_when_top_monetizer_flips(tmp_path, monkeypatch):
+    """送客先（to_org）は実績で入れ替わるが、from_org 単位の dedupe で重複起票しない（回帰）。"""
+    home, psm = _setup(tmp_path, monkeypatch)
+    psm.save_organization(create_default_organization("Aud", "集客"))
+    psm.save_organization(create_default_organization("MonA", "収益A"))
+    psm.save_organization(create_default_organization("MonB", "収益B"))
+    store = OutcomeStore(platform_home=home)
+    store.record("Aud", "impressions", 9000)
+    store.record("MonA", "revenue", 1000)
+    store.record("MonB", "revenue", 500)
+
+    first = scan_portfolio_proposals(target=500000.0, platform_home=home)
+    assert first["proposals"] > 0
+    # 純粋な実績変動で最高収益 monetizer が MonA→MonB に入れ替わる
+    store.record("MonB", "revenue", 5000)
+    second = scan_portfolio_proposals(target=500000.0, platform_home=home)
+    assert second["proposals"] == 0  # 送客先が変わっても重複起票しない
+
+    # 送客元（Aud）に対する handoff 提案は 1 件だけ
+    org = psm.load_organization_by_name(_resolve_handoff_inbox_org(psm))
+    handoff_keys = [
+        p.get("dedupe_key")
+        for p in psm.get_org_state_manager(org).get_all_improvement_proposals()
+        if p.get("category") == "cross_org_handoff"
+    ]
+    assert handoff_keys.count("portfolio:handoff:Aud") <= 1
+    assert all(k == "portfolio:handoff:Aud" for k in handoff_keys)
+
+
+def _resolve_handoff_inbox_org(psm):
+    """提案の受け手 org 名（_resolve_target_org と同じ選択）を返すヘルパ。"""
+    from core.trends.trend_to_jobs import _resolve_target_org
+
+    return _resolve_target_org(psm, None).name
+
+
 def test_scan_no_org(tmp_path, monkeypatch):
     home, _psm = _setup(tmp_path, monkeypatch)
     result = scan_portfolio_proposals(target=100000.0, platform_home=home)

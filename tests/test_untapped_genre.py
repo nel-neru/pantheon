@@ -83,6 +83,17 @@ def test_scan_is_idempotent_by_genre(tmp_path, monkeypatch):
     assert second["proposals"] == 0
 
 
+def test_find_untapped_respects_min_score_below_floor(tmp_path, monkeypatch):
+    """min_score を下げれば 6.0 未満のジャンルも拾える（固定 0.6 floor 回帰）。"""
+    home, _ = _setup(tmp_path, monkeypatch)
+    _seed(home, [("hiking", 5.5)])
+    ev = enumerate_genre_evidence(TrendStore(platform_home=home), min_score=5.0)
+    # 旧実装は固定 0.6(=6.0/10) floor で hiking を落としていた
+    assert find_untapped_genres(ev, covered=set(), min_score=5.0) == ["hiking"]
+    # 既定 7.0 では除外される（閾値が呼び出し側に追従している証左）
+    assert find_untapped_genres(ev, covered=set(), min_score=7.0) == []
+
+
 def test_evidence_floor_excludes_thin_genres(tmp_path, monkeypatch):
     home, _ = _setup(tmp_path, monkeypatch)
     _seed(home, [("gardening", 9.0)])  # 証拠 1 件

@@ -70,7 +70,9 @@ async def cmd_trends_untapped(args: argparse.Namespace) -> None:
         home = get_platform_home()
         evidence = enumerate_genre_evidence(TrendStore(home), min_score=args.min_score)
         covered = _covered_genres(PlatformStateManager(home))
-        untapped = find_untapped_genres(evidence, covered, min_evidence=args.min_evidence)
+        untapped = find_untapped_genres(
+            evidence, covered, min_evidence=args.min_evidence, min_score=args.min_score
+        )
         if not untapped:
             print("[trends] 未開拓ジャンルは見つかりませんでした")
             return

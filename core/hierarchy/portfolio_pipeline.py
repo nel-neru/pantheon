@@ -57,7 +57,7 @@ def compute_revenue_gap(target: float, by_month: Dict[str, float]) -> Dict[str, 
     """
     months = sorted(m for m in by_month if m != "unknown" and len(m) == 7 and m[4] == "-")
     current = float(by_month[months[-1]]) if months else 0.0
-    lifetime = sum(float(v) for v in by_month.values())
+    lifetime = float(sum(float(v) for v in by_month.values()))  # 空入力でも float を保つ
     forecast = float(analyze_revenue(by_month)["forecast_next"])
     target = float(target)
     present_gap = target - current
@@ -134,15 +134,17 @@ def _priority_str(value: Any) -> str:
 def _dedupe_key_for(entry: Dict[str, Any], *, target: float) -> str:
     """収益値に依存しない安定 dedupe_key（再実行で重複起票しない）。
 
-    重要: ``action``（monetize/invest/...）は収益実績で変わるため **キーに含めない**。
-    org 当たり 1 件の配分提案に固定し、実績変動で重複起票しないようにする
-    （action は title に残す）。
+    重要: ``action``（monetize/invest/...）や送客先 ``to_org`` は収益実績で変わるため
+    **キーに含めない**（recommend_handoffs は最高収益の monetizer を to_org に選ぶので、
+    実績の上下で送客先が入れ替わる）。配分は org 当たり 1 件、送客は送客元（from_org）当たり
+    1 件に固定し、実績変動で重複起票しないようにする（action/to_org は title に残す）。
     """
     kind = entry.get("kind")
     if kind == "portfolio_allocation":
         return f"portfolio:alloc:{entry.get('org_name', '')}"
     if kind == "handoff":
-        return f"portfolio:handoff:{entry.get('from_org', '')}->{entry.get('to_org', '')}"
+        # recommend_handoffs は from_org 当たり最大 1 件。to_org は実績で変わるため含めない。
+        return f"portfolio:handoff:{entry.get('from_org', '')}"
     if kind == "new_business":
         return f"portfolio:newbiz:{int(float(target))}"
     return f"portfolio:{kind}:{entry.get('title', '')}"
