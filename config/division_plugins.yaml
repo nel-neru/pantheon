@@ -1,0 +1,94 @@
+# division_plugins.yaml — 事業部プラグインのカタログ（2階層プラグインの「事業部」側）
+#
+# 各プラグインは既存 Organization へ追加できる 1 事業部（Division）の定義。
+# `department` は core/org_factory._build_division が食べる dict（org create のテンプレと同形）。
+# 追加は `pantheon plugin add-division --org <name> --plugin <id>` または
+# GUI マーケットプレイス（POST /api/organizations/{org}/divisions）から行う。
+#
+# 原則「共有は極力避ける」（Master Plan §13-3）— 追加した事業部はその org 専用。
+
+plugins:
+  - id: x_audience
+    label: X集客事業部
+    category: audience
+    description: X（旧Twitter）で集客し、note/商品へ送客する入口事業部
+    department:
+      name: X集客事業部
+      type: audience_development
+      mission: X で獲得・エンゲージメントを高め、収益化事業部へ送客する
+      teams:
+        - name: Growth Team
+          mission: フォロワー獲得・エンゲージメント・送客導線
+          required_skills:
+            - audience_growth
+            - performance_marketing
+        - name: Post Content Team
+          mission: 短文ポスト・スレッド・固定ポストの企画制作
+          required_skills:
+            - content_strategy
+            - audience_growth
+
+  - id: note_monetization
+    label: note販売事業部
+    category: monetization
+    description: note 有料記事の企画・セールスライティング・価格最適化で直接収益化する
+    department:
+      name: note販売事業部
+      type: monetization
+      mission: 有料note の制作・販売・リピート促進で売上を作る
+      teams:
+        - name: Sales Writing Team
+          mission: 有料記事のセールスライティングと構成
+          required_skills:
+            - content_strategy
+            - performance_marketing
+        - name: Pricing Team
+          mission: 価格設計・A/Bテスト・客単価最適化
+          required_skills:
+            - performance_analysis
+            - performance_marketing
+
+  - id: affiliate_monetization
+    label: アフィリエイト事業部
+    category: monetization
+    description: 比較・レビュー記事でアフィリエイト収益を作る（PR表記コンプライアンス込み）
+    department:
+      name: アフィリエイト事業部
+      type: monetization
+      mission: 検索流入を収益化記事に変換し、PR 表記を守って収益を作る
+      teams:
+        - name: Review Content Team
+          mission: 比較・レビュー記事の企画制作とコンプライアンス
+          required_skills:
+            - content_strategy
+            - knowledge_curation
+
+  - id: content_production
+    label: コンテンツ制作事業部
+    category: content
+    description: 各チャネル向けの発信用コンテンツを企画・草稿・品質管理する
+    department:
+      name: コンテンツ制作事業部
+      type: content_production
+      mission: 投稿テーマ設計と発信用コンテンツの草稿・品質管理
+      teams:
+        - name: Editorial Team
+          mission: 記事・台本・概要欄の制作と品質管理
+          required_skills:
+            - content_strategy
+            - knowledge_curation
+
+  - id: analytics_operations
+    label: 分析・運用事業部
+    category: operations
+    description: 成果分析・レポート・トレンド監視で他事業部の意思決定を支える
+    department:
+      name: 分析・運用事業部
+      type: org_evolution
+      mission: 成果データの分析・レポートとトレンド監視で全体最適を支援する
+      teams:
+        - name: Analytics Team
+          mission: KPI 分析・レポート自動生成・改善提案
+          required_skills:
+            - performance_analysis
+            - deep_research
