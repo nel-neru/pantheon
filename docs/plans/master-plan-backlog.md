@@ -42,13 +42,22 @@
   生成・参照経路への配線は後続）
 - 🟩 P2.4 複数org連携最適化（コア✅ `core/hierarchy/handoff_optimizer.recommend_handoffs`＋テスト。
   HQ提案/handoff 自動起票への配線は WIRE-A）
-- ⬜ P2.5 **Trend Monitor 本格運用の硬化**: trend daemon の収集→採点→変換の網羅と重複排除を強化 + テスト。
+- 🟩 P2.5 Trend 硬化（コア✅ `core/trends/trend_dedup.py` dedupe_trends/rank_trends＋テスト。
+  trend daemon への配線は後続）
 - ✅ **P2.2b 会社プラグイン install フロー（本丸・組織のプラグイン化）**: `install_company_plugin`
   で manifest→完全な Organization 起動（事業部名から型/スキル推定で Division/Team/Agent 生成・
   Humanタスク自動起票・初期KPI返却）+ `GET /api/company-plugin-manifests` + `POST /api/company-plugins/{id}/install`
   + マーケットプレイス「この会社を作成」ボタン。backend 3 + API 1 + frontend 2 テスト。
-- ⬜ **WIRE-A 収益コアの配線**: portfolio/handoff_optimizer を HQ 提案・GUI（ポートフォリオ/連携推奨）へ接続。
+- 🟩 **WIRE-A 収益コアの配線**: コア✅ `core/hierarchy/portfolio_advisor.build_portfolio_proposals`
+  （portfolio+handoff を提案 dict 化）＋テスト。HQ提案永続化/GUI への配線は後続。
 - ⬜ **WIRE-B 自己拡大の配線**: business_proposal→承認ゲート、company manifest→マーケットGUI 表示。✅ 一部完了（manifest→install→マーケットGUI は P2.2b で済）。
+
+## §6 プラグインテンプレ化（§6.2 / §7.4）
+
+- ✅ **PT-1 プラグインテンプレ框組み**: `core/orchestration/plugin_templates.py`（§6.2 CATEGORY_PRESETS
+  audience/monetization/full_funnel/operations/content + `scaffold_division_plugin`/`scaffold_company_plugin`）＋13テスト。
+- 🟩 **PT-2 カタログ拡張**: `config/division_plugins.yaml` に **full_funnel 事業部**を追加（§6.2 Full Funnel）。
+  §7.4 の幅広いプラグイン（X/YouTube/TikTok/note有料/アフィリ等）の充足と、scaffold→YAML 生成 CLI は後続。
 
 ## §5 Workspace モデル（git からの脱却）
 
@@ -57,8 +66,9 @@
   `get_org_state_manager` は data_location 配下を使用。**会社プラグイン install は workspace モード（git 不要）で
   org を起動**。`/api/organizations` に mode/workspace_path を露出。既存 repo 紐付き org（Meta 等）は非破壊。
   → 収益モデル会社は git リポジトリ不要のアプリ内データとして管理される（あなたの質問への回答を実体化）。
-- ⬜ **WS-1 既存 org の移行ツール**: 既存の external repo（affiliate/note/sns）の中身を workspace へ取り込み、
-  git 依存を外す移行コマンド（**削除ではなく移行**）。
+- 🟩 **WS-1 既存 org の移行ツール**: コア✅ `core/orchestration/org_migration.py`
+  （plan_repo_to_workspace_migration / migrate_repo_org_to_workspace、**git なし・削除なしのモデル変換**）＋テスト。
+  CLI/API・実データ移動の配線は後続。
 - ⬜ **WS-2 SQLite ストア（§5.2）**: JSON 正準 → SQLite（workspaces/organizations/... テーブル）へ段階移行。
 
 ## Phase 3（アプリ化・UX）
