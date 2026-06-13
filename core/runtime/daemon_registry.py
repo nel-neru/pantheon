@@ -57,6 +57,12 @@ class DaemonSpec:
     log_filename: str
 
 
+# 新しいデーモンを足すときは KNOWN_DAEMONS への追加に加えて以下も更新する:
+#   - commands/daemons.py の DAEMON_NAMES（argparse choices・同期必須）
+#   - main.py の frozen 自己再起動エントリ（frozen_flag と一致させる）
+#   - tests/test_daemon_registry.py::test_known_daemons_and_get_spec（set 等値ピン）
+#   - tests/test_web_server.py::test_daemons_status_lists_registry（名前リスト等値ピン）
+# watchdog / web の status / CLI の _resolve_names は KNOWN_DAEMONS を自動列挙するため追加登録は不要。
 KNOWN_DAEMONS: Dict[str, DaemonSpec] = {
     "improvement": DaemonSpec(
         name="improvement",
