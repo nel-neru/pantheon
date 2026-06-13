@@ -28,10 +28,18 @@ _NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(_NODE is None, reason="node が PATH に無い")
 
 
-def _run_hook(tmp_path: Path, stdin: str) -> subprocess.CompletedProcess:
+def _run_hook(tmp_path: Path, stdin: str, headless: bool = False) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["USERPROFILE"] = str(tmp_path)  # node os.homedir() はこれを尊重 → 隔離
     env["HOME"] = str(tmp_path)
+    # PANTHEON_EVOLVE_HEADLESS は **両方向に明示制御** する。これをしないと、テストが
+    # 走る環境（headless /evolve resume ツリー内なら ambient に "1" が居る／クリーンな
+    # CI・対話開発なら居ない）に判定が依存して非決定的になる。headless=True は必ず
+    # セットし、interactive は必ず除去することで、ambient env に関係なく決定的にする。
+    if headless:
+        env["PANTHEON_EVOLVE_HEADLESS"] = "1"
+    else:
+        env.pop("PANTHEON_EVOLVE_HEADLESS", None)
     return subprocess.run(
         [_NODE, str(_HOOK)],
         input=stdin,
@@ -95,11 +103,7 @@ def test_hook_skips_when_headless_env_set(tmp_path):
     これを書くと、早期 crash した headless resume が自分の再起動を最大 StaleMinutes 分
     マスクしてしまう。健全な headless は pid ロックで重複防止されるので marker は不要。
     """
-    env = dict(os.environ)
-    env["USERPROFILE"] = str(tmp_path)
-    env["HOME"] = str(tmp_path)
-    env["PANTHEON_EVOLVE_HEADLESS"] = "1"
-    proc = subprocess.run([_NODE, str(_HOOK)], input="", text=True, env=env, capture_output=True)
+    proc = _run_hook(tmp_path, "", headless=True)
     assert proc.returncode == 0, proc.stderr
     assert not _marker(tmp_path).exists(), "headless 子が marker を書いてしまった"
 
