@@ -94,6 +94,15 @@ KNOWN_DAEMONS: Dict[str, DaemonSpec] = {
         pid_filename="trend_daemon.pid",
         log_filename="trend_daemon.log",
     ),
+    "revenue": DaemonSpec(
+        name="revenue",
+        description="収益分析＋ポートフォリオ提案の定期スキャン（LLM 非依存・承認ゲート付き・AUTO-1）",
+        runner_module="core._revenue_daemon_runner",
+        frozen_flag="--revenue-daemon-run",
+        default_interval=24 * 3600,
+        pid_filename="revenue_daemon.pid",
+        log_filename="revenue_daemon.log",
+    ),
 }
 
 

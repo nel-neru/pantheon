@@ -694,6 +694,14 @@ def main() -> None:
         _trend_daemon_runner.main()
         return
 
+    # revenue daemon（収益分析＋ポートフォリオ提案スキャン）の frozen 自己再起動エントリ。
+    if argv and argv[0] == "--revenue-daemon-run":
+        from core import _revenue_daemon_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _revenue_daemon_runner.main()
+        return
+
     # 引数なし起動（exe をダブルクリックした場合など）はフル起動（up）する:
     # Web GUI（監視）+ wmux 汎用チャットタブ + ブラウザ自動オープン。
     # ターミナルから `Pantheon.exe <command>` とすれば従来どおり CLI が使える。
