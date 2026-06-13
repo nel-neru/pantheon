@@ -43,9 +43,10 @@
 - 🟩 P2.4 複数org連携最適化（コア✅ `core/hierarchy/handoff_optimizer.recommend_handoffs`＋テスト。
   HQ提案/handoff 自動起票への配線は WIRE-A）
 - ⬜ P2.5 **Trend Monitor 本格運用の硬化**: trend daemon の収集→採点→変換の網羅と重複排除を強化 + テスト。
-- ⬜ **P2.2b 会社プラグイン install フロー（本丸・組織のプラグイン化）**: manifest→完全な Organization 起動
-  （事業部・初期KPI初期化・週次レビュー種・Humanタスク自動起票）+ `POST /api/company-plugins/{id}/install`
-  + マーケットプレイス「この会社を作成」。受け入れ: install で org+divisions 生成・KPI/Humanタスク seed + テスト。
+- ✅ **P2.2b 会社プラグイン install フロー（本丸・組織のプラグイン化）**: `install_company_plugin`
+  で manifest→完全な Organization 起動（事業部名から型/スキル推定で Division/Team/Agent 生成・
+  Humanタスク自動起票・初期KPI返却）+ `GET /api/company-plugin-manifests` + `POST /api/company-plugins/{id}/install`
+  + マーケットプレイス「この会社を作成」ボタン。backend 3 + API 1 + frontend 2 テスト。
 - ⬜ **WIRE-A 収益コアの配線**: portfolio/handoff_optimizer を HQ 提案・GUI（ポートフォリオ/連携推奨）へ接続。
 - ⬜ **WIRE-B 自己拡大の配線**: business_proposal→承認ゲート、company manifest→マーケットGUI 表示。
 

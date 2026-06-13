@@ -11,12 +11,84 @@ catalog_path 引数で yaml を直接渡す。
 
 from __future__ import annotations
 
+import pytest
 import yaml
 
 from core.orchestration.company_plugins import (
     get_company_plugin_manifest,
+    install_company_plugin,
     load_company_plugin_manifests,
 )
+
+
+def _injected_catalog(tmp_path):
+    path = tmp_path / "company_plugins.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "plugins": [
+                    {
+                        "id": "note_co",
+                        "label": "note販売会社",
+                        "genre": "digital_content",
+                        "description": "note で有料記事を販売する会社",
+                        "divisions": ["コンテンツ企画部", "販売・マーケティング部"],
+                        "human_tasks": ["有料記事の公開承認", "価格設定"],
+                        "initial_kpis": ["有料記事の売上"],
+                    }
+                ]
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_install_company_plugin_creates_full_org(tmp_path):
+    """会社プラグイン install で org + 事業部 + Humanタスクが起動する（P2.2b）。"""
+    from core.humans.human_tasks import HumanTaskStore
+    from core.platform.state import PlatformStateManager
+
+    catalog = _injected_catalog(tmp_path)
+    psm = PlatformStateManager(platform_home=tmp_path)
+    result = install_company_plugin("note_co", psm=psm, catalog_path=catalog)
+
+    assert result["ok"] is True
+    assert result["org_name"] == "note販売会社"
+    assert "コンテンツ企画部" in result["divisions"]
+    assert "販売・マーケティング部" in result["divisions"]
+    assert result["human_tasks_created"] == 2
+    assert result["initial_kpis"] == ["有料記事の売上"]
+
+    org = psm.load_organization_by_name("note販売会社")
+    assert org is not None and len(org.divisions) == 2
+    assert org.get_all_agents()  # 各事業部に Specialist が生成される
+    # 事業部名から type 推定（販売→monetization）
+    types = {d.name: d.type.value for d in org.divisions}
+    assert types["販売・マーケティング部"] == "monetization"
+
+    tasks = HumanTaskStore(platform_home=tmp_path).list_tasks("open")
+    assert [t for t in tasks if t.kind == "company_setup" and t.org_name == "note販売会社"]
+
+
+def test_install_unknown_plugin_raises(tmp_path):
+    from core.platform.state import PlatformStateManager
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    with pytest.raises(ValueError):
+        install_company_plugin("nope", psm=psm, catalog_path=tmp_path / "missing.yaml")
+
+
+def test_install_duplicate_org_raises(tmp_path):
+    from core.platform.state import PlatformStateManager
+
+    catalog = _injected_catalog(tmp_path)
+    psm = PlatformStateManager(platform_home=tmp_path)
+    install_company_plugin("note_co", psm=psm, catalog_path=catalog)
+    with pytest.raises(ValueError):
+        install_company_plugin("note_co", psm=psm, catalog_path=catalog)
+
 
 # 同梱カタログに必ず存在すると保証する既知 id。
 KNOWN_IDS = ("note_sales", "affiliate", "sns_growth")
