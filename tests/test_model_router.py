@@ -22,8 +22,8 @@ def _fresh_router():
 
 def test_default_task_routing():
     router = ModelTierRouter(TierRules())
-    assert router.select("improvement_execution") == "opus"
-    assert router.select("meta_improvement") == "opus"
+    assert router.select("improvement_execution") == "fable"
+    assert router.select("meta_improvement") == "fable"
     assert router.select("code_review") == "sonnet"
     assert router.select("content_generation") == "sonnet"
     assert router.select("conversation") == "haiku"
@@ -35,10 +35,10 @@ def test_default_task_routing():
 
 def test_escalation_on_large_prompt():
     router = ModelTierRouter(TierRules())
-    assert router.select("code_review", prompt_chars=30000) == "opus"
+    assert router.select("code_review", prompt_chars=30000) == "fable"
     assert router.select("conversation", prompt_chars=30000) == "sonnet"
     # 既に最上位ティアならそのまま（範囲外に飛ばない）
-    assert router.select("improvement_execution", prompt_chars=30000) == "opus"
+    assert router.select("improvement_execution", prompt_chars=30000) == "fable"
 
 
 def test_downgrade_for_quota_pressure():
@@ -81,7 +81,8 @@ def test_load_rules_broken_yaml_falls_back(tmp_path):
 
 def test_bundled_config_loads():
     # リポジトリ同梱の config/model_tiers.yaml が内蔵デフォルトと整合している
+    # （heavy ティアは Fable 5 = 長時間自律実行用。Master Plan §9）
     rules = load_rules()
-    assert rules.tier_models == {"heavy": "opus", "standard": "sonnet", "light": "haiku"}
+    assert rules.tier_models == {"heavy": "fable", "standard": "sonnet", "light": "haiku"}
     assert rules.task_tiers["improvement_execution"] == "heavy"
     assert rules.escalate_above_prompt_chars == 20000

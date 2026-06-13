@@ -52,11 +52,12 @@ def test_task_type_routes_model(monkeypatch):
     assert args[args.index("--model") + 1] == "haiku"
 
 
-def test_heavy_task_routes_opus(monkeypatch):
+def test_heavy_task_routes_fable(monkeypatch):
+    # heavy ティア = 長時間自律実行用の Fable 5（Master Plan §9）
     captured = _capture_args(monkeypatch)
     cc.run_claude_sync("hi", task_type="improvement_execution")
     args = captured["args"]
-    assert args[args.index("--model") + 1] == "opus"
+    assert args[args.index("--model") + 1] == "fable"
 
 
 def test_downgrade_drops_one_tier(monkeypatch):
