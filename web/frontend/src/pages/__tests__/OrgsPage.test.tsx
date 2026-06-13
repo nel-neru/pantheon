@@ -264,6 +264,37 @@ describe('OrgsPage', () => {
     expect(await screen.findByText('Improve the org workflows')).toBeInTheDocument()
   })
 
+  it('migrates a repo org to workspace mode from the detail panel', async () => {
+    let currentDetail = { ...detailOrg, management_mode: 'repo' as string }
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      if (method === 'GET' && path === '/api/organizations/acme-platform') return currentDetail
+      if (method === 'GET' && path === '/api/organizations/acme-platform/proposals') return []
+      if (
+        method === 'POST' &&
+        path === '/api/organizations/acme-platform/migrate-to-workspace'
+      ) {
+        currentDetail = { ...currentDetail, management_mode: 'workspace' }
+        return { already_workspace: false }
+      }
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+    await user.click(await screen.findByRole('button', { name: 'workspace へ移行' }))
+
+    await waitFor(() => {
+      expect(mockApi).toHaveBeenCalledWith(
+        'POST',
+        '/api/organizations/acme-platform/migrate-to-workspace'
+      )
+    })
+    expect(await screen.findByText('workspace（git 不要）')).toBeInTheDocument()
+  })
+
   it('shows a lock icon instead of a delete action for system organizations', async () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/organizations') return [systemOrg]

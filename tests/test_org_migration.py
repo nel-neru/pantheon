@@ -148,3 +148,53 @@ def test_safe_name_keeps_word_underscore_hyphen(tmp_path: Path) -> None:
 
     # 許可文字（英数 / _ / -）はそのまま保持される。
     assert plan["to_workspace"] == str((tmp_path / "my_org-01").absolute())
+
+
+# ------------------------------------------------------------------
+# CLI 配線（cmd_org_migrate_workspace）
+# ------------------------------------------------------------------
+
+
+def test_cli_migrate_to_workspace(tmp_path: Path) -> None:
+    """CLI 経由で repo 組織を workspace モードへ移行・保存する（WS-1 配線）。"""
+    import argparse
+    import asyncio
+
+    from commands.org import cmd_org_migrate_workspace
+    from core.org_factory import create_default_organization
+    from core.platform.state import PlatformStateManager
+
+    home = tmp_path / "home"
+    psm = PlatformStateManager(platform_home=home)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    psm.save_organization(create_default_organization("Mig Co", "売上", repo_path=str(repo)))
+
+    args = argparse.Namespace(name="Mig Co", dry_run=False)
+    asyncio.run(cmd_org_migrate_workspace(args, get_psm=lambda: psm))
+
+    reloaded = psm.load_organization_by_name("Mig Co")
+    assert reloaded.management_mode == "workspace"
+    assert reloaded.workspace_path is not None
+
+
+def test_cli_migrate_dry_run_does_not_mutate(tmp_path: Path) -> None:
+    """--dry-run は計画表示のみでモデルを変更しない。"""
+    import argparse
+    import asyncio
+
+    from commands.org import cmd_org_migrate_workspace
+    from core.org_factory import create_default_organization
+    from core.platform.state import PlatformStateManager
+
+    home = tmp_path / "home"
+    psm = PlatformStateManager(platform_home=home)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    psm.save_organization(create_default_organization("Dry Co", "売上", repo_path=str(repo)))
+
+    args = argparse.Namespace(name="Dry Co", dry_run=True)
+    asyncio.run(cmd_org_migrate_workspace(args, get_psm=lambda: psm))
+
+    reloaded = psm.load_organization_by_name("Dry Co")
+    assert reloaded.management_mode == "repo"  # 変更されていない

@@ -331,6 +331,45 @@ async def cmd_org_remove(args: argparse.Namespace, *, confirm_action: Any, get_p
     print(f"[OK] Organization '{args.name}' を削除しました。")
 
 
+def _resolve_workspace_root(psm: Any) -> str:
+    """workspace の親フォルダを決める（設定 → platform_home/workspaces フォールバック）。"""
+    return psm.get_workspaces_root() or str(Path(psm.platform_home) / "workspaces")
+
+
+async def cmd_org_migrate_workspace(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """repo 紐付き Organization を workspace モード（git 不要・アプリ内データ）へ移行する（WS-1）。"""
+    from core.orchestration.org_migration import (
+        migrate_repo_org_to_workspace,
+        plan_repo_to_workspace_migration,
+    )
+
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.name)
+    if not org:
+        print(f"[ERROR] Organization '{args.name}' が見つかりません。")
+        sys.exit(1)
+
+    workspace_root = _resolve_workspace_root(psm)
+    plan = plan_repo_to_workspace_migration(org, workspace_root=workspace_root)
+
+    if plan["already_workspace"]:
+        print(f"[INFO] '{org.name}' は既に workspace モードです（{plan['to_workspace']}）。")
+        return
+
+    print(f"[plan] {org.name}: repo → workspace")
+    print(f"   移行元 repo（保持）: {plan['from_repo']}")
+    print(f"   移行先 workspace   : {plan['to_workspace']}")
+
+    if getattr(args, "dry_run", False):
+        print("[INFO] --dry-run のためモデルは変更していません。")
+        return
+
+    migrate_repo_org_to_workspace(org, workspace_root=workspace_root)
+    psm.save_organization(org)
+    print(f"[OK] '{org.name}' を workspace モードへ移行しました（git 管理は不要になります）。")
+    print(f"   データ位置: {org.data_location}")
+
+
 async def cmd_analyze(args: argparse.Namespace, *, get_orchestrator: Any, get_psm: Any) -> None:
     """Organization の担当リポジトリを分析して改善提案を生成する"""
     from agents.base import AgentTask
@@ -825,6 +864,15 @@ def register(subparsers: Any) -> None:
         help="システム Organization（Meta-Improvement 等）でも強制的に削除する",
     )
     remove_parser.set_defaults(handler_name="cmd_org_remove")
+
+    migrate_parser = org_sub.add_parser(
+        "migrate-to-workspace", help="repo 紐付き組織を workspace モード（git 不要）へ移行"
+    )
+    migrate_parser.add_argument("--name", required=True, help="移行する Organization 名")
+    migrate_parser.add_argument(
+        "--dry-run", action="store_true", help="移行計画のみ表示し、モデルは変更しない"
+    )
+    migrate_parser.set_defaults(handler_name="cmd_org_migrate_workspace")
 
     analyze_parser = subparsers.add_parser("analyze", help="担当リポジトリを分析して改善提案を生成")
     analyze_parser.add_argument("--org-name", required=True, help="対象 Organization 名")

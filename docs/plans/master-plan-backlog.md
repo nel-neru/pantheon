@@ -70,9 +70,12 @@
   `get_org_state_manager` は data_location 配下を使用。**会社プラグイン install は workspace モード（git 不要）で
   org を起動**。`/api/organizations` に mode/workspace_path を露出。既存 repo 紐付き org（Meta 等）は非破壊。
   → 収益モデル会社は git リポジトリ不要のアプリ内データとして管理される（あなたの質問への回答を実体化）。
-- 🟩 **WS-1 既存 org の移行ツール**: コア✅ `core/orchestration/org_migration.py`
-  （plan_repo_to_workspace_migration / migrate_repo_org_to_workspace、**git なし・削除なしのモデル変換**）＋テスト。
-  CLI/API・実データ移動の配線は後続。
+- ✅ **WS-1 既存 org の移行ツール**: コア✅ `core/orchestration/org_migration.py`
+  （plan_repo_to_workspace_migration / migrate_repo_org_to_workspace、**git なし・削除なしのモデル変換**）。
+  **配線完了**: CLI `pantheon org migrate-to-workspace --name [--dry-run]`、API `GET .../migration-plan`・
+  `POST .../migrate-to-workspace`（workspace_root は設定→platform_home/workspaces フォールバック）、
+  org 詳細 API に management_mode/workspace_path/data_location 露出、OrgsPage 詳細に「workspace へ移行」ボタン。
+  backend 2 + CLI 2 + API 2 + frontend 1 テスト。実データ移動は意図的に範囲外（来歴として repo パス保持）。
 - ⬜ **WS-2 SQLite ストア（§5.2）**: JSON 正準 → SQLite（workspaces/organizations/... テーブル）へ段階移行。
 
 ## Phase 3（アプリ化・UX）

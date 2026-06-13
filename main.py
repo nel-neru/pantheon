@@ -50,6 +50,7 @@ from commands.org import cmd_approve as _cmd_approve_impl
 from commands.org import cmd_init as _cmd_init_impl
 from commands.org import cmd_org_add as _cmd_org_add_impl
 from commands.org import cmd_org_list as _cmd_org_list_impl
+from commands.org import cmd_org_migrate_workspace as _cmd_org_migrate_workspace_impl
 from commands.org import cmd_org_remove as _cmd_org_remove_impl
 from commands.org import cmd_org_scan as _cmd_org_scan_impl
 from commands.org import cmd_org_show as _cmd_org_show_impl
@@ -268,6 +269,10 @@ async def cmd_org_show(args) -> None:
 
 async def cmd_org_remove(args) -> None:
     await _cmd_org_remove_impl(args, confirm_action=_confirm_action, get_psm=_get_psm)
+
+
+async def cmd_org_migrate_workspace(args) -> None:
+    await _cmd_org_migrate_workspace_impl(args, get_psm=_get_psm)
 
 
 async def cmd_analyze(args) -> None:
@@ -572,6 +577,7 @@ HANDLERS = {
     "cmd_org_scan": cmd_org_scan,
     "cmd_org_show": cmd_org_show,
     "cmd_org_remove": cmd_org_remove,
+    "cmd_org_migrate_workspace": cmd_org_migrate_workspace,
     "cmd_analyze": cmd_analyze,
     "cmd_proposals": cmd_proposals,
     "cmd_proposal_show": cmd_proposal_show,
