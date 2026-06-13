@@ -2553,6 +2553,17 @@ async def api_revenue_report(org_name: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+@app.get("/api/metrics/revenue/intelligence", tags=["metrics"])
+async def api_revenue_intelligence(org_name: Optional[str] = None) -> Dict[str, Any]:
+    """収益インテリジェンス: 月次系列から前月比・トレンド・翌月予測を返す。"""
+    from core.metrics.revenue_intelligence import analyze_revenue
+
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name)
+    analysis = analyze_revenue(by_month)
+    return {"org_name": org_name, **analysis}
+
+
 # --------------------------------------------------------------------------- #
 # Plugins / Marketplace（2階層プラグイン: 会社プラグイン / 事業部プラグイン）        #
 # --------------------------------------------------------------------------- #

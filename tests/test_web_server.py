@@ -456,6 +456,25 @@ def test_revenue_report_api_monthly(tmp_path, monkeypatch):
     assert body["total_revenue"] == 3500.0
 
 
+def test_revenue_intelligence_api(tmp_path, monkeypatch):
+    """収益インテリジェンス: 月次系列からトレンドと翌月予測を返す。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, occurred_at="2026-01-15T00:00:00+00:00")
+    store.record("Co", "revenue", 150, occurred_at="2026-02-15T00:00:00+00:00")
+    store.record("Co", "revenue", 225, occurred_at="2026-03-15T00:00:00+00:00")
+
+    resp = client.get("/api/metrics/revenue/intelligence?org_name=Co")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["trend"] == "growing"
+    assert body["months"] == ["2026-01", "2026-02", "2026-03"]
+    assert body["forecast_next"] > 225
+
+
 def test_division_plugins_catalog_api():
     """事業部プラグインのカタログを返す。"""
     resp = client.get("/api/division-plugins")
