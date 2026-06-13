@@ -42,12 +42,17 @@ const report: Report = {
 }
 
 const intel: Intel = { trend: 'growing', latest_change_pct: 33.3, forecast_next: 2666 }
+const portfolio = {
+  proposals: [
+    { kind: 'portfolio_allocation', title: '[HQ提案] Note Sales を monetize', reason: '収益化が必要', priority: 2 },
+  ],
+}
 
 const emptyMetrics: Metrics = { orgs: [], total_revenue: 0, total_reach: 0 }
 const emptyReport: Report = { by_month: {}, total_revenue: 0 }
 const insufficientIntel: Intel = { trend: 'insufficient', latest_change_pct: null, forecast_next: 0 }
 
-/** mockApi をパス別に応答させる（load は revenue / report / intelligence を並列取得する）。 */
+/** mockApi をパス別に応答させる（load は revenue / report / intelligence / hq portfolio を並列取得）。 */
 function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
   const m = opts?.metrics ?? metrics
   const r = opts?.report ?? report
@@ -56,6 +61,7 @@ function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
     if (path === '/api/metrics/revenue') return Promise.resolve(m)
     if (path === '/api/metrics/revenue/report') return Promise.resolve(r)
     if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(ai)
+    if (path === '/api/hq/portfolio') return Promise.resolve(portfolio)
     if (path === '/api/outcomes') return Promise.resolve({ ok: true, event: {} })
     return Promise.resolve({})
   })
@@ -89,6 +95,13 @@ it('収益トレンド（成長・前月比・翌月予測）を表示する', a
   expect(await screen.findByText('収益トレンド（全組織）')).toBeInTheDocument()
   expect(screen.getByText('成長')).toBeInTheDocument()
   expect(screen.getByText('+33.3%')).toBeInTheDocument()
+})
+
+it('ポートフォリオ提案（HQ）を表示する', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  expect(await screen.findByText('ポートフォリオ提案（HQ）')).toBeInTheDocument()
+  expect(screen.getByText('[HQ提案] Note Sales を monetize')).toBeInTheDocument()
 })
 
 it('月次収益レポートを表示する', async () => {

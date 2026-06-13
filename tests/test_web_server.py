@@ -475,6 +475,24 @@ def test_revenue_intelligence_api(tmp_path, monkeypatch):
     assert body["forecast_next"] > 225
 
 
+def test_hq_portfolio_api(tmp_path, monkeypatch):
+    """HQ ポートフォリオ提案: 収益0・リーチ有 org に monetize 提案が出る。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("Reachy", "p"))
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Reachy", "impressions", 5000)
+    store.record("Reachy", "revenue", 0)
+
+    resp = client.get("/api/hq/portfolio")
+    assert resp.status_code == 200, resp.text
+    proposals = resp.json()["proposals"]
+    assert any(p.get("action") == "monetize" and p["org_name"] == "Reachy" for p in proposals)
+
+
 def test_inbox_sorts_revenue_impact_first(tmp_path, monkeypatch):
     """収益駆動の提案がインボックス上位に並び、revenue_impact が付与される。"""
     from core.models.organization import StructuralInterventionType
