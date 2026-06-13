@@ -75,6 +75,24 @@ if ($ageMinutes -lt $StaleMinutes) {
     exit 0
 }
 
+# --- heartbeat 2: 生きている Claude Code セッションが直接 touch する活動印 ---
+# commit-heartbeat の死角（長い1ターン中の未コミット / 起動直後で最終コミットが古い）を埋める。
+# .claude/hooks/session-heartbeat.mjs が SessionStart と全ツールの PostToolUse で更新する。
+# ファイル不在 = 印なし = 何もしない（既存のコミット heartbeat 経路にフォールバック＝完全後方互換）。
+# 内容は JSON だが PS 側は mtime(LastWriteTime) だけを見る: torn-read で ConvertFrom-Json が
+# 例外→$ErrorActionPreference='Stop' で毎時実行ごと中断、を避けるための意図的な選択。
+$sessionHb = Join-Path $pantheonHome "evolve_session.heartbeat"
+if (Test-Path $sessionHb) {
+    $hbItem = Get-Item $sessionHb -ErrorAction SilentlyContinue
+    if ($hbItem) {
+        $hbAgeMin = [int](((Get-Date) - $hbItem.LastWriteTime).TotalMinutes)
+        if ($hbAgeMin -lt $StaleMinutes) {
+            Write-Log "skip: session heartbeat ${hbAgeMin}分前 < 閾値 ${StaleMinutes}分（対話/headless セッション活動中）"
+            exit 0
+        }
+    }
+}
+
 # --- claude CLI の解決（Pantheon と同じ優先順: 明示指定 > PANTHEON_CLAUDE_BIN > PATH > 既知の場所） ---
 if (-not $ClaudeBin) { $ClaudeBin = $env:PANTHEON_CLAUDE_BIN }
 if (-not $ClaudeBin) {
