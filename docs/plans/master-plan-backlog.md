@@ -115,14 +115,44 @@
 
 ## 横断・検証
 
-- ⬜ X.1 **完全性クリティック**: N サイクルごとに「計画 §1〜§14 vs 現実」を突き合わせ、抜けを本 backlog へ追記
-  （loop-until-dry）。
+- ✅ X.1 **完全性クリティック（第1巡 実施済み）**: 敵対的 completeness-critic ワークフロー（30 agent・
+  4監査次元 §1/§5・§6/§7・§3/§4/§8・§9〜§12 → 各ギャップを refute 検証）で計画 §1〜§14 vs 現実を突合。
+  **17 件の真ギャップを確定**し下記「Phase 5」へ追記（X.1 は dry ではない＝forward-scoped 工程が残存と判明）。
+  以後 N サイクルごとに再実行する運用。
 - ✅ X.2 **§12 成功指標の検証 run**: `tests/test_success_metrics_e2e.py`（クリーン tmp_path で Phase 0 §12 を
   端から端まで駆動し pass・決定論・claude CLI 非依存）。会社プラグイン起動/手動収益記録→月次レポート/
   Meta-Overseer 提案→計画→基本実行/CLI 非依存性 の4 E2E。計画書 §12 の現況注記を実態へ更新。
 - 継続: 各サイクルでテストゲート + 敵対的レビュー + 計画書/該当 memory の更新（自己更新ルール）。
 
+## Phase 5（X.1 が surfaced した「真の自律化」残工程）
+
+> X.1 第1巡（2026-06-14）で確定。Phase 0〜4 で**部品（純粋コア）と承認ゲート経路**は揃ったが、
+> 「24/7 で常駐し、寝てる間に勝手に回る」最終形には**配線・常駐化・自動収集・実投稿**が残る。
+> 多くは Phase 1〜2 horizon の forward-scoped。実投稿/実配布は **human-gate**。
+
+- ⬜ **AUTO-1 常駐エンジンの daemon 化（§1.2/§1.3/§8）**: 既存純粋コアを常駐ループへ配線。
+  (a) revenue daemon（`analyze_revenue` + `scan_portfolio_proposals` を定期実行→承認キュー）、
+  (b) HQ 経営会議 cadence（日/週次で収益レポート自動生成→`HQInterventionProposer.propose_all`）、
+  `daemon_registry.KNOWN_DAEMONS` + 新 runner + watchdog desired-state。
+- 🔒 **PUB-AUTO Phase2 完全自動投稿（§1.1 原則3・HIGH）**: 全アダプタが auto モード未実装で
+  `process_due_publish_jobs` が無人投稿できない＝「寝てる間に出力」未達。実送信は **human-gate**だが、
+  X(REST)/WordPress(REST) の auto 経路の実装手前まで AI 可。
+- ⬜ **WIRE-MEM Self-Evolution + Layered Memory（§8 P2/§9・P2.3 配線）**: `PlaybookStore` を生成/参照経路へ
+  配線（agent が `top()` を prompt に、結果で `record_use()`/`add()`）＋ Memory Bank/file-based の統一メモリ層。
+- ⬜ **REV-COLLECT 外部API収益自動収集（§8 P1/§9）**: note/X/ASP の売上を定期取得し `OutcomeStore.record` へ。
+  手動 POST/CSV からの脱却。実認証は human-gate。
+- ⬜ **TPL-SEED テンプレ標準シード（§6.1/§6.2）**: 会社/事業部テンプレに HQ Agent・初期KPI 永続化
+  （Organization に KPI フィールド）・群統合（portfolio_advisor 連携）・週次レビュー Agent＋playbook シード・
+  Meta-Overseer エスカレーションを共通搭載（`weekly_review` 文字列を実エージェント化）。
+- ⬜ **WS-2 SQLite ストア（§5.2・再掲）**: workspaces/organizations/.../revenue_records/execution_logs/app_settings
+  を §5.2 設計で実装し JSON 正準→SQLite へ段階移行（**保存層移行でリスク高・着手前に要確認**）。
+- ⬜ **SET-EXPOSE 設定露出（§4 P2-5/P3-12）**: トークン/クォータ上限（token_quota.yaml writer）・承認閾値/
+  提案積極性（policy_rules.auto_approve）・通知設定を統一アプリ設定（/api/settings + SettingsPage）へ露出。
+- ⬜ **PT-3 §7.4 カタログ拡幅**: full_funnel の残3バリアント（短尺→デジタル商品/コンテンツ→複数PF同時収益化/
+  AI生成→note+アフィ複合）＋ content の `note_paid_article`（有料記事**作成**特化、販売側 note_monetization と別）。
+
 ---
 
-**収束条件（＝完璧に実現）**: 上記 ⬜ がすべて ✅、🔒 は実装済み+承認キュー積み or 人間実施済み、
-X.1 が dry、X.2 が pass。そのとき計画書の全節が出荷済み現実に対応する。
+**収束条件（＝完璧に実現）**: Phase 0〜5 の ⬜ がすべて ✅、🔒 は実装済み+承認キュー積み or 人間実施済み、
+X.1 が dry（再実行で新規ギャップ 0）、X.2 が pass。そのとき計画書の全節が出荷済み現実に対応する。
+**現況**: Phase 0〜4＋§5 WS-0/1＋§6 PT-1/2 完了。Phase 5（真の常駐自律化）が X.1 で surfaced され残存。
