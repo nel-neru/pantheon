@@ -2637,6 +2637,37 @@ async def api_install_division(org_name: str, body: DivisionInstallRequest) -> D
     }
 
 
+class CompanyInstallRequest(BaseModel):
+    """会社プラグインを install して完全な Organization を起動するリクエスト。"""
+
+    name: str = ""  # 省略時は manifest の label
+    repo_path: str = ""  # 省略時は workspaces_root 配下に自動
+
+
+@app.get("/api/company-plugin-manifests", tags=["plugins"])
+async def api_list_company_plugin_manifests() -> Dict[str, Any]:
+    """会社プラグイン manifest 一覧（初期KPI/週次レビュー/Humanタスク/事業部を含む正式定義）。"""
+    from core.orchestration.company_plugins import load_company_plugin_manifests
+
+    return {"manifests": load_company_plugin_manifests()}
+
+
+@app.post("/api/company-plugins/{plugin_id}/install", tags=["plugins"])
+async def api_install_company_plugin(plugin_id: str, body: CompanyInstallRequest) -> Dict[str, Any]:
+    """会社プラグイン manifest から完全な Organization を起動する（事業部・Humanタスク seed 込み）。"""
+    from core.orchestration.company_plugins import install_company_plugin
+
+    try:
+        return install_company_plugin(
+            plugin_id,
+            psm=_psm(),
+            name=body.name or None,
+            repo_path=body.repo_path or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post(
     "/api/init",
     response_model=PlatformInitResponse,

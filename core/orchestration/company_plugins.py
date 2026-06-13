@@ -74,3 +74,126 @@ def get_company_plugin_manifest(
         if manifest.get("id") == plugin_id:
             return manifest
     return None
+
+
+# 事業部名のキーワード → (DivisionType 値, 既定スキル) の推定表（P2.2b install 用）。
+_DIVISION_KEYWORDS = (
+    (
+        ("販売", "収益", "マーケ", "アフィ", "送客", "monetiz"),
+        "monetization",
+        ["content_strategy", "performance_marketing"],
+    ),
+    (
+        ("集客", "sns", "流入", "seo", "audience", "獲得"),
+        "audience_development",
+        ["audience_growth", "content_strategy"],
+    ),
+    (
+        ("制作", "企画", "記事", "コンテンツ", "編集", "投稿", "content"),
+        "content_production",
+        ["content_strategy", "knowledge_curation"],
+    ),
+)
+
+
+def _division_spec_from_name(name: str) -> Dict[str, Any]:
+    """事業部名から org_factory._build_division 用の department dict を合成する（型/スキルを推定）。"""
+    lowered = str(name).lower()
+    div_type = "org_evolution"
+    skills = ["strategic_planning", "deep_research"]
+    for keywords, mapped_type, mapped_skills in _DIVISION_KEYWORDS:
+        if any(k in lowered for k in keywords):
+            div_type, skills = mapped_type, mapped_skills
+            break
+    return {
+        "name": name,
+        "type": div_type,
+        "mission": f"{name}の業務を担う",
+        "teams": [{"name": f"{name} Team", "mission": f"{name}の実務", "required_skills": skills}],
+    }
+
+
+def install_company_plugin(
+    plugin_id: str,
+    *,
+    psm: Any,
+    name: Optional[str] = None,
+    repo_path: Optional[str] = None,
+    catalog_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """会社プラグイン manifest から **完全な Organization を起動**する（P2.2b 本丸）。
+
+    manifest の divisions（名称）から Division/Team/SpecialistAgent を組み立て、
+    人間専用タスク（human_tasks）を承認キューへ積み、初期KPIをメタに残して保存する。
+    収益モデル会社が「プラグインを足すだけで丸ごと立ち上がる」体験を実現する（§7.1）。
+
+    未知 plugin_id / 同名 org 既存は ValueError。``psm`` は PlatformStateManager。
+    """
+    from core.humans.human_tasks import enqueue_human_task
+    from core.models.organization import Organization, OrganizationStatus
+    from core.org_factory import _build_division
+
+    manifest = get_company_plugin_manifest(plugin_id, catalog_path=catalog_path)
+    if manifest is None:
+        raise ValueError(f"未知の会社プラグインです: {plugin_id}")
+
+    org_name = (name or manifest.get("label") or plugin_id).strip()
+    if psm.load_organization_by_name(org_name):
+        raise ValueError(f"Organization '{org_name}' はすでに存在します")
+
+    # ワークスペース（1 org = 1 repo）の決定（best-effort で mkdir、git init は呼び出し側/後続に委ねる）。
+    if repo_path:
+        repo = Path(repo_path)
+    else:
+        import re
+
+        root = getattr(psm, "get_workspaces_root", lambda: None)() or (
+            psm.platform_home / "workspaces"
+        )
+        safe = re.sub(r"[^A-Za-z0-9_-]+", "-", org_name).strip("-") or "company"
+        repo = Path(root) / safe
+    try:
+        repo.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+    purpose = str(manifest.get("description") or "").strip() or f"{org_name}（会社プラグイン）"
+    org = Organization(
+        name=org_name,
+        purpose=purpose,
+        target_repo_path=str(repo),
+        status=OrganizationStatus.INCUBATING,
+        isolation_level="external",
+    )
+    genre = manifest.get("genre")
+    if genre:
+        org.industry_genre = str(genre)
+
+    division_names = [d for d in (manifest.get("divisions") or []) if str(d).strip()]
+    for div_name in division_names:
+        org.add_division(_build_division(_division_spec_from_name(str(div_name))))
+
+    psm.save_organization(org)
+
+    # 人間専用タスク（初期設定）を承認キューへ積む。
+    human_tasks = [str(t).strip() for t in (manifest.get("human_tasks") or []) if str(t).strip()]
+    for task in human_tasks:
+        enqueue_human_task(
+            f"{org_name}: {task}",
+            platform_home=psm.platform_home,
+            kind="company_setup",
+            org_name=org_name,
+            dedupe_key=f"company_setup:{org_name}:{task}",
+        )
+
+    agents = org.get_all_agents()
+    return {
+        "ok": True,
+        "org_name": org.name,
+        "genre": getattr(org, "industry_genre", None),
+        "divisions": [d.name for d in org.divisions],
+        "agent_count": len(agents),
+        "human_tasks_created": len(human_tasks),
+        "initial_kpis": list(manifest.get("initial_kpis") or []),
+        "target_repo_path": org.target_repo_path,
+    }

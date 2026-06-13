@@ -4,11 +4,13 @@ import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
 
-type CompanyPlugin = {
+type CompanyManifest = {
   id: string
   label: string
-  division_count: number
+  genre?: string
+  description?: string
   divisions: string[]
+  initial_kpis?: string[]
 }
 
 type DivisionPlugin = {
@@ -21,7 +23,7 @@ type DivisionPlugin = {
 type OrgRow = { id: string; name: string }
 
 export function MarketplacePage() {
-  const [company, setCompany] = useState<CompanyPlugin[]>([])
+  const [manifests, setManifests] = useState<CompanyManifest[]>([])
   const [division, setDivision] = useState<DivisionPlugin[]>([])
   const [orgs, setOrgs] = useState<OrgRow[]>([])
   const [selectedOrg, setSelectedOrg] = useState('')
@@ -32,12 +34,12 @@ export function MarketplacePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [comp, div, orgList] = await Promise.all([
-        api<{ plugins: CompanyPlugin[] }>('GET', '/api/company-plugins'),
+      const [man, div, orgList] = await Promise.all([
+        api<{ manifests: CompanyManifest[] }>('GET', '/api/company-plugin-manifests'),
         api<{ plugins: DivisionPlugin[] }>('GET', '/api/division-plugins'),
         api<OrgRow[]>('GET', '/api/organizations'),
       ])
-      setCompany(comp.plugins)
+      setManifests(man.manifests)
       setDivision(div.plugins)
       setOrgs(orgList)
       if (orgList.length > 0) setSelectedOrg((prev) => prev || orgList[0].name)
@@ -54,6 +56,26 @@ export function MarketplacePage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const installCompany = useCallback(
+    async (pluginId: string) => {
+      setInstalling(pluginId)
+      try {
+        const res = await api<{ org_name: string; divisions: string[] }>(
+          'POST',
+          `/api/company-plugins/${encodeURIComponent(pluginId)}/install`,
+          {}
+        )
+        toast.success(`会社「${res.org_name}」を起動しました（${res.divisions.length} 事業部）。`)
+        await load()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : '会社の作成に失敗しました。')
+      } finally {
+        setInstalling(null)
+      }
+    },
+    [load]
+  )
 
   const installDivision = useCallback(
     async (pluginId: string) => {
@@ -117,25 +139,38 @@ export function MarketplacePage() {
               <div className="card-body flex flex-col gap-2">
                 <div className="flex items-center gap-2">
                   <Building2 size={16} />
-                  <div className="font-semibold">会社プラグイン（新しい収益モデル会社）</div>
+                  <div className="font-semibold">会社プラグイン（テンプレートから1クリックで会社を起動）</div>
                 </div>
                 <p className="text-muted text-sm">
-                  会社プラグインは <code>pantheon org create --genre</code> で新しい Organization を量産します。
+                  manifest を選んで「この会社を作成」すると、事業部・Agent・初期KPI・人間タスクまで揃った
+                  収益モデル会社（Organization）が即座に立ち上がります。
                 </p>
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>プラグイン</th>
-                      <th className="text-right">事業部数</th>
-                      <th>含まれる事業部</th>
+                      <th>会社</th>
+                      <th>事業部</th>
+                      <th>初期KPI</th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>
-                    {company.map((p) => (
-                      <tr key={p.id}>
-                        <td className="font-medium">{p.label}</td>
-                        <td className="text-right">{p.division_count}</td>
-                        <td className="text-muted text-sm">{p.divisions.join(' / ')}</td>
+                    {manifests.map((m) => (
+                      <tr key={m.id}>
+                        <td className="font-medium">{m.label}</td>
+                        <td className="text-muted text-sm">{m.divisions.join(' / ')}</td>
+                        <td className="text-muted text-sm">{(m.initial_kpis ?? []).join(' / ')}</td>
+                        <td className="text-right">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={installing === m.id}
+                            onClick={() => void installCompany(m.id)}
+                          >
+                            <Plus size={14} />
+                            この会社を作成
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

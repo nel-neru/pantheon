@@ -560,6 +560,27 @@ def test_company_plugins_catalog_api():
     assert isinstance(resp.json()["plugins"], list)
 
 
+def test_company_plugin_manifests_and_install_api(tmp_path, monkeypatch):
+    """会社プラグイン manifest 一覧 → install で完全な org が起動する（P2.2b）。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    manifests = client.get("/api/company-plugin-manifests")
+    assert manifests.status_code == 200
+    ids = {m["id"] for m in manifests.json()["manifests"]}
+    assert "note_sales" in ids  # 同梱 manifest
+
+    resp = client.post("/api/company-plugins/note_sales/install", json={})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True and body["divisions"]
+    assert body["human_tasks_created"] >= 1
+    assert psm.load_organization_by_name(body["org_name"]) is not None
+
+    # 未知プラグインは 400
+    assert client.post("/api/company-plugins/nope/install", json={}).status_code == 400
+
+
 def test_install_division_plugin_api(tmp_path, monkeypatch):
     """事業部プラグインを既存 org に追加して保存する。"""
     from core.org_factory import create_default_organization

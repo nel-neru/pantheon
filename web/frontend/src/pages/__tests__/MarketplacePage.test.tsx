@@ -9,8 +9,17 @@ beforeEach(() => {
   mockApi.mockReset()
 })
 
-const companyPlugins = {
-  plugins: [{ id: 'sns_growth', label: 'sns_growth', division_count: 2, divisions: ['A部', 'B部'] }],
+const companyManifests = {
+  manifests: [
+    {
+      id: 'note_sales',
+      label: 'note 販売会社',
+      genre: 'digital_content',
+      description: 'note で販売',
+      divisions: ['コンテンツ企画部', '販売・マーケティング部'],
+      initial_kpis: ['有料記事の売上'],
+    },
+  ],
 }
 const divisionPlugins = {
   plugins: [
@@ -27,9 +36,12 @@ const orgs = [{ id: '1', name: 'My Co' }]
 
 function wireApi() {
   mockApi.mockImplementation((method: string, path: string) => {
-    if (path === '/api/company-plugins') return Promise.resolve(companyPlugins)
+    if (path === '/api/company-plugin-manifests') return Promise.resolve(companyManifests)
     if (path === '/api/division-plugins') return Promise.resolve(divisionPlugins)
     if (path === '/api/organizations') return Promise.resolve(orgs)
+    if (method === 'POST' && path.includes('/install')) {
+      return Promise.resolve({ org_name: 'note 販売会社', divisions: ['コンテンツ企画部'] })
+    }
     if (method === 'POST' && path.includes('/divisions')) {
       return Promise.resolve({ division: { name: 'X集客事業部' } })
     }
@@ -37,14 +49,27 @@ function wireApi() {
   })
 }
 
-it('会社プラグインと事業部プラグインを一覧表示する', async () => {
+it('会社プラグイン manifest と事業部プラグインを一覧表示する', async () => {
   wireApi()
   renderWithRouter(<MarketplacePage />)
 
-  expect(await screen.findByText('会社プラグイン（新しい収益モデル会社）')).toBeInTheDocument()
+  expect(
+    await screen.findByText('会社プラグイン（テンプレートから1クリックで会社を起動）')
+  ).toBeInTheDocument()
   expect(screen.getByText('事業部プラグイン（既存の会社に追加）')).toBeInTheDocument()
+  expect(screen.getByText('note 販売会社')).toBeInTheDocument()
   expect(screen.getByText('X集客事業部')).toBeInTheDocument()
-  expect(screen.getByText('note販売事業部')).toBeInTheDocument()
+})
+
+it('「この会社を作成」で install API を呼ぶ', async () => {
+  wireApi()
+  renderWithRouter(<MarketplacePage />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'この会社を作成' }))
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/company-plugins/note_sales/install', {})
+  )
 })
 
 it('事業部プラグインを選択中の組織に追加する POST を呼ぶ', async () => {
