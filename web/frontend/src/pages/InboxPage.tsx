@@ -26,6 +26,7 @@ type InboxItem = {
   title: string
   category: string
   priority: string
+  revenue_impact?: number
   platform?: string
   scheduled_at?: string | null
   route: string
@@ -311,6 +312,9 @@ export function InboxPage() {
                           </span>
                         ) : null}
                         <div className="font-semibold truncate">{item.title}</div>
+                        {(item.revenue_impact ?? 0) >= 2 ? (
+                          <span className="badge badge-green">収益</span>
+                        ) : null}
                         <span className={`badge ${priorityBadge(item.priority)}`}>{item.priority}</span>
                         {item.platform ? <span className="badge badge-neutral">{item.platform}</span> : null}
                       </div>

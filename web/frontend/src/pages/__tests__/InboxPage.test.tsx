@@ -32,6 +32,7 @@ const inboxResponse = {
       title: 'テスト追加',
       category: 'quality',
       priority: 'medium',
+      revenue_impact: 2,
       route: '/proposals?org=SNS Growth',
     },
   ],
@@ -51,6 +52,14 @@ it('集約された承認待ちを一覧表示する', async () => {
   expect(await screen.findByText('朝活のコツ')).toBeInTheDocument()
   expect(screen.getByText('テスト追加')).toBeInTheDocument()
   expect(screen.getByText('Note Sales')).toBeInTheDocument()
+})
+
+it('収益インパクトの高い提案に「収益」バッジを表示する', async () => {
+  mockApi.mockResolvedValueOnce(inboxResponse)
+  renderWithRouter(<InboxPage />)
+
+  await screen.findByText('テスト追加')
+  expect(screen.getByText('収益')).toBeInTheDocument()
 })
 
 it('投稿アイテムの「投稿」で publish-jobs/run を叩く', async () => {

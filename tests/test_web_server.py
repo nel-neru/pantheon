@@ -475,6 +475,48 @@ def test_revenue_intelligence_api(tmp_path, monkeypatch):
     assert body["forecast_next"] > 225
 
 
+def test_inbox_sorts_revenue_impact_first(tmp_path, monkeypatch):
+    """収益駆動の提案がインボックス上位に並び、revenue_impact が付与される。"""
+    from core.models.organization import StructuralInterventionType
+    from core.orchestration.structural_intervention import build_intervention_proposal
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    org = create_default_organization("Co", "テスト")
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+
+    generic = build_intervention_proposal(
+        target_org=org,
+        intervention_type=StructuralInterventionType.ADD_DIVISION.value,
+        title="[HQ介入] 実行強化部を新設",
+        description="d",
+        intervention_spec={"division": {"name": "実行強化部", "type": "performance_optimization"}},
+        source_org_name="HQ",
+        target_ref="実行強化部",
+    )
+    revenue = build_intervention_proposal(
+        target_org=org,
+        intervention_type=StructuralInterventionType.ADD_DIVISION.value,
+        title="[HQ介入] 収益化事業部を新設",
+        description="d",
+        intervention_spec={"division": {"name": "note販売事業部", "type": "monetization"}},
+        source_org_name="HQ",
+        target_ref="add_monetization_division",
+    )
+    sm.save_improvement_proposal(generic)
+    sm.save_improvement_proposal(revenue)
+
+    resp = client.get("/api/inbox")
+    assert resp.status_code == 200, resp.text
+    proposals = [i for i in resp.json()["items"] if i["kind"] == "proposal"]
+    assert len(proposals) == 2
+    assert proposals[0]["revenue_impact"] == 2
+    assert proposals[0]["title"].endswith("収益化事業部を新設")
+    assert any(p["revenue_impact"] == 0 for p in proposals)
+
+
 def test_division_plugins_catalog_api():
     """事業部プラグインのカタログを返す。"""
     resp = client.get("/api/division-plugins")
