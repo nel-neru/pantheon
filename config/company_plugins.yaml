@@ -1,0 +1,84 @@
+# 会社（Company）プラグインの manifest カタログ（P2.2）。
+#
+# 2階層プラグイン構想の「会社」側を正式な manifest として列挙する。
+# 各 manifest は GUI/CLI に「収益化テンプレートとしての会社」を提示するための
+# 宣言的メタデータであり、構造（Division/Team/SpecialistAgent）そのものは持たない
+# （実体の組み立ては `pantheon org create --genre` など既存の量産経路が担当する）。
+#
+# ローダ: core/orchestration/company_plugins.py（load_company_plugin_manifests）。
+# 必須キー: id。欠落/破損時はローダ側で安全に握りつぶす（生成を止めない）。
+# その他のキー（label/genre/description/initial_kpis/weekly_review/human_tasks/divisions）は
+# 表示・初期化のヒントであり、欠けていてもカタログ全体は壊れない。
+
+schema_version: "1.0"
+
+plugins:
+  - id: note_sales
+    label: note 販売会社
+    genre: digital_content
+    description: >-
+      note でデジタルコンテンツ（有料記事・マガジン）を制作し継続販売する会社。
+      下書き工場として記事を量産し、公開と価格設定は人手の承認ゲートを通す。
+    initial_kpis:
+      - 月間有料記事公開数
+      - 有料記事の売上（円）
+      - 記事あたり購入転換率
+      - フォロワー増加数
+    weekly_review: >-
+      週次で「公開した記事数 × 平均単価 × 転換率」を確認し、売れ筋テーマへ
+      次週の制作枠を寄せる。伸びない下書きはアーカイブし制作コストを回収する。
+    human_tasks:
+      - 有料記事の公開承認と価格設定
+      - サムネイル/タイトルの最終確認
+      - 読者コメントへの一次対応
+    divisions:
+      - コンテンツ企画部
+      - 記事制作部
+      - 販売・マーケティング部
+
+  - id: affiliate
+    label: アフィリエイト会社
+    genre: affiliate_marketing
+    description: >-
+      商品レビュー・比較記事を制作し、アフィリエイトリンク経由の成果報酬で
+      収益化する会社。検索流入を主軸に、案件選定と記事更新を回し続ける。
+    initial_kpis:
+      - 公開レビュー記事数
+      - アフィリエイトクリック数
+      - 成果コンバージョン数
+      - 成果報酬額（円）
+    weekly_review: >-
+      週次でクリック→コンバージョン→報酬のファネルを見て、報酬単価と
+      転換率の高い案件へ記事更新リソースを再配分する。失効リンクを点検する。
+    human_tasks:
+      - アフィリエイト案件・提携プログラムの最終選定
+      - 公開前のステマ規制/表記コンプライアンス確認
+      - 報酬実績データの取り込み確認
+    divisions:
+      - 案件リサーチ部
+      - レビュー記事制作部
+      - SEO・流入最適化部
+
+  - id: sns_growth
+    label: SNS 集客→収益化会社
+    genre: social_media
+    description: >-
+      SNS でフォロワーを集め、認知を商品/サービス/送客へつなげて収益化する会社。
+      投稿を継続生成しつつ、収益化導線（リンク・案件）への接続は人手で承認する。
+    initial_kpis:
+      - 週間投稿数
+      - インプレッション数
+      - エンゲージメント率
+      - フォロワー増加数
+      - 送客クリック数
+    weekly_review: >-
+      週次でインプレッションとエンゲージメントの伸びを確認し、反応の良い
+      フォーマットへ投稿比率を寄せる。収益化導線のクリックを併せて追跡する。
+    human_tasks:
+      - 収益化導線（リンク/PR 案件）への接続承認
+      - ブランドトーンを外れた投稿の差し戻し
+      - DM/コメントでの個別エンゲージメント対応
+    divisions:
+      - コンテンツ企画部
+      - 投稿運用部
+      - 収益化・送客部

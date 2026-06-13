@@ -26,20 +26,28 @@
   並べ替え・付与、InboxPage に「収益」バッジ）
 - ✅ P1.4 Human Member タスク管理（`core/humans/human_tasks` HumanTask/Store/enqueue +
   `/api/human-tasks` CRUD + HumanTasksPage `/human-tasks` + publishing handed_off→公開確認タスク自動起票）
-- ⬜ P1.5 **ポートフォリオ資源配分の提案**: Meta-Overseer が org 横断で収益/リーチを見て
-  「どの org に投資/縮小」を提案。受け入れ: 横断サマリ + 配分提案生成 + テスト。
+- 🟩 P1.5 ポートフォリオ資源配分（コア✅ `core/metrics/portfolio.recommend_allocation`：ROI で
+  invest/monetize/optimize/grow_audience 振り分け＋テスト。HQ提案/GUI 配線は後続 WIRE-A）
 
 ## Phase 2（自己拡大）
 
-- ⬜ P2.1 **トレンド→新規事業（会社）提案**: trend を新収益モデル会社の提案へ変換し承認ゲート化
-  （承認で `org create` 相当を実行）。受け入れ: trend→business-proposal 変換 + 承認→org 生成 + テスト。
-- ⬜ P2.2 **会社プラグイン manifest 化 + マーケット強化**: `config/departments/*` を会社プラグイン
-  manifest（初期KPI/週次レビュー種/Humanタスク）に格上げ、推奨組合せ表示。受け入れ: manifest スキーマ +
-  ローダ + GUI 表示 + テスト。
-- ⬜ P2.3 **Self-Evolution / Playbook**: `agent_knowledge` の上に統一 Playbook 抽象（蓄積・採点・適用）。
-  受け入れ: Playbook モデル/ストア + 生成・参照経路 + テスト。
-- ⬜ P2.4 **複数org連携最適化**: handoff の自動推奨（集客 org→収益化 org）。受け入れ: 連携推奨生成 + テスト。
+> 並列ワークフロー（wf_4acbfaf7）で P2.1〜P2.4 + P1.5 の **コア（純粋ロジック/ストア+テスト）を出荷済み**。
+> API/HQ/daemon/GUI への**配線は後続の直列サイクル WIRE-A/B** で行う（既存ファイル改修を伴うため）。
+
+- 🟩 P2.1 トレンド→新規事業提案（コア✅ `core/trends/business_proposal.trend_to_business_proposal` +
+  `is_business_worthy`＋テスト。承認ゲート→org 生成の配線は WIRE-B）
+- 🟩 P2.2 会社プラグイン manifest（コア✅ `config/company_plugins.yaml` + `core/orchestration/company_plugins`
+  ローダ＋テスト。**install→完全な org 起動フローは P2.2b＝次の本丸**、GUI は WIRE-B）
+- 🟩 P2.3 Self-Evolution / Playbook（コア✅ `core/intelligence/playbook` Entry/Store/採点/top＋テスト。
+  生成・参照経路への配線は後続）
+- 🟩 P2.4 複数org連携最適化（コア✅ `core/hierarchy/handoff_optimizer.recommend_handoffs`＋テスト。
+  HQ提案/handoff 自動起票への配線は WIRE-A）
 - ⬜ P2.5 **Trend Monitor 本格運用の硬化**: trend daemon の収集→採点→変換の網羅と重複排除を強化 + テスト。
+- ⬜ **P2.2b 会社プラグイン install フロー（本丸・組織のプラグイン化）**: manifest→完全な Organization 起動
+  （事業部・初期KPI初期化・週次レビュー種・Humanタスク自動起票）+ `POST /api/company-plugins/{id}/install`
+  + マーケットプレイス「この会社を作成」。受け入れ: install で org+divisions 生成・KPI/Humanタスク seed + テスト。
+- ⬜ **WIRE-A 収益コアの配線**: portfolio/handoff_optimizer を HQ 提案・GUI（ポートフォリオ/連携推奨）へ接続。
+- ⬜ **WIRE-B 自己拡大の配線**: business_proposal→承認ゲート、company manifest→マーケットGUI 表示。
 
 ## Phase 3（アプリ化・UX）
 
