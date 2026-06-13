@@ -456,6 +456,61 @@ def test_revenue_report_api_monthly(tmp_path, monkeypatch):
     assert body["total_revenue"] == 3500.0
 
 
+def test_division_plugins_catalog_api():
+    """事業部プラグインのカタログを返す。"""
+    resp = client.get("/api/division-plugins")
+    assert resp.status_code == 200
+    ids = {p["id"] for p in resp.json()["plugins"]}
+    assert "x_audience" in ids
+
+
+def test_company_plugins_catalog_api():
+    resp = client.get("/api/company-plugins")
+    assert resp.status_code == 200
+    assert isinstance(resp.json()["plugins"], list)
+
+
+def test_install_division_plugin_api(tmp_path, monkeypatch):
+    """事業部プラグインを既存 org に追加して保存する。"""
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    org = create_default_organization("My Co", "テスト")
+    psm.save_organization(org)
+    before = len(org.divisions)
+
+    resp = client.post(
+        "/api/organizations/My Co/divisions", json={"plugin_id": "note_monetization"}
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["division"]["name"] == "note販売事業部"
+    assert body["division_count"] == before + 1
+
+    # 永続化されている
+    reloaded = psm.load_organization_by_name("My Co")
+    assert len(reloaded.divisions) == before + 1
+
+
+def test_install_division_plugin_unknown_org_404(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    resp = client.post("/api/organizations/Nope/divisions", json={"plugin_id": "x_audience"})
+    assert resp.status_code == 404
+
+
+def test_install_division_plugin_unknown_plugin_400(tmp_path, monkeypatch):
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("My Co", "テスト"))
+    resp = client.post("/api/organizations/My Co/divisions", json={"plugin_id": "ghost"})
+    assert resp.status_code == 400
+
+
 def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
     """Web: 本文生成エンドポイントが受け手 org に本文ドラフト提案を作る（claude 不在＝決定論）。"""
     from core.org_factory import create_default_organization

@@ -23,6 +23,7 @@ import {
   Coins,
   PenSquare,
   Plug,
+  Blocks,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -38,6 +39,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { HandoffsPage } from '@/pages/HandoffsPage'
 import { HelpPage } from '@/pages/HelpPage'
 import { InboxPage } from '@/pages/InboxPage'
+import { MarketplacePage } from '@/pages/MarketplacePage'
 import { RevenuePage } from '@/pages/RevenuePage'
 import { StudioPage } from '@/pages/StudioPage'
 import { BoardPage } from '@/pages/BoardPage'
@@ -68,6 +70,7 @@ const navItems: NavItem[] = [
   { to: '/inbox', label: '承認インボックス', icon: Inbox },
   { to: '/connections', label: 'プラットフォーム接続', icon: Plug },
   { to: '/orgs', label: '組織', icon: Building2 },
+  { to: '/marketplace', label: 'マーケットプレイス', icon: Blocks },
   { to: '/proposals', label: '改善提案', icon: Lightbulb },
   { to: '/handoffs', label: '引き渡し', icon: ArrowRightLeft },
   { to: '/studio', label: 'スタジオ', icon: PenSquare },
@@ -418,6 +421,7 @@ export default function App() {
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/connections" element={<ConnectionsPage />} />
         <Route path="/orgs" element={<OrgsPage />} />
+        <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/proposals" element={<ProposalsPage />} />
         <Route path="/handoffs" element={<HandoffsPage />} />
         <Route path="/studio" element={<StudioPage />} />

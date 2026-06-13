@@ -2553,6 +2553,60 @@ async def api_revenue_report(org_name: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Plugins / Marketplace（2階層プラグイン: 会社プラグイン / 事業部プラグイン）        #
+# --------------------------------------------------------------------------- #
+
+
+class DivisionInstallRequest(BaseModel):
+    """既存 Organization に事業部プラグインを追加するリクエスト。"""
+
+    plugin_id: str
+
+
+@app.get("/api/division-plugins", tags=["plugins"])
+async def api_list_division_plugins() -> Dict[str, Any]:
+    """事業部プラグインのカタログ（既存 org に追加できる Division 定義）。"""
+    from core.orchestration.division_plugins import load_division_plugins
+
+    return {"plugins": load_division_plugins()}
+
+
+@app.get("/api/company-plugins", tags=["plugins"])
+async def api_list_company_plugins() -> Dict[str, Any]:
+    """会社プラグインのアーキタイプ（org create --genre 相当の Organization テンプレ）。"""
+    from core.orchestration.division_plugins import load_company_plugins
+
+    return {"plugins": load_company_plugins()}
+
+
+@app.post("/api/organizations/{org_name}/divisions", tags=["plugins"])
+async def api_install_division(org_name: str, body: DivisionInstallRequest) -> Dict[str, Any]:
+    """事業部プラグインを既存 Organization に追加する（install → add_division → save）。"""
+    from core.orchestration.division_plugins import add_division_plugin
+
+    psm = _psm()
+    org = psm.load_organization_by_name(org_name)
+    if org is None:
+        raise HTTPException(status_code=404, detail=f"Organization '{org_name}' が見つかりません")
+    try:
+        division = add_division_plugin(org, body.plugin_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    psm.save_organization(org)
+    return {
+        "ok": True,
+        "org_name": org.name,
+        "division": {
+            "name": division.name,
+            "type": division.type.value,
+            "teams": [t.name for t in division.teams],
+            "agents": [a.name for t in division.teams for a in t.agents],
+        },
+        "division_count": len(org.divisions),
+    }
+
+
 @app.post(
     "/api/init",
     response_model=PlatformInitResponse,
