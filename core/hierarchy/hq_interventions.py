@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from core.hierarchy.org_diagnostics import DiagnosticReport, OrgSelfDiagnostics
 from core.models.organization import (
     STRUCTURAL_INTERVENTION_CATEGORY,
+    DivisionType,
     ImprovementProposal,
     Organization,
     StructuralInterventionType,
@@ -36,6 +37,41 @@ if TYPE_CHECKING:
 _WEAKNESS_LOW_AUTONOMY = "自律スコアの改善が必要"
 _WEAKNESS_LOW_QUALITY = "提案の質向上が必要"
 _WEAKNESS_LOW_KNOWLEDGE = "知識蓄積の強化が必要"
+
+
+def _plugin_department_to_division_spec(department: Dict[str, Any]) -> Dict[str, Any]:
+    """事業部プラグインの department 定義（teams[].required_skills）を ADD_DIVISION の
+    spec 形式（teams[].agents[].skills）へ変換する。
+
+    プラグインカタログ（org_factory/テンプレと同形）と構造介入 executor
+    （structural_intervention._build_team は agents を読む）の橋渡し。各チームの
+    required_skills を 1 体の Specialist のスキルに写像する（2〜3 正規化は executor が担う）。
+    """
+    teams_out: List[Dict[str, Any]] = []
+    for team in department.get("teams", []) or []:
+        if not isinstance(team, dict):
+            continue
+        team_name = str(team.get("name") or "New Team")
+        mission = str(team.get("mission") or "")
+        teams_out.append(
+            {
+                "name": team_name,
+                "mission": mission,
+                "agents": [
+                    {
+                        "name": f"{team_name} Specialist",
+                        "skills": list(team.get("required_skills") or []),
+                        "description": mission,
+                    }
+                ],
+            }
+        )
+    return {
+        "name": department.get("name"),
+        "type": department.get("type"),
+        "mission": department.get("mission", ""),
+        "teams": teams_out,
+    }
 
 
 class HQInterventionProposer:
@@ -102,7 +138,50 @@ class HQInterventionProposer:
         outcome_proposal = self._intervention_from_outcomes(org)
         if outcome_proposal is not None:
             proposals.append(outcome_proposal)
+        # Phase 1: 「リーチ有・収益0」の org に *具体的な収益化事業部* の新設を提案する
+        #          （目標設定＝why に対し、事業部プラグイン追加＝how。自己拡大の出口）。
+        monetization_proposal = self._intervention_add_monetization_division(org)
+        if monetization_proposal is not None:
+            proposals.append(monetization_proposal)
         return proposals
+
+    def _intervention_add_monetization_division(
+        self, org: Organization
+    ) -> Optional[ImprovementProposal]:
+        """成果ベースの *構造* 介入: 収益化事業部が未設置の収益0 org に追加を提案する。
+
+        ``_intervention_from_outcomes`` の SET_GOAL（目標化）を補完する具体策。事業部
+        プラグイン（``core.orchestration.division_plugins``）の department 定義を ADD_DIVISION
+        の spec に変換して提案する（承認→構造介入 executor で適用）。
+        """
+        from core.metrics.outcomes import OutcomeStore
+        from core.orchestration.division_plugins import get_division_plugin
+
+        summary = OutcomeStore(platform_home=self._psm.platform_home).summary_for_org(org.name)
+        if summary.event_count == 0:
+            return None
+        if not (summary.total_reach > 0 and summary.total_revenue <= 0):
+            return None
+        # 既に収益化事業部があるなら構造追加はしない（目標設定の方に委ねる＝二重提案を避ける）。
+        if any(d.type == DivisionType.MONETIZATION for d in org.divisions):
+            return None
+        plugin = get_division_plugin("note_monetization")
+        if plugin is None or not isinstance(plugin.get("department"), dict):
+            return None
+        div_spec = _plugin_department_to_division_spec(plugin["department"])
+        return build_intervention_proposal(
+            target_org=org,
+            intervention_type=StructuralInterventionType.ADD_DIVISION.value,
+            title=f"[HQ介入] {org.name} に収益化事業部を新設（成果ベース）",
+            description=(
+                f"成果分析: リーチ {summary.total_reach:.0f} に対し収益 0、かつ収益化事業部が未設置。"
+                f"事業部プラグイン『{plugin.get('label', plugin['id'])}』を追加して"
+                "獲得を収益へ転換する（マーケットプレイスからも追加可能）。"
+            ),
+            intervention_spec={"division": div_spec, "plugin_id": plugin["id"]},
+            source_org_name=self._source,
+            target_ref="add_monetization_division",
+        )
 
     def _intervention_from_outcomes(self, org: Organization) -> Optional[ImprovementProposal]:
         """成果フィードバックに基づく介入（閉じたフライホイール）。

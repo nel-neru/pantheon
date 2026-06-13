@@ -227,6 +227,48 @@ def test_hq_no_outcome_intervention_when_revenue_present(tmp_path):
     assert not [p for p in proposals if p.target_ref == "monetization_from_outcomes"]
 
 
+def test_hq_outcome_proposes_concrete_monetization_division(tmp_path):
+    """リーチ有・収益0・収益化事業部なし → 具体的な ADD_DIVISION（収益化事業部）も提案する。"""
+    from core.hierarchy.hq_interventions import HQInterventionProposer
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("RevOrg2", "content", status=OrganizationStatus.ACTIVE)
+    org.autonomy_score = 75.0
+    psm.save_organization(org)
+    store = OutcomeStore(platform_home=psm.platform_home)
+    store.record("RevOrg2", "impressions", 5000)
+    store.record("RevOrg2", "revenue", 0)
+
+    proposals = HQInterventionProposer(psm, source_org_name="HQ").propose_for_org(org)
+    add_div = [p for p in proposals if p.target_ref == "add_monetization_division"]
+    assert add_div, "収益化事業部が無ければ具体的な ADD_DIVISION 提案が出るはず"
+    p = add_div[0]
+    assert p.intervention_type == "add_division"
+    assert p.intervention_spec["division"]["name"] == "note販売事業部"
+    # 変換した spec は executor が読める agents 形式になっている
+    assert p.intervention_spec["division"]["teams"][0]["agents"][0]["skills"]
+
+
+def test_hq_no_add_division_when_monetization_exists(tmp_path):
+    """既に収益化事業部があるなら ADD_DIVISION は提案しない（SET_GOAL に委ねる）。"""
+    from core.hierarchy.hq_interventions import HQInterventionProposer
+    from core.orchestration.division_plugins import add_division_plugin
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("RevOrg3", "content", status=OrganizationStatus.ACTIVE)
+    org.autonomy_score = 75.0
+    add_division_plugin(org, "note_monetization")  # 収益化事業部を既設にする
+    psm.save_organization(org)
+    store = OutcomeStore(platform_home=psm.platform_home)
+    store.record("RevOrg3", "impressions", 5000)
+    store.record("RevOrg3", "revenue", 0)
+
+    proposals = HQInterventionProposer(psm, source_org_name="HQ").propose_for_org(org)
+    assert not [p for p in proposals if p.target_ref == "add_monetization_division"]
+    # 目標設定（why）の方は引き続き出る
+    assert [p for p in proposals if p.target_ref == "monetization_from_outcomes"]
+
+
 # --------------------------------------------------------------------------- #
 # レビュー指摘の回帰テスト（堅牢性）                                            #
 # --------------------------------------------------------------------------- #
