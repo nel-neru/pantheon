@@ -24,10 +24,14 @@ from core.runtime.heartbeat import write_heartbeat
 
 
 def test_known_daemons_and_get_spec():
-    assert set(KNOWN_DAEMONS) == {"improvement", "content", "watchdog", "trend"}
+    assert set(KNOWN_DAEMONS) == {"improvement", "content", "watchdog", "trend", "revenue"}
     assert get_spec("improvement").pid_filename == "daemon.pid"  # 既存レイアウト互換
     assert get_spec("content").pid_filename == "content_daemon.pid"
     assert get_spec("watchdog").pid_filename == "watchdog.pid"
+    revenue = get_spec("revenue")
+    assert revenue.pid_filename == "revenue_daemon.pid"
+    assert revenue.runner_module == "core._revenue_daemon_runner"
+    assert revenue.frozen_flag == "--revenue-daemon-run"
     with pytest.raises(ValueError):
         get_spec("ghost")
 
@@ -35,6 +39,19 @@ def test_known_daemons_and_get_spec():
 def test_build_command_non_frozen():
     cmd = build_command(get_spec("content"), ["--interval=600"])
     assert cmd == [sys.executable, "-m", "core._content_daemon_runner", "--interval=600"]
+
+
+def test_build_command_non_frozen_revenue():
+    cmd = build_command(get_spec("revenue"), ["--target=1000"])
+    assert cmd == [sys.executable, "-m", "core._revenue_daemon_runner", "--target=1000"]
+
+
+def test_build_command_frozen_uses_revenue_flag(monkeypatch):
+    # 凍結 exe では -m モジュールではなく frozen_flag のサブコマンドへ分岐する
+    monkeypatch.setattr(registry.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(registry.sys, "executable", "Pantheon.exe", raising=False)
+    cmd = build_command(get_spec("revenue"), ["--target=1000"])
+    assert cmd == ["Pantheon.exe", "--revenue-daemon-run", "--target=1000"]
 
 
 def test_enabled_state_roundtrip(tmp_path):

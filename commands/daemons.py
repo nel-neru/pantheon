@@ -17,7 +17,7 @@ from typing import Any, List, Optional
 
 # argparse の choices 用（core を import せず CLI 起動を軽く保つ）。
 # core/runtime/daemon_registry.py の KNOWN_DAEMONS と同期させること。
-DAEMON_NAMES = ("improvement", "content", "watchdog", "trend")
+DAEMON_NAMES = ("improvement", "content", "watchdog", "trend", "revenue")
 
 
 def _format_age(age: Optional[float]) -> str:
@@ -76,6 +76,10 @@ async def cmd_daemons_start(args: argparse.Namespace) -> None:
         extra = [f"--interval={interval}"]
         if name == "improvement":
             extra.append(f"--max-files={args.max_files}")
+        if name == "revenue":
+            # target を desired state に記録 → watchdog/再起動でも同じ目標で復元される。
+            # 0 以下はアイドル（分析ログのみ・提案は起票しない）= 安全な既定。
+            extra.append(f"--target={args.target}")
         result = spawn_daemon(name, args=extra)
         print(f"[{name}] {result['status']} (pid={result['pid']}, log={result['log_path']})")
 
@@ -190,6 +194,12 @@ def register(subparsers: Any) -> None:
     sp.add_argument("--interval", type=int, default=None, help="サイクル間隔（秒）")
     sp.add_argument(
         "--max-files", type=int, default=10, help="improvement のみ: org あたり最大ファイル数"
+    )
+    sp.add_argument(
+        "--target",
+        type=float,
+        default=0.0,
+        help="revenue のみ: 月収益目標（>0 でポートフォリオ提案を起票。0 以下はアイドル）",
     )
     sp.set_defaults(handler_name="cmd_daemons_start")
 
