@@ -177,6 +177,22 @@ class OutcomeStore:
             stats["last"] = event.value
         return OutcomeSummary(org_name=org_name, by_metric=by_metric, event_count=len(events))
 
+    def revenue_by_month(self, org_name: Optional[str] = None) -> Dict[str, float]:
+        """収益メトリクス（REVENUE_METRICS）を ``YYYY-MM`` バケットで合計する簡易レポート。
+
+        ``org_name`` 省略時は全 org を横断集計する。``occurred_at`` の先頭7文字を月キーに使い、
+        日付が読めないイベントは ``"unknown"`` バケットへ寄せて集計を壊さない。戻り値は
+        月キーの昇順（``"unknown"`` は末尾）に並べた ``{month: 合計}``。
+        """
+        buckets: Dict[str, float] = {}
+        for event in self.list_events(org_name):
+            if event.metric not in REVENUE_METRICS:
+                continue
+            stamp = (event.occurred_at or event.recorded_at or "")[:7]
+            month = stamp if len(stamp) == 7 and stamp[4] == "-" else "unknown"
+            buckets[month] = buckets.get(month, 0.0) + event.value
+        return {key: buckets[key] for key in sorted(buckets, key=lambda k: (k == "unknown", k))}
+
     # ---- 内部 ----
 
     def _load(self) -> List[OutcomeEvent]:

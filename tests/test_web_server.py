@@ -400,6 +400,62 @@ def test_outcomes_import_api(tmp_path, monkeypatch):
     assert summary.json()["by_metric"]["revenue"]["sum"] == 3000
 
 
+def test_record_single_outcome_api(tmp_path, monkeypatch):
+    """GUI 手動入力: POST /api/outcomes が 1 件記録し、サマリに反映される。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    resp = client.post(
+        "/api/outcomes",
+        json={"org_name": "Note Sales", "metric": "revenue", "value": 5000, "note": "手動"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["event"]["metric"] == "revenue"
+    assert body["event"]["value"] == 5000
+    assert body["event"]["source"] == "manual"
+
+    summary = client.get("/api/outcomes/Note Sales").json()
+    assert summary["by_metric"]["revenue"]["sum"] == 5000
+
+
+def test_record_single_outcome_api_validation(tmp_path, monkeypatch):
+    """org_name / metric が空なら 400。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    resp = client.post(
+        "/api/outcomes",
+        json={"org_name": "  ", "metric": "revenue", "value": 100},
+    )
+    assert resp.status_code == 400
+
+
+def test_revenue_report_api_monthly(tmp_path, monkeypatch):
+    """月次レポート: REVENUE_METRICS を YYYY-MM で集計する。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    for metric, value, occurred in [
+        ("revenue", 1000, "2026-05-10T00:00:00+00:00"),
+        ("sales", 500, "2026-05-20T00:00:00+00:00"),
+        ("revenue", 2000, "2026-06-01T00:00:00+00:00"),
+        ("impressions", 9999, "2026-06-01T00:00:00+00:00"),  # 非収益は除外
+    ]:
+        client.post(
+            "/api/outcomes",
+            json={
+                "org_name": "Note Sales",
+                "metric": metric,
+                "value": value,
+                "occurred_at": occurred,
+            },
+        )
+    report = client.get("/api/metrics/revenue/report?org_name=Note Sales")
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["by_month"] == {"2026-05": 1500.0, "2026-06": 2000.0}
+    assert body["total_revenue"] == 3500.0
+
+
 def test_division_plugins_catalog_api():
     """事業部プラグインのカタログを返す。"""
     resp = client.get("/api/division-plugins")

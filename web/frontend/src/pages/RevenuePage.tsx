@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Coins, Eye, RefreshCw, Send, TrendingUp } from 'lucide-react'
+import { AlertTriangle, CalendarDays, Coins, Eye, Plus, RefreshCw, Send, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
@@ -19,6 +19,14 @@ type RevenueMetrics = {
   total_reach: number
 }
 
+type RevenueReport = {
+  by_month: Record<string, number>
+  total_revenue: number
+}
+
+const REVENUE_METRICS = ['revenue', 'sales', 'conversions'] as const
+type RevenueMetric = (typeof REVENUE_METRICS)[number]
+
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('ja-JP')
 }
@@ -26,18 +34,31 @@ function fmt(n: number): string {
 export function RevenuePage() {
   const navigate = useNavigate()
   const [data, setData] = useState<RevenueMetrics | null>(null)
+  const [report, setReport] = useState<RevenueReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // 手動入力フォーム
+  const [formOrg, setFormOrg] = useState('')
+  const [formMetric, setFormMetric] = useState<RevenueMetric>('revenue')
+  const [formValue, setFormValue] = useState('')
+  const [formNote, setFormNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await api<RevenueMetrics>('GET', '/api/metrics/revenue')
+      const [result, rep] = await Promise.all([
+        api<RevenueMetrics>('GET', '/api/metrics/revenue'),
+        api<RevenueReport>('GET', '/api/metrics/revenue/report'),
+      ])
       setData(result)
+      setReport(rep)
       setError(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : '収益メトリクスの読み込みに失敗しました。'
       setData(null)
+      setReport(null)
       setError(message)
       toast.error(message)
     } finally {
@@ -49,8 +70,39 @@ export function RevenuePage() {
     void load()
   }, [load])
 
+  const submitOutcome = useCallback(async () => {
+    const org = formOrg.trim()
+    const value = Number(formValue)
+    if (!org) {
+      toast.error('組織名を入力してください。')
+      return
+    }
+    if (!formValue.trim() || Number.isNaN(value)) {
+      toast.error('金額（数値）を入力してください。')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await api('POST', '/api/outcomes', {
+        org_name: org,
+        metric: formMetric,
+        value,
+        note: formNote.trim(),
+      })
+      toast.success(`${org} に ${formMetric} ${fmt(value)} を記録しました。`)
+      setFormValue('')
+      setFormNote('')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '記録に失敗しました。')
+    } finally {
+      setSubmitting(false)
+    }
+  }, [formOrg, formMetric, formValue, formNote, load])
+
   const orgs = data?.orgs ?? []
   const alerts = orgs.filter((o) => o.reach_but_no_revenue)
+  const months = report ? Object.entries(report.by_month) : []
 
   return (
     <>
@@ -120,6 +172,99 @@ export function RevenuePage() {
                 </div>
               </div>
             </div>
+
+            <div className="card">
+              <div className="card-body flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Plus size={16} />
+                  <div className="font-semibold">収益・成果を手動で記録</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="text-muted">組織</span>
+                    <input
+                      className="input"
+                      list="revenue-org-options"
+                      placeholder="組織名"
+                      value={formOrg}
+                      onChange={(e) => setFormOrg(e.target.value)}
+                    />
+                    <datalist id="revenue-org-options">
+                      {orgs.map((o) => (
+                        <option key={o.org_name} value={o.org_name} />
+                      ))}
+                    </datalist>
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="text-muted">メトリクス</span>
+                    <select
+                      className="select"
+                      value={formMetric}
+                      onChange={(e) => setFormMetric(e.target.value as RevenueMetric)}
+                    >
+                      {REVENUE_METRICS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="text-muted">金額 / 件数</span>
+                    <input
+                      className="input"
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={formValue}
+                      onChange={(e) => setFormValue(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={submitting}
+                    onClick={() => void submitOutcome()}
+                  >
+                    <Plus size={14} />
+                    記録
+                  </button>
+                </div>
+                <input
+                  className="input"
+                  placeholder="メモ（任意）"
+                  value={formNote}
+                  onChange={(e) => setFormNote(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {months.length > 0 ? (
+              <div className="card">
+                <div className="card-body flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays size={16} />
+                    <div className="font-semibold">月次収益レポート（全組織）</div>
+                  </div>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>月</th>
+                        <th className="text-right">収益(¥)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {months.map(([month, total]) => (
+                        <tr key={month}>
+                          <td className="font-medium">{month}</td>
+                          <td className="text-right">¥{fmt(total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
 
             {alerts.length > 0 ? (
               <div className="card">
