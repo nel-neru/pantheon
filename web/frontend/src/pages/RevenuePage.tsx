@@ -24,8 +24,27 @@ type RevenueReport = {
   total_revenue: number
 }
 
+type RevenueIntelligence = {
+  trend: 'growing' | 'flat' | 'declining' | 'insufficient'
+  latest_change_pct: number | null
+  forecast_next: number
+}
+
 const REVENUE_METRICS = ['revenue', 'sales', 'conversions'] as const
 type RevenueMetric = (typeof REVENUE_METRICS)[number]
+
+const TREND_LABEL: Record<RevenueIntelligence['trend'], string> = {
+  growing: '成長',
+  flat: '横ばい',
+  declining: '逓減',
+  insufficient: 'データ不足',
+}
+const TREND_BADGE: Record<RevenueIntelligence['trend'], string> = {
+  growing: 'badge-green',
+  flat: 'badge-neutral',
+  declining: 'badge-yellow',
+  insufficient: 'badge-neutral',
+}
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('ja-JP')
@@ -35,6 +54,7 @@ export function RevenuePage() {
   const navigate = useNavigate()
   const [data, setData] = useState<RevenueMetrics | null>(null)
   const [report, setReport] = useState<RevenueReport | null>(null)
+  const [intel, setIntel] = useState<RevenueIntelligence | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,17 +68,20 @@ export function RevenuePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [result, rep] = await Promise.all([
+      const [result, rep, ai] = await Promise.all([
         api<RevenueMetrics>('GET', '/api/metrics/revenue'),
         api<RevenueReport>('GET', '/api/metrics/revenue/report'),
+        api<RevenueIntelligence>('GET', '/api/metrics/revenue/intelligence'),
       ])
       setData(result)
       setReport(rep)
+      setIntel(ai)
       setError(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : '収益メトリクスの読み込みに失敗しました。'
       setData(null)
       setReport(null)
+      setIntel(null)
       setError(message)
       toast.error(message)
     } finally {
@@ -238,6 +261,28 @@ export function RevenuePage() {
                 />
               </div>
             </div>
+
+            {intel && intel.trend !== 'insufficient' ? (
+              <div className="card">
+                <div className="card-body flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={16} />
+                    <div className="font-semibold">収益トレンド（全組織）</div>
+                    <span className={`badge ${TREND_BADGE[intel.trend]}`}>{TREND_LABEL[intel.trend]}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm">
+                    {intel.latest_change_pct !== null ? (
+                      <span className="text-muted">
+                        前月比 <span className="font-medium">{intel.latest_change_pct > 0 ? '+' : ''}{intel.latest_change_pct}%</span>
+                      </span>
+                    ) : null}
+                    <span className="text-muted">
+                      翌月予測 <span className="font-medium">¥{fmt(intel.forecast_next)}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {months.length > 0 ? (
               <div className="card">

@@ -21,6 +21,11 @@ type Metrics = {
   total_reach: number
 }
 type Report = { by_month: Record<string, number>; total_revenue: number }
+type Intel = {
+  trend: 'growing' | 'flat' | 'declining' | 'insufficient'
+  latest_change_pct: number | null
+  forecast_next: number
+}
 
 const metrics: Metrics = {
   orgs: [
@@ -36,16 +41,21 @@ const report: Report = {
   total_revenue: 3500,
 }
 
+const intel: Intel = { trend: 'growing', latest_change_pct: 33.3, forecast_next: 2666 }
+
 const emptyMetrics: Metrics = { orgs: [], total_revenue: 0, total_reach: 0 }
 const emptyReport: Report = { by_month: {}, total_revenue: 0 }
+const insufficientIntel: Intel = { trend: 'insufficient', latest_change_pct: null, forecast_next: 0 }
 
-/** mockApi をパス別に応答させる（load は revenue と report を並列取得する）。 */
-function wireApi(opts?: { metrics?: Metrics; report?: Report }) {
+/** mockApi をパス別に応答させる（load は revenue / report / intelligence を並列取得する）。 */
+function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
   const m = opts?.metrics ?? metrics
   const r = opts?.report ?? report
+  const ai = opts?.intel ?? intel
   mockApi.mockImplementation((_method: string, path: string) => {
     if (path === '/api/metrics/revenue') return Promise.resolve(m)
     if (path === '/api/metrics/revenue/report') return Promise.resolve(r)
+    if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(ai)
     if (path === '/api/outcomes') return Promise.resolve({ ok: true, event: {} })
     return Promise.resolve({})
   })
@@ -68,9 +78,17 @@ it('「リーチ有・収益0」の組織をアラート表示する', async () 
 })
 
 it('成果データが無いとき空状態を表示する', async () => {
-  wireApi({ metrics: emptyMetrics, report: emptyReport })
+  wireApi({ metrics: emptyMetrics, report: emptyReport, intel: insufficientIntel })
   renderWithRouter(<RevenuePage />)
   expect(await screen.findByText('成果データがありません')).toBeInTheDocument()
+})
+
+it('収益トレンド（成長・前月比・翌月予測）を表示する', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  expect(await screen.findByText('収益トレンド（全組織）')).toBeInTheDocument()
+  expect(screen.getByText('成長')).toBeInTheDocument()
+  expect(screen.getByText('+33.3%')).toBeInTheDocument()
 })
 
 it('月次収益レポートを表示する', async () => {
