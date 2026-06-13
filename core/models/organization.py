@@ -301,6 +301,32 @@ class Organization(BaseModel):
         description="視覚スタイル（minimal / luxury / art / 3d / pixel / vibrant 等、"
         "config/design_styles/<id>.yaml）。コンテンツ/UI のトーンに反映",
     )
+    # ---- 管理モード（Workspace モデル v0 / 計画書 §5）----
+    # additive・デフォルト付き（既存 JSON は repo モードとして後方互換ロード）。
+    # repo = 従来の git リポジトリ紐付け（コードを改善する org 用。analyze→PR を回す）。
+    # workspace = アプリ内データ管理（収益モデル会社用・git 不要。~/.pantheon/workspaces 配下）。
+    management_mode: str = Field(
+        "repo",
+        description="org の管理方式（repo=git リポジトリ紐付け / workspace=アプリ内データ管理・git 不要）",
+    )
+    workspace_path: str | None = Field(
+        None, description="workspace モードのデータ領域（アプリ管理・絶対パス・git 不要）"
+    )
+
+    @field_validator("management_mode")
+    @classmethod
+    def validate_management_mode(cls, value: str) -> str:
+        # 不正値は repo へ寄せる（旧データ/手書き JSON を壊さない）。
+        return value if value in {"repo", "workspace"} else "repo"
+
+    @field_validator("workspace_path")
+    @classmethod
+    def validate_workspace_path(cls, value: str | None) -> str | None:
+        if value in (None, ""):
+            return value
+        if not Path(value).is_absolute():
+            raise ValueError("workspace_path must be an absolute path")
+        return value
 
     @field_validator("target_repo_path")
     @classmethod
@@ -320,12 +346,28 @@ class Organization(BaseModel):
 
     @property
     def is_workspace_bound(self) -> bool:
-        """この Organization が担当ワークスペース（git リポジトリ）に紐づいているか。
+        """この Organization が担当 git リポジトリに紐づいているか（repo モード判定）。
 
-        中核モデルは「1 ワークスペース = 1 Organization（repo 必須）」。repo 無しの
-        Organization は不正状態であり、GUI 警告や作成境界の enforce 判定に使う。
+        従来の「1 リポジトリ = 1 Organization」を要する経路（コード改善 / analyze→PR）が
+        repo の有無を判定するために使う。workspace モードの収益会社は git を持たないので False。
         """
         return bool(self.target_repo_path)
+
+    @property
+    def data_location(self) -> str | None:
+        """org の実データ位置（repo モードは repo パス、workspace モードは workspace パス）。
+
+        Workspace モデル（§5）: 収益モデル会社は git ではなくアプリ内データ領域で管理する。
+        状態（.pantheon）の置き場所解決に使う（``PlatformStateManager.get_org_state_manager``）。
+        """
+        if self.management_mode == "workspace":
+            return self.workspace_path
+        return self.target_repo_path
+
+    @property
+    def is_managed(self) -> bool:
+        """org がデータ位置（repo か workspace のいずれか）を持つか。repo 必須に代わる妥当性判定。"""
+        return bool(self.data_location)
 
     def add_division(self, division: Division) -> None:
         self.divisions.append(division)

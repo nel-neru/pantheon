@@ -210,12 +210,15 @@ class PlatformStateManager:
 
     def get_org_state_manager(self, org: Organization):
         """
-        Org の target_repo_path 内の .pantheon/ を管理する
-        RepoStateManager を返す。target_repo_path が未設定の場合は platform_home を使う。
+        Org のデータ位置（``data_location``）内の .pantheon/ を管理する RepoStateManager を返す。
+
+        repo モードは target_repo_path、workspace モード（Workspace モデル §5）は workspace_path を
+        使う。いずれも未設定なら platform_home にフォールバックする。
         """
         from core.state.manager import RepoStateManager
 
-        repo_path = Path(org.target_repo_path) if org.target_repo_path else self.platform_home
+        location = org.data_location
+        repo_path = Path(location) if location else self.platform_home
         return RepoStateManager(repo_path, org.name)
 
     # ---- 共有ナレッジ ----

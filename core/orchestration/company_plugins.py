@@ -141,9 +141,10 @@ def install_company_plugin(
     if psm.load_organization_by_name(org_name):
         raise ValueError(f"Organization '{org_name}' はすでに存在します")
 
-    # ワークスペース（1 org = 1 repo）の決定（best-effort で mkdir、git init は呼び出し側/後続に委ねる）。
+    # Workspace モデル（§5）: 収益モデル会社は **git ではなくアプリ内データ領域**で管理する。
+    # repo_path 明示時はそれをデータ領域に、未指定なら workspaces_root 配下に作る（git init はしない）。
     if repo_path:
-        repo = Path(repo_path)
+        ws = Path(repo_path)
     else:
         import re
 
@@ -151,9 +152,9 @@ def install_company_plugin(
             psm.platform_home / "workspaces"
         )
         safe = re.sub(r"[^A-Za-z0-9_-]+", "-", org_name).strip("-") or "company"
-        repo = Path(root) / safe
+        ws = Path(root) / safe
     try:
-        repo.mkdir(parents=True, exist_ok=True)
+        ws.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
 
@@ -161,7 +162,8 @@ def install_company_plugin(
     org = Organization(
         name=org_name,
         purpose=purpose,
-        target_repo_path=str(repo),
+        management_mode="workspace",
+        workspace_path=str(ws),
         status=OrganizationStatus.INCUBATING,
         isolation_level="external",
     )
@@ -195,5 +197,6 @@ def install_company_plugin(
         "agent_count": len(agents),
         "human_tasks_created": len(human_tasks),
         "initial_kpis": list(manifest.get("initial_kpis") or []),
-        "target_repo_path": org.target_repo_path,
+        "management_mode": org.management_mode,
+        "workspace_path": org.workspace_path,
     }

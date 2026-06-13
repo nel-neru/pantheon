@@ -71,6 +71,35 @@ def test_is_workspace_bound_reflects_repo(tmp_path):
     assert bound.is_workspace_bound is True
 
 
+def test_workspace_mode_org_is_managed_without_git(tmp_path):
+    """Workspace モデル（§5）: git 無しでも data_location/is_managed で妥当に管理される。"""
+    from core.models.organization import Organization
+
+    org = Organization(
+        name="WsCo",
+        purpose="アプリ内データ管理の収益会社",
+        management_mode="workspace",
+        workspace_path=str(tmp_path / "ws"),
+    )
+    assert org.management_mode == "workspace"
+    assert org.target_repo_path is None
+    assert org.is_workspace_bound is False  # git repo は持たない
+    assert org.is_managed is True
+    assert org.data_location == str(tmp_path / "ws")
+
+
+def test_get_org_state_manager_uses_workspace_path(tmp_psm, tmp_path):
+    """workspace モード org の状態は workspace_path 配下で管理される。"""
+    from core.models.organization import Organization
+
+    ws = tmp_path / "wsdata"
+    org = Organization(
+        name="WsState", purpose="p", management_mode="workspace", workspace_path=str(ws)
+    )
+    sm = tmp_psm.get_org_state_manager(org)
+    assert str(ws) in str(sm.state_dir)
+
+
 def test_load_organization_by_name_not_found(tmp_psm):
     assert tmp_psm.load_organization_by_name("NonExistent") is None
 

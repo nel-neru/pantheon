@@ -3213,6 +3213,8 @@ async def api_list_organizations() -> List[Dict[str, Any]]:
                 "name": org.name,
                 "purpose": org.purpose,
                 "target_repo_path": org.target_repo_path,
+                "management_mode": org.management_mode,
+                "workspace_path": org.workspace_path,
                 "status": org.status.value,
                 "health_score": live.health_score,
                 "autonomy_score": live.autonomy_score,
