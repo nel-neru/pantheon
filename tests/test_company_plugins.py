@@ -60,10 +60,18 @@ def test_install_company_plugin_creates_full_org(tmp_path):
     assert "販売・マーケティング部" in result["divisions"]
     assert result["human_tasks_created"] == 2
     assert result["initial_kpis"] == ["有料記事の売上"]
+    # Workspace モデル（§5）: git repo ではなくアプリ内データ領域で管理される。
+    assert result["management_mode"] == "workspace"
+    assert result["workspace_path"]
 
     org = psm.load_organization_by_name("note販売会社")
     assert org is not None and len(org.divisions) == 2
     assert org.get_all_agents()  # 各事業部に Specialist が生成される
+    # workspace モード: git 不要・target_repo_path 無し・データ位置は workspace_path。
+    assert org.management_mode == "workspace"
+    assert org.target_repo_path is None
+    assert org.is_workspace_bound is False  # git repo は持たない
+    assert org.is_managed is True and org.data_location == org.workspace_path
     # 事業部名から type 推定（販売→monetization）
     types = {d.name: d.type.value for d in org.divisions}
     assert types["販売・マーケティング部"] == "monetization"

@@ -48,7 +48,18 @@
   Humanタスク自動起票・初期KPI返却）+ `GET /api/company-plugin-manifests` + `POST /api/company-plugins/{id}/install`
   + マーケットプレイス「この会社を作成」ボタン。backend 3 + API 1 + frontend 2 テスト。
 - ⬜ **WIRE-A 収益コアの配線**: portfolio/handoff_optimizer を HQ 提案・GUI（ポートフォリオ/連携推奨）へ接続。
-- ⬜ **WIRE-B 自己拡大の配線**: business_proposal→承認ゲート、company manifest→マーケットGUI 表示。
+- ⬜ **WIRE-B 自己拡大の配線**: business_proposal→承認ゲート、company manifest→マーケットGUI 表示。✅ 一部完了（manifest→install→マーケットGUI は P2.2b で済）。
+
+## §5 Workspace モデル（git からの脱却）
+
+- ✅ **WS-0 Workspace モデル v0（repo-optional org）**: `Organization.management_mode`（repo|workspace）と
+  `workspace_path` を導入。`data_location`/`is_managed` で repo 無しでも妥当に管理。
+  `get_org_state_manager` は data_location 配下を使用。**会社プラグイン install は workspace モード（git 不要）で
+  org を起動**。`/api/organizations` に mode/workspace_path を露出。既存 repo 紐付き org（Meta 等）は非破壊。
+  → 収益モデル会社は git リポジトリ不要のアプリ内データとして管理される（あなたの質問への回答を実体化）。
+- ⬜ **WS-1 既存 org の移行ツール**: 既存の external repo（affiliate/note/sns）の中身を workspace へ取り込み、
+  git 依存を外す移行コマンド（**削除ではなく移行**）。
+- ⬜ **WS-2 SQLite ストア（§5.2）**: JSON 正準 → SQLite（workspaces/organizations/... テーブル）へ段階移行。
 
 ## Phase 3（アプリ化・UX）
 
