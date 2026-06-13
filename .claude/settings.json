@@ -35,13 +35,20 @@
           { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format.mjs\"", "async": true, "timeout": 60 },
           { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/post-edit-checks.mjs\"", "timeout": 45 }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-heartbeat.mjs\"", "async": true, "timeout": 10 }
+        ]
       }
     ],
     "SessionStart": [
       {
         "matcher": "startup|resume|clear",
         "hooks": [
-          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.mjs\"" }
+          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.mjs\"" },
+          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-heartbeat.mjs\"" }
         ]
       }
     ],
