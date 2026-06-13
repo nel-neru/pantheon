@@ -19,6 +19,24 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 23 — デーモン追加チェックリストをコード内へ固定化（複利化）  (2026-06-14 06:20)
+  Plan   : Cycle 22 で露呈した「デーモン名が 2 テストで等値ピン」トラップの再発防止。受け入れ基準 =
+           次にデーモンを足す人が必ず見る KNOWN_DAEMONS 定義の直前へ更新箇所を明記 / コメントの
+           主張が全て正確 / 挙動不変・緑。なぜ今: この回帰は将来のデーモン追加で必ず再発し、
+           最も複利が効く固定化は point-of-code のコメント（DX/meta カテゴリで前サイクルと多様）。
+           落とした候補: revenue の --min-reach/--source-org CLI 配線（dead surface だが既定妥当で据置）。
+  Did    : work/daemon-list-pin-fixation-20260614。core/runtime/daemon_registry.py の KNOWN_DAEMONS
+           直前へ「追加時に更新すべき4箇所（DAEMON_NAMES / main.py frozen entry / test_daemon_registry
+           set 等値ピン / test_web_server 名前リスト等値ピン）」＋「watchdog/web/CLI は自動列挙ゆえ
+           追加登録不要」を明記。コメントのみ。
+  Check  : ruff 緑 / test_daemon_registry 11/11。コメント主張は全て前サイクルで実証済み（正確）。
+           実行影響ゼロのため subagent レビューは不要と判断（自己レビューで4主張の正確性を確認）。
+  Act    : merged ✅（619b0a2..fb45e16 push）。固定化: memory daemon-registry-addition 新設
+           ＋同コメントをコード内へ。学び: AI ループでは memory（自分向け）とコード内コメント
+           （人向け）の二重固定化が最も堅い。
+  Next   : revenue の --min-reach/--source-org CLI 配線 / atelier serve 導線 /
+           trend-watcher で CC 設定の最新動向取り込み。
+
 Cycle 22 — 中断していた revenue daemon（AUTO-1 / Phase5）を出荷可能まで完成  (2026-06-14 06:05)
   Plan   : 自動再開（evolve_resume 経由）。中断点 = work/revenue-daemon-20260614 に未コミット5
            ファイルで滞留した revenue デーモン（収益分析＋承認ゲート付きポートフォリオ提案スキャン・
