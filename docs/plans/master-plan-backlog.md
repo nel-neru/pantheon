@@ -22,8 +22,8 @@
 - ✅ P1.1 収益0 org に具体的な収益化事業部の ADD_DIVISION 提案（HQ）
 - ✅ P1.2 収益インテリジェンス（`revenue_intelligence.analyze_revenue` + `/api/metrics/revenue/intelligence`
   + RevenuePage 収益トレンドカード。MoM/トレンド/翌月予測）
-- ⬜ P1.3 **収益駆動の提案キュー**: インボックス/ProposalsPage で収益インパクト順に並べ、
-  HQ 収益提案（P1.1）を優先表示。受け入れ: 提案に revenue_impact ヒントを付与し並び替え + テスト。
+- ✅ P1.3 収益駆動の提案キュー（`revenue_impact_rank` + `/api/inbox` が収益インパクト→優先度で
+  並べ替え・付与、InboxPage に「収益」バッジ）
 - ⬜ P1.4 **Human Member タスク管理**: Human Specialist をモデル化し、人間専用タスクを
   `~/.pantheon` のキューへ積む + GUI で一覧/完了報告。受け入れ: HumanTask モデル + store +
   API + 最小 GUI + テスト。publishing handed_off / 提案承認の既存出口と接続。

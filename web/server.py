@@ -2444,7 +2444,13 @@ async def api_publishing_disconnect(platform: str) -> Dict[str, Any]:
 
 @app.get("/api/inbox", tags=["inbox"])
 async def api_inbox() -> Dict[str, Any]:
-    """承認インボックス: 保留中の提案＋handoff＋投稿待ちを 1 つの優先度付きキューに集約する。"""
+    """承認インボックス: 保留中の提案＋handoff＋投稿待ちを 1 つの優先度付きキューに集約する。
+
+    収益インパクト（revenue_impact: 収益化に直結する HQ 提案ほど高い）と優先度で並べ替え、
+    収益を動かすアクションを上位に押し上げる（Phase 1 収益駆動の提案キュー）。
+    """
+    from core.metrics.revenue_intelligence import revenue_impact_rank
+
     psm = _psm()
     items: List[Dict[str, Any]] = []
 
@@ -2460,6 +2466,7 @@ async def api_inbox() -> Dict[str, Any]:
                         "title": p.get("title", ""),
                         "category": p.get("category", "general"),
                         "priority": p.get("priority", "medium"),
+                        "revenue_impact": revenue_impact_rank(p),
                         "route": f"/proposals?org={quote(org.name)}",
                     }
                 )
@@ -2476,6 +2483,7 @@ async def api_inbox() -> Dict[str, Any]:
                 "title": hd.get("title", ""),
                 "category": "cross_org_handoff",
                 "priority": hd.get("priority", "medium"),
+                "revenue_impact": 1,  # 集客→収益化の橋渡し（リーチ→収益の入口）
                 "route": "/handoffs",
             }
         )
@@ -2493,12 +2501,23 @@ async def api_inbox() -> Dict[str, Any]:
                 "title": j.title or j.platform,
                 "category": "external_action",
                 "priority": "high",
+                "revenue_impact": 1,  # 実投稿＝リーチ獲得（収益の手前の外部アクション）
                 "platform": j.platform,
                 "scheduled_at": j.scheduled_at,
                 "status": j.status,
                 "route": "/inbox",
             }
         )
+
+    # 収益インパクト → 優先度の順でキューを並べ替え（収益を動かすアクションを上位へ）。
+    _priority_rank = {"high": 3, "medium": 2, "low": 1}
+    items.sort(
+        key=lambda i: (
+            i.get("revenue_impact", 0),
+            _priority_rank.get(str(i.get("priority", "medium")), 2),
+        ),
+        reverse=True,
+    )
 
     counts = {
         "proposal": sum(1 for i in items if i["kind"] == "proposal"),
