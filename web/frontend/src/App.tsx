@@ -24,6 +24,7 @@ import {
   PenSquare,
   Plug,
   Blocks,
+  UserCheck,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -38,6 +39,7 @@ import { DataPage } from '@/pages/DataPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { HandoffsPage } from '@/pages/HandoffsPage'
 import { HelpPage } from '@/pages/HelpPage'
+import { HumanTasksPage } from '@/pages/HumanTasksPage'
 import { InboxPage } from '@/pages/InboxPage'
 import { MarketplacePage } from '@/pages/MarketplacePage'
 import { RevenuePage } from '@/pages/RevenuePage'
@@ -68,6 +70,7 @@ type SearchResult = {
 const navItems: NavItem[] = [
   { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
   { to: '/inbox', label: '承認インボックス', icon: Inbox },
+  { to: '/human-tasks', label: 'あなたのタスク', icon: UserCheck },
   { to: '/connections', label: 'プラットフォーム接続', icon: Plug },
   { to: '/orgs', label: '組織', icon: Building2 },
   { to: '/marketplace', label: 'マーケットプレイス', icon: Blocks },
@@ -419,6 +422,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/inbox" element={<InboxPage />} />
+        <Route path="/human-tasks" element={<HumanTasksPage />} />
         <Route path="/connections" element={<ConnectionsPage />} />
         <Route path="/orgs" element={<OrgsPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />

@@ -114,6 +114,19 @@ async def run_publish_job(
         # assisted のハンドオフ: 下書き流し込みまで成功し最終公開は人間待ち。
         # published とは区別し、未公開のものを成果（posts）には数えない。
         store.mark_status(job.job_id, status="handed_off", result_url=result.url)
+        # 人間専用タスク（最終公開の確認）をキューへ積む（Human Member タスク管理）。
+        from core.humans.human_tasks import enqueue_human_task
+
+        enqueue_human_task(
+            f"{job.platform} の公開を確認: {job.title or job.platform}",
+            platform_home=home,
+            kind="publish_confirm",
+            org_name=job.org_name,
+            ref=job.job_id,
+            dedupe_key=f"publish_confirm:{job.job_id}",
+            description="assisted で下書きを流し込みました。ブラウザで内容を確認して公開し、"
+            "インボックスで『公開を確認』してください。",
+        )
     elif result.ok:
         store.mark_status(job.job_id, status="published", result_url=result.url)
         _record_outcome(job, result, home)
