@@ -19,6 +19,57 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 18 — 定期実行のフォーカス奪取を根絶（窓なし自動再開）  (2026-06-13 21:02)
+  Plan   : ユーザー実害報告 — 毎時の "Pantheon Evolve Resume" タスクが powershell.exe
+           （コンソールサブシステム）を直接起動するため、起動のたびに可視コンソール窓が
+           前面化しフォーカス（とマウス）を奪い、全画面ゲームが裏画面へ落ちる。高レバレッジ
+           （24h 自律基盤の運用品質に直結）・高確信・完全可逆。受け入れ基準 = 毎時タスクが
+           窓を一切出さずに評価チェーンを回す / claude 再開経路を壊さない / 基線維持 +
+           レビュー通過。落とした候補: VBScript ラッパ（MS が非推奨化を進行中）/ schtasks の
+           Hidden 設定（窓フラッシュは消えない）/ 「ログオン不要」実行（資格情報が必要・制約違反）。
+  Did    : work/evolve-resume-hidden-20260613。scripts/evolve_resume_launcher.py 新設
+           （pythonw.exe＝GUIサブシステム＝窓なし、watchdog と同じ windowless 実行体から
+           powershell を CREATE_NO_WINDOW で spawn）。install_evolve_resume_task.ps1 を
+           pythonw+launcher 登録へ変更（-PythonW param、launcher/pythonw 存在検証）。
+           evolve_resume.ps1 は不変。レビュー指摘で launcher 側 spawn 失敗を ps1 と同じ
+           ~/.pantheon/evolve_resume.log へ一行残す観測性を追加（無コンソール下の唯一の診断口）。
+  Check  : ライブタスクを再登録し実機検証 — pythonw→launcher→(窓なし)powershell→ps1 が
+           LastTaskResult=0x0 で完走、窓は一切出ず。killswitch 経路でも exit 0・skip ログ確認。
+           test-triage GREEN（既知2失敗のみ・新規回帰0、1093 passed）/ ruff 緑 /
+           docstring の \e 無効エスケープ SyntaxWarning を raw 文字列化で根絶。
+           code-reviewer APPROVE-WITH-NITS（critical 無し）→ 観測性 nit を取り込み済み。
+           注: テスト中、未コミット（heartbeat 古）状態で schtasks /Run したため一度 headless
+           claude が起動 → 競合回避のため即 stop + lock 掃除（正常運用では auto-commit が
+           heartbeat を新鮮に保ち skip されるため非再現）。
+  Act    : （merge 結果はマージ後に追記）学び＝固定化: 「タスクスケジューラから窓を出さず
+           console アプリを回す正解は pythonw(GUI)→CREATE_NO_WINDOW。-WindowStyle Hidden は
+           フラッシュが残る」。無コンソール経路は必ずファイルログに観測口を残す。
+  Next   : done ブランチ6本の --prune 掃除 / load_organizations の silent-drop に警告ログ /
+           resume と対話セッションの二重起動ガード（interactive session も heartbeat 化）。
+
+Cycle 17 — atelier Inbox に Publishing セクション（収益化フローの新 GUI parity）  (2026-06-12 22:43)
+  Plan   : 新フラッグシップ GUI（atelier）の Inbox が提案+handoff のみで publishing チェーン
+           （投稿待ち/公開確認待ち）が完全欠落 — legacy でしか収益化フローを回せない状態の解消。
+           Cycle 15/16 で完成済みの API をそのまま使う parity = 高レバレッジ・高確信度・可逆。
+           受け入れ基準 = queued→投稿/取消、handed_off→公開を確認 が atelier で完結 /
+           vitest+build 緑 / レビュー通過。落とした候補: wordpress Phase 2（資格情報設計が
+           無人運転に不適）/ 実機 E2E（ユーザー同席要）/ CLI confirm parity（GUI が主経路）。
+  Did    : work/atelier-publish-inbox-20260612。frontend-dev に委譲: Inbox.tsx に第3セクション
+           Publishing（/api/inbox 30s ポーリング、kind=publish フィルタ、busy-key
+           pub:{id}:{action}）、handed_off には /run が 409 するボタンを出さない設計、
+           4 つ目の Stat。types.ts に InboxItem/InboxPayload。テストは fetch モック
+           （api ラッパと URL 構築まで実走）で 9 本。
+  Check  : code-reviewer APPROVE-WITH-NITS だが **major 1 件**: busy-key 非対称 — 取消
+           (DELETE) in-flight 中も 投稿 が押せて同一ジョブに並行 run/delete が走り得る
+           （バックエンドの 409/404 防御で被害は限定、だが busy 機構の目的そのもの）→
+           disabled を working に広げ + in-flight を保留 Promise で観察する回帰テスト追加。
+           最終: atelier 24/24 + build 緑 / merge gate 通過。
+  Act    : merged ✅。学び: 複数アクションを持つカードの busy 制御は「自ボタンのみ lock」が
+           罠 — 同一エンティティへの全 mutating アクションを相互排他にする（レビューが
+           2 サイクル連続で frontend の状態管理バグを実害確定している — 省略不可の網）。
+  Next   : 接続ページの atelier parity 判断 / 24h 基盤・トレンドの健全性監査（flow-audit）/
+           wordpress Phase 2 設計メモ（実装はユーザー同席時）。
+
 Cycle 16 — プラットフォーム接続 GUI ページ（/connections）  (2026-06-12 22:33)
   Plan   : Cycle 10/11/13/15 の Next に毎回積み残していた接続 GUI。API 3 本
            （list/login/disconnect）は実装済みで GUI だけ欠落 = レバレッジ高・確信度高・可逆。
