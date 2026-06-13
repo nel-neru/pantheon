@@ -25,6 +25,9 @@ type Organization = {
   total_agents: number
   pending_proposals: number
   target_repo_path: string
+  management_mode?: string
+  workspace_path?: string | null
+  data_location?: string | null
   status: string
   last_active: string | null
   is_system?: boolean
@@ -273,6 +276,8 @@ function DetailPanel({
   onClose,
   onEdit,
   onDelete,
+  onMigrate,
+  migrating,
   fileInputRef,
   onIconUpload,
   onResetIcon,
@@ -282,6 +287,8 @@ function DetailPanel({
   onClose: () => void
   onEdit: () => void
   onDelete: () => void
+  onMigrate: (orgName: string) => Promise<void>
+  migrating: boolean
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onIconUpload: (e: React.ChangeEvent<HTMLInputElement>, orgName: string) => Promise<void>
   onResetIcon: (orgName: string) => Promise<void>
@@ -426,6 +433,24 @@ function DetailPanel({
                 )}
               </div>
               <div className="detail-kv-row">
+                <span className="detail-kv-key ml-4">管理モード</span>
+                {org.management_mode === 'workspace' ? (
+                  <span className="badge badge-blue">workspace（git 不要）</span>
+                ) : (
+                  <>
+                    <span className="badge badge-neutral">repo（git 管理）</span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm ml-4"
+                      disabled={migrating}
+                      onClick={() => void onMigrate(org.name)}
+                    >
+                      {migrating ? '移行中…' : 'workspace へ移行'}
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="detail-kv-row">
                 <span className="detail-kv-key ml-4">ステータス</span>
                 <span className="badge badge-neutral">{org.status}</span>
               </div>
@@ -532,6 +557,7 @@ export function OrgsPage() {
   const [editing, setEditing] = useState<Organization | null>(null)
   const [editForm, setEditForm] = useState<EditForm>({ purpose: '', target_repo_path: '' })
   const [updatingIcon, setUpdatingIcon] = useState(false)
+  const [migrating, setMigrating] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const loadOrganizations = useCallback(async () => {
@@ -608,6 +634,26 @@ export function OrgsPage() {
 
   const handleSelectDetail = (org: Organization) => {
     void loadDetail(org.name)
+  }
+
+  const migrateToWorkspace = async (orgName: string) => {
+    setMigrating(true)
+    try {
+      const res = await api<{ already_workspace: boolean }>(
+        'POST',
+        `/api/organizations/${encodeURIComponent(orgName)}/migrate-to-workspace`
+      )
+      toast.success(
+        res.already_workspace
+          ? `${orgName} は既に workspace モードです。`
+          : `${orgName} を workspace モードへ移行しました（git 管理が不要になります）。`
+      )
+      await refreshOrganizations(orgName)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'workspace への移行に失敗しました。')
+    } finally {
+      setMigrating(false)
+    }
   }
 
   const closeDeleteModal = () => {
@@ -829,6 +875,8 @@ export function OrgsPage() {
           onClose={() => setDetail(null)}
           onEdit={() => openEdit(detail)}
           onDelete={() => confirmDelete(detail)}
+          onMigrate={migrateToWorkspace}
+          migrating={migrating}
           fileInputRef={fileInputRef}
           onIconUpload={handleIconUpload}
           onResetIcon={resetIcon}

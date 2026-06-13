@@ -493,6 +493,43 @@ def test_hq_portfolio_api(tmp_path, monkeypatch):
     assert any(p.get("action") == "monetize" and p["org_name"] == "Reachy" for p in proposals)
 
 
+def test_org_migrate_to_workspace_api(tmp_path, monkeypatch):
+    """WS-1: repo 組織を workspace モードへ移行する API（計画→移行→保存）。"""
+    from pathlib import Path
+
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    repo = tmp_path / "revenue-repo"
+    repo.mkdir()
+    psm.save_organization(create_default_organization("Revenue Co", "売上", repo_path=str(repo)))
+
+    plan = client.get("/api/organizations/Revenue%20Co/migration-plan")
+    assert plan.status_code == 200, plan.text
+    assert plan.json()["already_workspace"] is False
+
+    res = client.post("/api/organizations/Revenue%20Co/migrate-to-workspace")
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["management_mode"] == "workspace"
+    assert data["already_workspace"] is False
+    assert Path(data["workspace_path"]).is_absolute()
+
+    # 永続化を確認: 再読込で workspace モードが残る・冪等（2回目は already_workspace）。
+    reloaded = psm.load_organization_by_name("Revenue Co")
+    assert reloaded.management_mode == "workspace"
+    again = client.post("/api/organizations/Revenue%20Co/migrate-to-workspace")
+    assert again.json()["already_workspace"] is True
+
+
+def test_org_migrate_to_workspace_api_404(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    assert client.get("/api/organizations/Nope/migration-plan").status_code == 404
+    assert client.post("/api/organizations/Nope/migrate-to-workspace").status_code == 404
+
+
 def test_business_proposals_scan_and_list_api(tmp_path, monkeypatch):
     """WIRE-B: 高スコアトレンドをスキャン→新規会社候補提案を起票し、一覧 API で取得できる。"""
     from core.org_factory import create_default_organization

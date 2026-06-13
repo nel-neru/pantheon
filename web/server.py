@@ -3294,6 +3294,55 @@ async def api_list_organizations() -> List[Dict[str, Any]]:
     return result
 
 
+def _workspace_root(psm) -> str:
+    """workspace の親フォルダを決める（設定 → platform_home/workspaces フォールバック・WS-1）。"""
+    from pathlib import Path
+
+    return psm.get_workspaces_root() or str(Path(psm.platform_home) / "workspaces")
+
+
+@app.get("/api/organizations/{org_name}/migration-plan", tags=["workspace"])
+async def api_org_migration_plan(org_name: str) -> Dict[str, Any]:
+    """repo→workspace 移行の計画を返す（副作用なし・WS-1）。"""
+    from core.orchestration.org_migration import plan_repo_to_workspace_migration
+
+    psm = _psm()
+    org = psm.load_organization_by_name(org_name)
+    if org is None:
+        raise HTTPException(status_code=404, detail=f"Organization '{org_name}' が見つかりません")
+    return plan_repo_to_workspace_migration(org, workspace_root=_workspace_root(psm))
+
+
+@app.post("/api/organizations/{org_name}/migrate-to-workspace", tags=["workspace"])
+async def api_org_migrate_to_workspace(org_name: str) -> Dict[str, Any]:
+    """repo 紐付き組織を workspace モード（git 不要）へ移行して保存する（WS-1・冪等）。"""
+    from core.orchestration.org_migration import (
+        migrate_repo_org_to_workspace,
+        plan_repo_to_workspace_migration,
+    )
+
+    psm = _psm()
+    org = psm.load_organization_by_name(org_name)
+    if org is None:
+        raise HTTPException(status_code=404, detail=f"Organization '{org_name}' が見つかりません")
+
+    workspace_root = _workspace_root(psm)
+    plan = plan_repo_to_workspace_migration(org, workspace_root=workspace_root)
+    already = plan["already_workspace"]
+    if not already:
+        migrate_repo_org_to_workspace(org, workspace_root=workspace_root)
+        psm.save_organization(org)
+    return {
+        "ok": True,
+        "org_name": org.name,
+        "already_workspace": already,
+        "management_mode": org.management_mode,
+        "workspace_path": org.workspace_path,
+        "from_repo": org.target_repo_path,
+        "data_location": org.data_location,
+    }
+
+
 @app.post("/api/organizations")
 async def api_create_organization(req: OrgCreateRequest) -> Dict[str, Any]:
     """新しい Organization を登録する"""
@@ -3387,6 +3436,9 @@ async def api_get_organization(org_name: str) -> Dict[str, Any]:
         "name": org.name,
         "purpose": org.purpose,
         "target_repo_path": org.target_repo_path,
+        "management_mode": org.management_mode,
+        "workspace_path": org.workspace_path,
+        "data_location": org.data_location,
         "status": org.status.value,
         "health_score": live.health_score,
         "autonomy_score": live.autonomy_score,
