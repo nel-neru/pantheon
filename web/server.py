@@ -2540,6 +2540,19 @@ async def api_revenue_metrics() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/metrics/revenue/report", tags=["metrics"])
+async def api_revenue_report(org_name: Optional[str] = None) -> Dict[str, Any]:
+    """収益の月次（YYYY-MM）簡易レポート。``org_name`` 指定で単一 org、省略で全 org 横断。"""
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name)
+    return {
+        "org_name": org_name,
+        "by_month": by_month,
+        "total_revenue": sum(by_month.values()),
+        "months": list(by_month.keys()),
+    }
+
+
 @app.post(
     "/api/init",
     response_model=PlatformInitResponse,
@@ -3833,10 +3846,48 @@ class OutcomeImportRequest(BaseModel):
     org_name: str = ""
 
 
+class OutcomeRecordRequest(BaseModel):
+    """成果イベントを GUI から単件記録する（手動入力フォーム用）。"""
+
+    org_name: str
+    metric: str
+    value: float
+    unit: str = ""
+    source: str = "manual"
+    note: str = ""
+    occurred_at: str = ""
+
+
 def _outcome_store():
     from core.metrics.outcomes import OutcomeStore
 
     return OutcomeStore(platform_home=_psm().platform_home)
+
+
+@app.post("/api/outcomes", tags=["outcomes"])
+async def api_record_outcome(body: OutcomeRecordRequest) -> Dict[str, Any]:
+    """成果イベントを 1 件記録する（GUI の手動入力フォーム用）。
+
+    収益（revenue/sales/conversions）やリーチ等の任意メトリクスを単件で追記する。
+    org_name / metric が空、value が数値化できない場合は 400。
+    """
+    from dataclasses import asdict
+
+    org_name = body.org_name.strip()
+    metric = body.metric.strip()
+    if not org_name or not metric:
+        raise HTTPException(status_code=400, detail="org_name と metric は必須です")
+    store = _outcome_store()
+    event = store.record(
+        org_name,
+        metric,
+        body.value,
+        unit=body.unit,
+        source=body.source or "manual",
+        note=body.note,
+        occurred_at=body.occurred_at,
+    )
+    return {"ok": True, "event": asdict(event)}
 
 
 @app.post("/api/outcomes/import", tags=["outcomes"])
