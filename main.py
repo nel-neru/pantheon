@@ -538,6 +538,12 @@ async def cmd_trends_list(args) -> None:
     await _impl(args)
 
 
+async def cmd_trends_business_scan(args) -> None:
+    from commands.trends import cmd_trends_business_scan as _impl
+
+    await _impl(args)
+
+
 async def cmd_publish_connect(args) -> None:
     from commands.publish import cmd_publish_connect as _impl
 
@@ -618,6 +624,7 @@ HANDLERS = {
     "cmd_daemons_watchdog_status": cmd_daemons_watchdog_status,
     "cmd_trends_collect": cmd_trends_collect,
     "cmd_trends_list": cmd_trends_list,
+    "cmd_trends_business_scan": cmd_trends_business_scan,
     "cmd_publish_connect": cmd_publish_connect,
     "cmd_publish_status": cmd_publish_status,
     "cmd_publish_disconnect": cmd_publish_disconnect,

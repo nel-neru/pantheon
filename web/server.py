@@ -2606,6 +2606,48 @@ async def api_hq_portfolio() -> Dict[str, Any]:
     return {"proposals": build_portfolio_proposals(org_stats)}
 
 
+class BusinessScanRequest(BaseModel):
+    """高スコアトレンド → 新規会社候補提案 を起票するスキャンのリクエスト。"""
+
+    min_score: float = 7.0
+    max_per_run: int = 5
+
+
+@app.post("/api/hq/business-proposals/scan", tags=["hq"])
+async def api_scan_business_proposals(body: BusinessScanRequest | None = None) -> Dict[str, Any]:
+    """高スコアトレンドを新規会社候補提案へ変換し承認キューへ積む（WIRE-B・自動採用しない）。"""
+    from core.trends.business_pipeline import scan_business_proposals
+
+    req = body or BusinessScanRequest()
+    return scan_business_proposals(min_score=req.min_score, max_per_run=req.max_per_run)
+
+
+@app.get("/api/hq/business-proposals", tags=["hq"])
+async def api_list_business_proposals() -> Dict[str, Any]:
+    """承認待ちの新規会社候補提案（category=new_business）を一覧する。"""
+    psm = _psm()
+    items: List[Dict[str, Any]] = []
+    for org in psm.load_organizations():
+        try:
+            sm = psm.get_org_state_manager(org)
+            for p in sm.get_pending_improvement_proposals(limit=50):
+                if p.get("category") != "new_business":
+                    continue
+                items.append(
+                    {
+                        "id": str(p.get("id", "")),
+                        "org_name": org.name,
+                        "title": p.get("title", ""),
+                        "priority": p.get("priority", "medium"),
+                        "expected_impact": p.get("expected_impact", ""),
+                        "route": f"/proposals?org={quote(org.name)}",
+                    }
+                )
+        except Exception:  # noqa: BLE001 — 1 組織の読み取り失敗で全体を落とさない
+            continue
+    return {"items": items, "count": len(items)}
+
+
 # --------------------------------------------------------------------------- #
 # Plugins / Marketplace（2階層プラグイン: 会社プラグイン / 事業部プラグイン）        #
 # --------------------------------------------------------------------------- #

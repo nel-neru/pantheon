@@ -33,12 +33,29 @@ const divisionPlugins = {
   ],
 }
 const orgs = [{ id: '1', name: 'My Co' }]
+const businessProposals = {
+  items: [
+    {
+      id: 'b1',
+      org_name: 'My Co',
+      title: '[新規会社候補] ai 事業',
+      priority: 'high',
+      expected_impact: '新収益モデル会社の立ち上げ候補',
+      route: '/proposals?org=My%20Co',
+    },
+  ],
+  count: 1,
+}
 
 function wireApi() {
   mockApi.mockImplementation((method: string, path: string) => {
     if (path === '/api/company-plugin-manifests') return Promise.resolve(companyManifests)
     if (path === '/api/division-plugins') return Promise.resolve(divisionPlugins)
     if (path === '/api/organizations') return Promise.resolve(orgs)
+    if (path === '/api/hq/business-proposals') return Promise.resolve(businessProposals)
+    if (method === 'POST' && path === '/api/hq/business-proposals/scan') {
+      return Promise.resolve({ proposals: 1 })
+    }
     if (method === 'POST' && path.includes('/install')) {
       return Promise.resolve({ org_name: 'note 販売会社', divisions: ['コンテンツ企画部'] })
     }
@@ -69,6 +86,27 @@ it('「この会社を作成」で install API を呼ぶ', async () => {
 
   await waitFor(() =>
     expect(mockApi).toHaveBeenCalledWith('POST', '/api/company-plugins/note_sales/install', {})
+  )
+})
+
+it('新規会社候補（トレンド発）を一覧表示する', async () => {
+  wireApi()
+  renderWithRouter(<MarketplacePage />)
+
+  expect(await screen.findByText('新規会社候補（トレンド発・要承認）')).toBeInTheDocument()
+  expect(screen.getByText('[新規会社候補] ai 事業')).toBeInTheDocument()
+})
+
+it('「トレンドからスキャン」で scan API を呼ぶ', async () => {
+  wireApi()
+  renderWithRouter(<MarketplacePage />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'トレンドからスキャン' }))
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/hq/business-proposals/scan', {
+      min_score: 7.0,
+    })
   )
 })
 

@@ -493,6 +493,33 @@ def test_hq_portfolio_api(tmp_path, monkeypatch):
     assert any(p.get("action") == "monetize" and p["org_name"] == "Reachy" for p in proposals)
 
 
+def test_business_proposals_scan_and_list_api(tmp_path, monkeypatch):
+    """WIRE-B: 高スコアトレンドをスキャン→新規会社候補提案を起票し、一覧 API で取得できる。"""
+    from core.org_factory import create_default_organization
+    from core.trends.models import TrendItem
+    from core.trends.store import TrendStore
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("Content Org", "content"))
+    TrendStore(platform_home=tmp_path).add(
+        TrendItem(
+            source="web", url="https://x/biz", title="新ジャンル爆伸び", score=9.0, genre="ai"
+        )
+    )
+
+    scan = client.post("/api/hq/business-proposals/scan", json={"min_score": 7.0})
+    assert scan.status_code == 200, scan.text
+    assert scan.json()["proposals"] == 1
+
+    listed = client.get("/api/hq/business-proposals")
+    assert listed.status_code == 200, listed.text
+    data = listed.json()
+    assert data["count"] == 1
+    assert data["items"][0]["title"].startswith("[新規会社候補]")
+
+
 def test_inbox_sorts_revenue_impact_first(tmp_path, monkeypatch):
     """収益駆動の提案がインボックス上位に並び、revenue_impact が付与される。"""
     from core.models.organization import StructuralInterventionType
