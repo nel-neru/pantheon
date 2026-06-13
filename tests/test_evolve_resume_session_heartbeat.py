@@ -87,3 +87,90 @@ def test_hook_marker_is_valid_json_each_run(tmp_path):
     assert "ts" in rec
     leftover = list((tmp_path / ".pantheon").glob("evolve_session.heartbeat.*.tmp"))
     assert leftover == [], f"残骸 tmp ファイル: {leftover}"
+
+
+def test_hook_skips_when_headless_env_set(tmp_path):
+    """resume が起動する headless 子（PANTHEON_EVOLVE_HEADLESS=1）は marker を書かない。
+
+    これを書くと、早期 crash した headless resume が自分の再起動を最大 StaleMinutes 分
+    マスクしてしまう。健全な headless は pid ロックで重複防止されるので marker は不要。
+    """
+    env = dict(os.environ)
+    env["USERPROFILE"] = str(tmp_path)
+    env["HOME"] = str(tmp_path)
+    env["PANTHEON_EVOLVE_HEADLESS"] = "1"
+    proc = subprocess.run([_NODE, str(_HOOK)], input="", text=True, env=env, capture_output=True)
+    assert proc.returncode == 0, proc.stderr
+    assert not _marker(tmp_path).exists(), "headless 子が marker を書いてしまった"
+
+
+# --- evolve_resume.ps1 側のゲート判定（load-bearing。ここが壊れると無音で二重起動が復活）--- #
+
+_PWSH = shutil.which("powershell") or shutil.which("pwsh")
+_PS1 = _REPO_ROOT / "scripts" / "evolve_resume.ps1"
+
+
+def _run_resume_dryrun(tmp_path: Path, stale: int) -> str:
+    """evolve_resume.ps1 を -DryRun で隔離実行し、結合出力を返す（claude は起動しない）。
+
+    USERPROFILE を tmp_path に向けるので $pantheonHome / ログ / ロックは全て隔離される。
+    commit ゲートは実リポジトリの最終コミットを見るため、それより小さい -StaleMinutes を
+    渡して commit ゲートを通過させ、session-heartbeat ゲートへ到達させる。
+    """
+    env = dict(os.environ)
+    env["USERPROFILE"] = str(tmp_path)
+    env["HOME"] = str(tmp_path)
+    (tmp_path / ".pantheon").mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [
+            _PWSH,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(_PS1),
+            "-DryRun",
+            "-StaleMinutes",
+            str(stale),
+        ],
+        text=True,
+        env=env,
+        capture_output=True,
+    )
+    return (proc.stdout or "") + (proc.stderr or "")
+
+
+@pytest.mark.skipif(_PWSH is None, reason="powershell が PATH に無い")
+def test_ps_gate_fresh_marker_skips(tmp_path):
+    """fresh な marker があれば、commit が古くても session heartbeat で skip する。"""
+    marker = _marker(tmp_path)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text('{"ts":"x","event":"test"}', encoding="utf-8")  # mtime = 今
+    out = _run_resume_dryrun(tmp_path, stale=1)
+    if "skip: 最終コミット" in out:
+        pytest.skip("最終コミットが直近 <1分のため heartbeat ゲートへ到達できない")
+    assert "skip: session heartbeat" in out
+
+
+@pytest.mark.skipif(_PWSH is None, reason="powershell が PATH に無い")
+def test_ps_gate_absent_marker_proceeds(tmp_path):
+    """marker 不在なら session heartbeat では skip しない（後方互換＝commit ゲートのみ）。"""
+    assert not _marker(tmp_path).exists()
+    out = _run_resume_dryrun(tmp_path, stale=1)
+    if "skip: 最終コミット" in out:
+        pytest.skip("最終コミットが直近 <1分のため heartbeat ゲートへ到達できない")
+    assert "skip: session heartbeat" not in out
+
+
+@pytest.mark.skipif(_PWSH is None, reason="powershell が PATH に無い")
+def test_ps_gate_stale_marker_proceeds(tmp_path):
+    """古い marker（閾値超）なら session heartbeat では skip しない。"""
+    marker = _marker(tmp_path)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text('{"ts":"x","event":"test"}', encoding="utf-8")
+    old = time.time() - 5 * 60  # 5分前 >= 閾値1分
+    os.utime(marker, (old, old))
+    out = _run_resume_dryrun(tmp_path, stale=1)
+    if "skip: 最終コミット" in out:
+        pytest.skip("最終コミットが直近 <1分のため heartbeat ゲートへ到達できない")
+    assert "skip: session heartbeat" not in out

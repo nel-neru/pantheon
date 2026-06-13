@@ -19,6 +19,35 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 20 — 対話セッションの heartbeat 化（resume 二重起動の構造的根治）  (2026-06-13 22:20)
+  Plan   : Cycle 19 の事故の根治。resume は「最終コミット時刻」だけを生存印にするため、
+           長い1ターン中（未コミット）や起動直後（最終コミットが数時間前）の対話セッションを
+           検知できず headless /evolve を二重起動する。受け入れ基準 = 生きている対話セッションが
+           独立した活動印を更新し、resume はそれが新鮮なら起動を抑止 / 後方互換（印が無ければ
+           従来通り）/ 緑・敵対レビュー通過。落とした候補: done 6本 prune / load_organizations 警告。
+  Did    : work/session-heartbeat-20260613。設計を Workflow（3レンズ並列→統合, GO 判定）で固め、
+           実装→レビュー Workflow（3レンズ→verdict）で硬化。
+           - .claude/hooks/session-heartbeat.mjs 新設: ~/.pantheon/evolve_session.heartbeat を
+             atomic(tmp→rename)で touch、best-effort・常に exit 0。SessionStart + 全ツール
+             PostToolUse('*', async) で更新。
+           - .claude/settings.json: SessionStart に2つ目 / PostToolUse に matcher '*' 追加。
+           - scripts/evolve_resume.ps1: commit ゲートの後に mtime ゲート（Test-Path 内＝後方互換）。
+             **内容は読まず mtime のみ**（torn-read で ConvertFrom-Json→$ErrorActionPreference=Stop
+             中断、を回避）。生の double 比較で境界厳密化。
+           - tests/test_evolve_resume_session_heartbeat.py（8本）: フック writer + PS ゲート判定
+             （fresh→skip / 不在・stale→proceed, powershell-gated）。
+  Check  : 全8テスト pass / ruff 緑 / PS ParseFile 0 / BOM 保持 / 4 DryRun シナリオ実証 /
+           test-triage GREEN（1108 passed・基線2のみ・回帰0）。
+           レビュー所見対応: ①PS ゲート無テスト→PS判定テスト3本追加（最重要）②crash した headless
+           resume が自分の再起動を最大90分マスク→headless 子は PANTHEON_EVOLVE_HEADLESS=1 で
+           marker を書かない（健全 headless は pid ロックで重複防止／marker=「対話のみ」）③[int]
+           四捨五入→生 double 比較。④グローバル marker の cross-repo 結合（現状安全・sibling Org に
+           フック無し）と⑤cold-start サブ秒残留窓は記録のみ（次へ）。
+  Act    : （merge 後に追記）固定化: 「mtime のみ読む heartbeat は torn-read/単位/TZ のリスク群を
+           一掃」「無コンソール経路は観測口を残す」「resume が起動する子は自分用の生存印を書かない」。
+  Next   : marker を cwd/リポジトリ別名で repo スコープ化（cross-repo 結合の解消）/
+           done ブランチ6本の prune / load_organizations の silent-drop 警告ログ。
+
 Cycle 19 — 窓なしランチャの回帰防止テスト固定＋並走セッション事故の収束  (2026-06-13 21:20)
   Plan   : Cycle 18 の窓なしランチャは「壊れても無音で回帰する」（窓が再び出る/フォーカス
            奪取が復活する）クラスで、単体テストが無かった穴を埋める。受け入れ基準 =

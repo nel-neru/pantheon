@@ -75,19 +75,25 @@ if ($ageMinutes -lt $StaleMinutes) {
     exit 0
 }
 
-# --- heartbeat 2: 生きている Claude Code セッションが直接 touch する活動印 ---
+# --- heartbeat 2: 生きている対話 Claude Code セッションが直接 touch する活動印 ---
 # commit-heartbeat の死角（長い1ターン中の未コミット / 起動直後で最終コミットが古い）を埋める。
 # .claude/hooks/session-heartbeat.mjs が SessionStart と全ツールの PostToolUse で更新する。
+# 注: resume が起動する headless 子は PANTHEON_EVOLVE_HEADLESS=1 で marker を書かない
+# （健全な headless は pid ロックで重複防止／早期 crash 時に自分の再起動をマスクしないため）。
 # ファイル不在 = 印なし = 何もしない（既存のコミット heartbeat 経路にフォールバック＝完全後方互換）。
 # 内容は JSON だが PS 側は mtime(LastWriteTime) だけを見る: torn-read で ConvertFrom-Json が
 # 例外→$ErrorActionPreference='Stop' で毎時実行ごと中断、を避けるための意図的な選択。
+# 既知の制約: marker は ~/.pantheon 直下でグローバル（現状 pantheon のみ本フックを持つため安全。
+# 将来 sibling Org へ伝播したら cwd で絞る/リポジトリ別名にする — roadmap）。
 $sessionHb = Join-Path $pantheonHome "evolve_session.heartbeat"
 if (Test-Path $sessionHb) {
     $hbItem = Get-Item $sessionHb -ErrorAction SilentlyContinue
     if ($hbItem) {
-        $hbAgeMin = [int](((Get-Date) - $hbItem.LastWriteTime).TotalMinutes)
-        if ($hbAgeMin -lt $StaleMinutes) {
-            Write-Log "skip: session heartbeat ${hbAgeMin}分前 < 閾値 ${StaleMinutes}分（対話/headless セッション活動中）"
+        # 生の double で比較（[int] は四捨五入で境界が ~0.5分ぶれるため）。表示時のみ floor。
+        $hbAgeRaw = ((Get-Date) - $hbItem.LastWriteTime).TotalMinutes
+        if ($hbAgeRaw -lt $StaleMinutes) {
+            $hbAgeMin = [int][math]::Floor($hbAgeRaw)
+            Write-Log "skip: session heartbeat ${hbAgeMin}分前 < 閾値 ${StaleMinutes}分（対話セッション活動中）"
             exit 0
         }
     }
@@ -130,6 +136,10 @@ Get-ChildItem $pantheonHome -Filter "evolve_resume.*.log" -ErrorAction SilentlyC
     Remove-Item -Force -ErrorAction SilentlyContinue
 
 Write-Log "resume: 最終コミット ${ageMinutes}分前 >= ${StaleMinutes}分 → headless /evolve を起動（bin=$ClaudeBin）"
+# この headless 子に「resume が起動した」印を付ける。session-heartbeat フックはこれを見て
+# marker を書かない（早期 crash 時に自分の再起動を最大 StaleMinutes 分マスクしないため。
+# 健全な headless は下の pid ロック + 毎ターンの auto-commit で二重起動から守られる）。
+$env:PANTHEON_EVOLVE_HEADLESS = "1"
 try {
     $proc = Start-Process -FilePath $ClaudeBin -ArgumentList $argLine -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
 } catch {
