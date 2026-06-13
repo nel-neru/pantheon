@@ -20,9 +20,8 @@
 ## Phase 1（収益ループ完成）
 
 - ✅ P1.1 収益0 org に具体的な収益化事業部の ADD_DIVISION 提案（HQ）
-- ⬜ P1.2 **収益インテリジェンス**: `OutcomeStore` 上で成長率/前月比/簡易フォーキャスト・
-  収益逓減検知を計算する分析層 + RevenuePage に可視化。受け入れ: 月次系列から増減率を出し
-  「逓減/横ばい」を検知して返す関数 + GUI 表示 + テスト。
+- ✅ P1.2 収益インテリジェンス（`revenue_intelligence.analyze_revenue` + `/api/metrics/revenue/intelligence`
+  + RevenuePage 収益トレンドカード。MoM/トレンド/翌月予測）
 - ⬜ P1.3 **収益駆動の提案キュー**: インボックス/ProposalsPage で収益インパクト順に並べ、
   HQ 収益提案（P1.1）を優先表示。受け入れ: 提案に revenue_impact ヒントを付与し並び替え + テスト。
 - ⬜ P1.4 **Human Member タスク管理**: Human Specialist をモデル化し、人間専用タスクを
