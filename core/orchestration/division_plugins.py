@@ -26,8 +26,33 @@ DIVISION_PLUGINS_FILE = "division_plugins.yaml"
 DEPARTMENTS_DIR = "departments"
 
 
+def _expand_plugin_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """カタログ 1 エントリを正規化する（テンプレ形なら department をプリセットで補完）。
+
+    PT-2: ``department`` を持たず ``category`` だけのコンパクトな「テンプレ形」エントリは
+    ``scaffold_division_plugin`` で department を生成して充足する（id+label+category だけで
+    §6.2 カテゴリプリセットから事業部が組み上がる＝「テンプレ化」）。``department`` が既に
+    ある従来エントリはそのまま返す（後方互換）。
+    """
+    if isinstance(entry.get("department"), dict):
+        return entry
+    from core.orchestration.plugin_templates import scaffold_division_plugin
+
+    return scaffold_division_plugin(
+        str(entry.get("id")),
+        str(entry.get("label") or entry.get("id")),
+        str(entry.get("category") or ""),
+        description=str(entry.get("description") or ""),
+        mission=str(entry.get("mission") or ""),
+    )
+
+
 def load_division_plugins() -> List[Dict[str, Any]]:
-    """事業部プラグインのカタログを返す（欠落・破損時は空リスト＝GUI/CLI を壊さない）。"""
+    """事業部プラグインのカタログを返す（欠落・破損時は空リスト＝GUI/CLI を壊さない）。
+
+    ``department`` を持たない「テンプレ形」エントリは ``category`` のプリセットから
+    自動展開する（PT-2）。
+    """
     path = resource_path("config", DIVISION_PLUGINS_FILE)
     if not path.exists():
         return []
@@ -37,7 +62,7 @@ def load_division_plugins() -> List[Dict[str, Any]]:
         logger.warning("division_plugins.yaml の読み込みに失敗: %s", exc)
         return []
     plugins = data.get("plugins", [])
-    return [p for p in plugins if isinstance(p, dict) and p.get("id")]
+    return [_expand_plugin_entry(p) for p in plugins if isinstance(p, dict) and p.get("id")]
 
 
 def get_division_plugin(plugin_id: str) -> Optional[Dict[str, Any]]:

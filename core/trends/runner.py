@@ -8,10 +8,23 @@ from typing import Any, Dict, Optional
 
 from core.trends.collectors.web import collect_web, load_sources
 from core.trends.collectors.youtube import collect_youtube, load_channels
+from core.trends.models import TrendItem
 from core.trends.scoring import score_all
 from core.trends.store import TrendStore
+from core.trends.trend_dedup import dedupe_trends
 
 logger = logging.getLogger(__name__)
+
+
+def _dedupe_items(items: list[TrendItem]) -> list[TrendItem]:
+    """採点済み TrendItem 群を意味的に重複排除する（P2.5・store の hash 完全一致を補完）。
+
+    url の末尾スラッシュ/大小文字差や、別ソースから来た同一トピックを ``trend_dedup``
+    で正規化キー単位に畳み込み、同一キーは score 最大の 1 件のみ残す。store の hash
+    dedup より広いキーで、保存前に near-duplicate を 1 件へ集約する。
+    """
+    wrapped = [{"url": it.url, "title": it.title, "score": it.score, "_item": it} for it in items]
+    return [w["_item"] for w in dedupe_trends(wrapped)]
 
 
 async def collect_and_store(
@@ -34,10 +47,13 @@ async def collect_and_store(
     yt_items = await asyncio.to_thread(collect_youtube, channels, with_captions=with_captions)
     items = web_items + yt_items
     await score_all(items)
+    # P2.5: 採点後・保存前に意味的重複（url 正規化/title）を最高スコア1件へ畳み込む。
+    deduped = _dedupe_items(items)
     store = TrendStore(platform_home)
-    added = store.add_many(items)
+    added = store.add_many(deduped)
     summary = {
         "collected": len(items),
+        "deduped": len(items) - len(deduped),
         "added": added,
         "sources": len(sources) + len(channels),
         "web": len(web_items),

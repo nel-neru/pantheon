@@ -4,7 +4,22 @@ from __future__ import annotations
 
 import copy
 
+from core.trends.models import TrendItem
+from core.trends.runner import _dedupe_items
 from core.trends.trend_dedup import _normalize_key, dedupe_trends, rank_trends
+
+
+def test_runner_dedupe_items_collapses_url_variants_keeping_highest_score() -> None:
+    """P2.5: 収集パイプラインの _dedupe_items が url 正規化で near-dup を最高スコア1件に畳む。"""
+    items = [
+        TrendItem(source="web", url="https://ex.com/a/", title="A low", score=4.0, genre="ai"),
+        TrendItem(source="youtube", url="https://EX.com/a", title="A high", score=9.0, genre="ai"),
+        TrendItem(source="web", url="https://ex.com/b", title="B", score=7.0, genre="ai"),
+    ]
+    out = _dedupe_items(items)
+    assert len(out) == 2  # /a/ と /A は同一キーへ集約
+    survivor = next(i for i in out if "/a" in i.url.lower())
+    assert survivor.score == 9.0  # 高スコア側が残る
 
 
 def test_normalize_key_uses_url_lowercased_and_trailing_slash_stripped() -> None:
