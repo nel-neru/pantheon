@@ -664,17 +664,19 @@ CREATE TABLE app_settings (
 ## 12. 成功指標（Success Metrics）
 
 **Phase 0終了時点の具体的な指標**（v1.1 現況注記つき）:
-- Meta-Overseerが「新しい収益モデル会社を1つ提案・計画立案・基本実行できる」状態　〔✅ 概ね達成〕
-- 会社プラグインを追加すると即座に新しいOrganizationが作成され、基本的なAgentが動作する　〔✅ `org create --genre` で達成。2階層化（事業部プラグイン）は残タスク③〕
-- 手動入力で収益データを記録・集計でき、簡単なレポートが出力できる　〔⚠️ CLI/CSV は可。GUI 単件入力＋レポートが残タスク①〕
-- GUIで組織階層と提案確認が直感的に操作できる　〔✅ 達成〕
-- ~~`src/` レイアウトへの移行が完了し、ビルドが安定している~~　〔❌ → **凍結（§13-6）**。フラット配置を維持し「ビルド安定」は `packaging/pantheon.spec` で既に達成済とみなす〕
+> 自動検証（X.2）: `tests/test_success_metrics_e2e.py` がクリーンな環境で下記 Phase 0 指標を
+> 端から端まで駆動し pass する（決定論・claude CLI 非依存）。GUI 指標は frontend vitest が担保。
+- Meta-Overseerが「新しい収益モデル会社を1つ提案・計画立案・基本実行できる」状態　〔✅ 達成（P4.1 `portfolio_pipeline` 計画立案 + `business_pipeline`/未開拓ジャンル提案 + `install_company_plugin` 基本実行。E2E `test_metric_meta_overseer_proposes_plans_executes`）〕
+- 会社プラグインを追加すると即座に新しいOrganizationが作成され、基本的なAgentが動作する　〔✅ 達成（会社プラグイン `install_company_plugin` + 事業部プラグイン 2階層化済。E2E `test_metric_company_plugin_creates_org_with_agents`）〕
+- 手動入力で収益データを記録・集計でき、簡単なレポートが出力できる　〔✅ 達成（GUI 単件入力 `POST /api/outcomes` + 月次レポート `revenue_by_month`/`analyze_revenue`。E2E `test_metric_manual_revenue_record_and_report`）〕
+- GUIで組織階層と提案確認が直感的に操作できる　〔✅ 達成（OrgsPage 階層ツリー + InboxPage 承認キュー。frontend vitest）〕
+- ~~`src/` レイアウトへの移行が完了し、ビルドが安定している~~　〔❌ → **凍結（§13-6）**。フラット配置を維持し「ビルド安定」は `packaging/pantheon.spec` + `scripts/check_build_spec.py`（P3.1）で担保〕
 
-**長期的な成功指標**:
-- ユーザーが「Pantheonに任せておけば収益が勝手に伸びる」と感じる状態
-- 新orgがMeta-Overseer主導で複数立ち上がっている
-- 収益改善ループが完全に自動化されている
-- 24時間運用で「寝てる間に改善が進んでた」体験が日常化
+**長期的な成功指標**（恒常運用で漸進的に達成していく North Star。現状の実装到達度を併記）:
+- ユーザーが「Pantheonに任せておけば収益が勝手に伸びる」と感じる状態　〔🔄 基盤到達（自律経営プラン P4.1 + 通知センター P3.3 + 24h デーモン）。実収益の伸長は実運用で測る〕
+- 新orgがMeta-Overseer主導で複数立ち上がっている　〔🔄 仕組み到達（trend→新会社/未開拓ジャンル提案→承認→`install_company_plugin`）。実際の複数立ち上げは承認運用次第〕
+- 収益改善ループが完全に自動化されている　〔🔄 ループ実装済（収集→提案→承認ゲート→実行→成果記録→再提案）。最終送信/実投稿は human-gate〕
+- 24時間運用で「寝てる間に改善が進んでた」体験が日常化　〔🔄 デーモン群+watchdog+レート制限自動再開で基盤到達。体験定着は実運用で測る〕
 
 ---
 
