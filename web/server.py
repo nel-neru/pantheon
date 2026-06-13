@@ -3999,6 +3999,66 @@ async def api_outcome_summary(org_name: str) -> Dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Human Member タスク（人間専用作業のキュー）                                      #
+# --------------------------------------------------------------------------- #
+
+
+class HumanTaskCreateRequest(BaseModel):
+    title: str
+    description: str = ""
+    kind: str = "general"
+    org_name: str = ""
+    ref: str = ""
+
+
+def _human_task_store():
+    from core.humans.human_tasks import HumanTaskStore
+
+    return HumanTaskStore(platform_home=_psm().platform_home)
+
+
+@app.get("/api/human-tasks", tags=["humans"])
+async def api_list_human_tasks(status: Optional[str] = None) -> Dict[str, Any]:
+    """人間専用タスクの一覧（status=open/done で絞り込み可）。"""
+    from dataclasses import asdict
+
+    tasks = _human_task_store().list_tasks(status)
+    items = [asdict(t) for t in tasks]
+    return {
+        "items": items,
+        "open": sum(1 for t in tasks if t.status == "open"),
+        "total": len(tasks),
+    }
+
+
+@app.post("/api/human-tasks", tags=["humans"])
+async def api_create_human_task(body: HumanTaskCreateRequest) -> Dict[str, Any]:
+    """人間専用タスクを 1 件積む。"""
+    from dataclasses import asdict
+
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title は必須です")
+    task = _human_task_store().add(
+        title,
+        description=body.description,
+        kind=body.kind,
+        org_name=body.org_name,
+        ref=body.ref,
+    )
+    return {"ok": True, "task": asdict(task)}
+
+
+@app.post("/api/human-tasks/{task_id}/complete", tags=["humans"])
+async def api_complete_human_task(task_id: str) -> Dict[str, Any]:
+    """人間専用タスクを完了にする。存在しなければ 404。"""
+    task = _human_task_store().complete(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="タスクが見つかりません")
+    return {"ok": True, "task_id": task_id, "status": task.status}
+
+
 @app.post(
     "/api/analyze",
     response_model=AnalyzeResponse,

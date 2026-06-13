@@ -517,6 +517,35 @@ def test_inbox_sorts_revenue_impact_first(tmp_path, monkeypatch):
     assert any(p["revenue_impact"] == 0 for p in proposals)
 
 
+def test_human_tasks_api_create_list_complete(tmp_path, monkeypatch):
+    """人間専用タスクの作成→一覧→完了→404。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    created = client.post(
+        "/api/human-tasks",
+        json={"title": "X アカウント作成", "kind": "account_setup", "org_name": "SNS Growth"},
+    )
+    assert created.status_code == 200, created.text
+    task_id = created.json()["task"]["task_id"]
+
+    listed = client.get("/api/human-tasks?status=open").json()
+    assert listed["open"] == 1
+    assert listed["items"][0]["title"] == "X アカウント作成"
+
+    done = client.post(f"/api/human-tasks/{task_id}/complete")
+    assert done.status_code == 200 and done.json()["status"] == "done"
+    assert client.get("/api/human-tasks?status=open").json()["open"] == 0
+
+    assert client.post("/api/human-tasks/nope/complete").status_code == 404
+
+
+def test_human_tasks_api_requires_title(tmp_path, monkeypatch):
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    assert client.post("/api/human-tasks", json={"title": "  "}).status_code == 400
+
+
 def test_division_plugins_catalog_api():
     """事業部プラグインのカタログを返す。"""
     resp = client.get("/api/division-plugins")

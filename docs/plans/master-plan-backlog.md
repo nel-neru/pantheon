@@ -24,9 +24,8 @@
   + RevenuePage 収益トレンドカード。MoM/トレンド/翌月予測）
 - ✅ P1.3 収益駆動の提案キュー（`revenue_impact_rank` + `/api/inbox` が収益インパクト→優先度で
   並べ替え・付与、InboxPage に「収益」バッジ）
-- ⬜ P1.4 **Human Member タスク管理**: Human Specialist をモデル化し、人間専用タスクを
-  `~/.pantheon` のキューへ積む + GUI で一覧/完了報告。受け入れ: HumanTask モデル + store +
-  API + 最小 GUI + テスト。publishing handed_off / 提案承認の既存出口と接続。
+- ✅ P1.4 Human Member タスク管理（`core/humans/human_tasks` HumanTask/Store/enqueue +
+  `/api/human-tasks` CRUD + HumanTasksPage `/human-tasks` + publishing handed_off→公開確認タスク自動起票）
 - ⬜ P1.5 **ポートフォリオ資源配分の提案**: Meta-Overseer が org 横断で収益/リーチを見て
   「どの org に投資/縮小」を提案。受け入れ: 横断サマリ + 配分提案生成 + テスト。
 
