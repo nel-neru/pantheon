@@ -2583,6 +2583,29 @@ async def api_revenue_intelligence(org_name: Optional[str] = None) -> Dict[str, 
     return {"org_name": org_name, **analysis}
 
 
+@app.get("/api/hq/portfolio", tags=["hq"])
+async def api_hq_portfolio() -> Dict[str, Any]:
+    """ポートフォリオ資源配分・連携の HQ 提案（収益/リーチから invest/monetize/送客 等を提案）。"""
+    from core.hierarchy.portfolio_advisor import build_portfolio_proposals
+
+    psm = _psm()
+    store = _outcome_store()
+    org_stats: List[Dict[str, Any]] = []
+    for org in psm.load_organizations():
+        if org.is_system:  # HQ/メタ自身はポートフォリオ配分の対象外
+            continue
+        summary = store.summary_for_org(org.name)
+        org_stats.append(
+            {
+                "org_name": org.name,
+                "revenue": summary.total_revenue,
+                "reach": summary.total_reach,
+                "posts": summary.by_metric.get("posts", {}).get("sum", 0.0),
+            }
+        )
+    return {"proposals": build_portfolio_proposals(org_stats)}
+
+
 # --------------------------------------------------------------------------- #
 # Plugins / Marketplace（2階層プラグイン: 会社プラグイン / 事業部プラグイン）        #
 # --------------------------------------------------------------------------- #

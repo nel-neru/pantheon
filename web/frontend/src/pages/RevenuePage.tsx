@@ -30,6 +30,13 @@ type RevenueIntelligence = {
   forecast_next: number
 }
 
+type PortfolioProposal = {
+  kind: string
+  title: string
+  reason: string
+  priority: number
+}
+
 const REVENUE_METRICS = ['revenue', 'sales', 'conversions'] as const
 type RevenueMetric = (typeof REVENUE_METRICS)[number]
 
@@ -55,6 +62,7 @@ export function RevenuePage() {
   const [data, setData] = useState<RevenueMetrics | null>(null)
   const [report, setReport] = useState<RevenueReport | null>(null)
   const [intel, setIntel] = useState<RevenueIntelligence | null>(null)
+  const [portfolio, setPortfolio] = useState<PortfolioProposal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -68,20 +76,23 @@ export function RevenuePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [result, rep, ai] = await Promise.all([
+      const [result, rep, ai, pf] = await Promise.all([
         api<RevenueMetrics>('GET', '/api/metrics/revenue'),
         api<RevenueReport>('GET', '/api/metrics/revenue/report'),
         api<RevenueIntelligence>('GET', '/api/metrics/revenue/intelligence'),
+        api<{ proposals: PortfolioProposal[] }>('GET', '/api/hq/portfolio'),
       ])
       setData(result)
       setReport(rep)
       setIntel(ai)
+      setPortfolio(pf.proposals)
       setError(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : '収益メトリクスの読み込みに失敗しました。'
       setData(null)
       setReport(null)
       setIntel(null)
+      setPortfolio([])
       setError(message)
       toast.error(message)
     } finally {
@@ -280,6 +291,29 @@ export function RevenuePage() {
                       翌月予測 <span className="font-medium">¥{fmt(intel.forecast_next)}</span>
                     </span>
                   </div>
+                </div>
+              </div>
+            ) : null}
+
+            {portfolio.length > 0 ? (
+              <div className="card">
+                <div className="card-body flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={16} />
+                    <div className="font-semibold">ポートフォリオ提案（HQ）</div>
+                  </div>
+                  <p className="text-muted text-sm">
+                    各組織の収益/リーチから「投資・収益化・送客」の打ち手を提案します。
+                  </p>
+                  {portfolio.map((p, i) => (
+                    <div key={`${p.kind}-${i}`} className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{p.title}</div>
+                        <div className="text-sm text-muted">{p.reason}</div>
+                      </div>
+                      <span className="badge badge-neutral">{p.kind}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : null}

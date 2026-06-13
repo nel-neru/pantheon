@@ -48,8 +48,8 @@
   で manifest→完全な Organization 起動（事業部名から型/スキル推定で Division/Team/Agent 生成・
   Humanタスク自動起票・初期KPI返却）+ `GET /api/company-plugin-manifests` + `POST /api/company-plugins/{id}/install`
   + マーケットプレイス「この会社を作成」ボタン。backend 3 + API 1 + frontend 2 テスト。
-- 🟩 **WIRE-A 収益コアの配線**: コア✅ `core/hierarchy/portfolio_advisor.build_portfolio_proposals`
-  （portfolio+handoff を提案 dict 化）＋テスト。HQ提案永続化/GUI への配線は後続。
+- ✅ **WIRE-A 収益コアの配線**: `build_portfolio_proposals` を `GET /api/hq/portfolio`（OutcomeStore から
+  org_stats を集計→提案）に配線し、RevenuePage に「ポートフォリオ提案（HQ）」カードを表示。backend+frontend テスト。
 - ⬜ **WIRE-B 自己拡大の配線**: business_proposal→承認ゲート、company manifest→マーケットGUI 表示。✅ 一部完了（manifest→install→マーケットGUI は P2.2b で済）。
 
 ## §6 プラグインテンプレ化（§6.2 / §7.4）
