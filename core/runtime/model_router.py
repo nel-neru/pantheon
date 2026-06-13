@@ -1,7 +1,9 @@
 """ModelTierRouter — task_type と入力規模から claude CLI の ``--model`` を自動選択する。
 
 「トークンを無駄にしない」ためのモデル使い分けの中枢。ティアは alias
-（opus/sonnet/haiku）で指定し、モデル ID の世代交代に追従不要とする。
+（fable/sonnet/haiku 等）で指定し、モデル ID の世代交代に追従不要とする。
+最上位 ``heavy`` ティアは長時間・自律実行に最強の **Fable 5（alias ``fable``）** を割り当てる
+（Master Plan §9「Fable 5 をメイン」）。`claude --model fable` は CLI が公式サポートする alias。
 優先順位は呼び出し側（:func:`core.runtime.claude_code.run_claude_sync`）で
 
     明示 ``model`` 引数 ＞ 本ルーター ＞ ``PANTHEON_DEFAULT_MODEL``
@@ -27,7 +29,7 @@ CONFIG_FILENAME = "model_tiers.yaml"
 
 TIER_ORDER = ("light", "standard", "heavy")
 
-DEFAULT_TIER_MODELS: Dict[str, str] = {"heavy": "opus", "standard": "sonnet", "light": "haiku"}
+DEFAULT_TIER_MODELS: Dict[str, str] = {"heavy": "fable", "standard": "sonnet", "light": "haiku"}
 DEFAULT_TASK_TIERS: Dict[str, str] = {
     "improvement_execution": "heavy",
     "meta_improvement": "heavy",

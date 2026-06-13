@@ -1,13 +1,16 @@
 # モデルティアリング設定 — task_type → ティア → claude CLI の --model エイリアス
 #
-# 「作業内容に応じたモデルの使い分け」の中枢設定。alias（opus/sonnet/haiku）で
+# 「作業内容に応じたモデルの使い分け」の中枢設定。alias（fable/sonnet/haiku 等）で
 # 指定するためモデル ID の世代交代に追従不要。優先順位は
 #   明示 model 引数 ＞ このルーター ＞ PANTHEON_DEFAULT_MODEL
 # で、PANTHEON_MODEL_ROUTING=0 にするとルーター全体を無効化できる（キルスイッチ）。
 # このファイルが欠落・破損していても内蔵デフォルト（同内容）で動作する。
+#
+# heavy ティアは長時間・自律実行に最強の Fable 5（alias `fable`）を割り当てる
+# （Master Plan §9）。opus に戻す場合は heavy を opus に変更すればよい（即時・無停止）。
 
 tiers:
-  heavy: opus      # 高難度: コード改変・メタ改善・セキュリティ
+  heavy: fable     # 高難度/長時間自律: コード改変・メタ改善・セキュリティ（Fable 5）
   standard: sonnet # 標準: レビュー・コンテンツ生成・探索
   light: haiku     # 軽量: 会話・要約・スコアリング・コンパクション
 
