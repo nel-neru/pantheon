@@ -11,6 +11,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
@@ -763,10 +764,14 @@ export function OrgsPage() {
                   担当する git リポジトリ（ワークスペース）を指定して組織を作成してください。
                 </p>
               </div>
-              <div className="welcome-actions">
+              <div className="welcome-actions flex items-center gap-2">
+                <Link to="/onboarding" className="btn btn-primary">
+                  <Sparkles size={14} />
+                  副業ポートフォリオを自動構築
+                </Link>
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-secondary"
                   onClick={() => setShowCreate(true)}
                 >
                   <Plus size={14} />

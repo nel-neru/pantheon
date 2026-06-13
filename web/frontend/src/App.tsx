@@ -14,6 +14,7 @@ import {
   Moon,
   Search,
   Settings,
+  Sparkles,
   Sun,
   Boxes,
   KanbanSquare,
@@ -43,6 +44,7 @@ import { HumanTasksPage } from '@/pages/HumanTasksPage'
 import { InboxPage } from '@/pages/InboxPage'
 import { MarketplacePage } from '@/pages/MarketplacePage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
+import { OnboardingPage } from '@/pages/OnboardingPage'
 import { RevenuePage } from '@/pages/RevenuePage'
 import { StudioPage } from '@/pages/StudioPage'
 import { BoardPage } from '@/pages/BoardPage'
@@ -69,6 +71,7 @@ type SearchResult = {
 }
 
 const navItems: NavItem[] = [
+  { to: '/onboarding', label: '初回セットアップ', icon: Sparkles },
   { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
   { to: '/inbox', label: '承認インボックス', icon: Inbox },
   { to: '/notifications', label: '通知センター', icon: Bell },
@@ -422,6 +425,7 @@ export default function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

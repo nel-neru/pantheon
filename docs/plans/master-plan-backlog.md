@@ -86,10 +86,12 @@
 
 ## Phase 3（アプリ化・UX）
 
-- ⬜ P3.1 **PyInstaller ビルド硬化 + smoke**: spec の同梱漏れ点検、ビルド/起動 smoke の自動チェック。
-  受け入れ: ビルド検証スクリプト or テスト + ドキュメント。（実配布署名は human-gate）
-- ⬜ P3.2 **初回ウィザード**: GUI 初回起動で「副業ポートフォリオ自動構築」へ誘導（org/事業部プラグイン選択）。
-  受け入れ: ウィザード画面 + 既存 API 連携 + テスト。
+- ✅ P3.1 **PyInstaller ビルド硬化 + smoke**: `scripts/check_build_spec.py`（spec の datas 同梱漏れ・
+  重要リソース実体・動的 hiddenimports・resource_path 解決を静的検査、致命時 exit 1）+ `tests/test_build_spec.py`（3）。
+  最頻事故「リポジトリに足したリソースを datas に入れ忘れ→exe で欠落」を CI で捕捉。（実配布署名は human-gate）
+- ✅ P3.2 **初回ウィザード**: `OnboardingPage` `/onboarding`（3 ステップ: 説明→manifest 選択で会社を
+  1クリック起動→完了。既存 `/api/company-plugin-manifests`・`/install` を利用＝副業ポートフォリオ自動構築）
+  + ナビ追加 + OrgsPage 初回 welcome に CTA。frontend 2 テスト。
 - ✅ P3.3 **通知センター / Always-On**: `core/notifications/NotificationCenter`（既存 append-only
   `notifications.jsonl` を正準ログに、別ファイルの既読 id 集合で既読/未読を非破壊管理 + 設定
   min_level/静音時間帯 + `should_push` ゲート）+ API（GET/POST/read/read-all/settings）+
