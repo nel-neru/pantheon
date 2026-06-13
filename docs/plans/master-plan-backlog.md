@@ -90,8 +90,10 @@
   受け入れ: ビルド検証スクリプト or テスト + ドキュメント。（実配布署名は human-gate）
 - ⬜ P3.2 **初回ウィザード**: GUI 初回起動で「副業ポートフォリオ自動構築」へ誘導（org/事業部プラグイン選択）。
   受け入れ: ウィザード画面 + 既存 API 連携 + テスト。
-- ⬜ P3.3 **通知センター / Always-On**: WS イベントを集約する通知 UI + 設定（時間帯/頻度）。
-  受け入れ: 通知ストア + GUI + 設定 + テスト。
+- ✅ P3.3 **通知センター / Always-On**: `core/notifications/NotificationCenter`（既存 append-only
+  `notifications.jsonl` を正準ログに、別ファイルの既読 id 集合で既読/未読を非破壊管理 + 設定
+  min_level/静音時間帯 + `should_push` ゲート）+ API（GET/POST/read/read-all/settings）+
+  NotificationsPage `/notifications`（一覧・既読・一括既読・設定）+ ナビ。backend 11 + API 2 + frontend 3 テスト。
 - 🔒 P3.4 クラウド版（オプション）: ホスティング/配布は **human-gate**（インフラ・課金）。設計メモのみ AI 可。
 
 ## Phase 4（究極形態）

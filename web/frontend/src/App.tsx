@@ -42,6 +42,7 @@ import { HelpPage } from '@/pages/HelpPage'
 import { HumanTasksPage } from '@/pages/HumanTasksPage'
 import { InboxPage } from '@/pages/InboxPage'
 import { MarketplacePage } from '@/pages/MarketplacePage'
+import { NotificationsPage } from '@/pages/NotificationsPage'
 import { RevenuePage } from '@/pages/RevenuePage'
 import { StudioPage } from '@/pages/StudioPage'
 import { BoardPage } from '@/pages/BoardPage'
@@ -70,6 +71,7 @@ type SearchResult = {
 const navItems: NavItem[] = [
   { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
   { to: '/inbox', label: '承認インボックス', icon: Inbox },
+  { to: '/notifications', label: '通知センター', icon: Bell },
   { to: '/human-tasks', label: 'あなたのタスク', icon: UserCheck },
   { to: '/connections', label: 'プラットフォーム接続', icon: Plug },
   { to: '/orgs', label: '組織', icon: Building2 },
@@ -422,6 +424,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/inbox" element={<InboxPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/human-tasks" element={<HumanTasksPage />} />
         <Route path="/connections" element={<ConnectionsPage />} />
         <Route path="/orgs" element={<OrgsPage />} />

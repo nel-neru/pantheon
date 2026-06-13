@@ -4098,6 +4098,92 @@ def _outcome_store():
     return OutcomeStore(platform_home=_psm().platform_home)
 
 
+# --------------------------------------------------------------------------- #
+# 通知センター（P3.3）: 集約・既読・設定（時間帯/最小レベル）                       #
+# --------------------------------------------------------------------------- #
+
+
+def _notification_center():
+    from core.notifications import NotificationCenter
+
+    return NotificationCenter(platform_home=get_platform_home())
+
+
+class NotificationSettingsRequest(BaseModel):
+    """通知設定の更新（部分更新可）。"""
+
+    min_level: Optional[str] = None
+    quiet_hours_start: Optional[int] = None
+    quiet_hours_end: Optional[int] = None
+
+
+class NotificationCreateRequest(BaseModel):
+    """通知を 1 件追加する（手動/テスト・WS イベント連携用）。"""
+
+    level: str = "info"
+    message: str
+    org_name: str = ""
+
+
+@app.get("/api/notifications", tags=["notifications"])
+async def api_list_notifications(limit: int = 50, unread_only: bool = False) -> Dict[str, Any]:
+    """通知を新しい順に返す（``unread_only=true`` で未読のみ）+ 未読件数。"""
+    center = _notification_center()
+    return {
+        "items": center.list(limit=max(1, min(limit, 200)), unread_only=unread_only),
+        "unread": center.unread_count(),
+    }
+
+
+@app.get("/api/notifications/unread-count", tags=["notifications"])
+async def api_notifications_unread_count() -> Dict[str, Any]:
+    """未読通知件数（ベルバッジ用）。"""
+    return {"unread": _notification_center().unread_count()}
+
+
+@app.post("/api/notifications", tags=["notifications"])
+async def api_create_notification(body: NotificationCreateRequest) -> Dict[str, Any]:
+    """通知を 1 件追加する（未読として記録）。"""
+    msg = body.message.strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="message は必須です")
+    note = _notification_center().add(level=body.level, message=msg, org_name=body.org_name)
+    return {"ok": True, "notification": note}
+
+
+@app.post("/api/notifications/{notification_id}/read", tags=["notifications"])
+async def api_mark_notification_read(notification_id: str) -> Dict[str, Any]:
+    """通知を 1 件既読にする（存在しない id は 404）。"""
+    center = _notification_center()
+    if not center.mark_read(notification_id):
+        # 既読化できない＝未知 id（既に既読は ok 扱い）。存在チェックで 404 を返す。
+        known = {i["id"] for i in center.list(limit=200)}
+        if notification_id not in known:
+            raise HTTPException(status_code=404, detail="通知が見つかりません")
+    return {"ok": True, "unread": center.unread_count()}
+
+
+@app.post("/api/notifications/read-all", tags=["notifications"])
+async def api_mark_all_notifications_read() -> Dict[str, Any]:
+    """全通知を既読にする。"""
+    center = _notification_center()
+    marked = center.mark_all_read()
+    return {"ok": True, "marked": marked, "unread": center.unread_count()}
+
+
+@app.get("/api/notifications/settings", tags=["notifications"])
+async def api_get_notification_settings() -> Dict[str, Any]:
+    """通知設定（最小レベル・静音時間帯）を返す。"""
+    return _notification_center().get_settings()
+
+
+@app.put("/api/notifications/settings", tags=["notifications"])
+async def api_update_notification_settings(body: NotificationSettingsRequest) -> Dict[str, Any]:
+    """通知設定を部分更新する。"""
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    return _notification_center().update_settings(patch)
+
+
 @app.post("/api/outcomes", tags=["outcomes"])
 async def api_record_outcome(body: OutcomeRecordRequest) -> Dict[str, Any]:
     """成果イベントを 1 件記録する（GUI の手動入力フォーム用）。

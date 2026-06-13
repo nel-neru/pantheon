@@ -493,6 +493,50 @@ def test_hq_portfolio_api(tmp_path, monkeypatch):
     assert any(p.get("action") == "monetize" and p["org_name"] == "Reachy" for p in proposals)
 
 
+def test_notifications_api_crud_and_settings(tmp_path, monkeypatch):
+    """P3.3: 通知の作成→一覧/未読数→既読→設定更新の一連を API で検証する。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    created = client.post(
+        "/api/notifications", json={"level": "warn", "message": "health low", "org_name": "Co"}
+    )
+    assert created.status_code == 200, created.text
+    nid = created.json()["notification"]["id"]
+
+    listed = client.get("/api/notifications")
+    assert listed.status_code == 200
+    assert listed.json()["unread"] == 1
+    assert listed.json()["items"][0]["message"] == "health low"
+
+    assert client.get("/api/notifications/unread-count").json()["unread"] == 1
+
+    read = client.post(f"/api/notifications/{nid}/read")
+    assert read.status_code == 200
+    assert read.json()["unread"] == 0
+
+    # 未知 id は 404
+    assert client.post("/api/notifications/nope/read").status_code == 404
+
+    settings = client.put(
+        "/api/notifications/settings", json={"min_level": "warn", "quiet_hours_start": 22}
+    )
+    assert settings.status_code == 200
+    assert settings.json()["min_level"] == "warn"
+    assert client.get("/api/notifications/settings").json()["quiet_hours_start"] == 22
+
+
+def test_notifications_read_all_api(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    client.post("/api/notifications", json={"message": "a"})
+    client.post("/api/notifications", json={"message": "b"})
+    resp = client.post("/api/notifications/read-all")
+    assert resp.status_code == 200
+    assert resp.json()["marked"] == 2
+    assert resp.json()["unread"] == 0
+
+
 def test_org_migrate_to_workspace_api(tmp_path, monkeypatch):
     """WS-1: repo 組織を workspace モードへ移行する API（計画→移行→保存）。"""
     from pathlib import Path
