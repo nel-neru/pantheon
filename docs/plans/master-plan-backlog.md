@@ -100,10 +100,17 @@
 
 ## Phase 4（究極形態）
 
-- ⬜ P4.1 **完全自律経営デモ**: 「月XX円目標で最適運用して」を `abstract_goal_pipeline` に接続し、
-  目標→Meta-Overseer がポートフォリオ施策を立案・実行（人間ゲートは承認キュー）。受け入れ: 目標入力→計画→
-  提案群生成のデモ経路 + テスト。
-- ⬜ P4.2 **新事業ジャンル自動発見**: trends から未開拓ジャンルを発見し新会社提案（P2.1 の発展）。
+- ✅ P4.1 **完全自律経営デモ**: `core/hierarchy/portfolio_pipeline.py`（決定論・LLM 非依存）
+  ＝目標額→`compute_revenue_gap`（OutcomeStore 実績 vs 目標/予測）→`build_target_plan`
+  （`build_portfolio_proposals` ＋ ギャップ符号で収益打ち手を強調＋リーチ不足時に new_business エスカレーション）
+  →`scan_portfolio_proposals`（承認ゲート ImprovementProposal を冪等起票。dedupe_key は収益値非依存）。
+  CLI `pantheon goal plan <target> [--preview]`、API `POST /api/hq/portfolio/scan`・`GET /api/hq/portfolio/plan`、
+  RevenuePage「自律経営プラン（月収益目標）」カード。backend 8 + API 1 + frontend 1 テスト。
+- ✅ P4.2 **新事業ジャンル自動発見**: `core/trends/untapped_genre.py`（決定論・LLM 非依存・集合演算）
+  ＝store ジャンル − 既存 org の industry_genre（slug 正規化・既定 general 除外）→ 未開拓高スコアジャンルを
+  `trend_to_business_proposal` 再利用で new_business 提案として**ジャンル単位冪等**で起票。CLI `pantheon trends untapped [--preview]`、
+  API `POST /api/hq/untapped-genres/scan`・`GET /api/hq/untapped-genres`、trend daemon サイクルに組込（summary.untapped_genres）、
+  MarketplacePage「未開拓ジャンルをスキャン」ボタン。backend 7 + API 1 + frontend 1 テスト。
 - 🔒 P4.3 コミュニティ機能 / P4.4 税務・会計補助: 外部サービス/法務が絡むため **human-gate**（設計のみ AI 可）。
 
 ## 横断・検証

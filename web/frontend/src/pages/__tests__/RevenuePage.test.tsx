@@ -62,6 +62,7 @@ function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
     if (path === '/api/metrics/revenue/report') return Promise.resolve(r)
     if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(ai)
     if (path === '/api/hq/portfolio') return Promise.resolve(portfolio)
+    if (path === '/api/hq/portfolio/scan') return Promise.resolve({ proposals: 2 })
     if (path === '/api/outcomes') return Promise.resolve({ ok: true, event: {} })
     return Promise.resolve({})
   })
@@ -102,6 +103,19 @@ it('ポートフォリオ提案（HQ）を表示する', async () => {
   renderWithRouter(<RevenuePage />)
   expect(await screen.findByText('ポートフォリオ提案（HQ）')).toBeInTheDocument()
   expect(screen.getByText('[HQ提案] Note Sales を monetize')).toBeInTheDocument()
+})
+
+it('自律経営プラン: 目標額を入れてプランを起票する', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+
+  await screen.findByText('自律経営プラン（月収益目標）')
+  fireEvent.change(screen.getByPlaceholderText('月次目標額（円）'), { target: { value: '100000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'プランを起票' }))
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/hq/portfolio/scan', { target: 100000 })
+  )
 })
 
 it('月次収益レポートを表示する', async () => {

@@ -54,6 +54,45 @@ async def cmd_trends_business_scan(args: argparse.Namespace) -> None:
     )
 
 
+async def cmd_trends_untapped(args: argparse.Namespace) -> None:
+    """未開拓ジャンルを発見し新会社候補提案を承認キューへ起票する（P4.2・claude CLI 不要）。"""
+    from core.trends.untapped_genre import (
+        enumerate_genre_evidence,
+        find_untapped_genres,
+        scan_untapped_genre_proposals,
+    )
+
+    if getattr(args, "preview", False):
+        from core.platform.state import PlatformStateManager, get_platform_home
+        from core.trends.store import TrendStore
+        from core.trends.untapped_genre import _covered_genres
+
+        home = get_platform_home()
+        evidence = enumerate_genre_evidence(TrendStore(home), min_score=args.min_score)
+        covered = _covered_genres(PlatformStateManager(home))
+        untapped = find_untapped_genres(evidence, covered, min_evidence=args.min_evidence)
+        if not untapped:
+            print("[trends] 未開拓ジャンルは見つかりませんでした")
+            return
+        print(f"[trends] 未開拓ジャンル {len(untapped)} 件（被覆 {len(covered)} 件を除外）:")
+        for g in untapped:
+            ev = evidence[g]
+            print(f"  - {g}（証拠 {ev['count']} 件 / 最高スコア {ev['max_score']:.1f}）")
+        print("（--preview のため起票していません）")
+        return
+
+    result = scan_untapped_genre_proposals(
+        min_score=args.min_score, min_evidence=args.min_evidence, max_per_run=args.max_per_run
+    )
+    if result.get("reason") == "no_org":
+        print("[trends] 受け手の Organization がありません（先に org を作成してください）")
+        return
+    print(
+        f"[trends] 未開拓ジャンルの新会社候補を {result.get('proposals', 0)} 件起票"
+        f"（検出 {result.get('scanned', 0)} 件・承認キュー /inbox で確認）"
+    )
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("trends", help="外部トレンドの収集・一覧")
     sub = parser.add_subparsers(dest="trends_command", required=True)
@@ -76,3 +115,16 @@ def register(subparsers: Any) -> None:
         "--max-per-run", type=int, default=5, dest="max_per_run", help="1回の最大起票数"
     )
     sp.set_defaults(handler_name="cmd_trends_business_scan")
+
+    sp = sub.add_parser("untapped", help="未開拓ジャンルを発見し新会社候補提案を起票（P4.2）")
+    sp.add_argument(
+        "--min-score", type=float, default=7.0, dest="min_score", help="最低スコア(0..10)"
+    )
+    sp.add_argument(
+        "--min-evidence", type=int, default=1, dest="min_evidence", help="ジャンル最小証拠件数"
+    )
+    sp.add_argument(
+        "--max-per-run", type=int, default=5, dest="max_per_run", help="1回の最大起票数"
+    )
+    sp.add_argument("--preview", action="store_true", help="起票せず未開拓ジャンルを表示のみ")
+    sp.set_defaults(handler_name="cmd_trends_untapped")

@@ -493,6 +493,52 @@ def test_hq_portfolio_api(tmp_path, monkeypatch):
     assert any(p.get("action") == "monetize" and p["org_name"] == "Reachy" for p in proposals)
 
 
+def test_portfolio_plan_scan_api(tmp_path, monkeypatch):
+    """P4.1: 月収益目標→計画→承認ゲート提案を起票する API（プレビュー + scan）。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.org_factory import create_default_organization
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("Reachy", "集客"))
+    OutcomeStore(platform_home=tmp_path).record("Reachy", "impressions", 5000)
+
+    preview = client.get("/api/hq/portfolio/plan?target=100000")
+    assert preview.status_code == 200, preview.text
+    assert "gap" in preview.json() and "plan" in preview.json()
+
+    scan = client.post("/api/hq/portfolio/scan", json={"target": 100000})
+    assert scan.status_code == 200, scan.text
+    assert scan.json()["proposals"] > 0
+
+
+def test_untapped_genres_api(tmp_path, monkeypatch):
+    """P4.2: 未開拓ジャンルのプレビュー + scan API。"""
+    from core.org_factory import create_default_organization
+    from core.trends.models import TrendItem
+    from core.trends.store import TrendStore
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("Content Org", "content"))
+    TrendStore(platform_home=tmp_path).add(
+        TrendItem(
+            source="web", url="https://x/g1", title="gardening boom", score=9.0, genre="gardening"
+        )
+    )
+
+    listed = client.get("/api/hq/untapped-genres?min_score=7")
+    assert listed.status_code == 200, listed.text
+    assert any(i["genre"] == "gardening" for i in listed.json()["items"])
+
+    scan = client.post("/api/hq/untapped-genres/scan", json={"min_score": 7.0})
+    assert scan.status_code == 200, scan.text
+    assert scan.json()["proposals"] == 1
+
+
 def test_notifications_api_crud_and_settings(tmp_path, monkeypatch):
     """P3.3: 通知の作成→一覧/未読数→既読→設定更新の一連を API で検証する。"""
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)

@@ -56,6 +56,9 @@ function wireApi() {
     if (method === 'POST' && path === '/api/hq/business-proposals/scan') {
       return Promise.resolve({ proposals: 1 })
     }
+    if (method === 'POST' && path === '/api/hq/untapped-genres/scan') {
+      return Promise.resolve({ proposals: 1 })
+    }
     if (method === 'POST' && path.includes('/install')) {
       return Promise.resolve({ org_name: 'note 販売会社', divisions: ['コンテンツ企画部'] })
     }
@@ -107,6 +110,17 @@ it('「トレンドからスキャン」で scan API を呼ぶ', async () => {
     expect(mockApi).toHaveBeenCalledWith('POST', '/api/hq/business-proposals/scan', {
       min_score: 7.0,
     })
+  )
+})
+
+it('「未開拓ジャンルをスキャン」で untapped scan API を呼ぶ', async () => {
+  wireApi()
+  renderWithRouter(<MarketplacePage />)
+
+  fireEvent.click(await screen.findByRole('button', { name: '未開拓ジャンルをスキャン' }))
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/hq/untapped-genres/scan', { min_score: 7.0 })
   )
 })
 

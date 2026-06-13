@@ -87,6 +87,27 @@ export function MarketplacePage() {
     }
   }, [load])
 
+  const scanUntapped = useCallback(async () => {
+    setScanning(true)
+    try {
+      const res = await api<{ proposals: number; reason?: string }>(
+        'POST',
+        '/api/hq/untapped-genres/scan',
+        { min_score: 7.0 }
+      )
+      if (res.reason === 'no_org') {
+        toast.error('受け手の組織がありません。先に会社を作成してください。')
+      } else {
+        toast.success(`未開拓ジャンルから新会社候補を ${res.proposals} 件起票しました。`)
+      }
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'スキャンに失敗しました。')
+    } finally {
+      setScanning(false)
+    }
+  }, [load])
+
   useEffect(() => {
     void load()
   }, [load])
@@ -219,15 +240,26 @@ export function MarketplacePage() {
                     <Sparkles size={16} />
                     <div className="font-semibold">新規会社候補（トレンド発・要承認）</div>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={scanning}
-                    onClick={() => void scanBusiness()}
-                  >
-                    <Sparkles size={14} />
-                    {scanning ? 'スキャン中…' : 'トレンドからスキャン'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={scanning}
+                      onClick={() => void scanBusiness()}
+                    >
+                      <Sparkles size={14} />
+                      {scanning ? 'スキャン中…' : 'トレンドからスキャン'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={scanning}
+                      onClick={() => void scanUntapped()}
+                    >
+                      <Sparkles size={14} />
+                      未開拓ジャンルをスキャン
+                    </button>
+                  </div>
                 </div>
                 <p className="text-muted text-sm">
                   高スコアトレンドから「新しい収益モデル会社」候補を自動起票します（自動採用はせず、
