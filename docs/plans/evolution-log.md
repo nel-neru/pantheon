@@ -19,6 +19,28 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 19 — 窓なしランチャの回帰防止テスト固定＋並走セッション事故の収束  (2026-06-13 21:20)
+  Plan   : Cycle 18 の窓なしランチャは「壊れても無音で回帰する」（窓が再び出る/フォーカス
+           奪取が復活する）クラスで、単体テストが無かった穴を埋める。受け入れ基準 =
+           CREATE_NO_WINDOW 契約・コマンド構築・cwd・戻り値伝播・失敗時ログを固定 / 緑 /
+           レビュー通過。落とした候補: done 6本の prune / load_organizations 警告ログ
+           （次サイクルへ）。
+  Did    : work/launcher-regression-test-20260613。tests/test_evolve_resume_launcher.py（7本）
+           — CREATE_NO_WINDOW(0x08000000)/-File ps1/-StaleMinutes/cwd=repo/既定90/戻り値伝播/
+           ps1不在=1+ログ/spawn失敗=1+ログ/powershell パス解決。差し替えは monkeypatch のみ
+           （共有 subprocess.run 汚染回避）。
+  Check  : 7 passed / ruff 緑 / 全体コレクション 1102 健全 / merge gate 通過。
+           code-reviewer APPROVE-WITH-NITS → 🟢2件（cwd 検証・spawn失敗分岐）を取り込み。
+  Act    : merged ✅（09a8d10..2c8489f）。**事故と収束（重要・固定化）**: Cycle 18 のテスト中、
+           未コミット（heartbeat 古）状態で毎時タスクが 21:01 に自然発火し、headless /evolve
+           （pid 14068）が起動して私と同じ作業ツリーを編集（このテストファイルを monkeypatch 版へ
+           改良＝皮肉にも net positive だった）。git は無傷（rogue はブランチ作成もコミットも
+           できず Stop 前に停止）。killswitch を立て→lock/ログから pid 特定→当該ツリーのみ
+           taskkill /T→lock 掃除→killswitch 解除で正常運用復帰。教訓: resume タスクの検証時は
+           先に `.disabled` を立てるか先にコミットして heartbeat を新鮮にする。
+  Next   : interactive /evolve セッションの heartbeat 化（resume との二重起動を根絶）/
+           done ブランチ6本の prune / load_organizations の silent-drop 警告ログ。
+
 Cycle 18 — 定期実行のフォーカス奪取を根絶（窓なし自動再開）  (2026-06-13 21:02)
   Plan   : ユーザー実害報告 — 毎時の "Pantheon Evolve Resume" タスクが powershell.exe
            （コンソールサブシステム）を直接起動するため、起動のたびに可視コンソール窓が
