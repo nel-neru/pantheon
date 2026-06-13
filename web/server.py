@@ -2649,6 +2649,99 @@ async def api_list_business_proposals() -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Phase 4: 自律経営（P4.1 目標→計画→提案）/ ジャンル自動発見（P4.2）              #
+# --------------------------------------------------------------------------- #
+
+
+class PortfolioScanRequest(BaseModel):
+    """月収益目標に向けたポートフォリオ計画を承認ゲートで起票するリクエスト（P4.1）。"""
+
+    target: float
+    source_org_name: str = "HQ"
+    org_name: Optional[str] = None
+    min_reach: float = 0.0
+
+
+@app.post("/api/hq/portfolio/scan", tags=["hq"])
+async def api_scan_portfolio_plan(body: PortfolioScanRequest) -> Dict[str, Any]:
+    """月収益目標→ギャップ→打ち手群 を承認ゲート提案として起票する（P4.1・LLM 非依存）。"""
+    from core.hierarchy.portfolio_pipeline import scan_portfolio_proposals
+
+    return scan_portfolio_proposals(
+        target=body.target,
+        source_org_name=body.source_org_name,
+        org_name=body.org_name,
+        min_reach=body.min_reach,
+    )
+
+
+@app.get("/api/hq/portfolio/plan", tags=["hq"])
+async def api_preview_portfolio_plan(
+    target: float, source_org_name: str = "HQ", min_reach: float = 0.0
+) -> Dict[str, Any]:
+    """月収益目標に対するギャップと計画を返す（**起票しない** プレビュー・P4.1）。
+
+    ``min_reach`` を受けて POST /scan と同じ計画（new_business エスカレーション含む）を返す。
+    """
+    from core.hierarchy.portfolio_pipeline import preview_portfolio_plan
+
+    return preview_portfolio_plan(
+        target=target, source_org_name=source_org_name, min_reach=min_reach
+    )
+
+
+class UntappedGenreScanRequest(BaseModel):
+    """未開拓ジャンル発見→新会社候補提案を承認ゲートで起票するリクエスト（P4.2）。"""
+
+    min_score: float = 7.0
+    min_evidence: int = 1
+    max_per_run: int = 5
+    org_name: Optional[str] = None
+
+
+@app.post("/api/hq/untapped-genres/scan", tags=["hq"])
+async def api_scan_untapped_genres(body: UntappedGenreScanRequest | None = None) -> Dict[str, Any]:
+    """未開拓ジャンルを発見し新会社候補提案を承認ゲートで起票する（P4.2・LLM 非依存）。"""
+    from core.trends.untapped_genre import scan_untapped_genre_proposals
+
+    req = body or UntappedGenreScanRequest()
+    return scan_untapped_genre_proposals(
+        min_score=req.min_score,
+        min_evidence=req.min_evidence,
+        max_per_run=req.max_per_run,
+        org_name=req.org_name,
+    )
+
+
+@app.get("/api/hq/untapped-genres", tags=["hq"])
+async def api_list_untapped_genres(min_score: float = 7.0, min_evidence: int = 1) -> Dict[str, Any]:
+    """未開拓ジャンルの一覧（証拠件数・最高スコア付き）を返す（**起票しない** プレビュー・P4.2）。"""
+    from core.trends.store import TrendStore
+    from core.trends.untapped_genre import (
+        _covered_genres,
+        enumerate_genre_evidence,
+        find_untapped_genres,
+    )
+
+    home = get_platform_home()
+    evidence = enumerate_genre_evidence(TrendStore(home), min_score=min_score)
+    covered = _covered_genres(_psm())
+    untapped = find_untapped_genres(
+        evidence, covered, min_evidence=min_evidence, min_score=min_score
+    )
+    items = [
+        {
+            "genre": g,
+            "count": int(evidence[g]["count"]),
+            "max_score": float(evidence[g]["max_score"]),
+            "top_title": getattr(evidence[g]["top_trend"], "title", ""),
+        }
+        for g in untapped
+    ]
+    return {"items": items, "covered": sorted(covered), "count": len(items)}
+
+
+# --------------------------------------------------------------------------- #
 # Plugins / Marketplace（2階層プラグイン: 会社プラグイン / 事業部プラグイン）        #
 # --------------------------------------------------------------------------- #
 

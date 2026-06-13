@@ -104,11 +104,13 @@ class TrendScheduler:
         from core.trends.business_pipeline import scan_business_proposals
         from core.trends.runner import collect_and_store
         from core.trends.trend_to_jobs import convert_trends, propose_claude_code_updates
+        from core.trends.untapped_genre import scan_untapped_genre_proposals
 
         collect = {}
         convert = {}
         cc = {}
         biz = {}
+        untapped = {}
         try:
             collect = await collect_and_store(platform_home=self.platform_home)
         except Exception as exc:  # noqa: BLE001
@@ -129,6 +131,13 @@ class TrendScheduler:
             )
         except Exception as exc:  # noqa: BLE001
             logger.info("business proposal scan failed: %s", exc)
+        try:
+            # 未開拓ジャンル → 新会社候補提案（承認ゲート付き・P4.2）
+            untapped = scan_untapped_genre_proposals(
+                platform_home=self.platform_home, min_score=self._min_score
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.info("untapped genre scan failed: %s", exc)
 
         summary = {
             "cycle": self._cycle_count,
@@ -140,6 +149,7 @@ class TrendScheduler:
             "proposals": convert.get("proposals", 0),
             "cc_proposals": cc.get("proposals", 0),
             "business_proposals": biz.get("proposals", 0),
+            "untapped_genres": untapped.get("proposals", 0),
         }
         self._write_log(summary)
         return summary

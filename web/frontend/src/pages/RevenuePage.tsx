@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CalendarDays, Coins, Eye, Plus, RefreshCw, Send, TrendingUp } from 'lucide-react'
+import {
+  AlertTriangle,
+  CalendarDays,
+  Coins,
+  Eye,
+  Plus,
+  RefreshCw,
+  Send,
+  Target,
+  TrendingUp,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
@@ -73,6 +83,10 @@ export function RevenuePage() {
   const [formNote, setFormNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // P4.1 自律経営プラン（目標額）
+  const [targetInput, setTargetInput] = useState('')
+  const [planning, setPlanning] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -133,6 +147,31 @@ export function RevenuePage() {
       setSubmitting(false)
     }
   }, [formOrg, formMetric, formValue, formNote, load])
+
+  const runTargetPlan = useCallback(async () => {
+    const target = Number(targetInput)
+    if (!targetInput.trim() || Number.isNaN(target) || target <= 0) {
+      toast.error('月次目標額（正の数値）を入力してください。')
+      return
+    }
+    setPlanning(true)
+    try {
+      const res = await api<{ proposals: number; reason?: string }>(
+        'POST',
+        '/api/hq/portfolio/scan',
+        { target }
+      )
+      if (res.reason === 'no_org') {
+        toast.error('受け手の組織がありません。先に会社を作成してください。')
+      } else {
+        toast.success(`月${fmt(target)}円目標のプランを ${res.proposals} 件、承認キューに起票しました。`)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'プラン生成に失敗しました。')
+    } finally {
+      setPlanning(false)
+    }
+  }, [targetInput])
 
   const orgs = data?.orgs ?? []
   const alerts = orgs.filter((o) => o.reach_but_no_revenue)
@@ -317,6 +356,39 @@ export function RevenuePage() {
                 </div>
               </div>
             ) : null}
+
+            <div className="card">
+              <div className="card-body flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Target size={16} />
+                  <div className="font-semibold">自律経営プラン（月収益目標）</div>
+                </div>
+                <p className="text-muted text-sm">
+                  「月XX円で最適運用して」を 1 クリックで。目標とのギャップから配分・送客・
+                  （リーチ不足なら）新規事業の打ち手を承認キューに起票します（自動実行はしません）。
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    className="input"
+                    style={{ width: '12rem' }}
+                    type="number"
+                    min={0}
+                    placeholder="月次目標額（円）"
+                    value={targetInput}
+                    onChange={(e) => setTargetInput(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={planning}
+                    onClick={() => void runTargetPlan()}
+                  >
+                    <Target size={14} />
+                    {planning ? 'プラン生成中…' : 'プランを起票'}
+                  </button>
+                </div>
+              </div>
+            </div>
 
             {months.length > 0 ? (
               <div className="card">

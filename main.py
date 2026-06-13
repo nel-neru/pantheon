@@ -26,6 +26,7 @@ from commands import build_parser
 from commands.atlas import cmd_atlas as _cmd_atlas_impl
 from commands.chat import cmd_chat as _cmd_chat_impl
 from commands.doctor import cmd_doctor as _cmd_doctor_impl
+from commands.goal import cmd_goal_plan as _cmd_goal_plan_impl
 from commands.goal import cmd_goal_run as _cmd_goal_run_impl
 from commands.goal import cmd_goal_status as _cmd_goal_status_impl
 from commands.handoff import cmd_handoff as _cmd_handoff_impl
@@ -444,6 +445,10 @@ async def cmd_goal_run(args) -> None:
     await _cmd_goal_run_impl(args, require_api_key=_require_api_key)
 
 
+async def cmd_goal_plan(args) -> None:
+    await _cmd_goal_plan_impl(args, get_platform_home=_get_platform_home)
+
+
 async def cmd_doctor(args) -> None:
     await _cmd_doctor_impl(args)
 
@@ -554,6 +559,12 @@ async def cmd_trends_business_scan(args) -> None:
     await _impl(args)
 
 
+async def cmd_trends_untapped(args) -> None:
+    from commands.trends import cmd_trends_untapped as _impl
+
+    await _impl(args)
+
+
 async def cmd_publish_connect(args) -> None:
     from commands.publish import cmd_publish_connect as _impl
 
@@ -620,6 +631,7 @@ HANDLERS = {
     "cmd_agent_list": cmd_agent_list,
     "cmd_goal_status": cmd_goal_status,
     "cmd_goal_run": cmd_goal_run,
+    "cmd_goal_plan": cmd_goal_plan,
     "cmd_session_start": cmd_session_start,
     "cmd_session_list": cmd_session_list,
     "cmd_session_show": cmd_session_show,
@@ -637,6 +649,7 @@ HANDLERS = {
     "cmd_trends_collect": cmd_trends_collect,
     "cmd_trends_list": cmd_trends_list,
     "cmd_trends_business_scan": cmd_trends_business_scan,
+    "cmd_trends_untapped": cmd_trends_untapped,
     "cmd_publish_connect": cmd_publish_connect,
     "cmd_publish_status": cmd_publish_status,
     "cmd_publish_disconnect": cmd_publish_disconnect,
