@@ -19,6 +19,33 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 22 — 中断していた revenue daemon（AUTO-1 / Phase5）を出荷可能まで完成  (2026-06-14 06:05)
+  Plan   : 自動再開（evolve_resume 経由）。中断点 = work/revenue-daemon-20260614 に未コミット5
+           ファイルで滞留した revenue デーモン（収益分析＋承認ゲート付きポートフォリオ提案スキャン・
+           LLM 非依存）。受け入れ基準 = 依存整合の検証 / 落ちるテストの根治 / 回帰ゼロ /
+           敵対的レビュー / 正規 merge。なぜ今: 既に正しい命名の work ブランチ上に健全な実装が
+           あり、最小の残作業（テスト＋検証）で出荷できる＝レバレッジ高・可逆。
+  Did    : work/revenue-daemon-20260614（既存ブランチ継続）。実装本体（_revenue_daemon_runner /
+           RevenueScheduler / daemon_registry KNOWN_DAEMONS / commands --target / main frozen entry）
+           は依存（OutcomeStore.revenue_by_month / analyze_revenue / scan_portfolio_proposals）と
+           シグネチャ整合済みと確認＝健全。残作業を実施: tests/test_revenue_scheduler.py 新設
+           （idle=target<=0 起票ゼロ / active=proposed のみ / **クロスプロセス冪等性**=別インスタンス
+           再スキャンで二重起票なし / heartbeat / 分析失敗時の堅牢性）、test_daemon_registry.py に
+           revenue を等値 assertion 追加＋frozen/非frozen build_command、test_web_server.py の
+           /api/daemons/status 名前リストへ revenue 追加（回帰修正）。
+  Check  : 全件 1304 passed / 2 failed（既知 chmod のみ）/ 1 skipped＝回帰ゼロ。ruff 緑。
+           **test-triage が隠れ回帰を 1 件検出**: test_web_server.py:2543 のデーモン名ハードコード
+           リストに revenue 未追加 → 修正。code-reviewer = APPROVE-WITH-NITS（4 不変条件
+           [承認ゲート安全/堅牢性・無トークン/heartbeat/frozen 経路] すべて成立を実コード読解で確認。
+           minor: source-org/min-reach が CLI 未配線=dead surface / status() 未使用 → 既定が妥当で
+           無害のため据置、クロスプロセス冪等性テストの提案のみ採用）。
+  Act    : merged ✅（dc87be0..1946951 push）。学び: **デーモン名は 2 つのテストで等値ピン**
+           （test_daemon_registry の set 等値・test_web_server の name list）されており、
+           KNOWN_DAEMONS 追加時は両方の更新が必須＝意図的なガード。中断した健全実装は
+           「依存整合の検証→落ちる等値 assertion の総ざらい」で最小コスト出荷できる。
+  Next   : revenue daemon の CLI 露出強化（--min-reach / --source-org 配線）/ atelier serve 導線 /
+           trend-watcher で CC 設定の最新動向取り込み。
+
 Cycle 21 — heartbeat テストの env 依存を根治＋triage の main 直コミットを正規化  (2026-06-14 05:20)
   Plan   : 自動再開（evolve_resume 経由の headless セッション）。中断中の作業ブランチは無く
            git クリーン・全 work ブランチ merge 済みのため新規サイクルへ。基線確立中に
