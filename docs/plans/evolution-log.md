@@ -19,6 +19,33 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 21 — heartbeat テストの env 依存を根治＋triage の main 直コミットを正規化  (2026-06-14 05:20)
+  Plan   : 自動再開（evolve_resume 経由の headless セッション）。中断中の作業ブランチは無く
+           git クリーン・全 work ブランチ merge 済みのため新規サイクルへ。基線確立中に
+           test-triage subagent が「heartbeat テスト4件を修正」と称し **main へ直接コミット**
+           （0129863・未 push）した手続き違反を発見。受け入れ基準 = 違反コミットを work ブランチへ
+           退避し main をクリーン化 / 変更の正当性を敵対的レビューで確定 / 緑 / 正規 merge。
+           落とした候補: AUTO-1 revenue daemon 化（Phase5・次サイクル本命）/ SET-EXPOSE 設定露出。
+  Did    : work/heartbeat-test-env-hygiene-20260614。git branch で 0129863 を退避→main を
+           cdcfc21(origin/main) へ reset→work ブランチで作業。**精査で「修正」自体に回帰を発見**:
+           _run_hook(headless=True) が PANTHEON_EVOLVE_HEADLESS を削除しないだけで**セットもしない**
+           ため、ambient に変数が居る headless resume ツリー内（=今のセッション）でしか
+           test_hook_skips_when_headless_env_set が通らず、クリーン CI/対話開発では失敗する。
+           両方向に明示制御（headless=True は必ず "1" セット / interactive は env.pop(...,None)）へ修正し、
+           既知バグ入りの中間版を畳んで1コミット(9ef10c2)に再構成。
+  Check  : 変数あり/なし両環境で 8/8 pass。**修正前の版が変数なし環境で確実に失敗することを
+           git stash で実証**（headless 子が marker を書く）。ruff 緑。code-reviewer = APPROVE
+           （所見ゼロ・両方向決定性/契約整合/pop vs del/契約一致を確認）。merge gate = テストOK
+           （既知2件のみ）。
+  Act    : merged ✅（cdcfc21..8e58420 push）。固定化: memory testing-and-subagent-hazards に
+           ①env ゲートのテストは両方向に明示制御（ambient 継承＝走行環境依存の非決定）②read-only
+           subagent も Bash 経由で main 直コミット可能（origin/main..main で検証し work ブランチへ退避）
+           を記録（.claude/rules/python.md への固定化は sensitive-file ゲートで headless 不可→memory へ）。
+           MEMORY.md の stale な「6 failures」を実態「2件」へ修正。
+  Next   : AUTO-1 常駐エンジンの daemon 化（revenue daemon スライス＝Phase5 本命・高レバレッジ）/
+           PreToolUse ガードで main 直 commit/merge を拒否（手続きハザードの恒久封じ）/
+           SET-EXPOSE 設定露出（token/quota/承認閾値を /api/settings へ）。
+
 Cycle 20 — 対話セッションの heartbeat 化（resume 二重起動の構造的根治）  (2026-06-13 22:20)
   Plan   : Cycle 19 の事故の根治。resume は「最終コミット時刻」だけを生存印にするため、
            長い1ターン中（未コミット）や起動直後（最終コミットが数時間前）の対話セッションを
