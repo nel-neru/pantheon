@@ -92,3 +92,33 @@ plugins:
           required_skills:
             - performance_analysis
             - deep_research
+
+  - id: full_funnel
+    label: フルファネル事業部（集客→収益化）
+    category: full_funnel
+    description: 集客からコンテンツ・販売・分析までを1事業部で通すフルファネル（§6.2 Full Funnel）
+    department:
+      name: フルファネル事業部
+      type: audience_development
+      mission: 集客→コンテンツ→収益化→分析のファネル全体を一気通貫で回す
+      teams:
+        - name: Growth Team
+          mission: フォロワー獲得・エンゲージメント・送客導線
+          required_skills:
+            - audience_growth
+            - performance_marketing
+        - name: Audience Content Team
+          mission: 集客用コンテンツの企画制作
+          required_skills:
+            - content_strategy
+            - audience_growth
+        - name: Sales Writing Team
+          mission: 収益化コンテンツのセールスライティングと構成
+          required_skills:
+            - content_strategy
+            - performance_marketing
+        - name: Pricing Team
+          mission: 価格設計・A/Bテスト・客単価最適化
+          required_skills:
+            - performance_analysis
+            - performance_marketing
