@@ -42,8 +42,10 @@
   生成・参照経路への配線は後続）
 - 🟩 P2.4 複数org連携最適化（コア✅ `core/hierarchy/handoff_optimizer.recommend_handoffs`＋テスト。
   HQ提案/handoff 自動起票への配線は WIRE-A）
-- 🟩 P2.5 Trend 硬化（コア✅ `core/trends/trend_dedup.py` dedupe_trends/rank_trends＋テスト。
-  trend daemon への配線は後続）
+- ✅ P2.5 Trend 硬化（コア✅ `core/trends/trend_dedup.py` dedupe_trends/rank_trends。
+  **配線完了**: `runner.collect_and_store` が採点後・保存前に `_dedupe_items`（trend_dedup）で
+  url 正規化/title の near-dup を最高スコア1件へ畳み込む＝store の hash 完全一致 dedup を補完
+  （summary.deduped 追加）。runner dedup テスト追加）
 - ✅ **P2.2b 会社プラグイン install フロー（本丸・組織のプラグイン化）**: `install_company_plugin`
   で manifest→完全な Organization 起動（事業部名から型/スキル推定で Division/Team/Agent 生成・
   Humanタスク自動起票・初期KPI返却）+ `GET /api/company-plugin-manifests` + `POST /api/company-plugins/{id}/install`
@@ -60,8 +62,12 @@
 
 - ✅ **PT-1 プラグインテンプレ框組み**: `core/orchestration/plugin_templates.py`（§6.2 CATEGORY_PRESETS
   audience/monetization/full_funnel/operations/content + `scaffold_division_plugin`/`scaffold_company_plugin`）＋13テスト。
-- 🟩 **PT-2 カタログ拡張**: `config/division_plugins.yaml` に **full_funnel 事業部**を追加（§6.2 Full Funnel）。
-  §7.4 の幅広いプラグイン（X/YouTube/TikTok/note有料/アフィリ等）の充足と、scaffold→YAML 生成 CLI は後続。
+- ✅ **PT-2 カタログ拡張**: ①`load_division_plugins` を**テンプレ形対応**に拡張（department を書かず
+  id/label/category だけのエントリを `scaffold_division_plugin` で自動展開＝「テンプレ化」）。
+  ②`config/division_plugins.yaml` を §7.4 準拠で **21 事業部**へ拡充（audience/monetization/content/operations 各5
+  ＋full_funnel：YouTube/TikTok/SEO/Newsletter/デジプロ/講座/電子書籍/サブスク/広告/スケジューラ/競合監視/AB/CRM 等）。
+  ③scaffold→YAML CLI `pantheon plugin scaffold-division --id --label --category [--write]`（--write でカタログ追記・冪等）。
+  loader 展開3 + scaffold CLI 1 テスト。
 
 ## §5 Workspace モデル（git からの脱却）
 

@@ -56,3 +56,78 @@ def test_load_company_plugins_lists_department_templates():
     assert "sns_growth" in ids
     for p in plugins:
         assert "division_count" in p
+
+
+# ------------------------------------------------------------------
+# PT-2: テンプレ形エントリの自動展開 + scaffold CLI
+# ------------------------------------------------------------------
+
+
+def test_template_form_entries_are_expanded():
+    """department を書かない §7.4 テンプレ形エントリがプリセットから展開される。"""
+    plugins = load_division_plugins()
+    by_id = {p["id"]: p for p in plugins}
+    # 新カタログの代表（compact 形で定義したもの）
+    assert "youtube_audience" in by_id
+    assert "membership_subscription" in by_id
+    yt = by_id["youtube_audience"]
+    dept = yt["department"]
+    assert dept["type"] == "audience_development"  # audience プリセット
+    assert len(dept["teams"]) == 2
+    for team in dept["teams"]:
+        assert 2 <= len(team["required_skills"]) <= 3
+
+
+def test_add_division_from_template_entry():
+    """テンプレ形エントリでも add_division_plugin で Division を組み立てられる。"""
+    org = create_default_organization("Tpl Co", "テスト用")
+    division = add_division_plugin(org, "youtube_audience")
+    assert division.name == "YouTube集客事業部"
+    assert len(division.teams) >= 1
+    for team in division.teams:
+        for agent in team.agents:
+            assert 2 <= len(agent.skills) <= 3
+
+
+def test_scaffold_division_cli_write_then_load(tmp_path, monkeypatch):
+    """scaffold-division --write で追記したテンプレ形が loader に展開されて見える。"""
+    import argparse
+    import asyncio
+
+    import core.orchestration.division_plugins as dp
+    import core.paths as paths_mod
+    from commands.plugin import cmd_plugin_scaffold_division
+
+    catalog = tmp_path / "division_plugins.yaml"
+    catalog.write_text(
+        "plugins:\n  - id: seed\n    label: Seed\n    category: operations\n",
+        encoding="utf-8",
+    )
+
+    def fake_resource_path(*parts):
+        if parts and parts[-1] == "division_plugins.yaml":
+            return catalog
+        return paths_mod.resource_path(*parts)
+
+    # コマンド側（書込）と loader 側（読込）の両方の resource_path を tmp に向ける。
+    monkeypatch.setattr("core.paths.resource_path", fake_resource_path)
+    monkeypatch.setattr(dp, "resource_path", fake_resource_path)
+
+    args = argparse.Namespace(
+        id="my_newsletter",
+        label="マイメルマガ事業部",
+        category="audience",
+        description="メルマガ集客",
+        mission="",
+        write=True,
+    )
+    asyncio.run(cmd_plugin_scaffold_division(args, get_psm=lambda: None))
+
+    plugin = dp.get_division_plugin("my_newsletter")
+    assert plugin is not None
+    assert plugin["department"]["type"] == "audience_development"
+
+    # 冪等: 同 id で再 --write しても重複追記しない。
+    asyncio.run(cmd_plugin_scaffold_division(args, get_psm=lambda: None))
+    ids = [p["id"] for p in dp.load_division_plugins()]
+    assert ids.count("my_newsletter") == 1

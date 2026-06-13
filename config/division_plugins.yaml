@@ -122,3 +122,76 @@ plugins:
           required_skills:
             - performance_analysis
             - performance_marketing
+
+  # --- PT-2 §7.4 テンプレ形エントリ -------------------------------------------
+  # department を書かず id/label/category だけ指定すると、ローダが
+  # core.orchestration.plugin_templates.CATEGORY_PRESETS から自動展開する
+  # （「テンプレ化」）。category: audience/content/monetization/operations。
+
+  # 1. Audience / Traffic（集客手段）
+  - id: youtube_audience
+    label: YouTube集客事業部
+    category: audience
+    description: YouTube ショート/長尺で集客し、収益化事業部へ送客する
+  - id: tiktok_reels_audience
+    label: TikTok/Reels集客事業部
+    category: audience
+    description: TikTok・Instagram Reels の短尺動画で新規リーチを獲得する
+  - id: seo_blog_audience
+    label: SEOブログ集客事業部
+    category: audience
+    description: SEOブログ / note 無料記事で検索流入を集め送客する
+  - id: newsletter_audience
+    label: Newsletter集客事業部
+    category: audience
+    description: メールマガジンで見込み客を育成し送客・販売へつなぐ
+
+  # 2. Content & Product（商品・コンテンツ作成）
+  - id: digital_product
+    label: デジタルプロダクト制作事業部
+    category: content
+    description: テンプレ・素材・ツール等のデジタルプロダクトを企画制作する
+  - id: prompt_pack
+    label: AIツール/プロンプトパック事業部
+    category: content
+    description: AIプロンプトパックや小型AIツールを制作し販売物にする
+  - id: online_course
+    label: オンライン講座/メンバーシップ事業部
+    category: content
+    description: 講座・メンバーシップ向けの継続コンテンツを企画制作する
+  - id: ebook_report
+    label: 電子書籍/レポート事業部
+    category: content
+    description: 電子書籍・有料レポートを企画・執筆・編集する
+
+  # 3. Monetization（直接収益化）
+  - id: membership_subscription
+    label: メンバーシップ/サブスク事業部
+    category: monetization
+    description: 継続課金（メンバーシップ/サブスク）で安定収益を作る
+  - id: digital_product_sales
+    label: デジタル商品販売事業部
+    category: monetization
+    description: デジタル商品の販売導線・価格最適化で収益化する
+  - id: ad_revenue
+    label: 広告収益化事業部
+    category: monetization
+    description: 広告・タイアップで収益化し、面の価値を最大化する
+
+  # 5. Operations & Analytics（運用支援）
+  - id: post_scheduler
+    label: 投稿スケジューラ事業部
+    category: operations
+    description: 投稿・記事の編成と公開スケジュール自動化で運用を支える
+  - id: competitor_trend_monitor
+    label: 競合・トレンド監視事業部
+    category: operations
+    description: 競合とトレンドを監視し、各事業部の意思決定材料を供給する
+  - id: ab_testing
+    label: A/Bテスト事業部
+    category: operations
+    description: 見出し・価格・導線の A/B テストを設計し改善提案を出す
+  - id: crm_lite
+    label: 顧客管理(簡易CRM)事業部
+    category: operations
+    description: 顧客・見込み客の管理とフォロー導線を簡易 CRM として整える

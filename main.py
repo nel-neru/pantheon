@@ -72,6 +72,7 @@ from commands.platform import cmd_platform_status as _cmd_platform_status_impl
 from commands.platform import cmd_serve as _cmd_serve_impl
 from commands.plugin import cmd_plugin_add_division as _cmd_plugin_add_division_impl
 from commands.plugin import cmd_plugin_list as _cmd_plugin_list_impl
+from commands.plugin import cmd_plugin_scaffold_division as _cmd_plugin_scaffold_division_impl
 from commands.up import cmd_up as _cmd_up_impl
 from commands.version import cmd_version as _cmd_version_impl
 from core.paths import resource_root
@@ -253,6 +254,10 @@ async def cmd_plugin_list(args) -> None:
 
 async def cmd_plugin_add_division(args) -> None:
     await _cmd_plugin_add_division_impl(args, get_psm=_get_psm)
+
+
+async def cmd_plugin_scaffold_division(args) -> None:
+    await _cmd_plugin_scaffold_division_impl(args, get_psm=_get_psm)
 
 
 async def cmd_org_list(args) -> None:
@@ -573,6 +578,7 @@ HANDLERS = {
     "cmd_org_create": cmd_org_create,
     "cmd_plugin_list": cmd_plugin_list,
     "cmd_plugin_add_division": cmd_plugin_add_division,
+    "cmd_plugin_scaffold_division": cmd_plugin_scaffold_division,
     "cmd_org_list": cmd_org_list,
     "cmd_org_scan": cmd_org_scan,
     "cmd_org_show": cmd_org_show,

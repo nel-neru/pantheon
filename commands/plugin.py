@@ -64,6 +64,55 @@ async def cmd_plugin_add_division(args: argparse.Namespace, *, get_psm: Any) -> 
     print(f"  事業部合計: {len(org.divisions)} 個")
 
 
+async def cmd_plugin_scaffold_division(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """テンプレから事業部プラグインの雛形を生成する（表示、または --write でカタログ追記）。"""
+    import yaml
+
+    from core.orchestration.division_plugins import get_division_plugin
+    from core.orchestration.plugin_templates import scaffold_division_plugin
+    from core.paths import resource_path
+
+    entry = scaffold_division_plugin(
+        args.id,
+        args.label,
+        args.category,
+        description=args.description or "",
+        mission=args.mission or "",
+    )
+    print(f"\n[scaffold] 事業部プラグイン '{entry['id']}' [{entry['category']}]")
+    print(f"  事業部 : {entry['department']['name']} ({entry['department']['type']})")
+    print(f"  Team   : {len(entry['department']['teams'])} 個")
+    for team in entry["department"]["teams"]:
+        print(f"    - {team['name']}: {', '.join(team['required_skills'])}")
+
+    if not args.write:
+        # 既定はテンプレ形（id/label/category/description）を表示する。ローダがこれを展開する。
+        compact = {
+            "id": entry["id"],
+            "label": entry["label"],
+            "category": entry["category"],
+            "description": entry["description"],
+        }
+        print("\n--- カタログへ追加するテンプレ形エントリ（--write で自動追記）---\n")
+        print(yaml.safe_dump([compact], allow_unicode=True, sort_keys=False))
+        return
+
+    if get_division_plugin(entry["id"]) is not None:
+        print(f"\n[INFO] id '{entry['id']}' は既にカタログに存在します（追記しません）。")
+        return
+
+    path = resource_path("config", "division_plugins.yaml")
+    block = (
+        f"\n  - id: {entry['id']}\n"
+        f"    label: {entry['label']}\n"
+        f"    category: {entry['category']}\n"
+        f"    description: {entry['description']}\n"
+    )
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(block)
+    print(f"\n[OK] '{entry['id']}' を {path.name} に追記しました（pantheon plugin list で確認）。")
+
+
 def register(subparsers: Any) -> None:
     plugin_parser = subparsers.add_parser("plugin", help="2階層プラグイン（会社/事業部）の管理")
     plugin_sub = plugin_parser.add_subparsers(dest="plugin_command", required=True)
@@ -79,3 +128,21 @@ def register(subparsers: Any) -> None:
         "--plugin", required=True, help="事業部プラグイン id（pantheon plugin list で確認）"
     )
     add_parser.set_defaults(handler_name="cmd_plugin_add_division")
+
+    scaffold_parser = plugin_sub.add_parser(
+        "scaffold-division",
+        help="テンプレから事業部プラグインの雛形を生成（--write でカタログ追記）",
+    )
+    scaffold_parser.add_argument("--id", required=True, help="プラグイン id（一意）")
+    scaffold_parser.add_argument("--label", required=True, help="表示名（事業部名）")
+    scaffold_parser.add_argument(
+        "--category",
+        required=True,
+        help="カテゴリ: audience/monetization/full_funnel/operations/content",
+    )
+    scaffold_parser.add_argument("--description", default="", help="説明（省略可）")
+    scaffold_parser.add_argument("--mission", default="", help="事業部ミッション（省略可）")
+    scaffold_parser.add_argument(
+        "--write", action="store_true", help="division_plugins.yaml にテンプレ形で追記する"
+    )
+    scaffold_parser.set_defaults(handler_name="cmd_plugin_scaffold_division")
