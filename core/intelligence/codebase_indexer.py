@@ -270,13 +270,13 @@ def invalidate_cache(index_path: Path, file_paths: list[Path]) -> None:
     except Exception:
         return
 
-    normalized = {str(Path(file_path)) for file_path in file_paths}
+    # build() stores keys as POSIX-normalized relative paths (.as_posix()), so
+    # match on the same form. Exact-match only — the old basename fallback
+    # over-removed every entry sharing a filename across different directories.
+    normalized = {Path(file_path).as_posix() for file_path in file_paths}
     files = data.get("files", {})
     for rel_path in list(files.keys()):
-        candidate = str(Path(rel_path))
-        if candidate in normalized or any(
-            Path(path).name == Path(rel_path).name for path in normalized
-        ):
+        if Path(rel_path).as_posix() in normalized:
             files.pop(rel_path, None)
     data["total_files"] = len(files)
     index_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
