@@ -86,9 +86,10 @@ function RawJsonAccordion({ payload }: { payload: Record<string, unknown> }) {
   const json = JSON.stringify(payload, null, 2)
 
   const handleCopy = () => {
-    void navigator.clipboard.writeText(json).then(() => {
-      toast.success('クリップボードにコピーしました')
-    })
+    void navigator.clipboard.writeText(json).then(
+      () => toast.success('クリップボードにコピーしました'),
+      () => toast.error('クリップボードへのコピーに失敗しました。'),
+    )
   }
 
   return (
@@ -396,7 +397,6 @@ export function AgentsPage() {
                             <td>
                               <button
                                 type="button"
-                                id="runtime-row-config-view-btn"
                                 className="btn btn-ghost btn-sm"
                                 onClick={() => setSelectedConfig({
                                   title: `${agent.name} のランタイム設定`,
