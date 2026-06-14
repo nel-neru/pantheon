@@ -84,12 +84,16 @@ def load_rules(path: Optional[Path] = None) -> QuotaRules:
 
     def _num(key: str, default):
         val = data.get(key, default)
-        return val if isinstance(val, (int, float)) and val > 0 else default
+        return val if _is_pos(val) else default
 
+    soft = int(_num("soft_limit_tokens", DEFAULT_SOFT_LIMIT))
+    hard = int(_num("hard_limit_tokens", DEFAULT_HARD_LIMIT))
+    if soft > hard:  # soft <= hard を保証（save_rules と同じ取り違え防止）
+        soft, hard = hard, soft
     return QuotaRules(
         window_hours=float(_num("window_hours", DEFAULT_WINDOW_HOURS)),
-        soft_limit_tokens=int(_num("soft_limit_tokens", DEFAULT_SOFT_LIMIT)),
-        hard_limit_tokens=int(_num("hard_limit_tokens", DEFAULT_HARD_LIMIT)),
+        soft_limit_tokens=soft,
+        hard_limit_tokens=hard,
     )
 
 
