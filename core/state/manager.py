@@ -134,14 +134,18 @@ class RepoStateManager:
         if not improvements_dir.exists():
             return []
         proposals = []
-        for f in sorted(improvements_dir.glob("*.json"), reverse=True):
-            with open(f, "r", encoding="utf-8") as fp:
-                data = json.load(fp)
+        for f in improvements_dir.glob("*.json"):
+            try:
+                with open(f, "r", encoding="utf-8") as fp:
+                    data = json.load(fp)
+            except (OSError, ValueError):
+                continue
             if is_active_improvement_proposal_status(data.get("status")):
                 proposals.append(data)
-            if len(proposals) >= limit:
-                break
-        return proposals
+        # ファイル名は uuid4（時系列でソート不可）なので created_at 降順で並べてから
+        # limit で切り詰める。これにより「新しい提案 limit 件」が安定して返る。
+        proposals.sort(key=lambda d: str(d.get("created_at", "")), reverse=True)
+        return proposals[:limit]
 
     def get_all_improvement_proposals(self, limit: int = 1000) -> list[Dict[str, Any]]:
         """全ての改善提案（status 問わず）を新しい順に返す。
