@@ -60,6 +60,11 @@ type NavItem = {
   icon: typeof LayoutDashboard
 }
 
+type NavGroup = {
+  label: string
+  items: NavItem[]
+}
+
 type SearchResult = {
   id: string
   type: string
@@ -70,27 +75,55 @@ type SearchResult = {
   status?: string | null
 }
 
-const navItems: NavItem[] = [
-  { to: '/onboarding', label: '初回セットアップ', icon: Sparkles },
-  { to: '/dashboard', label: 'プラットフォーム', icon: LayoutDashboard },
-  { to: '/inbox', label: '承認インボックス', icon: Inbox },
-  { to: '/notifications', label: '通知センター', icon: Bell },
-  { to: '/human-tasks', label: 'あなたのタスク', icon: UserCheck },
-  { to: '/connections', label: 'プラットフォーム接続', icon: Plug },
-  { to: '/orgs', label: '組織', icon: Building2 },
-  { to: '/marketplace', label: 'マーケットプレイス', icon: Blocks },
-  { to: '/proposals', label: '改善提案', icon: Lightbulb },
-  { to: '/handoffs', label: '引き渡し', icon: ArrowRightLeft },
-  { to: '/studio', label: 'スタジオ', icon: PenSquare },
-  { to: '/content', label: 'コンテンツ予約', icon: CalendarClock },
-  { to: '/revenue', label: '収益', icon: Coins },
-  { to: '/agents', label: 'エージェント', icon: Bot },
-  { to: '/atlas', label: 'Atlas', icon: MapIcon },
-  { to: '/sessions', label: 'セッション', icon: Boxes },
-  { to: '/board', label: '作業ボード', icon: KanbanSquare },
-  { to: '/data', label: 'データ管理', icon: Database },
-  { to: '/settings', label: '設定', icon: Settings },
-  { to: '/help', label: 'ヘルプ', icon: HelpCircle },
+// ナビは「ラベル付きグループ」の配列（C004）。20項目フラットを5グループに再編し、
+// グループ内は使用頻度/ワークフロー順。日常導線（ダッシュボード/要対応/収益化）を上位に、
+// 低頻度の開発者/設定系を末尾「システム」グループへ降格する。
+const navGroups: NavGroup[] = [
+  {
+    label: 'はじめに',
+    items: [
+      { to: '/dashboard', label: 'ダッシュボード', icon: LayoutDashboard },
+      { to: '/onboarding', label: '初回セットアップ', icon: Sparkles },
+    ],
+  },
+  {
+    label: '要対応',
+    items: [
+      { to: '/inbox', label: '承認インボックス', icon: Inbox },
+      { to: '/human-tasks', label: 'あなたのタスク', icon: UserCheck },
+      { to: '/notifications', label: '通知センター', icon: Bell },
+    ],
+  },
+  {
+    label: '組織と提案',
+    items: [
+      { to: '/orgs', label: '組織', icon: Building2 },
+      { to: '/proposals', label: '改善提案', icon: Lightbulb },
+      { to: '/agents', label: 'エージェント', icon: Bot },
+    ],
+  },
+  {
+    label: '収益化',
+    items: [
+      { to: '/studio', label: 'スタジオ', icon: PenSquare },
+      { to: '/content', label: 'コンテンツ予約', icon: CalendarClock },
+      { to: '/handoffs', label: '引き渡し', icon: ArrowRightLeft },
+      { to: '/revenue', label: '収益', icon: Coins },
+    ],
+  },
+  {
+    label: 'システム / 高度な設定',
+    items: [
+      { to: '/connections', label: '連携設定', icon: Plug },
+      { to: '/marketplace', label: 'マーケットプレイス', icon: Blocks },
+      { to: '/atlas', label: 'Atlas', icon: MapIcon },
+      { to: '/sessions', label: 'セッション', icon: Boxes },
+      { to: '/board', label: '作業ボード', icon: KanbanSquare },
+      { to: '/data', label: 'データ管理', icon: Database },
+      { to: '/settings', label: '設定', icon: Settings },
+      { to: '/help', label: 'ヘルプ', icon: HelpCircle },
+    ],
+  },
 ]
 
 const THEME_STORAGE_KEY = 'pantheon-theme'
@@ -289,20 +322,32 @@ function AppShell() {
           </div>
 
           <nav className="sidebar-nav" aria-label="メインナビゲーション">
-            {collapsed && !mobileView ? null : <div className="sidebar-section-label">ワークスペース</div>}
-            {navItems.map((item) => {
-              const Icon = item.icon
+            {navGroups.map((group, groupIndex) => {
+              const iconOnly = collapsed && !mobileView
               return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) => cn('sidebar-item', isActive && 'active')}
-                  aria-label={item.label}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <Icon className="sidebar-item-icon" aria-hidden="true" />
-                  {collapsed && !mobileView ? null : <span className="sidebar-item-label">{item.label}</span>}
-                </NavLink>
+                <div className="sidebar-group" key={group.label} role="group" aria-label={group.label}>
+                  {iconOnly ? (
+                    groupIndex > 0 ? <div className="sidebar-group-divider" aria-hidden="true" /> : null
+                  ) : (
+                    <div className="sidebar-section-label">{group.label}</div>
+                  )}
+                  {group.items.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        className={({ isActive }) => cn('sidebar-item', isActive && 'active')}
+                        aria-label={item.label}
+                        title={item.label}
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        <Icon className="sidebar-item-icon" aria-hidden="true" />
+                        {iconOnly ? null : <span className="sidebar-item-label">{item.label}</span>}
+                      </NavLink>
+                    )
+                  })}
+                </div>
               )
             })}
           </nav>
@@ -319,7 +364,7 @@ function AppShell() {
               ) : (
                 <ChevronLeft className="sidebar-item-icon" aria-hidden="true" />
               )}
-              {collapsed && !mobileView ? null : <span className="sidebar-item-label">ナビゲーション</span>}
+              {collapsed && !mobileView ? null : <span className="sidebar-item-label">折りたたむ</span>}
             </button>
           </div>
         </aside>

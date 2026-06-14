@@ -122,7 +122,7 @@
       "rationale": "validity/maintainability: statusBadgeがDashboard/Sessions/Agents/Handoffs/Boardで独自定義され同じpendingがyellow/neutralと食い違い、priorityBadgeも共通版とInbox版でlow/medium既定が逆。値も英語生表示(running/pending/high/low)で和訳画面と非対称。statusLabel/priorityLabel/levelLabelとbadgeマップをlib/labelsに集約し全badgeをそれ経由に、想定値の全集合と既定色を1箇所で定義。",
       "test_impact": "各ページのbadge表示テストを共通ラベル前提へ更新。labelsの単体テスト追加。",
       "wave": "W0",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C022",
@@ -148,7 +148,7 @@
       "rationale": "validity/convenience: 共通formatDateがあるのにDataPage/Orgsのみ使用、他は5系統(秒までフル/独自formatConnectedAt/ロケール無し/生ISO)に分裂し『6/14 09:00』『2026/6/14 9:00:00』『2026-06-14T...』が混在。NotificationsとInboxは生ISO表示。formatDateTime(ja-JP)をutilsに追加し全独自実装と生表示を置換、相対表示+title絶対時刻に。ロケール無しtoLocaleString()は全廃。",
       "test_impact": "日時表示テストを共通フォーマット前提へ更新。",
       "wave": "W0",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C023",
@@ -176,7 +176,7 @@
       "rationale": "maintainability/validity: page-header構造が3系統(div.page-title/+subtitle/+page wrapper+h1)、.page-subtitleはCSS未定義で3ページ未スタイル、loadingがspinnerカードと素テキストで割れ、empty-stateもアイコンサイズ24/28とinline padding混在。PageHeader/LoadingCard/EmptyState共通部品へ集約し.page-subtitleをindex.cssに定義、見出し構造とアイコン配置を統一。",
       "test_impact": "各ページのヘッダ/loading/empty取得テストが共通部品で安定化。",
       "wave": "W0",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C033",
@@ -199,7 +199,7 @@
       "rationale": "maintainability/validity: スコアバーが一覧(ScoreTooltip: score-high/mid/low)と詳細(healthClass: good/warning/critical)でしきい値・色語彙が二重定義され乖離、自律スコアは一覧バー有り・詳細数値のみで不整合、health-fillのwidthがinline style。単一ScoreBarコンポーネント(共通しきい値/配色/凡例)に集約し一覧/詳細で共有、widthはCSS変数化。",
       "test_impact": "ScoreBar単体テスト。各ページのスコア表示テストを共通部品前提へ更新。",
       "wave": "W0",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C038",
@@ -227,7 +227,7 @@
       "rationale": "validity/maintainability: 数値整形がja-JP千区切り/ロケール無し/桁数バラバラで混在、更新ボタンが『更新』『再読み込み』で揺れ可視テキストとaria-labelも不一致、タブが tab-bar/data-tabs/help-tabs の3系統(ARIA有無不揃い)。formatNumber/formatYen/formatScoreをutilsに集約、Refreshボタンを部品化し呼称を『更新』に統一しaria一致、共通Tabs(role=tablist/tab+aria-selected)へ移行。",
       "test_impact": "DataPage等の『再読み込み』name取得テストを『更新』へ更新。共通Tabs/Refreshのテスト追加。",
       "wave": "W0",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C001",
@@ -297,7 +297,7 @@
       "rationale": "necessity/validity/convenience: navItemsが20項目フラットで唯一の見出し『ワークスペース』が全項目を覆う=セクション分けの体を成さず、ミラーズ7±2の約3倍で毎回線形スキャン。優先度づけ皆無で初回1回の『初回セットアップ』が最上段を恒久占有。NavGroup={label,items}配列に再設計し既存.sidebar-section-labelで5グループ(はじめに/要対応/組織と提案/収益化/システム)を出力、グループ内は頻度・ワークフロー順。折りたたみ時はラベル代替にグループ区切り線を出す。",
       "test_impact": "ナビ描画テストがあれば構造変更で要更新。グループ見出し出力のテストを追加。",
       "wave": "W2",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C005",
@@ -316,7 +316,7 @@
       "rationale": "convenience/validity: 折りたたみ時に全NavLinkのラベルをnullで消すのにtitle属性もツールチップも一切無く、20アイコンだけでは判別不能=折りたたみが実質使用不能(P0級の利便性破壊)。各NavLinkにtitle={item.label}またはRadix Tooltipを付与。トグルのラベル『ナビゲーション』も動作を表さず改名。",
       "test_impact": "軽微。折りたたみ時のtitle/aria存在テストを追加可。",
       "wave": "W2",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C006",
@@ -435,7 +435,7 @@
       "rationale": "validity/convenience: ContentScheduleはPromise.allSettledで失敗を握りつぶしerror/再試行UIが皆無→API失敗時に空カードで無言。他は三項チェーンとloading/error独立判定で分岐形式も分裂。全ページにAlertTriangle空状態+再試行を必須化し、共通AsyncBoundary(loading/error/empty)へ寄せる。",
       "test_impact": "ContentScheduleにエラー状態テストを新規追加。共通AsyncBoundaryの単体テスト。",
       "wave": "W3",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C027",

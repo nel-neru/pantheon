@@ -2,7 +2,7 @@
 
 - 生成: 2026-06-14 / 出典: workflow gui-frontend-audit (run w3bnm8rn9, 49 agents)
 - 対象GUI: **web/frontend (legacy / 既定UI)**
-- 進捗: **3/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
+- 進捗: **5/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
 - **このファイルが改善の正本**。各変更を着手→完了→検証で状態遷移させながら実装する。
 - 機械可読の進捗は `gui-frontend-audit-state.json`（本ファイルと対・JSONが正本）。
 - 由来: 全21画面の要素インベントリ→6軸（必要性/妥当性/機能性/利便性/拡張性/保守性）厳格評価→横断監査→重複排除した優先度付き計画（Workflow `gui-frontend-audit`）。
@@ -46,27 +46,27 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, maintainability
   - 根拠: validity/maintainability: index.cssは--color-accent/--color-red定義だが--color-danger(DataPage L295)と--color-primary(index.css L989)が未定義で色が当たらず、DataPageの履歴クリアがbtn-ghost灰のまま(他の破壊操作は赤btn-danger)。L295のinline styleを廃しbtn-danger化、L989を--color-accentに修正。var(--color-を@theme定義と突合する簡易チェックをビルド前に入れる。
   - テスト影響: 軽微。破壊ボタンのclassテストを追加可。
-- [ ] **C021** `[P2]` `<refactor>` risk=medium — status/priority/levelのバッジ色・ラベルをlib/labelsに一元化
+- [~] **C021** `[P2]` `<refactor>` risk=medium — status/priority/levelのバッジ色・ラベルをlib/labelsに一元化 _(状態: in_progress)_
   - 対象: `web/frontend/src/lib/labels.ts`, `web/frontend/src/lib/utils.ts`, `web/frontend/src/pages/DashboardPage.tsx`, `web/frontend/src/pages/SessionsPage.tsx`, `web/frontend/src/pages/AgentsPage.tsx`, `web/frontend/src/pages/HandoffsPage.tsx`, `web/frontend/src/pages/BoardPage.tsx`, `web/frontend/src/pages/InboxPage.tsx`
   - 軸: validity, maintainability, convenience
   - 根拠: validity/maintainability: statusBadgeがDashboard/Sessions/Agents/Handoffs/Boardで独自定義され同じpendingがyellow/neutralと食い違い、priorityBadgeも共通版とInbox版でlow/medium既定が逆。値も英語生表示(running/pending/high/low)で和訳画面と非対称。statusLabel/priorityLabel/levelLabelとbadgeマップをlib/labelsに集約し全badgeをそれ経由に、想定値の全集合と既定色を1箇所で定義。
   - テスト影響: 各ページのbadge表示テストを共通ラベル前提へ更新。labelsの単体テスト追加。
-- [ ] **C022** `[P2]` `<refactor>` risk=low — 日付/時刻フォーマットをlib/utilsに統一(ロケール無しtoLocaleString全廃)
+- [~] **C022** `[P2]` `<refactor>` risk=low — 日付/時刻フォーマットをlib/utilsに統一(ロケール無しtoLocaleString全廃) _(状態: in_progress)_
   - 対象: `web/frontend/src/lib/utils.ts`, `web/frontend/src/pages/ContentSchedulePage.tsx`, `web/frontend/src/pages/AtlasPage.tsx`, `web/frontend/src/pages/DashboardPage.tsx`, `web/frontend/src/pages/ConnectionsPage.tsx`, `web/frontend/src/pages/NotificationsPage.tsx`, `web/frontend/src/pages/InboxPage.tsx`
   - 軸: validity, convenience, maintainability
   - 根拠: validity/convenience: 共通formatDateがあるのにDataPage/Orgsのみ使用、他は5系統(秒までフル/独自formatConnectedAt/ロケール無し/生ISO)に分裂し『6/14 09:00』『2026/6/14 9:00:00』『2026-06-14T...』が混在。NotificationsとInboxは生ISO表示。formatDateTime(ja-JP)をutilsに追加し全独自実装と生表示を置換、相対表示+title絶対時刻に。ロケール無しtoLocaleString()は全廃。
   - テスト影響: 日時表示テストを共通フォーマット前提へ更新。
-- [ ] **C023** `[P2]` `<refactor>` risk=low — page-header/loading/empty-stateを共通コンポーネント化
+- [~] **C023** `[P2]` `<refactor>` risk=low — page-header/loading/empty-stateを共通コンポーネント化 _(状態: in_progress)_
   - 対象: `web/frontend/src/components/PageHeader.tsx`, `web/frontend/src/components/LoadingCard.tsx`, `web/frontend/src/components/EmptyState.tsx`, `web/frontend/src/index.css`, `web/frontend/src/pages/ContentSchedulePage.tsx`, `web/frontend/src/pages/DataPage.tsx`, `web/frontend/src/pages/HelpPage.tsx`, `web/frontend/src/pages/AtlasPage.tsx`
   - 軸: maintainability, validity, convenience
   - 根拠: maintainability/validity: page-header構造が3系統(div.page-title/+subtitle/+page wrapper+h1)、.page-subtitleはCSS未定義で3ページ未スタイル、loadingがspinnerカードと素テキストで割れ、empty-stateもアイコンサイズ24/28とinline padding混在。PageHeader/LoadingCard/EmptyState共通部品へ集約し.page-subtitleをindex.cssに定義、見出し構造とアイコン配置を統一。
   - テスト影響: 各ページのヘッダ/loading/empty取得テストが共通部品で安定化。
-- [ ] **C033** `[P2]` `<refactor>` risk=low — スコアバー/しきい値/status色の二重定義を共通ScoreBarへ集約
+- [~] **C033** `[P2]` `<refactor>` risk=low — スコアバー/しきい値/status色の二重定義を共通ScoreBarへ集約 _(状態: in_progress)_
   - 対象: `web/frontend/src/components/ScoreBar.tsx`, `web/frontend/src/pages/OrgsPage.tsx`, `web/frontend/src/pages/DashboardPage.tsx`, `web/frontend/src/pages/AgentsPage.tsx`, `web/frontend/src/index.css`
   - 軸: maintainability, validity
   - 根拠: maintainability/validity: スコアバーが一覧(ScoreTooltip: score-high/mid/low)と詳細(healthClass: good/warning/critical)でしきい値・色語彙が二重定義され乖離、自律スコアは一覧バー有り・詳細数値のみで不整合、health-fillのwidthがinline style。単一ScoreBarコンポーネント(共通しきい値/配色/凡例)に集約し一覧/詳細で共有、widthはCSS変数化。
   - テスト影響: ScoreBar単体テスト。各ページのスコア表示テストを共通部品前提へ更新。
-- [ ] **C038** `[P3]` `<refactor>` risk=low — 数値整形/更新ボタン呼称/タブUIの分裂を統一
+- [~] **C038** `[P3]` `<refactor>` risk=low — 数値整形/更新ボタン呼称/タブUIの分裂を統一 _(状態: in_progress)_
   - 対象: `web/frontend/src/lib/utils.ts`, `web/frontend/src/pages/RevenuePage.tsx`, `web/frontend/src/pages/AtlasPage.tsx`, `web/frontend/src/pages/DashboardPage.tsx`, `web/frontend/src/pages/AgentsPage.tsx`, `web/frontend/src/pages/DataPage.tsx`, `web/frontend/src/components/Tabs.tsx`, `web/frontend/src/components/RefreshButton.tsx`
   - 軸: validity, maintainability, convenience
   - 根拠: validity/maintainability: 数値整形がja-JP千区切り/ロケール無し/桁数バラバラで混在、更新ボタンが『更新』『再読み込み』で揺れ可視テキストとaria-labelも不一致、タブが tab-bar/data-tabs/help-tabs の3系統(ARIA有無不揃い)。formatNumber/formatYen/formatScoreをutilsに集約、Refreshボタンを部品化し呼称を『更新』に統一しaria一致、共通Tabs(role=tablist/tab+aria-selected)へ移行。
@@ -85,14 +85,14 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: necessity/validity: HumanTasksの『完了』(不可逆・高リスク最終確認の場でこそ無確認は設計矛盾)、Boardのrunningタスクキャンセル(backendがPENDINGのみ許可するため必ず失敗する死んだ破壊操作)、Dashboardのinit(再初期化)/daemon stop、Proposals一括承認(コード適用を伴う)、SettingsのloadError中DEFAULT上書き保存。C002のConfirmDialogで確認を入れ、Boardのキャンセルはpendingのみに条件を絞る。
   - テスト影響: 各破壊操作テストを確認経由に更新。Boardはrunning行でキャンセル不可になることのテストを追加。
 
-### W2 — IA/ナビ再設計・承認/通知統合  (0/4)
+### W2 — IA/ナビ再設計・承認/通知統合  (2/4)
 
-- [ ] **C004** `[P1]` `<refactor>` risk=medium — サイドバーIAをグループ化データ構造へ再設計(NavGroup[])
+- [x] **C004** `[P1]` `<refactor>` risk=medium — サイドバーIAをグループ化データ構造へ再設計(NavGroup[]) _(状態: done)_
   - 対象: `web/frontend/src/App.tsx`, `web/frontend/src/index.css`, `AGENTS.md`
   - 軸: necessity, validity, convenience, extensibility
   - 根拠: necessity/validity/convenience: navItemsが20項目フラットで唯一の見出し『ワークスペース』が全項目を覆う=セクション分けの体を成さず、ミラーズ7±2の約3倍で毎回線形スキャン。優先度づけ皆無で初回1回の『初回セットアップ』が最上段を恒久占有。NavGroup={label,items}配列に再設計し既存.sidebar-section-labelで5グループ(はじめに/要対応/組織と提案/収益化/システム)を出力、グループ内は頻度・ワークフロー順。折りたたみ時はラベル代替にグループ区切り線を出す。
   - テスト影響: ナビ描画テストがあれば構造変更で要更新。グループ見出し出力のテストを追加。
-- [ ] **C005** `[P1]` `<fix>` risk=low — 折りたたみ時の全ナビ判別不能を是正(title/Tooltip付与)
+- [x] **C005** `[P1]` `<fix>` risk=low — 折りたたみ時の全ナビ判別不能を是正(title/Tooltip付与) _(状態: done)_
   - 対象: `web/frontend/src/App.tsx`
   - 軸: convenience, validity
   - 根拠: convenience/validity: 折りたたみ時に全NavLinkのラベルをnullで消すのにtitle属性もツールチップも一切無く、20アイコンだけでは判別不能=折りたたみが実質使用不能(P0級の利便性破壊)。各NavLinkにtitle={item.label}またはRadix Tooltipを付与。トグルのラベル『ナビゲーション』も動作を表さず改名。
@@ -120,7 +120,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: necessity, functionality
   - 根拠: necessity/functionality: PANTHEON_API_TOKEN運用時、token.tsはURLクエリ取り込みのみでアプリ内の入力/更新/クリアUIが無く(setApiTokenは未呼び出しの死蔵)、api.tsは401でErrorを投げるだけ。未認証/期限切れユーザーは各ページが赤エラーを出すだけで復帰手段が分からず詰む。api.tsに401集中ハンドリング(未認証→トークン入力誘導)を入れ、SettingsにAPIトークンフィールド(setApiToken連携・マスク・クリア)を追加。
   - テスト影響: 401応答時の誘導テストとトークン設定/クリアのSettingsテストを追加。
-- [ ] **C011** `[P1]` `<fix>` risk=low — ContentSchedule等のエラー/空状態欠落を是正し非同期状態を統一
+- [~] **C011** `[P1]` `<fix>` risk=low — ContentSchedule等のエラー/空状態欠落を是正し非同期状態を統一 _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/ContentSchedulePage.tsx`, `web/frontend/src/pages/HumanTasksPage.tsx`, `web/frontend/src/pages/NotificationsPage.tsx`, `web/frontend/src/components/AsyncBoundary.tsx`
   - 軸: validity, convenience, maintainability
   - 根拠: validity/convenience: ContentScheduleはPromise.allSettledで失敗を握りつぶしerror/再試行UIが皆無→API失敗時に空カードで無言。他は三項チェーンとloading/error独立判定で分岐形式も分裂。全ページにAlertTriangle空状態+再試行を必須化し、共通AsyncBoundary(loading/error/empty)へ寄せる。
