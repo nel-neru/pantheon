@@ -154,7 +154,7 @@ class ScoreUpdater:
             success=result.success,
             suggestions_count=len(suggestions),
             accepted_suggestions=accepted_suggestions,
-            quality_score=quality_score or 5.0,
+            quality_score=quality_score if quality_score is not None else 5.0,
             used_cached_knowledge=result.output.get("knowledge_injected", False)
             if result.output
             else False,

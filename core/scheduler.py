@@ -336,11 +336,22 @@ class AutonomousScheduler:
         return result.success
 
     def _write_log(self, data: Dict[str, Any]) -> None:
-        with open(self._log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        try:
+            with open(self._log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     def get_recent_logs(self, n: int = 10) -> List[Dict[str, Any]]:
         if not self._log_path.exists():
             return []
         lines = self._log_path.read_text(encoding="utf-8").strip().splitlines()
-        return [json.loads(line) for line in lines[-n:] if line]
+        out: List[Dict[str, Any]] = []
+        for line in lines[-n:]:
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+        return out

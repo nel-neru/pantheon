@@ -113,4 +113,6 @@ class RichDashboard:
     def _truncate(self, text: str, limit: int) -> str:
         if len(text) <= limit:
             return text
+        if limit <= 3:
+            return text[:limit]
         return text[: limit - 3] + "..."
