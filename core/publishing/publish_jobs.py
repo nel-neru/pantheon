@@ -71,7 +71,7 @@ class PublishJob:
         now = now or _now()
         try:
             return datetime.fromisoformat(self.scheduled_at) <= now
-        except ValueError:
+        except (ValueError, TypeError):  # naive/不正な scheduled_at で全 due スキャンを落とさない
             return True
 
 
