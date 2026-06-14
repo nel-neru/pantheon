@@ -289,7 +289,7 @@ export function ContentSchedulePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'データの読み込みに失敗しました。')
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }, [])
 

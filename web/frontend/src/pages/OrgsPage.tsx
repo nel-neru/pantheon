@@ -779,11 +779,16 @@ export function OrgsPage() {
 
   const handleDelete = async () => {
     if (!deleting) return
-    await api('DELETE', `/api/organizations/${encodeURIComponent(deleting.name)}`)
-    toast.success('組織を削除しました。')
-    setDeleting(null)
-    setDetail(null)
-    await loadOrganizations()
+    try {
+      await api('DELETE', `/api/organizations/${encodeURIComponent(deleting.name)}`)
+      toast.success('組織を削除しました。')
+      setDeleting(null)
+      setDetail(null)
+      await loadOrganizations()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '組織の削除に失敗しました。')
+      throw error // re-throw so ConfirmDialog keeps the dialog open for retry
+    }
   }
 
   const openEdit = (org: Organization) => {
