@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
-import { priorityBadge } from '@/lib/utils'
+import { priorityBadge, priorityLabel } from '@/lib/labels'
 
 type Organization = {
   name: string
@@ -348,7 +348,7 @@ export function ProposalsPage() {
                 onChange={handleSelectAll}
                 aria-label="表示中の提案をすべて選択"
               />
-              <span>Select All</span>
+              <span>すべて選択</span>
             </label>
             <span className="text-sm text-muted">{selectedIds.length} 件を選択中</span>
             <div className="flex items-center gap-2">
@@ -390,7 +390,7 @@ export function ProposalsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <div className="font-semibold truncate">{proposal.title}</div>
-                      <span className={`badge ${priorityBadge(proposal.priority)}`}>{proposal.priority}</span>
+                      <span className={`badge ${priorityBadge(proposal.priority)}`}>{priorityLabel(proposal.priority)}</span>
                       <span className="badge badge-neutral">{proposal.category}</span>
                       <span
                         className={`badge ${
