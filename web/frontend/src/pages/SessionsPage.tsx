@@ -196,7 +196,10 @@ export function SessionsPage() {
   }
 
   const copyToClipboard = (text: string) => {
-    void navigator.clipboard.writeText(text).then(() => toast.success('コピーしました。'))
+    void navigator.clipboard.writeText(text).then(
+      () => toast.success('コピーしました。'),
+      () => toast.error('クリップボードへのコピーに失敗しました。'),
+    )
   }
 
   const totalAgents = useMemo(

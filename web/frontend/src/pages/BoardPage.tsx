@@ -85,7 +85,7 @@ export function BoardPage() {
       }
       toast.error(message)
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }, [])
 
