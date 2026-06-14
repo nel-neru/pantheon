@@ -472,9 +472,9 @@ export function DashboardPage() {
                       <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                       <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                       <Tooltip
-                        labelFormatter={(label) => String(label)}
+                        labelFormatter={String}
                         formatter={(value, name) => [value, name === 'created' ? '作成' : '承認']}
-                        contentStyle={{ fontSize: 12 }}
+                        wrapperClassName="text-xs"
                       />
                       <Bar dataKey="created" name="作成" fill="var(--color-accent)" radius={[3, 3, 0, 0]} />
                       <Bar dataKey="approved" name="承認" fill="var(--color-green)" radius={[3, 3, 0, 0]} />
@@ -810,7 +810,7 @@ export function DashboardPage() {
                         で認証状態を確認してください。
                       </div>
                     ) : null}
-                    {platform?.initialized ? null : (
+                    {platform !== null && !platform.initialized ? (
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm self-start"
@@ -818,9 +818,9 @@ export function DashboardPage() {
                         disabled={initializing}
                       >
                         <Activity size={14} />
-                        {platform?.initialized ? '再初期化' : '初期化'}
+                        初期化
                       </button>
-                    )}
+                    ) : null}
                   </>
                 )}
               </div>

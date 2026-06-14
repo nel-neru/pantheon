@@ -199,7 +199,7 @@
       "rationale": "maintainability/validity: スコアバーが一覧(ScoreTooltip: score-high/mid/low)と詳細(healthClass: good/warning/critical)でしきい値・色語彙が二重定義され乖離、自律スコアは一覧バー有り・詳細数値のみで不整合、health-fillのwidthがinline style。単一ScoreBarコンポーネント(共通しきい値/配色/凡例)に集約し一覧/詳細で共有、widthはCSS変数化。",
       "test_impact": "ScoreBar単体テスト。各ページのスコア表示テストを共通部品前提へ更新。",
       "wave": "W0",
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "C038",
@@ -505,7 +505,7 @@
       "rationale": "necessity/maintainability: ヘルス×3・組織数×3・LLM状態×3・更新ボタン×3・/api/tasksカード×2の重複。platform-status+health-scoreを1カードに統合、metric-platform-health/health-score-monitor-text/system-info-kv-llm/platform-llm-badgeを削除、execution-monitor+task-queueをタスク1カードに統合し更新ボタンを1つへ。組織数の真実をorganizations.lengthに一本化。",
       "test_impact": "Dashboard要素テストを統合後構成へ更新。削除カードのテストを除去。",
       "wave": "W4",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C013",
@@ -526,7 +526,7 @@
       "rationale": "validity: 総提案数/承認率/改善速度/velocityがexecution-history limit=40窓に依存し『累計』を僭称。承認率は分母0で0%表示が実績ゼロと却下多数を区別不能。サーバ集計エンドポイントへ切替えるか、無理なら『直近40件の…』へ正直化し分母0は『データなし/—』に。velocityは手書きSVGをやめrecharts/共通チャートへ。",
       "test_impact": "集計表示テストを更新。サーバ集計を足す場合はバックエンドテストを追加。",
       "wave": "W4",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C017",
@@ -550,7 +550,7 @@
       "rationale": "functionality/necessity: Marketplaceの新規会社候補・Revenueのportfolio提案・Orgs詳細の未対応提案リストが読み取り専用で承認/会社化/詳細へ進めず(routeフィールド未使用)。Dashboard handoff一覧も承認へ飛べない。各行に『承認インボックスで開く』/該当画面リンクを付与しpriority降順ソートも実装、死んだ示唆を行動の起点にする。",
       "test_impact": "各行の遷移/起票テストを追加。",
       "wave": "W4",
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "C018",
@@ -702,7 +702,7 @@
       "rationale": "maintainability/necessity: Dashboardの組織一覧テーブルが/orgsの読み取り専用サブセットで同一概念(健康/提案数)を二重メンテ。Dashboardは『弱い/強い組織トップN+全件は/orgsへ』のサマリに縮小、フル一覧の正は/orgsに統一。ナビは役割が違うため両方残す。",
       "test_impact": "Dashboard組織テーブルのテストをサマリ前提へ更新。",
       "wave": "W4",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C032",
@@ -722,7 +722,7 @@
       "rationale": "validity/maintainability: 行全体role=button内に編集/削除ボタンを内包する入れ子アンチパターン、詳細スライドパネルがrole=dialog/aria-modal/フォーカストラップ/Esc/初期フォーカス欠如(独自実装)、OrgIconがDate.now()で常時キャッシュ破棄。詳細トリガをChevronボタンに限定し行のrole=buttonを廃止、パネルをRadix Dialog化、アイコンversionは更新時のみbump。",
       "test_impact": "詳細パネルのEsc/フォーカス、行操作の分離テストを追加・更新。",
       "wave": "W4",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C034",
@@ -745,7 +745,7 @@
       "rationale": "validity/functionality: ナレッジ作成が空チェックのみで拡張子/パストラバーサル/重複未検証、organization repoパスが無検証自由入力で孤児/誤ルーティング誘発、同一テンプレ重複作成の警告無し、Revenue組織名がdatalist自由入力でtypoで別組織記録、Board組織名/種別も無検証自由入力。クライアント前検証+確認+選択式化(存在しないorgは警告)で防ぐ。",
       "test_impact": "不正名/重複/未知org送信時の検証テストを追加。",
       "wave": "W4",
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "C036",
@@ -959,7 +959,7 @@
       "rationale": "validity/convenience: アニメーション/トランジション27箇所にprefers-reduced-motionガードが皆無で動き酔い配慮欠落。ルート遷移時のmainフォーカス移動・スクロール先頭リセットも無い。index.css末尾にreduced-motionメディアクエリを追加、Outlet遷移時にフォーカス/スクロールをリセット。",
       "test_impact": "軽微。reduced-motion適用の視覚確認中心。",
       "wave": "W5",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C042",

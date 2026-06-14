@@ -1,5 +1,14 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import {
   Bot,
   ChevronRight,
@@ -146,7 +155,7 @@ function OrgModal({
   open: boolean
   title: string
   description?: string
-  children: React.ReactNode
+  children: ReactNode
   onClose: () => void
 }) {
   return (
@@ -263,8 +272,8 @@ function DetailPanel({
   onDelete: () => void
   onMigrate: (orgName: string) => Promise<void>
   migrating: boolean
-  fileInputRef: React.RefObject<HTMLInputElement | null>
-  onIconUpload: (e: React.ChangeEvent<HTMLInputElement>, orgName: string) => Promise<void>
+  fileInputRef: RefObject<HTMLInputElement | null>
+  onIconUpload: (e: ChangeEvent<HTMLInputElement>, orgName: string) => Promise<void>
   onResetIcon: (orgName: string) => Promise<void>
   iconBusy: boolean
   iconVersion: number
@@ -675,7 +684,7 @@ export function OrgsPage() {
     reader.readAsDataURL(file)
   })
 
-  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>, orgName: string) => {
+  const handleIconUpload = async (e: ChangeEvent<HTMLInputElement>, orgName: string) => {
     const input = e.target
     const file = input.files?.[0]
     if (!file) return
@@ -748,7 +757,7 @@ export function OrgsPage() {
     }
   }
 
-  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!createForm.target_repo_path.trim()) {
       toast.error('対象ワークスペース（repo）は必須です。')
@@ -783,7 +792,7 @@ export function OrgsPage() {
     setDetail(null)
   }
 
-  const handleEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleEdit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!editing) return
     setSubmitting(true)
@@ -825,48 +834,53 @@ export function OrgsPage() {
           loading={loading}
           error={loadError}
           onRetry={() => void loadOrganizations()}
-          isEmpty={organizations.length === 0}
           loadingText="組織を読み込み中…"
           errorTitle="組織の読み込みに失敗しました"
-          emptyIcon={Sparkles}
-          emptyTitle="Pantheon へようこそ"
-          emptyHint={
-            <div className="flex flex-col items-center gap-3">
-              <p>
-                AI 組織を作成して、コードの自律的な分析・改善を始めましょう。
-                担当する git リポジトリ（ワークスペース）を指定して組織を作成してください。
-              </p>
-              <div className="flex items-center gap-2">
-                <Link to="/onboarding" className="btn btn-primary">
-                  <Sparkles size={14} />
-                  副業ポートフォリオを自動構築
-                </Link>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowCreate(true)}
-                >
-                  <Plus size={14} />
-                  組織を作成
-                </button>
-              </div>
-              <p className="text-sm text-muted">
-                既存のリポジトリは{' '}
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => void copyCommand()}
-                  title="クリックでコピー"
-                >
-                  <ClipboardCopy size={12} />
-                  <code>pantheon org scan</code>
-                </button>
-                {' '}で一括登録できます。
-              </p>
-            </div>
-          }
         >
-          <div className="org-list">
+          {organizations.length === 0 ? (
+            <div className="welcome-card">
+              <div className="welcome-card-body">
+                <div className="welcome-header">
+                  <div className="welcome-icon">
+                    <Sparkles size={22} />
+                  </div>
+                  <h2 className="welcome-title">Pantheon へようこそ</h2>
+                  <p className="welcome-desc">
+                    AI 組織を作成して、コードの自律的な分析・改善を始めましょう。
+                    担当する git リポジトリ（ワークスペース）を指定して組織を作成してください。
+                  </p>
+                </div>
+                <div className="welcome-actions flex items-center gap-2">
+                  <Link to="/onboarding" className="btn btn-primary">
+                    <Sparkles size={14} />
+                    副業ポートフォリオを自動構築
+                  </Link>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowCreate(true)}
+                  >
+                    <Plus size={14} />
+                    組織を作成
+                  </button>
+                </div>
+                <p className="welcome-note">
+                  既存のリポジトリは{' '}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void copyCommand()}
+                    title="クリックでコピー"
+                  >
+                    <ClipboardCopy size={12} />
+                    <code>pantheon org scan</code>
+                  </button>
+                  {' '}で一括登録できます（クリックでコマンドをコピー）。
+                </p>
+              </div>
+            </div>
+          ) : null}
+          {organizations.length > 0 ? <div className="org-list">
             {organizations.map((org) => (
               <div key={org.name} className="org-list-item">
                 <OrgIcon orgName={org.name} iconData={org.icon_data} iconVersion={iconVersion} />
@@ -951,7 +965,7 @@ export function OrgsPage() {
                 </div>
               </div>
             ))}
-          </div>
+          </div> : null}
         </AsyncBoundary>
       </div>
 

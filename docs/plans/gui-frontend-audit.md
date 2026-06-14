@@ -2,7 +2,7 @@
 
 - 生成: 2026-06-14 / 出典: workflow gui-frontend-audit (run w3bnm8rn9, 49 agents)
 - 対象GUI: **web/frontend (legacy / 既定UI)**
-- 進捗: **10/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
+- 進捗: **18/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
 - **このファイルが改善の正本**。各変更を着手→完了→検証で状態遷移させながら実装する。
 - 機械可読の進捗は `gui-frontend-audit-state.json`（本ファイルと対・JSONが正本）。
 - 由来: 全21画面の要素インベントリ→6軸（必要性/妥当性/機能性/利便性/拡張性/保守性）厳格評価→横断監査→重複排除した優先度付き計画（Workflow `gui-frontend-audit`）。
@@ -29,7 +29,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
 
 ## 変更チェックリスト（42件・ウェーブ順）
 
-### W0 — 共通基盤（部品/lib/CSS）  (2/8)
+### W0 — 共通基盤（部品/lib/CSS）  (3/8)
 
 - [~] **C002** `[P0]` `<add>` risk=medium — 全破壊/不可逆操作に統一確認ダイアログ(ConfirmDialog)を導入 _(状態: in_progress)_
   - 対象: `web/frontend/src/components/ConfirmDialog.tsx`, `web/frontend/src/pages/InboxPage.tsx`, `web/frontend/src/pages/HumanTasksPage.tsx`, `web/frontend/src/pages/ConnectionsPage.tsx`, `web/frontend/src/pages/ContentSchedulePage.tsx`, `web/frontend/src/pages/BoardPage.tsx`, `web/frontend/src/pages/ProposalsPage.tsx`, `web/frontend/src/pages/OrgsPage.tsx`
@@ -61,7 +61,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: maintainability, validity, convenience
   - 根拠: maintainability/validity: page-header構造が3系統(div.page-title/+subtitle/+page wrapper+h1)、.page-subtitleはCSS未定義で3ページ未スタイル、loadingがspinnerカードと素テキストで割れ、empty-stateもアイコンサイズ24/28とinline padding混在。PageHeader/LoadingCard/EmptyState共通部品へ集約し.page-subtitleをindex.cssに定義、見出し構造とアイコン配置を統一。
   - テスト影響: 各ページのヘッダ/loading/empty取得テストが共通部品で安定化。
-- [~] **C033** `[P2]` `<refactor>` risk=low — スコアバー/しきい値/status色の二重定義を共通ScoreBarへ集約 _(状態: in_progress)_
+- [x] **C033** `[P2]` `<refactor>` risk=low — スコアバー/しきい値/status色の二重定義を共通ScoreBarへ集約 _(状態: done)_
   - 対象: `web/frontend/src/components/ScoreBar.tsx`, `web/frontend/src/pages/OrgsPage.tsx`, `web/frontend/src/pages/DashboardPage.tsx`, `web/frontend/src/pages/AgentsPage.tsx`, `web/frontend/src/index.css`
   - 軸: maintainability, validity
   - 根拠: maintainability/validity: スコアバーが一覧(ScoreTooltip: score-high/mid/low)と詳細(healthClass: good/warning/critical)でしきい値・色語彙が二重定義され乖離、自律スコアは一覧バー有り・詳細数値のみで不整合、health-fillのwidthがinline style。単一ScoreBarコンポーネント(共通しきい値/配色/凡例)に集約し一覧/詳細で共有、widthはCSS変数化。
@@ -136,19 +136,19 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: validity/convenience: WS依存ページ(Inbox/Sessions/Orchestra)はポーリング廃止でWS断時にデータが静かに陳腐化するが警告無し。ヘッダは3s再接続ループで永遠に『再接続中』のまま恒久断にエスカレーションせず誤認を招く。共有Provider(C009)上で切断バナー『表示が古い可能性』を出し、一定回数失敗で『オフライン』へ昇格。
   - テスト影響: 切断状態のバナー表示/オフライン昇格テストを追加。
 
-### W4 — Dashboard＋画面別機能修正  (4/13)
+### W4 — Dashboard＋画面別機能修正  (10/13)
 
-- [ ] **C012** `[P1]` `<merge>` risk=medium — Dashboardの重複カードを統合(約11枚→7枚)
+- [x] **C012** `[P1]` `<merge>` risk=medium — Dashboardの重複カードを統合(約11枚→7枚) _(状態: done)_
   - 対象: `web/frontend/src/pages/DashboardPage.tsx`
   - 軸: necessity, maintainability, convenience
   - 根拠: necessity/maintainability: ヘルス×3・組織数×3・LLM状態×3・更新ボタン×3・/api/tasksカード×2の重複。platform-status+health-scoreを1カードに統合、metric-platform-health/health-score-monitor-text/system-info-kv-llm/platform-llm-badgeを削除、execution-monitor+task-queueをタスク1カードに統合し更新ボタンを1つへ。組織数の真実をorganizations.lengthに一本化。
   - テスト影響: Dashboard要素テストを統合後構成へ更新。削除カードのテストを除去。
-- [ ] **C013** `[P1]` `<fix>` risk=medium — Dashboard累計メトリクスのlimit=40依存を是正(サーバ集計化orラベル正直化)
+- [x] **C013** `[P1]` `<fix>` risk=medium — Dashboard累計メトリクスのlimit=40依存を是正(サーバ集計化orラベル正直化) _(状態: done)_
   - 対象: `web/frontend/src/pages/DashboardPage.tsx`, `/api/execution-history`, `web/server.py`
   - 軸: validity, functionality
   - 根拠: validity: 総提案数/承認率/改善速度/velocityがexecution-history limit=40窓に依存し『累計』を僭称。承認率は分母0で0%表示が実績ゼロと却下多数を区別不能。サーバ集計エンドポイントへ切替えるか、無理なら『直近40件の…』へ正直化し分母0は『データなし/—』に。velocityは手書きSVGをやめrecharts/共通チャートへ。
   - テスト影響: 集計表示テストを更新。サーバ集計を足す場合はバックエンドテストを追加。
-- [~] **C017** `[P1]` `<fix>` risk=low — ナビ依存の死んだリストにアクション/遷移を付与(承認・詳細導線) _(状態: in_progress)_
+- [x] **C017** `[P1]` `<fix>` risk=low — ナビ依存の死んだリストにアクション/遷移を付与(承認・詳細導線) _(状態: done)_
   - 対象: `web/frontend/src/pages/MarketplacePage.tsx`, `web/frontend/src/pages/RevenuePage.tsx`, `web/frontend/src/pages/OrgsPage.tsx`, `web/frontend/src/pages/HandoffsPage.tsx`, `web/frontend/src/pages/DashboardPage.tsx`
   - 軸: functionality, necessity, convenience
   - 根拠: functionality/necessity: Marketplaceの新規会社候補・Revenueのportfolio提案・Orgs詳細の未対応提案リストが読み取り専用で承認/会社化/詳細へ進めず(routeフィールド未使用)。Dashboard handoff一覧も承認へ飛べない。各行に『承認インボックスで開く』/該当画面リンクを付与しpriority降順ソートも実装、死んだ示唆を行動の起点にする。
@@ -183,17 +183,17 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: necessity, maintainability, convenience
   - 根拠: necessity/maintainability: OnboardingとMarketplaceが同一API/型/installフローでerror/再試行/KPI列まで重複しOnboardingは劣化版。step2失敗で空テーブルのまま行き止まり(完了disabled)。共通CompanyManifestTableへ抽出、error/empty/KPI列を追加し、組織0件等で『初回のみ』ナビ出し分け/自動リダイレクトを検討。
   - テスト影響: Onboardingの失敗/空/step3/disabledゲートテストを追加。共有テーブルのテスト。
-- [ ] **C031** `[P2]` `<merge>` risk=low — Dashboard組織一覧をサマリ縮小し正は/orgsに一本化
+- [x] **C031** `[P2]` `<merge>` risk=low — Dashboard組織一覧をサマリ縮小し正は/orgsに一本化 _(状態: done)_
   - 対象: `web/frontend/src/pages/DashboardPage.tsx`, `web/frontend/src/pages/OrgsPage.tsx`
   - 軸: maintainability, necessity
   - 根拠: maintainability/necessity: Dashboardの組織一覧テーブルが/orgsの読み取り専用サブセットで同一概念(健康/提案数)を二重メンテ。Dashboardは『弱い/強い組織トップN+全件は/orgsへ』のサマリに縮小、フル一覧の正は/orgsに統一。ナビは役割が違うため両方残す。
   - テスト影響: Dashboard組織テーブルのテストをサマリ前提へ更新。
-- [ ] **C032** `[P2]` `<fix>` risk=medium — OrgsPage行カードのボタン入れ子アンチパターンと詳細パネルa11y是正
+- [x] **C032** `[P2]` `<fix>` risk=medium — OrgsPage行カードのボタン入れ子アンチパターンと詳細パネルa11y是正 _(状態: done)_
   - 対象: `web/frontend/src/pages/OrgsPage.tsx`
   - 軸: validity, maintainability, convenience
   - 根拠: validity/maintainability: 行全体role=button内に編集/削除ボタンを内包する入れ子アンチパターン、詳細スライドパネルがrole=dialog/aria-modal/フォーカストラップ/Esc/初期フォーカス欠如(独自実装)、OrgIconがDate.now()で常時キャッシュ破棄。詳細トリガをChevronボタンに限定し行のrole=buttonを廃止、パネルをRadix Dialog化、アイコンversionは更新時のみbump。
   - テスト影響: 詳細パネルのEsc/フォーカス、行操作の分離テストを追加・更新。
-- [~] **C034** `[P2]` `<fix>` risk=low — 入力検証・冪等性の強化(ナレッジ名/組織repoパス/会社重複/収益org) _(状態: in_progress)_
+- [x] **C034** `[P2]` `<fix>` risk=low — 入力検証・冪等性の強化(ナレッジ名/組織repoパス/会社重複/収益org) _(状態: done)_
   - 対象: `web/frontend/src/pages/DataPage.tsx`, `web/frontend/src/pages/OrgsPage.tsx`, `web/frontend/src/pages/MarketplacePage.tsx`, `web/frontend/src/pages/RevenuePage.tsx`, `web/frontend/src/pages/BoardPage.tsx`
   - 軸: validity, functionality
   - 根拠: validity/functionality: ナレッジ作成が空チェックのみで拡張子/パストラバーサル/重複未検証、organization repoパスが無検証自由入力で孤児/誤ルーティング誘発、同一テンプレ重複作成の警告無し、Revenue組織名がdatalist自由入力でtypoで別組織記録、Board組織名/種別も無検証自由入力。クライアント前検証+確認+選択式化(存在しないorgは警告)で防ぐ。
@@ -204,7 +204,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: convenience/maintainability: 設定ビューア/分析結果が生JSONダンプでエンドユーザー向けでなく、しかも結果が画面外の別カードに出て『何も起きない』視線断絶、推奨エージェントもraw ID表示で誰か不明・ジャンプ導線無し。主要フィールドを構造化表示+RawはコピーボタンつきでprogressLogクラス流用をやめ、結果は行内展開/モーダル化し自動スクロール、推奨はname解決+該当行リンク。
   - テスト影響: 構造化表示/コピー/ジャンプのテストを追加。
 
-### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (1/10)
+### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (2/10)
 
 - [ ] **C014** `[P1]` `<improve>` risk=high — ポリシー/モデル構成/プロンプトの生JSON手編集を構造化エディタ化
   - 対象: `web/frontend/src/pages/SettingsPage.tsx`, `/api/settings`
@@ -246,7 +246,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, necessity
   - 根拠: validity/necessity: acc-pages-helpが『APIキー取得先』と記載しAPIキー不使用という製品事実と自己矛盾(P1事実誤り)。/revenue『収益』のヘルプ欠落・wmux/board混載で目次がナビと非対応、ドリフト検出テストも無し。CodeBlockのコマンド/URLがコピー不可・非リンク。事実誤り削除、収益セクション追加、pageSectionsとNAVの差分検出vitest追加、CodeBlockにコピー/anchorを付与。
   - テスト影響: NAVとpageSectionsのドリフト検出テストを新規追加。
-- [ ] **C041** `[P3]` `<improve>` risk=low — prefers-reduced-motion対応とルート遷移時フォーカス/スクロール
+- [x] **C041** `[P3]` `<improve>` risk=low — prefers-reduced-motion対応とルート遷移時フォーカス/スクロール _(状態: done)_
   - 対象: `web/frontend/src/index.css`, `web/frontend/src/App.tsx`
   - 軸: validity, convenience
   - 根拠: validity/convenience: アニメーション/トランジション27箇所にprefers-reduced-motionガードが皆無で動き酔い配慮欠落。ルート遷移時のmainフォーカス移動・スクロール先頭リセットも無い。index.css末尾にreduced-motionメディアクエリを追加、Outlet遷移時にフォーカス/スクロールをリセット。

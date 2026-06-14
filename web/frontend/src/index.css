@@ -1625,6 +1625,23 @@ tr:hover td { background: var(--color-surface-2); }
   background: var(--color-surface-2);
 }
 
+/* 動き酔い配慮（C041）: prefers-reduced-motion ではアニメーション/トランジションを無効化 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ルート遷移時にフォーカスを受けるメイン領域のフォーカスリングは出さない（tabIndex=-1運用） */
+.main:focus {
+  outline: none;
+}
+
 /* -----------------------------------------------------------------------
    Toast (Sonner override)
 ----------------------------------------------------------------------- */

@@ -27,7 +27,7 @@ import {
   Blocks,
   UserCheck,
 } from 'lucide-react'
-import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
+import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
 
 import { AuthTokenDialog } from '@/components/AuthTokenDialog'
@@ -151,6 +151,8 @@ function resultTypeLabel(type: string) {
 
 function AppShell() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const mainRef = useRef<HTMLElement | null>(null)
   const [mobileView, setMobileView] = useState(() => {
     if (typeof window === 'undefined') return false
     return window.matchMedia('(max-width: 768px)').matches
@@ -203,6 +205,14 @@ function AppShell() {
     document.body.dataset.theme = theme
     window.localStorage.setItem(THEME_STORAGE_KEY, theme)
   }, [theme])
+
+  // ルート遷移時にメイン領域を先頭へスクロールしフォーカスを移す（C041・キーボード/SR配慮）。
+  useEffect(() => {
+    const main = mainRef.current
+    if (!main) return
+    main.scrollTo?.({ top: 0 })
+    main.focus({ preventScroll: true })
+  }, [location.pathname])
 
   // 本番(PROD)/開発(DEV) 環境を取得してバッジ表示＋DEV はアクセント帯を出す（取り違え防止）。
   useEffect(() => {
@@ -370,7 +380,7 @@ function AppShell() {
           </div>
         </aside>
 
-        <main className="main">
+        <main className="main" ref={mainRef} tabIndex={-1}>
           <div className="workspace-toolbar">
             <div className="workspace-toolbar-left">
               <button
