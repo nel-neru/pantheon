@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
 
 type InboxKind = 'proposal' | 'handoff' | 'publish'
@@ -72,6 +73,13 @@ function KindIcon({ kind }: { kind: InboxKind }) {
   return <Send size={14} />
 }
 
+type ConfirmState = {
+  title: string
+  description?: ReactNode
+  confirmLabel: string
+  run: () => Promise<void>
+}
+
 export function InboxPage() {
   const navigate = useNavigate()
   const [items, setItems] = useState<InboxItem[]>([])
@@ -80,6 +88,7 @@ export function InboxPage() {
   const [error, setError] = useState<string | null>(null)
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const [actionId, setActionId] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const { events } = usePlatformUpdates()
 
   const load = useCallback(async (quiet = false) => {
@@ -133,6 +142,18 @@ export function InboxPage() {
     }
   }
 
+  // ConfirmDialog 経由の破壊/外部送信操作用。失敗時は再 throw してダイアログを開いたままにする。
+  const directRun = async (fn: () => Promise<unknown>, successMsg: string): Promise<void> => {
+    try {
+      await fn()
+      toast.success(successMsg)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '操作に失敗しました。')
+      throw err
+    }
+  }
+
   const approveItem = (item: InboxItem) => {
     const key = `${item.kind}:${item.id}`
     if (item.kind === 'proposal') {
@@ -152,13 +173,23 @@ export function InboxPage() {
         '引き渡しを承認し、本文ドラフトを生成しました。',
       )
     } else {
-      void runAction(
-        key,
-        async () => {
-          await api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/run`)
-        },
-        '投稿を実行しました。',
-      )
+      // 外部への実投稿（取り消し不能）— 必ず確認ゲートを通す（C001 / PUB-AUTO 人手ゲート）。
+      setConfirm({
+        title: '外部に投稿しますか？',
+        description: (
+          <>
+            「{item.title}」を {item.platform ?? '外部'} に公開します。
+            <strong>この操作は取り消せません。</strong>
+            {item.scheduled_at ? <>（予約: {item.scheduled_at}）</> : null}
+          </>
+        ),
+        confirmLabel: '投稿する',
+        run: () =>
+          directRun(
+            () => api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/run`),
+            '投稿を実行しました。',
+          ),
+      })
     }
   }
 
@@ -181,13 +212,21 @@ export function InboxPage() {
         '引き渡しを却下しました。',
       )
     } else {
-      void runAction(
-        key,
-        async () => {
-          await api('DELETE', `/api/publish-jobs/${encodeURIComponent(item.id)}`)
-        },
-        '投稿ジョブを取り消しました。',
-      )
+      // 投稿ジョブの削除（復元不能）— 確認ゲートを通す（C001/C002）。
+      setConfirm({
+        title: '投稿ジョブを取り消しますか？',
+        description: (
+          <>
+            「{item.title}」の投稿ジョブを削除します。<strong>取り消すと復元できません。</strong>
+          </>
+        ),
+        confirmLabel: '取り消す',
+        run: () =>
+          directRun(
+            () => api('DELETE', `/api/publish-jobs/${encodeURIComponent(item.id)}`),
+            '投稿ジョブを取り消しました。',
+          ),
+      })
     }
   }
 
@@ -203,13 +242,21 @@ export function InboxPage() {
   }
 
   const confirmPublish = (item: InboxItem) => {
-    void runAction(
-      `confirm:${item.id}`,
-      async () => {
-        await api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/confirm`)
-      },
-      '公開を確認しました。',
-    )
+    // 公開の確定（外部反映の確定・取り消し不能）— 確認ゲートを通す（C001）。
+    setConfirm({
+      title: '公開を確定しますか？',
+      description: (
+        <>
+          「{item.title}」の公開を確定します。<strong>この操作は取り消せません。</strong>
+        </>
+      ),
+      confirmLabel: '公開を確定',
+      run: () =>
+        directRun(
+          () => api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/confirm`),
+          '公開を確認しました。',
+        ),
+    })
   }
 
   return (
@@ -382,6 +429,20 @@ export function InboxPage() {
             })
           : null}
       </div>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirm(null)
+        }}
+        title={confirm?.title ?? ''}
+        description={confirm?.description}
+        confirmLabel={confirm?.confirmLabel}
+        destructive
+        onConfirm={async () => {
+          if (confirm) await confirm.run()
+        }}
+      />
     </>
   )
 }
