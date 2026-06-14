@@ -576,6 +576,12 @@ async def cmd_publish_disconnect(args) -> None:
     await _impl(args)
 
 
+async def cmd_publish_auto(args) -> None:
+    from commands.publish import cmd_publish_auto as _impl
+
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
@@ -649,6 +655,7 @@ HANDLERS = {
     "cmd_publish_connect": cmd_publish_connect,
     "cmd_publish_status": cmd_publish_status,
     "cmd_publish_disconnect": cmd_publish_disconnect,
+    "cmd_publish_auto": cmd_publish_auto,
 }
 
 
