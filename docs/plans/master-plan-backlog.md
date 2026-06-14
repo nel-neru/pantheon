@@ -157,8 +157,10 @@
   を §5.2 設計で実装し JSON 正準→SQLite へ段階移行（**保存層移行でリスク高・着手前に要確認**）。
 - ⬜ **SET-EXPOSE 設定露出（§4 P2-5/P3-12）**: トークン/クォータ上限（token_quota.yaml writer）・承認閾値/
   提案積極性（policy_rules.auto_approve）・通知設定を統一アプリ設定（/api/settings + SettingsPage）へ露出。
-- ⬜ **PT-3 §7.4 カタログ拡幅**: full_funnel の残3バリアント（短尺→デジタル商品/コンテンツ→複数PF同時収益化/
-  AI生成→note+アフィ複合）＋ content の `note_paid_article`（有料記事**作成**特化、販売側 note_monetization と別）。
+- ✅ **PT-3 §7.4 カタログ拡幅**: 事業部カタログ 21→**25**。content に `note_paid_article`（有料記事**作成**特化・
+  販売側 note_monetization と別＝§7.4 #2）。full_funnel に差別化 department を持つ残3バリアント
+  （`funnel_short_video_digital` 短尺→デジタル商品 / `funnel_content_multiplatform` コンテンツ→複数PF同時収益化 /
+  `funnel_ai_note_affiliate` AI生成→note+アフィ複合＝§7.4 #4）。マーケットプレイスは自動列挙。division-plugins 2 テスト追加。
 
 ---
 

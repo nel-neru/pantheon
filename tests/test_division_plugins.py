@@ -89,6 +89,41 @@ def test_add_division_from_template_entry():
             assert 2 <= len(agent.skills) <= 3
 
 
+def test_pt3_catalog_breadth_note_and_funnel_variants():
+    """PT-3: §7.4 #2 note有料記事作成 + #4 フルファネル残3バリアントがカタログに揃う。"""
+    by_id = {p["id"]: p for p in load_division_plugins()}
+    # §7.4 #2: 作成特化（販売側 note_monetization とは別 id）
+    assert "note_paid_article" in by_id
+    assert by_id["note_paid_article"]["category"] == "content"
+    assert "note_monetization" in by_id  # 販売側は引き続き別に存在
+
+    # §7.4 #4: 差別化された 3 つのフルファネル（汎用 full_funnel に加えて）
+    variants = [
+        "funnel_short_video_digital",
+        "funnel_content_multiplatform",
+        "funnel_ai_note_affiliate",
+    ]
+    for vid in variants:
+        assert vid in by_id, vid
+        assert by_id[vid]["category"] == "full_funnel"
+
+    # 差別化の検証: 各バリアントのチーム名集合が互いに異なる（汎用プリセットの使い回しでない）。
+    team_sets = {
+        vid: frozenset(t["name"] for t in by_id[vid]["department"]["teams"]) for vid in variants
+    }
+    assert len({*team_sets.values()}) == len(variants)  # 全て異なる構成
+
+
+def test_pt3_funnel_variants_build_with_valid_agents():
+    """PT-3: フルファネルバリアントが add_division_plugin で組み立て可能（skills 2〜3）。"""
+    org = create_default_organization("Funnel Co", "テスト")
+    division = add_division_plugin(org, "funnel_short_video_digital")
+    assert len(division.teams) == 3
+    for team in division.teams:
+        for agent in team.agents:
+            assert 2 <= len(agent.skills) <= 3
+
+
 def test_scaffold_division_cli_write_then_load(tmp_path, monkeypatch):
     """scaffold-division --write で追記したテンプレ形が loader に展開されて見える。"""
     import argparse
