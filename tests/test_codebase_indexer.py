@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from core.intelligence.codebase_indexer import CodebaseIndexer
+import json
+from pathlib import Path
+
+from core.intelligence.codebase_indexer import CodebaseIndexer, invalidate_cache
 
 
 def _write(repo, rel, body):
@@ -28,3 +31,29 @@ def test_build_is_incremental_and_prunes_deleted_files(tmp_path):
     third = idx.build()
     assert "pkg/b.py" not in third["files"]
     assert "a.py" in third["files"]
+
+
+def test_invalidate_cache_removes_only_exact_path_not_same_basename(tmp_path):
+    # Index keys are POSIX-normalized relative paths. invalidate_cache must
+    # remove only the exact path requested, NOT every entry sharing a basename
+    # across different directories (the old basename fallback over-removed).
+    index_file = tmp_path / "index.json"
+    index_file.write_text(
+        json.dumps(
+            {
+                "files": {
+                    "pkg/a.py": {"mtime": 1},
+                    "other/a.py": {"mtime": 2},
+                    "b.py": {"mtime": 3},
+                },
+                "total_files": 3,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    invalidate_cache(index_file, [Path("pkg/a.py")])
+
+    data = json.loads(index_file.read_text(encoding="utf-8"))
+    assert set(data["files"]) == {"other/a.py", "b.py"}
+    assert data["total_files"] == 2
