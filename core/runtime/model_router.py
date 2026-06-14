@@ -65,6 +65,17 @@ def _config_path() -> Path:
     return resource_path("config", CONFIG_FILENAME)
 
 
+def _config_signature(path: Optional[Path] = None) -> Optional[int]:
+    """設定ファイルの mtime_ns（live-reload の同一性印）。
+
+    欠落・アクセス不可なら ``None``。FS が不安定でも生成を止めないため例外は握る。
+    """
+    try:
+        return (path or _config_path()).stat().st_mtime_ns
+    except Exception:  # noqa: BLE001 - stat 失敗で生成を止めない
+        return None
+
+
 def load_rules(path: Optional[Path] = None) -> TierRules:
     """yaml からルールを読み込む。欠落・破損時は内蔵デフォルト（生成を止めない）。"""
     path = path or _config_path()
@@ -139,21 +150,33 @@ class ModelTierRouter:
 
 _router_lock = threading.Lock()
 _router: Optional[ModelTierRouter] = None
+_router_sig: Optional[int] = None  # キャッシュ時の設定ファイル mtime（変化を検知して自動再読込）
 
 
 def get_router() -> ModelTierRouter:
-    global _router
+    """共有ルーター。``model_tiers.yaml`` の mtime 変化を検知して自動で再構築する。
+
+    長時間稼働するデーモンでも YAML 編集（例: heavy を ``fable``→``opus`` に戻す）が
+    次の生成から反映される（プロセス再起動不要）。ファイルが消えた／stat が失敗した
+    瞬間（sig=None）は既存キャッシュを維持し、誤って内蔵デフォルトへ降格したり
+    churn したりしない（最後に読めた設定を保持）。stat 1 回のみで、生成＝subprocess
+    spawn に対し無視できるコスト。
+    """
+    global _router, _router_sig
     with _router_lock:
-        if _router is None:
+        sig = _config_signature()
+        if _router is None or (sig is not None and sig != _router_sig):
             _router = ModelTierRouter()
+            _router_sig = sig
         return _router
 
 
 def reset_router() -> None:
     """テスト・設定再読込用に共有ルーターを破棄する。"""
-    global _router
+    global _router, _router_sig
     with _router_lock:
         _router = None
+        _router_sig = None
 
 
 def select_model(

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import pytest
 
+import core.runtime.model_router as model_router
 from core.runtime.model_router import (
     DEFAULT_TASK_TIERS,
     ModelTierRouter,
     TierRules,
+    get_router,
     load_rules,
     reset_router,
+    select_model,
 )
 
 
@@ -86,3 +89,67 @@ def test_bundled_config_loads():
     assert rules.tier_models == {"heavy": "fable", "standard": "sonnet", "light": "haiku"}
     assert rules.task_tiers["improvement_execution"] == "heavy"
     assert rules.escalate_above_prompt_chars == 20000
+
+
+def _bump_mtime(path, seconds: int = 5) -> None:
+    """mtime を明確に進める（高速書き換えでの mtime 衝突＝フレークを回避）。"""
+    import os
+
+    st = path.stat()
+    later = st.st_mtime + seconds
+    os.utime(path, (later, later))
+
+
+def test_live_reload_on_config_mtime_change(tmp_path, monkeypatch):
+    """稼働中（reset_router を挟まず）でも YAML 編集が次の選択に反映される。
+
+    これが core/runtime/model_router.get_router の mtime 検知の核。これが無いと
+    シングルトンキャッシュが古い設定を保持し、heavy→opus 切替が再起動まで効かない。
+    """
+    cfg = tmp_path / "model_tiers.yaml"
+    cfg.write_text("tiers:\n  heavy: fable\n", encoding="utf-8")
+    monkeypatch.setattr(model_router, "_config_path", lambda: cfg)
+    reset_router()
+
+    # 初回: heavy=fable
+    assert select_model("improvement_execution") == "fable"
+    first = get_router()
+
+    # 稼働中に YAML を heavy=opus へ編集（mtime を進める）
+    cfg.write_text("tiers:\n  heavy: opus\n", encoding="utf-8")
+    _bump_mtime(cfg)
+
+    # reset_router を呼ばずに反映される＝ライブ再読込
+    assert select_model("improvement_execution") == "opus"
+    assert get_router() is not first  # 実際に再構築されている
+
+
+def test_no_reload_when_mtime_unchanged(tmp_path, monkeypatch):
+    """mtime が変わらなければ同一インスタンスを返す（無駄な再構築をしない）。"""
+    cfg = tmp_path / "model_tiers.yaml"
+    cfg.write_text("tiers:\n  heavy: fable\n", encoding="utf-8")
+    monkeypatch.setattr(model_router, "_config_path", lambda: cfg)
+    reset_router()
+
+    r1 = get_router()
+    r2 = get_router()
+    assert r1 is r2
+
+
+def test_missing_config_keeps_last_good_router(tmp_path, monkeypatch):
+    """stat 失敗（ファイル消失）時は最後に読めたルーターを維持する。
+
+    一時的な FS 不安定で内蔵デフォルトへ誤降格したり churn したりしない。
+    """
+    cfg = tmp_path / "model_tiers.yaml"
+    cfg.write_text("tiers:\n  heavy: opus\n", encoding="utf-8")
+    monkeypatch.setattr(model_router, "_config_path", lambda: cfg)
+    reset_router()
+
+    assert select_model("improvement_execution") == "opus"
+    good = get_router()
+
+    # ファイルが消えても（sig=None）、最後に読めた opus 設定を保持
+    cfg.unlink()
+    assert get_router() is good
+    assert select_model("improvement_execution") == "opus"
