@@ -1,26 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { ArrowRight, Building2, CheckCircle, PackageOpen, Plus, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { ArrowRight, CheckCircle, Sparkles } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
-
-type CompanyManifest = {
-  id: string
-  label: string
-  genre?: string
-  description?: string
-  divisions: string[]
-  initial_kpis?: string[]
-}
-
-type ConfirmState = {
-  title: string
-  description?: ReactNode
-  confirmLabel: string
-  run: () => Promise<void>
-}
+import { CompanyManifestTable, type CompanyManifest } from '@/components/CompanyManifestTable'
 
 /**
  * 初回ウィザード（P3.2）— 「副業ポートフォリオ自動構築」へ誘導する。
@@ -30,16 +14,23 @@ type ConfirmState = {
 export function OnboardingPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [manifests, setManifests] = useState<CompanyManifest[]>([])
+  /**
+   * manifests の 3 状態:
+   *   undefined = ローディング中
+   *   null      = エラー発生
+   *   []        = 空
+   *   [...]     = 通常リスト
+   */
+  const [manifests, setManifests] = useState<CompanyManifest[] | undefined | null>(undefined)
   const [installed, setInstalled] = useState<string[]>([])
   const [installing, setInstalling] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
+  const [loadCalled, setLoadCalled] = useState(false)
 
   const loadManifests = useCallback(async () => {
-    setLoading(true)
+    setManifests(undefined)
     setLoadError(null)
+    setLoadCalled(true)
     try {
       const res = await api<{ manifests: CompanyManifest[] }>(
         'GET',
@@ -49,15 +40,15 @@ export function OnboardingPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'テンプレートの読み込みに失敗しました。'
       setLoadError(msg)
+      setManifests(null)
       toast.error(msg)
-    } finally {
-      setLoading(false)
     }
   }, [])
 
+  // ステップ2 に初めて入ったときだけロードを起動する
   useEffect(() => {
-    if (step === 2 && manifests.length === 0 && loadError === null) void loadManifests()
-  }, [step, manifests.length, loadError, loadManifests])
+    if (step === 2 && !loadCalled) void loadManifests()
+  }, [step, loadCalled, loadManifests])
 
   const installCompany = useCallback(async (manifest: CompanyManifest): Promise<void> => {
     setInstalling(manifest.id)
@@ -76,20 +67,6 @@ export function OnboardingPage() {
       setInstalling(null)
     }
   }, [])
-
-  const requestInstall = (manifest: CompanyManifest) => {
-    setConfirm({
-      title: `「${manifest.label}」を起動しますか？`,
-      description: (
-        <>
-          この会社テンプレートから Organization を生成します。
-          事業部・エージェント・初期KPIが自動的に設定されます。
-        </>
-      ),
-      confirmLabel: '作成する',
-      run: () => installCompany(manifest),
-    })
-  }
 
   const STEP_LABELS: Record<1 | 2 | 3, string> = {
     1: 'はじめに',
@@ -135,118 +112,27 @@ export function OnboardingPage() {
         {/* Step 2: Template selection */}
         {step === 2 ? (
           <>
-            {/* Loading state */}
-            {loading ? (
-              <div className="card">
-                <div className="card-body">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Building2 size={16} />
-                    <div className="font-semibold">テンプレートから会社を立ち上げる</div>
-                  </div>
-                  <p className="text-muted text-sm mb-4">
-                    作りたい会社を選んで「作成」。複数選んでポートフォリオにできます。
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <div className="spinner" />
-                    <div className="text-muted">テンプレートを読み込み中…</div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Error state */}
-            {!loading && loadError ? (
-              <div className="card">
-                <div className="card-body">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Building2 size={16} />
-                    <div className="font-semibold">テンプレートから会社を立ち上げる</div>
-                  </div>
-                  <div className="empty-state">
-                    <PackageOpen className="empty-state-icon" size={28} />
-                    <h3>テンプレートの読み込みに失敗しました</h3>
-                    <p>{loadError}</p>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => void loadManifests()}
-                    >
-                      再試行
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Table */}
-            {!loading && !loadError ? (
-              <div className="card" id="manifests-table">
-                <div className="card-body">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Building2 size={16} />
-                    <div className="font-semibold">テンプレートから会社を立ち上げる</div>
-                  </div>
-                  <p className="text-muted text-sm mb-4">
-                    作りたい会社を選んで「作成」。複数選んでポートフォリオにできます。
-                  </p>
-
-                  {manifests.length === 0 ? (
-                    <div className="empty-state">
-                      <PackageOpen className="empty-state-icon" size={28} />
-                      <h3>テンプレートがありません</h3>
-                      <p>利用可能な会社テンプレートが見つかりませんでした。</p>
-                    </div>
-                  ) : (
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>会社</th>
-                          <th>事業部</th>
-                          <th>初期KPI</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {manifests.map((m) => {
-                          const busy = installing === m.id
-                          return (
-                            <tr key={m.id}>
-                              <td className="font-medium">{m.label}</td>
-                              <td className="text-muted text-sm">{m.divisions.join(' / ')}</td>
-                              <td className="text-muted text-sm">
-                                {m.initial_kpis && m.initial_kpis.length > 0
-                                  ? m.initial_kpis.join(' / ')
-                                  : '—'}
-                              </td>
-                              <td className="text-right">
-                                <button
-                                  type="button"
-                                  className="btn btn-primary btn-sm"
-                                  disabled={busy || installing !== null}
-                                  onClick={() => requestInstall(m)}
-                                >
-                                  {busy ? (
-                                    <>
-                                      <div className="spinner" />
-                                      作成中…
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Plus size={14} />
-                                      作成
-                                    </>
-                                  )}
-                                </button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-            ) : null}
+            <div className="card">
+              <CompanyManifestTable
+                manifests={manifests}
+                error={loadError}
+                installing={installing}
+                installButtonLabel="作成"
+                confirmLabel="作成する"
+                showGenreDescription={false}
+                heading="テンプレートから会社を立ち上げる"
+                subtext="作りたい会社を選んで「作成」。複数選んでポートフォリオにできます。"
+                confirmTitle={(m) => `「${m.label}」を起動しますか？`}
+                confirmDescription={() => (
+                  <>
+                    この会社テンプレートから Organization を生成します。
+                    事業部・エージェント・初期KPIが自動的に設定されます。
+                  </>
+                )}
+                onRetry={() => void loadManifests()}
+                onInstall={installCompany}
+              />
+            </div>
 
             {/* Installed list */}
             {installed.length > 0 ? (
@@ -307,20 +193,6 @@ export function OnboardingPage() {
           </div>
         ) : null}
       </div>
-
-      <ConfirmDialog
-        open={confirm !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirm(null)
-        }}
-        title={confirm?.title ?? ''}
-        description={confirm?.description}
-        confirmLabel={confirm?.confirmLabel}
-        destructive={false}
-        onConfirm={async () => {
-          if (confirm) await confirm.run()
-        }}
-      />
     </>
   )
 }

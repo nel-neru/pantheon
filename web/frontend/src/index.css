@@ -1642,6 +1642,19 @@ tr:hover td { background: var(--color-surface-2); }
   outline: none;
 }
 
+/* コード差分プレビューの行配色（テーマトークン追従 / C024・ハードコードhex廃止） */
+.diff-add {
+  color: var(--color-green);
+  background: var(--color-green-subtle);
+}
+.diff-del {
+  color: var(--color-red);
+  background: var(--color-red-subtle);
+}
+.diff-meta {
+  color: var(--color-accent);
+}
+
 /* ライブ更新が恒久切断したときの警告バナー（C035） */
 .offline-banner {
   margin: 8px 20px 0;

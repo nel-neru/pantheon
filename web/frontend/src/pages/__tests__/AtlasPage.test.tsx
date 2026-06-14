@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -338,6 +338,103 @@ describe('AtlasPage', () => {
     // Nodes rendered as role="button" with aria-label
     const nodeButtons = screen.getAllByRole('button', { name: /ファイル/ })
     expect(nodeButtons.length).toBeGreaterThan(0)
+  })
+
+  it('graph node is highlighted on focus and toggles on keyboard Enter', async () => {
+    mockApi.mockResolvedValue(atlas)
+    const user = userEvent.setup()
+    renderWithRouter(<AtlasPage />)
+
+    await screen.findByText('分析 → 提案 → 承認 → 適用')
+    await user.click(screen.getByRole('tab', { name: /依存グラフ/ }))
+
+    await screen.findByText('モジュール依存グラフ')
+    // Find the "State / Models" node button
+    const stateNode = screen.getByRole('button', { name: /State \/ Models.*ファイル/ })
+    // onFocus fires when focused → aria-pressed = true (focus highlight)
+    await act(() => { stateNode.focus() })
+    expect(stateNode).toHaveAttribute('aria-pressed', 'true')
+    // Press Enter → toggles off (since focus already set it)
+    await user.keyboard('{Enter}')
+    expect(stateNode).toHaveAttribute('aria-pressed', 'false')
+    // Press Enter again → toggles back on
+    await user.keyboard('{Enter}')
+    expect(stateNode).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('zoom controls are present with accessible labels', async () => {
+    mockApi.mockResolvedValue(atlas)
+    const user = userEvent.setup()
+    renderWithRouter(<AtlasPage />)
+
+    await screen.findByText('分析 → 提案 → 承認 → 適用')
+    await user.click(screen.getByRole('tab', { name: /依存グラフ/ }))
+
+    await screen.findByText('モジュール依存グラフ')
+    // Zoom group
+    expect(screen.getByRole('group', { name: 'ズーム操作' })).toBeInTheDocument()
+    // Zoom in/out buttons
+    expect(screen.getByRole('button', { name: '拡大' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '縮小' })).toBeInTheDocument()
+    // Zoom out disabled at default level
+    expect(screen.getByRole('button', { name: '縮小' })).toBeDisabled()
+    // Zoom in enabled at default level
+    expect(screen.getByRole('button', { name: '拡大' })).not.toBeDisabled()
+  })
+
+  it('zoom in button increases zoom and shows reset button', async () => {
+    mockApi.mockResolvedValue(atlas)
+    const user = userEvent.setup()
+    renderWithRouter(<AtlasPage />)
+
+    await screen.findByText('分析 → 提案 → 承認 → 適用')
+    await user.click(screen.getByRole('tab', { name: /依存グラフ/ }))
+
+    await screen.findByText('モジュール依存グラフ')
+    // No reset button at default zoom
+    expect(screen.queryByRole('button', { name: 'ズームをリセット' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '拡大' }))
+    // After zoom in, zoom-out button enabled and reset shown
+    expect(screen.getByRole('button', { name: '縮小' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'ズームをリセット' })).toBeInTheDocument()
+
+    // Reset brings back to default
+    await user.click(screen.getByRole('button', { name: 'ズームをリセット' }))
+    expect(screen.queryByRole('button', { name: 'ズームをリセット' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '縮小' })).toBeDisabled()
+  })
+
+  it('zoom in is disabled at max zoom level', async () => {
+    mockApi.mockResolvedValue(atlas)
+    const user = userEvent.setup()
+    renderWithRouter(<AtlasPage />)
+
+    await screen.findByText('分析 → 提案 → 承認 → 適用')
+    await user.click(screen.getByRole('tab', { name: /依存グラフ/ }))
+
+    await screen.findByText('モジュール依存グラフ')
+    // Click zoom in 3 times (4 levels total: 0→1→2→3)
+    await user.click(screen.getByRole('button', { name: '拡大' }))
+    await user.click(screen.getByRole('button', { name: '拡大' }))
+    await user.click(screen.getByRole('button', { name: '拡大' }))
+    // At max level, zoom in disabled
+    expect(screen.getByRole('button', { name: '拡大' })).toBeDisabled()
+  })
+
+  it('graph SVG aria-label includes node count', async () => {
+    mockApi.mockResolvedValue(atlas)
+    const user = userEvent.setup()
+    renderWithRouter(<AtlasPage />)
+
+    await screen.findByText('分析 → 提案 → 承認 → 適用')
+    await user.click(screen.getByRole('tab', { name: /依存グラフ/ }))
+
+    await screen.findByText('モジュール依存グラフ')
+    // SVG group has aria-label with node count
+    const svgGroup = screen.getByRole('group', { name: /サブシステム依存グラフ/ })
+    expect(svgGroup).toBeInTheDocument()
+    expect(svgGroup.getAttribute('aria-label')).toContain('2 ノード')
   })
 
   it('uses RefreshButton with label "更新" (not "再読み込み")', async () => {

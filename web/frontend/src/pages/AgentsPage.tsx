@@ -328,7 +328,7 @@ export function AgentsPage() {
               </>
             )}
             {averageProficiency !== null && (
-              <span className="badge badge-neutral" title="全ランタイムエージェントの proficiency 平均 (0–100)">
+              <span className="badge badge-neutral" title="全ランタイムエージェントの熟練度の平均 (0–100)">
                 平均熟練度 {Math.round(averageProficiency)}
               </span>
             )}
@@ -458,7 +458,7 @@ export function AgentsPage() {
                           </div>
                           {agent.description ? <div className="agent-description">{agent.description}</div> : null}
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="badge badge-blue text-xs">{agent.implementation || 'yaml'}</span>
+                            <span className="badge badge-blue text-xs">実装: {agent.implementation || 'yaml'}</span>
                             {toolCount > 0 && (
                               <span
                                 className="badge badge-neutral text-xs"

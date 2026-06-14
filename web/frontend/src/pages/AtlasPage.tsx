@@ -1,9 +1,12 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   GitBranch,
   Map as MapIcon,
+  Minus,
   Network,
+  Plus,
+  RotateCcw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -158,16 +161,43 @@ function StatCard({
 
 // ─── Dependency Graph ──────────────────────────────────────────────────────────
 
+// Zoom levels: scale factors applied to viewBox (lower = more zoomed in)
+const ZOOM_LEVELS: readonly number[] = [1, 0.75, 0.5, 0.35]
+const ZOOM_LABELS: readonly string[] = ['100%', '133%', '200%', '286%']
+const ZOOM_DEFAULT = 0 // index into ZOOM_LEVELS
+
 function DependencyGraph({ graph }: { graph: AtlasModel['graph'] }) {
   const [focused, setFocused] = useState<string | null>(null)
-  const width = 760
-  const height = 520
-  const cx = width / 2
-  const cy = height / 2
+  const [zoomIdx, setZoomIdx] = useState(ZOOM_DEFAULT)
+  // Pan offset in viewBox coordinates (shifted from center)
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const isDragging = useRef(false)
+  const dragStart = useRef<{ mx: number; my: number; px: number; py: number } | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+
+  const BASE_WIDTH = 760
+  const BASE_HEIGHT = 520
+  const cx = BASE_WIDTH / 2
+  const cy = BASE_HEIGHT / 2
   const radius = 190
   const nodes = graph.nodes
   const maxFiles = Math.max(1, ...nodes.map((n) => n.files))
   const maxWeight = Math.max(1, ...graph.edges.map((e) => e.weight))
+
+  // Zoom scale: viewBox shrinks when zoomed in (fallback to 1 if index is out of range)
+  const scale = ZOOM_LEVELS[zoomIdx] ?? 1
+  const zoomLabel = ZOOM_LABELS[zoomIdx] ?? '100%'
+  const vbW = BASE_WIDTH * scale
+  const vbH = BASE_HEIGHT * scale
+  // Clamped pan so the view doesn't wander too far from content
+  const maxPan = ((1 - scale) / 2) * BASE_WIDTH + 100
+  const clampedPan = {
+    x: Math.max(-maxPan, Math.min(maxPan, pan.x)),
+    y: Math.max(-maxPan, Math.min(maxPan, pan.y)),
+  }
+  const vbX = (BASE_WIDTH - vbW) / 2 + clampedPan.x
+  const vbY = (BASE_HEIGHT - vbH) / 2 + clampedPan.y
+  const viewBox = `${vbX} ${vbY} ${vbW} ${vbH}`
 
   const positions = useMemo(() => {
     const map = new Map<string, { x: number; y: number }>()
@@ -188,6 +218,42 @@ function DependencyGraph({ graph }: { graph: AtlasModel['graph'] }) {
     return map
   }, [nodes, graph.edges])
 
+  const zoomIn = useCallback(() => {
+    setZoomIdx((z) => Math.min(z + 1, ZOOM_LEVELS.length - 1))
+  }, [])
+  const zoomOut = useCallback(() => {
+    setZoomIdx((z) => Math.max(z - 1, 0))
+    // When zooming out beyond default, also reset pan to avoid flying off-screen
+    setPan((p) => (zoomIdx <= 1 ? { x: 0, y: 0 } : p))
+  }, [zoomIdx])
+  const zoomReset = useCallback(() => {
+    setZoomIdx(ZOOM_DEFAULT)
+    setPan({ x: 0, y: 0 })
+  }, [])
+
+  // Mouse-drag pan
+  const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if ((e.target as Element).closest('[role="button"]')) return // don't pan when clicking a node
+    isDragging.current = true
+    dragStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y }
+    e.preventDefault()
+  }, [pan])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!isDragging.current || !dragStart.current || !svgRef.current) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const scaleX = vbW / rect.width
+    const scaleY = vbH / rect.height
+    const dx = (e.clientX - dragStart.current.mx) * scaleX
+    const dy = (e.clientY - dragStart.current.my) * scaleY
+    setPan({ x: dragStart.current.px - dx, y: dragStart.current.py - dy })
+  }, [vbW, vbH])
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false
+    dragStart.current = null
+  }, [])
+
   if (nodes.length === 0) {
     return (
       <div className="empty-state">
@@ -199,16 +265,60 @@ function DependencyGraph({ graph }: { graph: AtlasModel['graph'] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-sm text-muted">
-        ノード = サブシステム（円の大きさ ∝ ファイル数）、線 = import 依存（太さ ∝ 依存数）。
-        ノードをクリック/フォーカスすると関連のみ強調します。
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-sm text-muted">
+          ノード = サブシステム（円の大きさ ∝ ファイル数）、線 = import 依存（太さ ∝ 依存数）。
+          ノードをクリック/フォーカスすると関連のみ強調します。ドラッグでパン。
+        </div>
+        {/* Zoom controls */}
+        <div className="flex items-center gap-1" role="group" aria-label="ズーム操作">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={zoomOut}
+            disabled={zoomIdx === 0}
+            aria-label="縮小"
+            title="縮小 (Zoom out)"
+          >
+            <Minus size={14} />
+          </button>
+          <span className="text-xs text-muted mono w-10 text-center" aria-live="polite" aria-label={`現在のズーム: ${zoomLabel}`}>
+            {zoomLabel}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={zoomIn}
+            disabled={zoomIdx === ZOOM_LEVELS.length - 1}
+            aria-label="拡大"
+            title="拡大 (Zoom in)"
+          >
+            <Plus size={14} />
+          </button>
+          {(zoomIdx !== ZOOM_DEFAULT || pan.x !== 0 || pan.y !== 0) ? (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={zoomReset}
+              aria-label="ズームをリセット"
+              title="リセット"
+            >
+              <RotateCcw size={14} />
+            </button>
+          ) : null}
+        </div>
       </div>
-      {/* SVG: width 100% responsive, viewBox kept */}
+      {/* SVG: width 100% responsive, viewBox drives zoom/pan */}
       <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="atlas-graph w-full"
+        ref={svgRef}
+        viewBox={viewBox}
+        className={cn('atlas-graph w-full', zoomIdx > 0 ? 'cursor-grab active:cursor-grabbing' : '')}
         role="group"
-        aria-label={`サブシステム依存グラフ（${nodes.length} ノード）`}
+        aria-label={`サブシステム依存グラフ（${nodes.length} ノード、ズーム ${zoomLabel}）`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
         {/* edges */}
         {graph.edges.map((edge, i) => {

@@ -240,4 +240,44 @@ describe('ProposalsPage', () => {
     })
     expect(screen.getByText('却下済み')).toBeInTheDocument()
   })
+
+  it('一括承認は確認ダイアログ経由でのみ /batch を叩く（C003）', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return organizations
+      if (method === 'GET' && path === '/api/organizations/alpha/proposals')
+        return [pendingProposal, architecturePendingProposal]
+      if (method === 'POST' && path === '/api/proposals/alpha/batch')
+        return {
+          results: [
+            { proposal_id: 'proposal-1', ok: true },
+            { proposal_id: 'proposal-5', ok: true },
+          ],
+        }
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<ProposalsPage />, ['/proposals?org=alpha'])
+    await screen.findByText('Add tests')
+
+    await user.click(screen.getByLabelText('表示中の提案をすべて選択'))
+    await user.click(screen.getByRole('button', { name: '一括承認' }))
+
+    // 確認ダイアログが出るまで /batch は呼ばれない（無確認の一括実行を防ぐ）
+    const confirmBtn = await screen.findByRole('button', { name: '一括承認する' })
+    expect(mockApi).not.toHaveBeenCalledWith(
+      'POST',
+      '/api/proposals/alpha/batch',
+      expect.anything(),
+    )
+
+    await user.click(confirmBtn)
+    await waitFor(() => {
+      expect(mockApi).toHaveBeenCalledWith(
+        'POST',
+        '/api/proposals/alpha/batch',
+        expect.objectContaining({ action: 'approve' }),
+      )
+    })
+  })
 })

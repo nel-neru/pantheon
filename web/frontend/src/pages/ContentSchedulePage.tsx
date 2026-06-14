@@ -4,6 +4,7 @@ import {
   CalendarClock,
   Loader2,
   Pause,
+  PenSquare,
   Play,
   Plus,
   Trash2,
@@ -113,6 +114,7 @@ type ContentJobCardProps = {
   onRunNow: (job: ContentJob) => void
   onToggle: (job: ContentJob) => void
   onDelete: (job: ContentJob) => void
+  onOpenStudio: (job: ContentJob) => void
 }
 
 function ContentJobCard({
@@ -122,6 +124,7 @@ function ContentJobCard({
   onRunNow,
   onToggle,
   onDelete,
+  onOpenStudio,
 }: ContentJobCardProps) {
   const isRunning = runningJobId === job.job_id
   const isToggling = togglingJobId === job.job_id
@@ -202,11 +205,23 @@ function ContentJobCard({
         </button>
         <button
           type="button"
-          className="btn btn-ghost btn-sm text-red-400 ml-auto"
+          className="btn btn-ghost btn-sm text-red-400"
           onClick={() => onDelete(job)}
         >
           <Trash2 size={13} /> 削除
         </button>
+        {/* 生成済みコンテンツをスタジオで整えるための導線（テーマをシードとして渡す） */}
+        {job.run_count > 0 ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm ml-auto"
+            onClick={() => onOpenStudio(job)}
+            title="スタジオを開いてコンテンツを確認・編集する"
+          >
+            <PenSquare size={13} />
+            スタジオで整える
+          </button>
+        ) : null}
       </div>
     </div>
   )
@@ -363,6 +378,23 @@ export function ContentSchedulePage() {
     } finally {
       setRunningJobId(null)
     }
+  }
+
+  const handleOpenStudio = (job: ContentJob) => {
+    // スタジオへ遷移し、ジョブのテーマをタイトルのシードとして渡す。
+    // 生成された下書き本文はインボックス（content_asset 提案）にあるため、
+    // ここではテーマのみ渡し、インボックスで「スタジオで整える」を使う導線も案内する。
+    navigate('/studio', {
+      state: {
+        title: job.theme || `${KIND_LABELS[job.kind] ?? job.kind}（${job.org_name}）`,
+        body: '',
+        sourceLabel: 'コンテンツスケジュール',
+      },
+    })
+    toast.info(
+      '生成済みの本文はインボックス（コンテンツ下書き提案）にあります。インボックスの「スタジオで整える」から読み込めます。',
+      { duration: 6000 },
+    )
   }
 
   const handleDeleteClick = (job: ContentJob) => {
@@ -684,6 +716,7 @@ export function ContentSchedulePage() {
                         onRunNow={runNow}
                         onToggle={toggleJob}
                         onDelete={handleDeleteClick}
+                        onOpenStudio={handleOpenStudio}
                       />
                     ))}
                   </div>

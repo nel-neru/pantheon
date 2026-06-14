@@ -149,8 +149,7 @@ export function NotificationsPage() {
                     type="number"
                     min={0}
                     max={23}
-                    className="input"
-                    style={{ width: '5rem' }}
+                    className="input w-20"
                     value={settings.quiet_hours_start}
                     onChange={(e) =>
                       setSettings({ ...settings, quiet_hours_start: Number(e.target.value) })
@@ -164,8 +163,7 @@ export function NotificationsPage() {
                     type="number"
                     min={0}
                     max={23}
-                    className="input"
-                    style={{ width: '5rem' }}
+                    className="input w-20"
                     value={settings.quiet_hours_end}
                     onChange={(e) =>
                       setSettings({ ...settings, quiet_hours_end: Number(e.target.value) })
@@ -215,8 +213,7 @@ export function NotificationsPage() {
               {items.map((n) => (
                 <div
                   key={n.id}
-                  className="flex items-center justify-between gap-3 flex-wrap"
-                  style={{ opacity: n.read ? 0.55 : 1 }}
+                  className={`flex items-center justify-between gap-3 flex-wrap${n.read ? ' opacity-60' : ''}`}
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

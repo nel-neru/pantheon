@@ -7,6 +7,7 @@ import {
   Eye,
   Inbox as InboxIcon,
   Lightbulb,
+  PenSquare,
   RefreshCw,
   Send,
   Trash2,
@@ -17,7 +18,7 @@ import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { priorityLabel } from '@/lib/labels'
+import { priorityBadge, priorityLabel } from '@/lib/labels'
 import { formatDateTime } from '@/lib/utils'
 import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
 
@@ -69,17 +70,22 @@ function kindBadge(kind: InboxKind): string {
   return 'badge-green'
 }
 
-function priorityBadge(priority: string): string {
-  if (priority === 'high' || priority === 'critical') return 'badge-red'
-  if (priority === 'low') return 'badge-neutral'
-  return 'badge-yellow'
-}
-
 function KindIcon({ kind }: { kind: InboxKind }) {
   if (kind === 'proposal') return <Lightbulb size={14} />
   if (kind === 'handoff') return <ArrowRightLeft size={14} />
   if (kind === 'human_task') return <UserCheck size={14} />
   return <Send size={14} />
+}
+
+// content_asset 提案の最小型（intervention_spec.content を取り出すため）。
+type ProposalDetail = {
+  id: string
+  title: string
+  category: string
+  intervention_spec?: {
+    content?: string
+    mode?: string
+  } | null
 }
 
 type ConfirmState = {
@@ -167,6 +173,46 @@ export function InboxPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '操作に失敗しました。')
       throw err
+    }
+  }
+
+  // content_asset 提案の本文をフェッチしてスタジオへ遷移する。
+  // 提案一覧から id が一致するものを探して intervention_spec.content を取り出す。
+  const sendToStudio = async (item: InboxItem) => {
+    if (item.kind === 'proposal') {
+      setActionId(`studio:${item.id}`)
+      try {
+        const proposals = await api<ProposalDetail[]>(
+          'GET',
+          `/api/organizations/${encodeURIComponent(item.org_name)}/proposals`,
+        )
+        const found = proposals.find((p) => p.id === item.id)
+        const body = found?.intervention_spec?.content ?? ''
+        if (!body) {
+          toast.error('この提案には本文が含まれていません。インボックスから詳細を確認してください。')
+          return
+        }
+        navigate('/studio', {
+          state: {
+            title: item.title,
+            body,
+            sourceLabel: 'インボックス（コンテンツ下書き）',
+          },
+        })
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : '提案の読み込みに失敗しました。')
+      } finally {
+        setActionId(null)
+      }
+    } else if (item.kind === 'handoff') {
+      // handoff は payload からタイトルと概要を本文に組み立てる（body fetch 不要）。
+      navigate('/studio', {
+        state: {
+          title: item.title,
+          body: '',
+          sourceLabel: '引き渡し（インボックス）',
+        },
+      })
     }
   }
 
@@ -362,7 +408,7 @@ export function InboxPage() {
           ? visibleItems.map((item) => {
               const key = `${item.kind}:${item.id}`
               const isHandedOff = item.kind === 'publish' && item.status === 'handed_off'
-              const busy = actionId === key || actionId === `preview:${item.id}` || actionId === `confirm:${item.id}`
+              const busy = actionId === key || actionId === `preview:${item.id}` || actionId === `confirm:${item.id}` || actionId === `studio:${item.id}`
               return (
                 <div key={key} className="proposal-card">
                   <div className="proposal-header">
@@ -441,6 +487,20 @@ export function InboxPage() {
                       >
                         {item.kind === 'publish' ? <Trash2 size={14} /> : <XCircle size={14} />}
                         {item.kind === 'publish' ? '取消' : '却下'}
+                      </button>
+                    ) : null}
+                    {/* content_asset 提案と handoff にスタジオ導線を表示する */}
+                    {(item.kind === 'proposal' && item.category === 'content_asset') ||
+                    item.kind === 'handoff' ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => void sendToStudio(item)}
+                        disabled={busy}
+                        title="下書き本文をスタジオで確認・編集する"
+                      >
+                        <PenSquare size={14} />
+                        スタジオで整える
                       </button>
                     ) : null}
                     <button

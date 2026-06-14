@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, Copy, FileText, PenSquare, Twitter } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import { BookOpen, Copy, FileText, Info, PenSquare, Trash2, Twitter } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { countChars, readingStats, splitIntoThread, X_LIMIT } from '@/lib/contentFormat'
 import { PageHeader } from '@/components/PageHeader'
+
+// ナビゲーション経由で渡される下書きデータの型。
+// InboxPage・ContentSchedulePage から useNavigate(state) で受け渡す。
+type DraftNavState = {
+  title?: string
+  body?: string
+  sourceLabel?: string  // 読み込み元の表示名（例: "インボックス"）
+}
 
 type Platform = 'x' | 'note' | 'wordpress'
 
@@ -183,14 +192,37 @@ function ArticlePreview({
 }
 
 export function StudioPage() {
+  const location = useLocation()
+  const navState = (location.state ?? null) as DraftNavState | null
+
   const [platform, setPlatform] = useState<Platform>('x')
   // localStorage から初期値を復元する（永続化 — リロード・画面遷移後も下書きを維持）
   const [title, setTitle] = useState<string>(() => lsLoad(LS_KEY_TITLE))
   const [body, setBody] = useState<string>(() => lsLoad(LS_KEY_BODY))
+  // ナビゲーション経由で読み込んだ下書きのラベル（バナー表示用）。null = 通常ローカル編集モード。
+  const [loadedFrom, setLoadedFrom] = useState<string | null>(null)
+  // ナビゲーション状態を一度だけ適用したかどうかのフラグ。
+  const navAppliedRef = useRef(false)
 
   // デバウンスタイマー ref（毎キーストロークで保存は重いため 500ms 待つ）
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bodyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ナビゲーション経由の下書きを一度だけ適用する（マウント時 or ナビ状態変化時）。
+  // localStorage の自動保存は引き続き行うため、読み込んだ内容も自動的に保存される。
+  useEffect(() => {
+    if (navAppliedRef.current) return
+    if (!navState) return
+    const navTitle = navState.title ?? ''
+    const navBody = navState.body ?? ''
+    if (!navTitle && !navBody) return
+    navAppliedRef.current = true
+    setTitle(navTitle)
+    setBody(navBody)
+    lsSave(LS_KEY_TITLE, navTitle)
+    lsSave(LS_KEY_BODY, navBody)
+    setLoadedFrom(navState.sourceLabel ?? '外部')
+  }, [navState])
 
   const handleTitleChange = (value: string) => {
     setTitle(value)
@@ -202,6 +234,15 @@ export function StudioPage() {
     setBody(value)
     if (bodyTimer.current) clearTimeout(bodyTimer.current)
     bodyTimer.current = setTimeout(() => lsSave(LS_KEY_BODY, value), 500)
+  }
+
+  const handleClearDraft = () => {
+    setTitle('')
+    setBody('')
+    setLoadedFrom(null)
+    lsSave(LS_KEY_TITLE, '')
+    lsSave(LS_KEY_BODY, '')
+    toast.success('下書きをクリアしました。')
   }
 
   // アンマウント時にタイマーをクリア
@@ -227,6 +268,28 @@ export function StudioPage() {
           下書きを媒体ごとの形で確認できます。X は文字数と自動スレッド分割、note / WordPress は
           記事プレビューと読了目安を表示します（このページは下書き確認用で、外部投稿はしません）。
         </p>
+
+        {/* ナビゲーション経由で下書きを読み込んだときのバナー */}
+        {loadedFrom ? (
+          <div
+            role="status"
+            className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm"
+          >
+            <Info size={14} className="shrink-0 text-blue-400" aria-hidden="true" />
+            <span className="flex-1 text-blue-300">
+              <strong>{loadedFrom}</strong> から下書きを読み込みました。編集内容は自動保存されます。
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm text-blue-400 shrink-0"
+              onClick={handleClearDraft}
+              aria-label="下書きをクリア"
+            >
+              <Trash2 size={13} />
+              クリア
+            </button>
+          </div>
+        ) : null}
 
         {/* タブ: role="tablist" + aria-selected でスクリーンリーダ/キーボード操作に対応 */}
         <div role="tablist" aria-label="投稿媒体" className="flex items-center gap-2 flex-wrap">

@@ -1,20 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Blocks, Building2, ExternalLink, Plus, RefreshCw, Sparkles } from 'lucide-react'
+import { AlertTriangle, Blocks, ExternalLink, Plus, RefreshCw, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { CompanyManifestTable, type CompanyManifest } from '@/components/CompanyManifestTable'
 import { priorityBadge, priorityLabel } from '@/lib/labels'
-
-type CompanyManifest = {
-  id: string
-  label: string
-  genre?: string
-  description?: string
-  divisions: string[]
-  initial_kpis?: string[]
-}
 
 type DivisionPlugin = {
   id: string
@@ -44,7 +36,7 @@ type ConfirmState = {
 
 export function MarketplacePage() {
   const navigate = useNavigate()
-  const [manifests, setManifests] = useState<CompanyManifest[]>([])
+  const [manifests, setManifests] = useState<CompanyManifest[] | undefined | null>(undefined)
   const [division, setDivision] = useState<DivisionPlugin[]>([])
   const [orgs, setOrgs] = useState<OrgRow[]>([])
   const [bizProposals, setBizProposals] = useState<BusinessProposal[]>([])
@@ -52,6 +44,7 @@ export function MarketplacePage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [manifestError, setManifestError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
@@ -67,6 +60,7 @@ export function MarketplacePage() {
         api<{ items: BusinessProposal[] }>('GET', '/api/hq/business-proposals'),
       ])
       setManifests(man.manifests ?? [])
+      setManifestError(null)
       setDivision(div.plugins ?? [])
       setOrgs(Array.isArray(orgList) ? orgList : [])
       setBizProposals(biz.items ?? [])
@@ -76,6 +70,8 @@ export function MarketplacePage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'マーケットプレイスの読み込みに失敗しました。'
       setError(message)
+      setManifests(null)
+      setManifestError(message)
       toast.error(message)
     } finally {
       setLoading(false)
@@ -148,12 +144,12 @@ export function MarketplacePage() {
   }, [load])
 
   const installCompanyConfirmed = useCallback(
-    async (pluginId: string) => {
-      setInstalling(pluginId)
+    async (manifest: CompanyManifest) => {
+      setInstalling(manifest.id)
       try {
         const res = await api<{ org_name: string; divisions: string[] }>(
           'POST',
-          `/api/company-plugins/${encodeURIComponent(pluginId)}/install`,
+          `/api/company-plugins/${encodeURIComponent(manifest.id)}/install`,
           {}
         )
         toast.success(`会社「${res.org_name}」を起動しました（${res.divisions.length} 事業部）。`)
@@ -187,35 +183,6 @@ export function MarketplacePage() {
       }
     },
     [load]
-  )
-
-  const requestInstallCompany = useCallback(
-    (m: CompanyManifest) => {
-      setConfirm({
-        title: `「${m.label}」を作成しますか？`,
-        description: (
-          <>
-            事業部・Agent・初期KPI・人間タスクまで含む会社を一括生成します。
-            {m.divisions.length > 0 && (
-              <>
-                <br />
-                <span className="text-sm text-fg2">作成される事業部: {m.divisions.join('、')}</span>
-              </>
-            )}
-            {m.description && (
-              <>
-                <br />
-                <span className="text-sm text-fg2">{m.description}</span>
-              </>
-            )}
-          </>
-        ),
-        confirmLabel: 'この会社を作成',
-        destructive: false,
-        run: () => installCompanyConfirmed(m.id),
-      })
-    },
-    [installCompanyConfirmed]
   )
 
   const requestInstallDivision = useCallback(
@@ -286,62 +253,37 @@ export function MarketplacePage() {
           <>
             {/* ── Card 1: Company Manifests ── */}
             <div className="card">
-              <div className="card-body flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <Building2 size={16} />
-                  <div className="font-semibold">会社プラグイン（テンプレートから1クリックで会社を起動）</div>
-                </div>
-                <p className="text-muted text-sm">
-                  manifest を選んで「この会社を作成」すると、事業部・Agent・初期KPI・人間タスクまで揃った
-                  収益モデル会社（Organization）が即座に立ち上がります。
-                </p>
-                {manifests.length === 0 ? (
-                  <div className="empty-state py-6">
-                    <Building2 className="empty-state-icon" size={24} />
-                    <p className="text-muted text-sm">会社プラグインがありません。</p>
-                  </div>
-                ) : (
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>会社</th>
-                        <th>ジャンル / 説明</th>
-                        <th>事業部</th>
-                        <th>初期KPI</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {manifests.map((m) => (
-                        <tr key={m.id}>
-                          <td className="font-medium">{m.label}</td>
-                          <td className="text-muted text-sm">
-                            {m.genre && <span className="mr-1 text-fg2">[{m.genre}]</span>}
-                            {m.description ?? '—'}
-                          </td>
-                          <td className="text-muted text-sm">{m.divisions.join(' / ') || '—'}</td>
-                          <td className="text-muted text-sm">
-                            {(m.initial_kpis ?? []).length > 0
-                              ? (m.initial_kpis ?? []).join(' / ')
-                              : '—'}
-                          </td>
-                          <td className="text-right">
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              disabled={isBusy}
-                              onClick={() => requestInstallCompany(m)}
-                            >
-                              <Plus size={14} />
-                              {installing === m.id ? '作成中…' : 'この会社を作成'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <CompanyManifestTable
+                manifests={manifests}
+                error={manifestError}
+                installing={installing}
+                busy={scanning}
+                installButtonLabel="この会社を作成"
+                confirmLabel="この会社を作成"
+                showGenreDescription={true}
+                heading="会社プラグイン（テンプレートから1クリックで会社を起動）"
+                subtext="manifest を選んで「この会社を作成」すると、事業部・Agent・初期KPI・人間タスクまで揃った収益モデル会社（Organization）が即座に立ち上がります。"
+                confirmTitle={(m) => `「${m.label}」を作成しますか？`}
+                confirmDescription={(m) => (
+                  <>
+                    事業部・Agent・初期KPI・人間タスクまで含む会社を一括生成します。
+                    {m.divisions.length > 0 && (
+                      <>
+                        <br />
+                        <span className="text-sm text-fg2">作成される事業部: {m.divisions.join('、')}</span>
+                      </>
+                    )}
+                    {m.description && (
+                      <>
+                        <br />
+                        <span className="text-sm text-fg2">{m.description}</span>
+                      </>
+                    )}
+                  </>
                 )}
-              </div>
+                onRetry={() => void load(false)}
+                onInstall={installCompanyConfirmed}
+              />
             </div>
 
             {/* ── Card 2: Business Proposals ── */}
