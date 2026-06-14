@@ -2464,6 +2464,22 @@ def test_inbox_includes_handed_off_jobs_with_status(tmp_path, monkeypatch):
     assert "公開済み" not in items  # published はもう人間アクション不要
 
 
+def test_inbox_includes_open_human_tasks(tmp_path, monkeypatch):
+    """open の人間専用タスクも承認インボックスに集約される（C006・唯一の対応ハブ化）。"""
+    from core.humans.human_tasks import HumanTaskStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    HumanTaskStore(platform_home=tmp_path).add(
+        "Xにログインする", kind="account_setup", org_name="SNS"
+    )
+
+    body = client.get("/api/inbox").json()
+    assert body["counts"]["human_task"] >= 1
+    assert any(i["kind"] == "human_task" and i["title"] == "Xにログインする" for i in body["items"])
+
+
 def test_confirm_publish_job_endpoint(tmp_path, monkeypatch):
     """確認エンドポイント: handed_off のみ 200、それ以外 409、不在 404、成果は 1 回だけ。"""
     from core.metrics.outcomes import OutcomeStore

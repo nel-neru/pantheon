@@ -10,15 +10,18 @@ import {
   RefreshCw,
   Send,
   Trash2,
+  UserCheck,
   XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { priorityLabel } from '@/lib/labels'
+import { formatDateTime } from '@/lib/utils'
 import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
 
-type InboxKind = 'proposal' | 'handoff' | 'publish'
+type InboxKind = 'proposal' | 'handoff' | 'publish' | 'human_task'
 
 type InboxItem = {
   kind: InboxKind
@@ -30,6 +33,8 @@ type InboxItem = {
   revenue_impact?: number
   platform?: string
   scheduled_at?: string | null
+  ref?: string
+  created_at?: string
   route: string
   status?: string
 }
@@ -38,6 +43,7 @@ type InboxCounts = {
   proposal: number
   handoff: number
   publish: number
+  human_task: number
   total: number
 }
 
@@ -46,18 +52,20 @@ type InboxResponse = {
   counts: InboxCounts
 }
 
-const KIND_FILTERS = ['all', 'publish', 'proposal', 'handoff'] as const
+const KIND_FILTERS = ['all', 'publish', 'proposal', 'handoff', 'human_task'] as const
 type KindFilter = (typeof KIND_FILTERS)[number]
 
 function kindLabel(kind: InboxKind): string {
   if (kind === 'proposal') return '改善提案'
   if (kind === 'handoff') return '引き渡し'
+  if (kind === 'human_task') return 'あなたのタスク'
   return '投稿待ち'
 }
 
 function kindBadge(kind: InboxKind): string {
   if (kind === 'proposal') return 'badge-blue'
   if (kind === 'handoff') return 'badge-neutral'
+  if (kind === 'human_task') return 'badge-yellow'
   return 'badge-green'
 }
 
@@ -70,6 +78,7 @@ function priorityBadge(priority: string): string {
 function KindIcon({ kind }: { kind: InboxKind }) {
   if (kind === 'proposal') return <Lightbulb size={14} />
   if (kind === 'handoff') return <ArrowRightLeft size={14} />
+  if (kind === 'human_task') return <UserCheck size={14} />
   return <Send size={14} />
 }
 
@@ -83,7 +92,13 @@ type ConfirmState = {
 export function InboxPage() {
   const navigate = useNavigate()
   const [items, setItems] = useState<InboxItem[]>([])
-  const [counts, setCounts] = useState<InboxCounts>({ proposal: 0, handoff: 0, publish: 0, total: 0 })
+  const [counts, setCounts] = useState<InboxCounts>({
+    proposal: 0,
+    handoff: 0,
+    publish: 0,
+    human_task: 0,
+    total: 0,
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
@@ -118,7 +133,8 @@ export function InboxPage() {
       latest?.type &&
       (latest.type.startsWith('publish') ||
         latest.type.startsWith('proposal') ||
-        latest.type.startsWith('handoff'))
+        latest.type.startsWith('handoff') ||
+        latest.type.startsWith('human'))
     ) {
       void load(true)
     }
@@ -172,6 +188,22 @@ export function InboxPage() {
         },
         '引き渡しを承認し、本文ドラフトを生成しました。',
       )
+    } else if (item.kind === 'human_task') {
+      // 人間タスクの完了（不可逆）— 確認ゲートを通す（C003/C006）。
+      setConfirm({
+        title: 'タスクを完了にしますか？',
+        description: (
+          <>
+            「{item.title}」を完了にします。<strong>この操作は取り消せません。</strong>
+          </>
+        ),
+        confirmLabel: '完了にする',
+        run: () =>
+          directRun(
+            () => api('POST', `/api/human-tasks/${encodeURIComponent(item.id)}/complete`),
+            'タスクを完了にしました。',
+          ),
+      })
     } else {
       // 外部への実投稿（取り消し不能）— 必ず確認ゲートを通す（C001 / PUB-AUTO 人手ゲート）。
       setConfirm({
@@ -274,14 +306,8 @@ export function InboxPage() {
       <div className="page-content flex flex-col gap-4">
         <div className="flex items-center gap-2 flex-wrap">
           {KIND_FILTERS.map((filter) => {
-            const count =
-              filter === 'all'
-                ? counts.total
-                : filter === 'proposal'
-                  ? counts.proposal
-                  : filter === 'handoff'
-                    ? counts.handoff
-                    : counts.publish
+            const count = filter === 'all' ? counts.total : counts[filter]
+            const label = filter === 'all' ? 'すべて' : kindLabel(filter)
             return (
               <button
                 key={filter}
@@ -289,13 +315,7 @@ export function InboxPage() {
                 className={`btn btn-sm ${kindFilter === filter ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setKindFilter(filter)}
               >
-                {filter === 'all'
-                  ? 'すべて'
-                  : filter === 'proposal'
-                    ? '改善提案'
-                    : filter === 'handoff'
-                      ? '引き渡し'
-                      : '投稿待ち'}
+                {label}
                 <span className="badge badge-neutral">{count}</span>
               </button>
             )
@@ -362,12 +382,17 @@ export function InboxPage() {
                         {(item.revenue_impact ?? 0) >= 2 ? (
                           <span className="badge badge-green">収益</span>
                         ) : null}
-                        <span className={`badge ${priorityBadge(item.priority)}`}>{item.priority}</span>
+                        <span className={`badge ${priorityBadge(item.priority)}`}>
+                          {priorityLabel(item.priority)}
+                        </span>
                         {item.platform ? <span className="badge badge-neutral">{item.platform}</span> : null}
                       </div>
                       <div className="text-sm text-fg2">
                         {item.org_name || '—'}
-                        {item.scheduled_at ? ` ・ 予約: ${item.scheduled_at}` : ''}
+                        {item.scheduled_at ? ` ・ 予約: ${formatDateTime(item.scheduled_at)}` : ''}
+                        {item.kind === 'human_task' && item.created_at
+                          ? ` ・ 作成: ${formatDateTime(item.created_at)}`
+                          : ''}
                       </div>
                     </div>
                   </div>
@@ -391,7 +416,7 @@ export function InboxPage() {
                           disabled={busy}
                         >
                           <CheckCircle size={14} />
-                          {item.kind === 'publish' ? '投稿' : '承認'}
+                          {item.kind === 'publish' ? '投稿' : item.kind === 'human_task' ? '完了' : '承認'}
                         </button>
                         {item.kind === 'publish' ? (
                           <button
@@ -407,15 +432,17 @@ export function InboxPage() {
                         ) : null}
                       </>
                     )}
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      onClick={() => rejectItem(item)}
-                      disabled={busy}
-                    >
-                      {item.kind === 'publish' ? <Trash2 size={14} /> : <XCircle size={14} />}
-                      {item.kind === 'publish' ? '取消' : '却下'}
-                    </button>
+                    {item.kind !== 'human_task' ? (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => rejectItem(item)}
+                        disabled={busy}
+                      >
+                        {item.kind === 'publish' ? <Trash2 size={14} /> : <XCircle size={14} />}
+                        {item.kind === 'publish' ? '取消' : '却下'}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"

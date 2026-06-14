@@ -2,7 +2,7 @@
 
 - 生成: 2026-06-14 / 出典: workflow gui-frontend-audit (run w3bnm8rn9, 49 agents)
 - 対象GUI: **web/frontend (legacy / 既定UI)**
-- 進捗: **18/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
+- 進捗: **19/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
 - **このファイルが改善の正本**。各変更を着手→完了→検証で状態遷移させながら実装する。
 - 機械可読の進捗は `gui-frontend-audit-state.json`（本ファイルと対・JSONが正本）。
 - 由来: 全21画面の要素インベントリ→6軸（必要性/妥当性/機能性/利便性/拡張性/保守性）厳格評価→横断監査→重複排除した優先度付き計画（Workflow `gui-frontend-audit`）。
@@ -85,7 +85,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: necessity/validity: HumanTasksの『完了』(不可逆・高リスク最終確認の場でこそ無確認は設計矛盾)、Boardのrunningタスクキャンセル(backendがPENDINGのみ許可するため必ず失敗する死んだ破壊操作)、Dashboardのinit(再初期化)/daemon stop、Proposals一括承認(コード適用を伴う)、SettingsのloadError中DEFAULT上書き保存。C002のConfirmDialogで確認を入れ、Boardのキャンセルはpendingのみに条件を絞る。
   - テスト影響: 各破壊操作テストを確認経由に更新。Boardはrunning行でキャンセル不可になることのテストを追加。
 
-### W2 — IA/ナビ再設計・承認/通知統合  (2/4)
+### W2 — IA/ナビ再設計・承認/通知統合  (3/4)
 
 - [x] **C004** `[P1]` `<refactor>` risk=medium — サイドバーIAをグループ化データ構造へ再設計(NavGroup[]) _(状態: done)_
   - 対象: `web/frontend/src/App.tsx`, `web/frontend/src/index.css`, `AGENTS.md`
@@ -97,12 +97,12 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: convenience, validity
   - 根拠: convenience/validity: 折りたたみ時に全NavLinkのラベルをnullで消すのにtitle属性もツールチップも一切無く、20アイコンだけでは判別不能=折りたたみが実質使用不能(P0級の利便性破壊)。各NavLinkにtitle={item.label}またはRadix Tooltipを付与。トグルのラベル『ナビゲーション』も動作を表さず改名。
   - テスト影響: 軽微。折りたたみ時のtitle/aria存在テストを追加可。
-- [ ] **C006** `[P1]` `<merge>` risk=high — 承認系3画面(/inbox・/proposals・/human-tasks)を/inbox承認ハブに統合
+- [x] **C006** `[P1]` `<merge>` risk=high — 承認系3画面(/inbox・/proposals・/human-tasks)を/inbox承認ハブに統合 _(状態: done)_
   - 対象: `web/frontend/src/pages/InboxPage.tsx`, `web/frontend/src/pages/ProposalsPage.tsx`, `web/frontend/src/pages/HumanTasksPage.tsx`, `web/frontend/src/App.tsx`, `/api/inbox`, `/api/proposals`, `/api/human-tasks`
   - 軸: necessity, maintainability, convenience
   - 根拠: necessity/maintainability: 3導線が『溜まった承認を捌く』単一ジョブを分割し、どこを見れば全部終わるか判別不能。Inboxは既にproposal承認で同一API(approve/reject)を呼びProposalsはサブセット。/api/inboxにhuman_task kindを足して集約、proposalの詳細(diff/approval_notes/一括)はInbox行展開へ取り込み、/proposalsと/human-tasksをナビから外す。承認分岐ロジックが1箇所に集約され重複解消。
   - テスト影響: 大。3ページのテストを統合構成へ再編。/api/inboxにhuman_task追加のバックエンド/契約テストが必要。
-- [ ] **C007** `[P1]` `<merge>` risk=medium — 通知をライブ(トースト)と永続(/notifications)に役割分離しBellを一本化
+- [~] **C007** `[P1]` `<merge>` risk=medium — 通知をライブ(トースト)と永続(/notifications)に役割分離しBellを一本化 _(状態: in_progress)_
   - 対象: `web/frontend/src/App.tsx`, `web/frontend/src/pages/NotificationsPage.tsx`, `/api/notifications`, `web/frontend/src/hooks/usePlatformUpdates.ts`
   - 軸: necessity, validity, maintainability
   - 根拠: necessity/validity/maintainability: 同一WSイベントがトースト+Bellポップオーバー+通知ページ+通知センターナビの最大4面で多重露出し語彙(success/info/error vs done/live/error)も不一致。Bellは未読概念が無く件数バッジが『未読』を詐称・pendingを『live』と誤表示。Bellを/api/notifications未読プレビューに置換しWS直結を廃止、WSはトースト専用、通知センターナビは削除(20→19)。statusラベルは保留/処理中/完了等に統一。

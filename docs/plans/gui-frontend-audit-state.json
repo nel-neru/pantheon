@@ -342,7 +342,7 @@
       "rationale": "necessity/maintainability: 3導線が『溜まった承認を捌く』単一ジョブを分割し、どこを見れば全部終わるか判別不能。Inboxは既にproposal承認で同一API(approve/reject)を呼びProposalsはサブセット。/api/inboxにhuman_task kindを足して集約、proposalの詳細(diff/approval_notes/一括)はInbox行展開へ取り込み、/proposalsと/human-tasksをナビから外す。承認分岐ロジックが1箇所に集約され重複解消。",
       "test_impact": "大。3ページのテストを統合構成へ再編。/api/inboxにhuman_task追加のバックエンド/契約テストが必要。",
       "wave": "W2",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C007",
@@ -365,7 +365,7 @@
       "rationale": "necessity/validity/maintainability: 同一WSイベントがトースト+Bellポップオーバー+通知ページ+通知センターナビの最大4面で多重露出し語彙(success/info/error vs done/live/error)も不一致。Bellは未読概念が無く件数バッジが『未読』を詐称・pendingを『live』と誤表示。Bellを/api/notifications未読プレビューに置換しWS直結を廃止、WSはトースト専用、通知センターナビは削除(20→19)。statusラベルは保留/処理中/完了等に統一。",
       "test_impact": "App.tsxのBell/トーストテストとNotificationsのバッジテストを更新。pending表示の文言テストを追加。",
       "wave": "W2",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C009",

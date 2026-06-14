@@ -2484,6 +2484,24 @@ async def api_inbox() -> Dict[str, Any]:
             }
         )
 
+    # 人間専用タスク（open）も「あなたが対応すべきこと」として同じキューに集約する。
+    # （承認インボックスを唯一の対応ハブにする — /human-tasks 画面の代替集約・C006）
+    for t in _human_task_store().list_tasks("open"):
+        items.append(
+            {
+                "kind": "human_task",
+                "id": t.task_id,
+                "org_name": t.org_name,
+                "title": t.title,
+                "category": t.kind,
+                "priority": "high",  # 人間アクション待ち＝対応必須
+                "revenue_impact": 1,
+                "ref": t.ref,
+                "created_at": t.created_at,
+                "route": "/human-tasks",
+            }
+        )
+
     # 収益インパクト → 優先度の順でキューを並べ替え（収益を動かすアクションを上位へ）。
     _priority_rank = {"high": 3, "medium": 2, "low": 1}
     items.sort(
@@ -2498,6 +2516,7 @@ async def api_inbox() -> Dict[str, Any]:
         "proposal": sum(1 for i in items if i["kind"] == "proposal"),
         "handoff": sum(1 for i in items if i["kind"] == "handoff"),
         "publish": sum(1 for i in items if i["kind"] == "publish"),
+        "human_task": sum(1 for i in items if i["kind"] == "human_task"),
         "total": len(items),
     }
     return {"items": items, "counts": counts}

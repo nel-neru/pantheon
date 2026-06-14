@@ -8,7 +8,6 @@ import {
   Database,
   HelpCircle,
   LayoutDashboard,
-  Lightbulb,
   Map as MapIcon,
   Menu,
   Moon,
@@ -25,7 +24,6 @@ import {
   PenSquare,
   Plug,
   Blocks,
-  UserCheck,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -88,18 +86,15 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    // 承認系は /inbox に集約（提案/引き渡し/投稿待ち/あなたのタスクを単一の対応ハブへ・C006）。
+    // 通知はツールバーのベルが担うため通知センターはナビから外す（C007）。
     label: '要対応',
-    items: [
-      { to: '/inbox', label: '承認インボックス', icon: Inbox },
-      { to: '/human-tasks', label: 'あなたのタスク', icon: UserCheck },
-      { to: '/notifications', label: '通知センター', icon: Bell },
-    ],
+    items: [{ to: '/inbox', label: '承認インボックス', icon: Inbox }],
   },
   {
-    label: '組織と提案',
+    label: '組織・エージェント',
     items: [
       { to: '/orgs', label: '組織', icon: Building2 },
-      { to: '/proposals', label: '改善提案', icon: Lightbulb },
       { to: '/agents', label: 'エージェント', icon: Bot },
     ],
   },

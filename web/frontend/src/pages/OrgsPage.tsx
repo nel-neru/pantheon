@@ -419,7 +419,7 @@ function DetailPanel({
                 <div className={org.pending_proposals > 0 ? 'detail-metric-val text-yellow' : 'detail-metric-val'}>
                   {org.pending_proposals > 0 ? (
                     <Link
-                      to={`/improvements?org=${encodeURIComponent(org.name)}`}
+                      to={`/proposals?org=${encodeURIComponent(org.name)}`}
                       className="underline"
                     >
                       {org.pending_proposals}
@@ -543,7 +543,7 @@ function DetailPanel({
                 <div className="text-muted text-sm">
                   未対応の提案はありません。
                   <Link
-                    to={`/improvements?org=${encodeURIComponent(org.name)}`}
+                    to={`/proposals?org=${encodeURIComponent(org.name)}`}
                     className="ml-2 underline text-muted text-sm"
                   >
                     提案を分析する →
@@ -564,7 +564,7 @@ function DetailPanel({
                           <span className="mono text-muted detail-proposal-file">{p.file_path}</span>
                         ) : null}
                         <Link
-                          to={`/improvements?org=${encodeURIComponent(org.name)}&proposal=${encodeURIComponent(p.id)}`}
+                          to={`/proposals?org=${encodeURIComponent(org.name)}&proposal=${encodeURIComponent(p.id)}`}
                           className="btn btn-ghost btn-sm"
                         >
                           承認インボックスで開く →

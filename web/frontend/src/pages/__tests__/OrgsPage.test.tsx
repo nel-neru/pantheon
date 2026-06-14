@@ -482,7 +482,7 @@ describe('OrgsPage', () => {
     // Link to improvements inbox
     const link = screen.getByRole('link', { name: '承認インボックスで開く →' })
     expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', expect.stringContaining('/improvements'))
+    expect(link).toHaveAttribute('href', expect.stringContaining('/proposals'))
   })
 
   it('proposal error and empty state show distinct messages', async () => {
