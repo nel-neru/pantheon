@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import stat
 import subprocess
@@ -3530,7 +3531,7 @@ class OrgUpdateRequest(ApiRequestModel):
     def validate_target_repo_path(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        return _normalize_request_path(value, "target_repo_path")
+        return _normalize_request_path(value, "target_repo_path", allow_empty=False)
 
 
 @app.get("/api/organizations/{org_name}")
@@ -3625,6 +3626,9 @@ async def api_get_org_icon(org_name: str) -> Response:
                 media_type = (
                     header.split(";", 1)[0].removeprefix("data:") or "application/octet-stream"
                 )
+                # ユーザ管理値: 不正な media_type は CRLF 注入/500 を招くので token 検証
+                if not re.fullmatch(r"[\w.+-]+/[\w.+-]+", media_type):
+                    media_type = "application/octet-stream"
                 return Response(content=base64.b64decode(data), media_type=media_type)
     except HTTPException:
         pass
@@ -4930,7 +4934,18 @@ async def ws_chat(websocket: WebSocket) -> None:
 
     try:
         while True:
-            payload = ChatPayload.model_validate(await websocket.receive_json())
+            try:
+                payload = ChatPayload.model_validate(await websocket.receive_json())
+            except WebSocketDisconnect:
+                raise
+            except Exception:  # noqa: BLE001 — 不正/壊れたクライアントフレーム
+                try:
+                    await websocket.send_json(
+                        {"type": "error", "content": "invalid message format"}
+                    )
+                except Exception:  # noqa: BLE001 — ソケットが既に閉じかけ
+                    pass
+                continue
             message = payload.message.strip()
             if not message:
                 continue
@@ -4970,8 +4985,9 @@ async def ws_updates(websocket: WebSocket) -> None:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        await _updates_hub.disconnect(websocket)
         logger.info("Updates WebSocket client disconnected")
+    finally:
+        await _updates_hub.disconnect(websocket)
 
 
 def _open_browser_when_ready(port: int, *, host: str = "localhost", timeout: float = 15.0) -> None:
