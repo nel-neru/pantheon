@@ -327,14 +327,19 @@ def cmd_daemon_status(args: argparse.Namespace, *, get_platform_home: Any) -> No
     scheduler_log = platform_home / "scheduler_log.jsonl"
 
     if pid_file.exists():
-        pid = int(pid_file.read_text().strip())
         try:
-            import os as _os
+            pid = int(pid_file.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            print("デーモン停止中（PID ファイルが壊れています）。")
+            pid = None
+        if pid is not None:
+            try:
+                import os as _os
 
-            _os.kill(pid, 0)
-            print(f"[OK] デーモン稼働中 (PID: {pid})")
-        except OSError:
-            print(f"デーモン停止中（PID ファイルが残存: {pid}）")
+                _os.kill(pid, 0)
+                print(f"[OK] デーモン稼働中 (PID: {pid})")
+            except OSError:
+                print(f"デーモン停止中（PID ファイルが残存: {pid}）")
     else:
         print("デーモンは起動していません。")
 

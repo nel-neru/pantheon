@@ -52,7 +52,7 @@ def governor_enabled() -> bool:
 @dataclass
 class Verdict:
     allowed: bool
-    downgrade: bool  # True なら ModelTierRouter で light ティアへ降格すべき
+    downgrade: bool  # True なら ModelTierRouter で 1 ティア降格すべき
     reason: str
     window_tokens: int = 0
 
@@ -162,11 +162,11 @@ class QuotaGovernor:
         spent = usage.total_tokens
 
         if spent >= self._rules.hard_limit_tokens:
-            # ハード超過: critical のみ（しかも light ティアへ降格）
+            # ハード超過: critical のみ（しかも 1 ティア降格）
             allowed = rank >= _PRIORITY_RANK[PRIORITY_CRITICAL]
             return Verdict(allowed, True, "hard_limit", window_tokens=spent)
         if spent >= self._rules.soft_limit_tokens:
-            # ソフト超過: background を停止、残りは light ティアへ降格
+            # ソフト超過: background を停止、残りは 1 ティア降格
             allowed = rank >= _PRIORITY_RANK[PRIORITY_STANDARD]
             return Verdict(allowed, True, "soft_limit", window_tokens=spent)
         return Verdict(True, False, "ok", window_tokens=spent)

@@ -119,7 +119,9 @@ class NotificationCenter:
     def unread_count(self) -> int:
         read_ids = self.read_ids()
         return sum(
-            1 for r in self._iter_raw() if self._normalize(r, read_ids)["id"] not in read_ids
+            1
+            for r in self._iter_raw()
+            if (nid := self._normalize(r, read_ids)["id"]) and nid not in read_ids
         )
 
     def mark_read(self, notification_id: str) -> bool:
