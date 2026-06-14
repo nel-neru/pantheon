@@ -76,6 +76,8 @@ def validate_departments(data: Any) -> List[Dict[str, Any]]:
         departments = data
     else:
         return []
+    if not isinstance(departments, list):
+        return []
 
     out: List[Dict[str, Any]] = []
     for dept in departments[:MAX_DIVISIONS]:

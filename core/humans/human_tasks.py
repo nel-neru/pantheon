@@ -11,7 +11,7 @@ JSON を正準とする（収益サブストレート＝`OutcomeStore` と同じ
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -117,9 +117,12 @@ class HumanTaskStore:
         except (ValueError, OSError):
             return []
         out: List[HumanTask] = []
+        field_names = {f.name for f in fields(HumanTask)}
         for item in payload:
+            if not isinstance(item, dict):
+                continue  # 不正レコードはスキップして全体を壊さない
             try:
-                out.append(HumanTask(**item))
+                out.append(HumanTask(**{k: v for k, v in item.items() if k in field_names}))
             except (TypeError, ValueError):
                 continue  # 不正レコードはスキップして全体を壊さない
         return out
