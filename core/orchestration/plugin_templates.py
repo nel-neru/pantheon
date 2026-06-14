@@ -152,6 +152,30 @@ def _copy_teams(teams: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
+def self_improvement_seed_division() -> Dict[str, Any]:
+    """全テンプレ共通の「自己改善シード」事業部の department dict を返す（TPL-SEED / §6.2）。
+
+    会社プラグイン install 時に各社へ標準搭載する、週次/月次の自己レビュー Agent を持つ
+    事業部（``org_evolution`` 型）。このレビュー Agent が実行されると WIRE-MEM 経由で成功施策が
+    Playbook に自動蓄積され、AUTO-1 の HQ cadence が弱みを Meta-Overseer へエスカレーションする。
+    つまり §6.2「週次レビュー Agent + Playbook 自動蓄積 + エスカレーション」を 1 事業部で満たす。
+
+    ``_build_division`` がそのまま食べられる形（required_skills は 2 個ちょうど）。
+    """
+    return {
+        "name": "改善・自己レビュー事業部",
+        "type": "org_evolution",
+        "mission": "週次/月次で成果を振り返り、学びを Playbook 化して次の施策へ反映する",
+        "teams": [
+            {
+                "name": "Weekly Review Team",
+                "mission": "KPI レビュー・うまくいった施策の言語化・改善提案のエスカレーション",
+                "required_skills": ["performance_analysis", "strategic_planning"],
+            },
+        ],
+    }
+
+
 def scaffold_division_plugin(
     plugin_id: str,
     label: str,

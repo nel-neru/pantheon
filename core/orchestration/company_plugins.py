@@ -131,6 +131,7 @@ def install_company_plugin(
     """
     from core.humans.human_tasks import enqueue_human_task
     from core.models.organization import Organization, OrganizationStatus
+    from core.orchestration.plugin_templates import self_improvement_seed_division
     from core.org_factory import _build_division
 
     manifest = get_company_plugin_manifest(plugin_id, catalog_path=catalog_path)
@@ -171,9 +172,21 @@ def install_company_plugin(
     if genre:
         org.industry_genre = str(genre)
 
+    # 初期KPI を org に永続化する（KPI ダッシュボードの元データ・TPL-SEED / §6.1）。
+    org.initial_kpis = [
+        str(k).strip() for k in (manifest.get("initial_kpis") or []) if str(k).strip()
+    ]
+
     division_names = [d for d in (manifest.get("divisions") or []) if str(d).strip()]
     for div_name in division_names:
         org.add_division(_build_division(_division_spec_from_name(str(div_name))))
+
+    # 全社共通の「自己改善シード」事業部を標準搭載する（週次レビュー Agent・TPL-SEED / §6.2）。
+    # WIRE-MEM（成功施策の Playbook 蓄積）と AUTO-1（HQ エスカレーション）と噛み合い、
+    # 立ち上げた会社が初日から自己改善ループを持つ。重複名があれば足さない（冪等）。
+    seed = _build_division(self_improvement_seed_division())
+    if not any(d.name == seed.name for d in org.divisions):
+        org.add_division(seed)
 
     psm.save_organization(org)
 

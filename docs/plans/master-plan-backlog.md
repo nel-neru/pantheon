@@ -147,9 +147,12 @@
   （補足: `AgentKnowledgeAccumulator` との完全統合は将来課題＝今回は統一エントリ点 MemoryBank と Playbook 経路を配線）。
 - ⬜ **REV-COLLECT 外部API収益自動収集（§8 P1/§9）**: note/X/ASP の売上を定期取得し `OutcomeStore.record` へ。
   手動 POST/CSV からの脱却。実認証は human-gate。
-- ⬜ **TPL-SEED テンプレ標準シード（§6.1/§6.2）**: 会社/事業部テンプレに HQ Agent・初期KPI 永続化
-  （Organization に KPI フィールド）・群統合（portfolio_advisor 連携）・週次レビュー Agent＋playbook シード・
-  Meta-Overseer エスカレーションを共通搭載（`weekly_review` 文字列を実エージェント化）。
+- 🟩 **TPL-SEED テンプレ標準シード（§6.1/§6.2）**: 会社プラグイン install を実体化。
+  ①`Organization.initial_kpis` フィールド追加＋install で永続化＋org 詳細/一覧 API 露出＋OrgsPage「初期KPI」表示
+  （= KPI ダッシュボードの素地・§6.1）。②`plugin_templates.self_improvement_seed_division`（週次レビュー Agent を持つ
+  org_evolution 事業部）を全社に標準搭載（§6.2）。**WIRE-MEM（成功施策→Playbook 蓄積）＋AUTO-1（HQ エスカレーション）と噛み合い、
+  立ち上げ初日から自己改善ループを持つ**。backend（company/templates）＋frontend テスト。
+  残: 群統合（新会社を portfolio_advisor へ自動リンク）・専用 HQ Agent の明示生成は後続。
 - ⬜ **WS-2 SQLite ストア（§5.2・再掲）**: workspaces/organizations/.../revenue_records/execution_logs/app_settings
   を §5.2 設計で実装し JSON 正準→SQLite へ段階移行（**保存層移行でリスク高・着手前に要確認**）。
 - ⬜ **SET-EXPOSE 設定露出（§4 P2-5/P3-12）**: トークン/クォータ上限（token_quota.yaml writer）・承認閾値/

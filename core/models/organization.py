@@ -312,6 +312,12 @@ class Organization(BaseModel):
     workspace_path: str | None = Field(
         None, description="workspace モードのデータ領域（アプリ管理・絶対パス・git 不要）"
     )
+    # ---- 初期KPI（会社プラグイン install で永続化・TPL-SEED / §6.1）----
+    # additive・デフォルト空（既存 JSON は空でロード）。会社の KPI ダッシュボードの元データ。
+    initial_kpis: List[str] = Field(
+        default_factory=list,
+        description="会社の初期KPI（会社プラグイン manifest 由来）。KPI ダッシュボード表示の元データ",
+    )
 
     @field_validator("management_mode")
     @classmethod
