@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Link2, Plug, RefreshCw, Unplug } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link2, Plug, RefreshCw, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { formatDateTime } from '@/lib/utils'
 
 type ConnectionStatus = 'connected' | 'disconnected'
 
@@ -37,13 +39,11 @@ function platformLabel(platform: string): string {
   return PLATFORM_LABELS[platform] ?? platform
 }
 
-function formatConnectedAt(connectedAt: string | null): string {
-  if (!connectedAt) return '—'
-  try {
-    return new Date(connectedAt).toLocaleString('ja-JP')
-  } catch {
-    return connectedAt
-  }
+type ConfirmState = {
+  title: string
+  description?: ReactNode
+  confirmLabel: string
+  run: () => Promise<void>
 }
 
 export function ConnectionsPage() {
@@ -51,6 +51,7 @@ export function ConnectionsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionId, setActionId] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
 
   // pollerRefs: platform -> { intervalId, timeoutId }
   const pollerRefs = useRef<Map<string, { intervalId: ReturnType<typeof setInterval>; timeoutId: ReturnType<typeof setTimeout> }>>(new Map())
@@ -82,7 +83,7 @@ export function ConnectionsPage() {
       const message = err instanceof Error ? err.message : 'プラットフォーム接続情報の読み込みに失敗しました。'
       setConnections([])
       setError(message)
-      toast.error(message)
+      // エラー表示は下の error UI が担うため、toast は出さない（二重通知防止）。
     } finally {
       if (!quiet) setLoading(false)
     }
@@ -109,6 +110,9 @@ export function ConnectionsPage() {
 
       const timeoutId = setTimeout(() => {
         stopPoller(platform)
+        toast.info(
+          'ログインを確認できませんでした。ブラウザでログインを完了してから再度お試しください。',
+        )
       }, POLL_TIMEOUT_MS)
 
       pollerRefs.current.set(platform, { intervalId, timeoutId })
@@ -134,15 +138,11 @@ export function ConnectionsPage() {
       const response = await api<LoginResponse>('POST', `/api/publishing/connections/${encodeURIComponent(platform)}/login`)
       const { status, detail } = response
 
-      if (status === 'login_started') {
-        toast.info(detail)
+      if (status === 'login_started' || status === 'login_in_progress') {
+        // 外部ブラウザが開く旨をユーザーに案内してからポーリング開始。
+        toast.info(`${detail} ブラウザが開きます。ログインを完了してください。`)
         startPoller(platform)
-      } else if (status === 'login_in_progress') {
-        toast.info(detail)
-        startPoller(platform)
-      } else if (status === 'unsupported') {
-        toast.error(detail)
-      } else if (status === 'unavailable') {
+      } else if (status === 'unsupported' || status === 'unavailable') {
         toast.error(detail)
       } else {
         toast.info(detail)
@@ -154,19 +154,40 @@ export function ConnectionsPage() {
     }
   }
 
-  const handleDisconnect = async (platform: string) => {
-    if (actionId) return
-    setActionId(`disconnect:${platform}`)
-    stopPoller(platform)
+  // ConfirmDialog 経由の破壊操作用。失敗時は再 throw してダイアログを開いたままにする。
+  const directRun = async (fn: () => Promise<unknown>, successMsg: string): Promise<void> => {
     try {
-      await api<DisconnectResponse>('DELETE', `/api/publishing/connections/${encodeURIComponent(platform)}`)
-      toast.success(`${platformLabel(platform)} の接続を切断しました。`)
+      await fn()
+      toast.success(successMsg)
       await load(true)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '切断に失敗しました。')
-    } finally {
-      setActionId(null)
+      toast.error(err instanceof Error ? err.message : '操作に失敗しました。')
+      throw err
     }
+  }
+
+  const requestDisconnect = (platform: string) => {
+    setConfirm({
+      title: `${platformLabel(platform)} の接続を切断しますか？`,
+      description: (
+        <>
+          セッション情報を削除します。<strong>再投稿には再ログインが必要です。</strong>
+        </>
+      ),
+      confirmLabel: '切断する',
+      run: async () => {
+        stopPoller(platform)
+        setActionId(`disconnect:${platform}`)
+        try {
+          await directRun(
+            () => api<DisconnectResponse>('DELETE', `/api/publishing/connections/${encodeURIComponent(platform)}`),
+            `${platformLabel(platform)} の接続を切断しました。`,
+          )
+        } finally {
+          setActionId(null)
+        }
+      },
+    })
   }
 
   return (
@@ -177,11 +198,12 @@ export function ConnectionsPage() {
           <button
             type="button"
             className="btn btn-secondary btn-sm"
+            aria-label="接続状態を再取得"
             onClick={() => void load()}
-            disabled={loading}
+            disabled={loading || !!actionId}
           >
-            <RefreshCw size={14} />
-            更新
+            <RefreshCw size={14} aria-hidden />
+            {loading ? '更新中…' : '更新'}
           </button>
         </div>
       </header>
@@ -209,7 +231,7 @@ export function ConnectionsPage() {
           <div className="card">
             <div className="card-body">
               <div className="empty-state">
-                <AlertTriangle className="empty-state-icon" size={28} />
+                <Link2 className="empty-state-icon" size={28} />
                 <h3>接続情報の読み込みに失敗しました</h3>
                 <p>{error}</p>
                 <button type="button" className="btn btn-secondary" onClick={() => void load()}>
@@ -225,8 +247,11 @@ export function ConnectionsPage() {
             <div className="card-body">
               <div className="empty-state">
                 <Link2 className="empty-state-icon" size={28} />
-                <h3>プラットフォームが見つかりません</h3>
-                <p>サーバーから接続先プラットフォームが返されませんでした。</p>
+                <h3>接続先プラットフォームがありません</h3>
+                <p>サーバー設定を確認するか、更新してください。</p>
+                <button type="button" className="btn btn-secondary" onClick={() => void load()}>
+                  更新
+                </button>
               </div>
             </div>
           </div>
@@ -236,9 +261,7 @@ export function ConnectionsPage() {
           ? connections.map((conn) => {
               const isConnected = conn.status === 'connected'
               const isPolling = pollingPlatforms.has(conn.platform)
-              const connectBusy = actionId === `connect:${conn.platform}`
               const disconnectBusy = actionId === `disconnect:${conn.platform}`
-              const anyBusy = connectBusy || disconnectBusy
 
               return (
                 <div key={conn.platform} className="card">
@@ -252,13 +275,15 @@ export function ConnectionsPage() {
                           {isPolling && !isConnected ? (
                             <span className="badge badge-yellow flex items-center gap-1">
                               <div className="spinner w-2.5 h-2.5" />
-                              ログイン待機中
+                              別ウィンドウでログインしてください
                             </span>
                           ) : null}
                           <span className="font-semibold">{platformLabel(conn.platform)}</span>
                         </div>
                         <div className="text-sm text-muted">
-                          {isConnected ? `接続日時: ${formatConnectedAt(conn.connected_at)}` : 'ログインしてセッションを確立してください。'}
+                          {isConnected
+                            ? `接続日時: ${formatDateTime(conn.connected_at)}`
+                            : 'ログインしてセッションを確立してください。'}
                         </div>
                       </div>
 
@@ -267,8 +292,8 @@ export function ConnectionsPage() {
                           <button
                             type="button"
                             className="btn btn-danger btn-sm"
-                            onClick={() => void handleDisconnect(conn.platform)}
-                            disabled={anyBusy}
+                            onClick={() => requestDisconnect(conn.platform)}
+                            disabled={!!actionId}
                           >
                             <Unplug size={14} />
                             {disconnectBusy ? '切断中…' : '切断'}
@@ -278,10 +303,10 @@ export function ConnectionsPage() {
                             type="button"
                             className="btn btn-secondary btn-sm"
                             onClick={() => void handleConnect(conn.platform)}
-                            disabled={anyBusy || !!actionId}
+                            disabled={!!actionId}
                           >
                             <Plug size={14} />
-                            {connectBusy ? '接続中…' : '接続'}
+                            {actionId === `connect:${conn.platform}` ? '接続中…' : '接続'}
                           </button>
                         )}
                       </div>
@@ -292,6 +317,20 @@ export function ConnectionsPage() {
             })
           : null}
       </div>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirm(null)
+        }}
+        title={confirm?.title ?? ''}
+        description={confirm?.description}
+        confirmLabel={confirm?.confirmLabel}
+        destructive
+        onConfirm={async () => {
+          if (confirm) await confirm.run()
+        }}
+      />
     </>
   )
 }
