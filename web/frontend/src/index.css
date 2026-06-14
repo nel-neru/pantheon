@@ -1592,6 +1592,39 @@ tr:hover td { background: var(--color-surface-2); }
   margin: 4px 0 12px;
 }
 
+/* HelpPage の CodeBlock（コマンド/URL のコピー・リンク化 / C040） */
+.help-code-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: baseline;
+}
+
+.help-code-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.help-code-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 0;
+}
+
+.help-code-copy:hover {
+  color: var(--color-fg);
+  background: var(--color-surface-2);
+}
+
 /* -----------------------------------------------------------------------
    Toast (Sonner override)
 ----------------------------------------------------------------------- */

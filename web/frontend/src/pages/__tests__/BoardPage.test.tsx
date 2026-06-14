@@ -111,11 +111,11 @@ describe('BoardPage', () => {
     await screen.findByText('Review repo')
 
     // pending task should have cancel button
-    const pendingCard = screen.getByText('Review repo').closest('.board-card')!
+    const pendingCard = (screen.getByText('Review repo').closest('.board-card') as HTMLElement)
     expect(within(pendingCard).getByLabelText('タスクをキャンセル')).toBeInTheDocument()
 
     // running task should NOT have cancel button
-    const runningCard = screen.getByText('Deploy build').closest('.board-card')!
+    const runningCard = (screen.getByText('Deploy build').closest('.board-card') as HTMLElement)
     expect(within(runningCard).queryByLabelText('タスクをキャンセル')).not.toBeInTheDocument()
   })
 
@@ -134,7 +134,7 @@ describe('BoardPage', () => {
     await screen.findByText('Review repo')
 
     // Click the cancel button on the pending task
-    const pendingCard = screen.getByText('Review repo').closest('.board-card')!
+    const pendingCard = (screen.getByText('Review repo').closest('.board-card') as HTMLElement)
     await user.click(within(pendingCard).getByLabelText('タスクをキャンセル'))
 
     // ConfirmDialog should appear — not yet deleted
@@ -166,7 +166,7 @@ describe('BoardPage', () => {
     renderWithRouter(<BoardPage />)
     await screen.findByText('Review repo')
 
-    const pendingCard = screen.getByText('Review repo').closest('.board-card')!
+    const pendingCard = (screen.getByText('Review repo').closest('.board-card') as HTMLElement)
     await user.click(within(pendingCard).getByLabelText('タスクをキャンセル'))
 
     // Dialog appears

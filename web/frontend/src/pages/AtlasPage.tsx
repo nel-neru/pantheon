@@ -1,18 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   GitBranch,
-  LayoutGrid,
   Map as MapIcon,
   Network,
-  Route as RouteIcon,
-  Terminal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
-import { formatDateTime, formatNumber } from '@/lib/utils'
+import { cn, formatDateTime, formatNumber } from '@/lib/utils'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { PageHeader } from '@/components/PageHeader'
 import { RefreshButton } from '@/components/RefreshButton'
@@ -698,9 +694,8 @@ function SubsystemsPanel({ subsystems }: { subsystems: Subsystem[] }) {
             </thead>
             <tbody>
               {sorted.map((sub) => (
-                <>
+                <Fragment key={sub.id}>
                   <tr
-                    key={sub.id}
                     className={sub.paths && sub.paths.length > 0 ? 'cursor-pointer hover:bg-muted/20' : undefined}
                     onClick={
                       sub.paths && sub.paths.length > 0
@@ -719,7 +714,7 @@ function SubsystemsPanel({ subsystems }: { subsystems: Subsystem[] }) {
                     <td className="mono text-sm">{formatNumber(sub.lines)}</td>
                   </tr>
                   {expandedId === sub.id && sub.paths && sub.paths.length > 0 ? (
-                    <tr key={`${sub.id}-paths`}>
+                    <tr>
                       <td colSpan={4} className="bg-muted/10 py-2 px-4">
                         <div className="text-xs text-muted font-semibold mb-1">対象パス:</div>
                         <div className="flex flex-wrap gap-1">
@@ -730,7 +725,7 @@ function SubsystemsPanel({ subsystems }: { subsystems: Subsystem[] }) {
                       </td>
                     </tr>
                   ) : null}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -743,7 +738,6 @@ function SubsystemsPanel({ subsystems }: { subsystems: Subsystem[] }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function AtlasPage() {
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const tabParam = (searchParams.get('tab') ?? 'flows') as TabKey

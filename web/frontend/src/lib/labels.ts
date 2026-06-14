@@ -22,6 +22,7 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'キャンセル',
   canceled: 'キャンセル',
   handed_off: '公開確認待ち',
+  consumed: '消費済み',
   skipped: 'スキップ',
 }
 
@@ -40,6 +41,7 @@ const STATUS_BADGE: Record<string, BadgeClass> = {
   failed: 'badge-red',
   error: 'badge-red',
   rejected: 'badge-red',
+  consumed: 'badge-blue',
   cancelled: 'badge-neutral',
   canceled: 'badge-neutral',
   skipped: 'badge-neutral',

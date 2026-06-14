@@ -91,7 +91,6 @@ export function DataPage() {
   const [history, setHistory] = useState<GoalHistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
   const [historyError, setHistoryError] = useState<string | null>(null)
-  const [clearing, setClearing] = useState(false)
 
   const [files, setFiles] = useState<KnowledgeFile[]>([])
   const [knowledgeLoading, setKnowledgeLoading] = useState(false)
@@ -352,7 +351,6 @@ export function DataPage() {
                     type="button"
                     className="btn btn-danger btn-sm"
                     onClick={handleClearHistoryClick}
-                    disabled={clearing}
                   >
                     <Trash2 size={13} />
                     履歴をクリア

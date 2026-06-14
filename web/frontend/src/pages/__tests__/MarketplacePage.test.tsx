@@ -215,10 +215,10 @@ it('事業部追加成功後にデータ再取得(load)を呼ぶ', async () => {
   await waitFor(() => {
     const getAllCalls = mockApi.mock.calls
     const divisionCall = getAllCalls.some(
-      ([m, p]: [string, string]) => m === 'POST' && p.includes('/divisions')
+      ([m, p]) => m === 'POST' && (p as string).includes('/divisions')
     )
     const reloadCall = getAllCalls.filter(
-      ([m, p]: [string, string]) => m === 'GET' && p === '/api/company-plugin-manifests'
+      ([m, p]) => m === 'GET' && p === '/api/company-plugin-manifests'
     )
     // 初回load + 追加後のload = 少なくとも2回
     expect(divisionCall).toBe(true)

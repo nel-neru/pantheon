@@ -36,7 +36,16 @@ const failedJob = {
   run_count: 5,
 }
 
-const stoppedDaemon = {
+type DaemonStatus = {
+  running: boolean
+  pid: number | null
+  rate_limited: boolean
+  retry_at: string | null
+  cycle_count: number
+  interval_seconds: number | null
+}
+
+const stoppedDaemon: DaemonStatus = {
   running: false,
   pid: null,
   rate_limited: false,
@@ -45,7 +54,7 @@ const stoppedDaemon = {
   interval_seconds: null,
 }
 
-const runningDaemon = {
+const runningDaemon: DaemonStatus = {
   running: true,
   pid: 1234,
   rate_limited: false,
@@ -54,7 +63,7 @@ const runningDaemon = {
   interval_seconds: 600,
 }
 
-function routeGet(jobs: (typeof job)[], daemon = stoppedDaemon) {
+function routeGet(jobs: (typeof job)[], daemon: DaemonStatus = stoppedDaemon) {
   mockApi.mockImplementation(async (method: string, path: string) => {
     if (method === 'GET' && path === '/api/content-jobs') return jobs
     if (method === 'GET' && path === '/api/organizations')

@@ -56,7 +56,7 @@ function wmuxInfo(state: string): WmuxInfo {
 export function SessionsPage() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<SessionRecord[]>([])
-  const [runtime, setRuntime] = useState<RuntimeStatus | null | 'error'>('error')
+  const [runtime, setRuntime] = useState<RuntimeStatus | null | 'error'>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState<{ sessionId: string; agentId: string; title: string } | null>(null)
@@ -270,7 +270,7 @@ export function SessionsPage() {
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          onClick={() => navigate('/sessions')}
+                          onClick={() => navigate('/inbox')}
                           title="承認インボックスを確認する"
                         >
                           承認する
