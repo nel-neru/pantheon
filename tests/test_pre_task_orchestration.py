@@ -148,6 +148,29 @@ class TestDynamicAgentSpawner:
         result = spawner.spawn(req)
         assert result.agent.name == "MyCustomAgent"
 
+    def test_single_resolved_skill_equal_to_fallback_still_gets_two_skills(self):
+        """解決結果が1個かつ既定フォールバック(deep_research)と一致しても、
+        重複を避けて別スキルを足し min2 を満たす（SpecialistAgent.skills の min_length=2 を保証）。"""
+        spawner = DynamicAgentSpawner()
+        req = SpawnRequest(required_skills=["deep_research"], purpose="テスト")
+        result = spawner.spawn(req)
+        assert result.success
+        assert result.agent is not None
+        skill_values = [s.value for s in result.agent.skills]
+        assert len(skill_values) >= 2
+        assert len(set(skill_values)) == len(skill_values)  # 重複なし
+        assert "deep_research" in skill_values
+
+    def test_all_unresolvable_skills_still_produce_valid_agent(self):
+        """全スキル名が AgentSkill にもエイリアスにも解決できなくても、
+        フォールバックで2スキル以上の有効なエージェントを作る。"""
+        spawner = DynamicAgentSpawner()
+        req = SpawnRequest(required_skills=["xyzzy", "foobar"], purpose="テスト")
+        result = spawner.spawn(req)
+        assert result.success
+        assert result.agent is not None
+        assert len(result.agent.skills) >= 2
+
 
 # ═══════════════════════════════════════════════════════════════
 # OrchestrationPatternStore テスト

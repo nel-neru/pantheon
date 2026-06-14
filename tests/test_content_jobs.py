@@ -104,6 +104,22 @@ def test_run_content_job_no_publish_block_without_target(tmp_path):
     assert "publish" not in spec
 
 
+def test_run_content_job_invalid_publish_mode_coerces_to_assisted(tmp_path):
+    """不正な publish_mode は安全側 'assisted' に矯正される（誤って auto 実送信を予約しない）。"""
+    psm, org = _setup_org(tmp_path)
+    job = ContentJob(
+        org_name=org.name,
+        kind="content_brief",
+        theme="朝活",
+        publish_platform="note",
+        publish_mode="bogus",
+    )
+    _run(run_content_job(job, psm))
+    proposals = psm.get_org_state_manager(org).get_all_improvement_proposals()
+    spec = proposals[0].get("intervention_spec") or {}
+    assert spec.get("publish") == {"platform": "note", "mode": "assisted"}
+
+
 def test_run_content_job_ignores_unsupported_platform(tmp_path):
     """未対応プラットフォームは publish ブロックを載せない（誤投稿を防ぐ）。"""
     psm, org = _setup_org(tmp_path)
