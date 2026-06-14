@@ -4,6 +4,7 @@ HealthReportGenerator — 週次健康診断レポート (I-08)
 
 from __future__ import annotations
 
+import html
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -66,15 +67,18 @@ class HealthReportGenerator:
         )
 
     def format_html(self, report: HealthReport) -> str:
-        issues = "".join(f"<li>{issue}</li>" for issue in report.issues) or "<li>問題なし</li>"
-        recs = "".join(f"<li>{rec}</li>" for rec in report.recommendations)
+        issues = (
+            "".join(f"<li>{html.escape(issue)}</li>" for issue in report.issues)
+            or "<li>問題なし</li>"
+        )
+        recs = "".join(f"<li>{html.escape(rec)}</li>" for rec in report.recommendations)
         metrics = "".join(
-            f"<li><strong>{key}</strong>: {value}</li>"
+            f"<li><strong>{html.escape(str(key))}</strong>: {html.escape(str(value))}</li>"
             for key, value in sorted(report.metrics.items())
         )
         return (
             "<html><body>"
-            f"<h1>{report.org_name} Weekly Health Report</h1>"
+            f"<h1>{html.escape(report.org_name)} Weekly Health Report</h1>"
             f"<p>Period: {report.period}</p>"
             "<h2>Metrics</h2><ul>" + metrics + "</ul>"
             "<h2>Issues</h2><ul>" + issues + "</ul>"

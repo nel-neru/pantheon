@@ -72,6 +72,8 @@ class MilestoneTracker:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             return []
+        if not isinstance(payload, list):
+            return []
         milestones: list[Milestone] = []
         for raw in payload:
             try:

@@ -197,9 +197,9 @@ class CapabilityGapAnalyzer:
             return True
         try:
             last_run = datetime.fromisoformat(path.read_text(encoding="utf-8").strip())
-        except Exception:
+            return datetime.now(timezone.utc) - last_run > timedelta(days=7)
+        except Exception:  # 破損/naive-tz は「要再実行」に倒す
             return True
-        return datetime.now(timezone.utc) - last_run > timedelta(days=7)
 
     def mark_analysis_run(self, last_run_path: Path) -> None:
         """Persist the current analysis timestamp."""
