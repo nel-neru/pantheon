@@ -163,7 +163,11 @@ def _collect_args(parser: argparse.ArgumentParser) -> list[dict[str, Any]]:
             args.append(
                 {
                     "name": ", ".join(act.option_strings) if act.option_strings else act.dest,
-                    "required": bool(getattr(act, "required", False)) or not act.option_strings,
+                    "required": (
+                        bool(getattr(act, "required", False))
+                        if act.option_strings
+                        else act.nargs not in ("?", "*", 0)
+                    ),
                     "help": act.help or "",
                 }
             )
@@ -290,7 +294,7 @@ def introspect_frontend() -> dict[str, Any]:
             pages.append(
                 {
                     "name": page.stem,
-                    "path": str(page.relative_to(PROJECT_ROOT)).replace("\\", "/"),
+                    "path": page.relative_to(PROJECT_ROOT).as_posix(),
                     "lines": _count_lines(page),
                 }
             )
@@ -307,7 +311,7 @@ def _subsystem_of(rel_path: str) -> str:
     for key, meta in SUBSYSTEMS.items():
         for prefix in meta["paths"]:
             pfx = prefix.replace("\\", "/")
-            if norm == pfx or norm.startswith(pfx + "/") or norm.startswith(pfx):
+            if norm == pfx or norm.startswith(pfx + "/"):
                 if len(pfx) > best_len:
                     best_len = len(pfx)
                     best_label = key
