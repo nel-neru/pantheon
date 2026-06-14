@@ -240,14 +240,14 @@ def test_skill_gap_detector_triggers_after_3_failures():
     gaps = detector.detect_gaps()
 
     assert len(gaps) == 1
-    assert gaps[0].detected_skill_name == "TOOL_INTEGRATION"
+    assert gaps[0].detected_skill_name == "tool_integration"
     assert detector.detect_gaps() == []
 
 
 def test_skill_gap_detector_recommendation():
     detector = SkillGapDetector()
 
-    assert detector.get_skill_recommendation("architecture") == "STRATEGIC_PLANNING"
+    assert detector.get_skill_recommendation("architecture") == "strategic_planning"
     assert detector.get_skill_recommendation("unknown") is None
 
 

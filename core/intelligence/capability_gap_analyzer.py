@@ -19,6 +19,10 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# 優先度の表示順ランク（high > medium > low）。文字列の辞書順では 'low' < 'medium'
+# となり medium より low が先に並んでしまうため、明示ランクで並べ替える。
+_PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
+
 
 @dataclass
 class CapabilityGap:
@@ -170,7 +174,7 @@ class CapabilityGapAnalyzer:
         if not active:
             return "【能力ギャップ】なし（現在のシステム能力は十分です）"
         lines = ["【検出された能力ギャップ】"]
-        for gap in sorted(active, key=lambda g: g.priority):
+        for gap in sorted(active, key=lambda g: _PRIORITY_RANK.get(g.priority, 99)):
             lines.append(
                 f"  [{gap.priority.upper()}] {gap.suggested_name} ({gap.suggested_type})\n"
                 f"    理由: {gap.description}"

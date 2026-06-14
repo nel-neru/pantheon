@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from core.models.organization import AgentSkill
+
 
 @dataclass
 class SkillGap:
@@ -21,11 +23,14 @@ class SkillGap:
 
 
 class SkillGapDetector:
+    # 失敗カテゴリ -> 推奨スキル。AgentSkill の *enum 値*（lowercase）でキー化し、
+    # detected_skill_name / get_skill_recommendation が実在の AgentSkill トークンを
+    # 返すようにする（以前は UPPERCASE の enum 名＋AgentSkill に存在しない "TESTING"）。
     FAILURE_SKILL_MAP: dict[str, str] = {
-        "security": "TOOL_INTEGRATION",
-        "performance": "PERFORMANCE_ANALYSIS",
-        "testing": "TESTING",
-        "architecture": "STRATEGIC_PLANNING",
+        "security": AgentSkill.TOOL_INTEGRATION.value,
+        "performance": AgentSkill.PERFORMANCE_ANALYSIS.value,
+        "testing": AgentSkill.CODEBASE_EXPLORATION.value,
+        "architecture": AgentSkill.STRATEGIC_PLANNING.value,
     }
 
     def __init__(self):
