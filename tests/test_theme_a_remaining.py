@@ -119,17 +119,17 @@ def test_task_matcher_returns_ranked_agents():
     agents = [
         {
             "agent_id": "agent-a",
-            "skills": ["TOOL_INTEGRATION", "DEEP_RESEARCH"],
+            "skills": ["tool_integration", "deep_research"],
             "performance_score": 1.0,
         },
         {
             "agent_id": "agent-b",
-            "skills": ["TOOL_INTEGRATION"],
+            "skills": ["tool_integration"],
             "performance_score": 0.5,
         },
         {
             "agent_id": "agent-c",
-            "skills": ["PROMPT_ENGINEERING"],
+            "skills": ["prompt_engineering"],
             "performance_score": 3.0,
         },
     ]
@@ -137,15 +137,15 @@ def test_task_matcher_returns_ranked_agents():
     ranked = matcher.match("security", agents)
 
     assert [agent["agent_id"] for agent in ranked] == ["agent-a", "agent-c", "agent-b"]
-    assert ranked[0]["matched_skills"] == ["DEEP_RESEARCH", "TOOL_INTEGRATION"]
+    assert ranked[0]["matched_skills"] == ["deep_research", "tool_integration"]
 
 
 def test_task_matcher_match_rate():
     matcher = TaskMatcher()
     agents = [
-        {"agent_id": "a", "skills": ["TESTING"], "performance_score": 1.0},
-        {"agent_id": "b", "skills": ["CODE_REVIEW"], "performance_score": 2.0},
-        {"agent_id": "c", "skills": ["PROMPT_ENGINEERING"], "performance_score": 3.0},
+        {"agent_id": "a", "skills": ["codebase_exploration"], "performance_score": 1.0},
+        {"agent_id": "b", "skills": ["tool_integration"], "performance_score": 2.0},
+        {"agent_id": "c", "skills": ["prompt_engineering"], "performance_score": 3.0},
     ]
 
     assert matcher.get_match_rate("testing", agents) == 2 / 3

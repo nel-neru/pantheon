@@ -5,13 +5,21 @@ TaskMatcher — タスクカテゴリ×スキルマッチング最適化 (A-05)
 
 from __future__ import annotations
 
+from core.models.organization import AgentSkill
+
+# Category → required skills, keyed by AgentSkill *enum values* (lowercase) so
+# the set-intersection in match()/get_match_rate() works against real agent
+# skill lists, which carry AgentSkill.value strings. (Previously these were
+# UPPERCASE enum *names* plus CODE_REVIEW/REFACTORING/TESTING tokens that are
+# not AgentSkill members at all, so the intersection against a real registry
+# was always empty.)
 CATEGORY_SKILL_MAP: dict[str, list[str]] = {
-    "security": ["TOOL_INTEGRATION", "DEEP_RESEARCH"],
-    "performance": ["PERFORMANCE_ANALYSIS", "STRATEGIC_PLANNING"],
-    "maintainability": ["CODE_REVIEW", "REFACTORING"],
-    "testing": ["TESTING", "CODE_REVIEW"],
-    "architecture": ["STRATEGIC_PLANNING", "DEEP_RESEARCH"],
-    "documentation": ["PROMPT_ENGINEERING", "CODE_REVIEW"],
+    "security": [AgentSkill.TOOL_INTEGRATION.value, AgentSkill.DEEP_RESEARCH.value],
+    "performance": [AgentSkill.PERFORMANCE_ANALYSIS.value, AgentSkill.STRATEGIC_PLANNING.value],
+    "maintainability": [AgentSkill.CODEBASE_EXPLORATION.value, AgentSkill.KNOWLEDGE_CURATION.value],
+    "testing": [AgentSkill.CODEBASE_EXPLORATION.value, AgentSkill.TOOL_INTEGRATION.value],
+    "architecture": [AgentSkill.STRATEGIC_PLANNING.value, AgentSkill.DEEP_RESEARCH.value],
+    "documentation": [AgentSkill.PROMPT_ENGINEERING.value, AgentSkill.KNOWLEDGE_CURATION.value],
 }
 
 
