@@ -123,7 +123,10 @@ async def run_publish_job(
             result = await get_adapter(job.platform).publish(content, target, dry_run=True)
         except (ValueError, NotImplementedError) as exc:
             result = PublishResult(
-                ok=False, platform=job.platform, error=f"{type(exc).__name__}: {exc}", mode=job.mode
+                ok=False,
+                platform=job.platform,
+                error=f"{type(exc).__name__}: {exc}",
+                mode=target.mode,
             )
         return _result_dict(job, result)
 
@@ -132,7 +135,7 @@ async def run_publish_job(
         result = await get_adapter(job.platform).publish(content, target, dry_run=False)
     except Exception as exc:  # noqa: BLE001 — アダプタの想定外失敗も failed に落とす
         result = PublishResult(
-            ok=False, platform=job.platform, error=f"{type(exc).__name__}: {exc}", mode=job.mode
+            ok=False, platform=job.platform, error=f"{type(exc).__name__}: {exc}", mode=target.mode
         )
 
     if result.ok and result.handed_off:

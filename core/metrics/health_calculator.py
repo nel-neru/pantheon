@@ -70,9 +70,13 @@ class HealthCalculator:
         valid = []
         for timestamp in timestamps:
             try:
-                valid.append((datetime.fromisoformat(timestamp), timestamp))
+                parsed = datetime.fromisoformat(timestamp)
             except ValueError:
                 continue
+            # naive な日時は UTC として扱う（aware と naive の混在ソートでの TypeError を防ぐ）。
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            valid.append((parsed, timestamp))
         if not valid:
             return ""
         valid.sort(key=lambda item: item[0])

@@ -272,8 +272,12 @@ def _load_session(session_id: str) -> dict[str, Any] | None:
     path = _get_session_path(session_id)
     if not path.exists():
         return None
-    with path.open(encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with path.open(encoding="utf-8") as f:
+            loaded = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
 
 
 def _save_session(session: dict[str, Any]) -> None:
