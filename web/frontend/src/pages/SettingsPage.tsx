@@ -5,6 +5,18 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatBytes } from '@/lib/utils'
 
+type TokenQuota = {
+  window_hours: number
+  soft_limit_tokens: number
+  hard_limit_tokens: number
+}
+
+type NotificationSettings = {
+  min_level: string
+  quiet_hours_start: number
+  quiet_hours_end: number
+}
+
 type SettingsData = {
   llm_model: string
   daemon_interval: number
@@ -12,9 +24,13 @@ type SettingsData = {
   model_configurations: Record<string, unknown>
   prompt_templates: Record<string, string>
   policy_rules: Record<string, unknown>
+  token_quota?: TokenQuota
+  notification_settings?: NotificationSettings
   settings_file: string
   has_llm: boolean
 }
+
+const NOTIFICATION_LEVELS = ['info', 'warn', 'critical'] as const
 
 type ModelsResponse = {
   provider: string
@@ -94,6 +110,13 @@ export function SettingsPage() {
   const [modelConfigurationsText, setModelConfigurationsText] = useState(prettyJson(DEFAULT_SETTINGS_DATA.model_configurations))
   const [promptTemplatesText, setPromptTemplatesText] = useState(prettyJson(DEFAULT_SETTINGS_DATA.prompt_templates as Record<string, unknown>))
   const [policyRulesText, setPolicyRulesText] = useState(prettyJson(DEFAULT_SETTINGS_DATA.policy_rules))
+  // SET-EXPOSE: トークンクォータ・通知設定（統一アプリ設定）
+  const [windowHours, setWindowHours] = useState(5)
+  const [softLimit, setSoftLimit] = useState(0)
+  const [hardLimit, setHardLimit] = useState(0)
+  const [notifyMinLevel, setNotifyMinLevel] = useState('info')
+  const [quietStart, setQuietStart] = useState(0)
+  const [quietEnd, setQuietEnd] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -113,6 +136,16 @@ export function SettingsPage() {
       setModelConfigurationsText(prettyJson(s.model_configurations))
       setPromptTemplatesText(prettyJson(s.prompt_templates as Record<string, unknown>))
       setPolicyRulesText(prettyJson(s.policy_rules))
+      if (s.token_quota) {
+        setWindowHours(s.token_quota.window_hours)
+        setSoftLimit(s.token_quota.soft_limit_tokens)
+        setHardLimit(s.token_quota.hard_limit_tokens)
+      }
+      if (s.notification_settings) {
+        setNotifyMinLevel(s.notification_settings.min_level)
+        setQuietStart(s.notification_settings.quiet_hours_start)
+        setQuietEnd(s.notification_settings.quiet_hours_end)
+      }
       setLoadError(null)
       setValidationError(null)
     } else {
@@ -169,6 +202,16 @@ export function SettingsPage() {
         model_configurations: modelConfigurations,
         prompt_templates: promptTemplates,
         policy_rules: policyRules,
+        token_quota: {
+          window_hours: windowHours,
+          soft_limit_tokens: softLimit,
+          hard_limit_tokens: hardLimit,
+        },
+        notification_settings: {
+          min_level: notifyMinLevel,
+          quiet_hours_start: quietStart,
+          quiet_hours_end: quietEnd,
+        },
       })
       toast.success('設定を保存しました。')
       await load()
@@ -332,6 +375,93 @@ export function SettingsPage() {
                       max={1000}
                       value={daemonMaxFiles}
                       onChange={(e) => setDaemonMaxFiles(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">リソース制御・通知</div>
+                  <div className="card-description">
+                    トークンクォータ上限（5h 窓の自動スロットリング）と通知の最小レベル・静音時間帯。
+                  </div>
+                </div>
+              </div>
+              <div className="card-body flex flex-col gap-4">
+                <div className="settings-row-2">
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="quota-window">クォータ窓（時間）</label>
+                    <input
+                      id="quota-window"
+                      className="input"
+                      type="number"
+                      min={1}
+                      value={windowHours}
+                      onChange={(e) => setWindowHours(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="quota-soft">ソフト上限（トークン）</label>
+                    <input
+                      id="quota-soft"
+                      className="input"
+                      type="number"
+                      min={0}
+                      value={softLimit}
+                      onChange={(e) => setSoftLimit(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="quota-hard">ハード上限（トークン）</label>
+                    <input
+                      id="quota-hard"
+                      className="input"
+                      type="number"
+                      min={0}
+                      value={hardLimit}
+                      onChange={(e) => setHardLimit(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="settings-row-2">
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="notify-level">通知 最小レベル</label>
+                    <select
+                      id="notify-level"
+                      className="select"
+                      value={notifyMinLevel}
+                      onChange={(e) => setNotifyMinLevel(e.target.value)}
+                    >
+                      {NOTIFICATION_LEVELS.map((lv) => (
+                        <option key={lv} value={lv}>{lv}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="quiet-start">静音 開始（時）</label>
+                    <input
+                      id="quiet-start"
+                      className="input"
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={quietStart}
+                      onChange={(e) => setQuietStart(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="quiet-end">静音 終了（時）</label>
+                    <input
+                      id="quiet-end"
+                      className="input"
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={quietEnd}
+                      onChange={(e) => setQuietEnd(Number(e.target.value))}
                     />
                   </div>
                 </div>

@@ -97,3 +97,51 @@ def test_load_rules_defaults_when_missing(tmp_path):
     rules = load_rules(tmp_path / "nonexistent.yaml")
     assert rules.window_hours == 5.0
     assert rules.soft_limit_tokens > 0 and rules.hard_limit_tokens > rules.soft_limit_tokens
+
+
+def test_save_rules_persists_and_roundtrips(tmp_path):
+    """SET-EXPOSE: save_rules が token_quota.yaml に書き、load_rules で読み戻せる。"""
+    from core.runtime.quota_governor import load_rules, save_rules
+
+    path = tmp_path / "token_quota.yaml"
+    saved = save_rules(
+        window_hours=6, soft_limit_tokens=100000, hard_limit_tokens=200000, path=path
+    )
+    assert saved.window_hours == 6
+    reloaded = load_rules(path)
+    assert reloaded.soft_limit_tokens == 100000
+    assert reloaded.hard_limit_tokens == 200000
+    assert reloaded.window_hours == 6
+
+
+def test_save_rules_partial_update_keeps_others(tmp_path):
+    """未指定項目は現行値を保つ（部分更新）。"""
+    from core.runtime.quota_governor import save_rules
+
+    path = tmp_path / "token_quota.yaml"
+    first = save_rules(soft_limit_tokens=50000, hard_limit_tokens=90000, path=path)
+    second = save_rules(window_hours=8, path=path)  # soft/hard は据え置き
+    assert second.soft_limit_tokens == first.soft_limit_tokens == 50000
+    assert second.hard_limit_tokens == first.hard_limit_tokens == 90000
+    assert second.window_hours == 8
+
+
+def test_save_rules_swaps_when_soft_exceeds_hard(tmp_path):
+    """soft > hard の指定は安全側に入れ替える（soft <= hard を保証）。"""
+    from core.runtime.quota_governor import save_rules
+
+    path = tmp_path / "token_quota.yaml"
+    rules = save_rules(soft_limit_tokens=300000, hard_limit_tokens=100000, path=path)
+    assert rules.soft_limit_tokens <= rules.hard_limit_tokens
+    assert rules.soft_limit_tokens == 100000 and rules.hard_limit_tokens == 300000
+
+
+def test_save_rules_ignores_invalid_values(tmp_path):
+    """0/負/非数は無視され現行（デフォルト）値を保つ。"""
+    from core.runtime.quota_governor import load_rules, save_rules
+
+    path = tmp_path / "token_quota.yaml"
+    defaults = load_rules(path)
+    rules = save_rules(window_hours=0, soft_limit_tokens=-5, hard_limit_tokens="x", path=path)
+    assert rules.window_hours == defaults.window_hours
+    assert rules.soft_limit_tokens == defaults.soft_limit_tokens

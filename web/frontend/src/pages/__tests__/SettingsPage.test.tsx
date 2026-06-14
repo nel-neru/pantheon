@@ -19,6 +19,8 @@ const settings = {
   model_configurations: { default: { temperature: 0.2 } },
   prompt_templates: { analysis: 'do it' },
   policy_rules: { auto_approve: {}, human_required: {}, auto_reject: {} },
+  token_quota: { window_hours: 5, soft_limit_tokens: 80000, hard_limit_tokens: 160000 },
+  notification_settings: { min_level: 'info', quiet_hours_start: 0, quiet_hours_end: 0 },
   settings_file: '/Users/test/settings.json',
   has_llm: true,
 }
@@ -145,6 +147,9 @@ describe('SettingsPage', () => {
         model_configurations: expect.any(Object),
         prompt_templates: expect.any(Object),
         policy_rules: expect.any(Object),
+        // SET-EXPOSE: クォータ・通知設定も PUT ペイロードに含まれる
+        token_quota: expect.objectContaining({ soft_limit_tokens: 80000 }),
+        notification_settings: expect.objectContaining({ min_level: 'info' }),
       }))
     })
   })
