@@ -141,14 +141,26 @@ class OrchestrationPatternStore:
             return
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            for d in data.get("records", []):
+        except (OSError, ValueError) as e:
+            logger.warning("OrchestrationPatternStore load failed: %s", e)
+            return
+        raw = data.get("records", []) if isinstance(data, dict) else []
+        if not isinstance(raw, list):
+            logger.warning("OrchestrationPatternStore: records は list ではありません; 無視します")
+            raw = []
+        for d in raw:
+            if not isinstance(d, dict):
+                logger.warning("OrchestrationPatternStore: 非 dict レコードをスキップ")
+                continue
+            try:
                 self._records.append(
                     PatternRecord(
                         **{k: v for k, v in d.items() if k in PatternRecord.__dataclass_fields__}
                     )
                 )
-        except Exception as e:
-            logger.warning("OrchestrationPatternStore load failed: %s", e)
+            except Exception as e:  # 1 件の破損で後続レコードを失わない
+                logger.warning("OrchestrationPatternStore: 不正レコードをスキップ: %s", e)
+                continue
 
     def _save(self) -> None:
         path = self._store_file

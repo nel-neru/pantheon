@@ -94,8 +94,11 @@ class RepoStateManager:
         """最近の決定を取得（他のセッションが参照するため）"""
         decisions = []
         for f in self.decisions_dir.glob("*.json"):
-            with open(f, "r", encoding="utf-8") as fp:
-                decisions.append(json.load(fp))
+            try:
+                with open(f, "r", encoding="utf-8") as fp:
+                    decisions.append(json.load(fp))
+            except (OSError, ValueError):
+                continue
 
         def sort_key(decision: Dict[str, Any]) -> datetime:
             timestamp = str(decision.get("timestamp", ""))

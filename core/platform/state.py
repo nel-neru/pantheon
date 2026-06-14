@@ -158,7 +158,15 @@ class PlatformStateManager:
     def load_platform_config(self) -> Dict[str, Any]:
         if not self.platform_file.exists():
             return {}
-        return json.loads(self.platform_file.read_text(encoding="utf-8"))
+        try:
+            return json.loads(self.platform_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:  # JSONDecodeError は ValueError の派生
+            logger.warning(
+                "platform.json が読み込めません（破損/切り詰め?）; 空設定として扱います: %s (%s)",
+                self.platform_file,
+                exc,
+            )
+            return {}
 
     def save_platform_config(self, config: Dict[str, Any]) -> None:
         config["last_updated"] = datetime.now(timezone.utc).isoformat()
