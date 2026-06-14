@@ -2,7 +2,7 @@
 
 - 生成: 2026-06-14 / 出典: workflow gui-frontend-audit (run w3bnm8rn9, 49 agents)
 - 対象GUI: **web/frontend (legacy / 既定UI)**
-- 進捗: **5/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
+- 進捗: **10/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
 - **このファイルが改善の正本**。各変更を着手→完了→検証で状態遷移させながら実装する。
 - 機械可読の進捗は `gui-frontend-audit-state.json`（本ファイルと対・JSONが正本）。
 - 由来: 全21画面の要素インベントリ→6軸（必要性/妥当性/機能性/利便性/拡張性/保守性）厳格評価→横断監査→重複排除した優先度付き計画（Workflow `gui-frontend-audit`）。
@@ -79,7 +79,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: necessity, validity, functionality
   - 根拠: necessity/validity: kind==='publish'の『投稿』がPOST /publish-jobs/{id}/runを無確認ワンクリックで発火し、note/X/WordPressへ取り消し不能な外部公開を実行する。『公開=人手ゲート』という製品の安全境界(CLAUDE.md/PUB-AUTO)と真っ向から矛盾し、最も損害の大きい操作が最も軽いガードになっている逆転。媒体名・本文要約・予約時刻を出すRadix AlertDialog確認を必須化し、preview(dry-run)→approveの二段導線にする。
   - テスト影響: InboxPage.test の『投稿で run を叩く』テストが確認ダイアログ経由に変わるため要更新。確認→実行/キャンセルのテストを追加。
-- [ ] **C003** `[P0]` `<fix>` risk=medium — HumanTasks/Board/Dashboard/Settings等の確認なし破壊操作を是正
+- [~] **C003** `[P0]` `<fix>` risk=medium — HumanTasks/Board/Dashboard/Settings等の確認なし破壊操作を是正 _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/HumanTasksPage.tsx`, `web/frontend/src/pages/BoardPage.tsx`, `web/frontend/src/pages/DashboardPage.tsx`, `web/frontend/src/pages/ProposalsPage.tsx`, `web/frontend/src/pages/SettingsPage.tsx`
   - 軸: necessity, validity, functionality
   - 根拠: necessity/validity: HumanTasksの『完了』(不可逆・高リスク最終確認の場でこそ無確認は設計矛盾)、Boardのrunningタスクキャンセル(backendがPENDINGのみ許可するため必ず失敗する死んだ破壊操作)、Dashboardのinit(再初期化)/daemon stop、Proposals一括承認(コード適用を伴う)、SettingsのloadError中DEFAULT上書き保存。C002のConfirmDialogで確認を入れ、Boardのキャンセルはpendingのみに条件を絞る。
@@ -125,7 +125,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, convenience, maintainability
   - 根拠: validity/convenience: ContentScheduleはPromise.allSettledで失敗を握りつぶしerror/再試行UIが皆無→API失敗時に空カードで無言。他は三項チェーンとloading/error独立判定で分岐形式も分裂。全ページにAlertTriangle空状態+再試行を必須化し、共通AsyncBoundary(loading/error/empty)へ寄せる。
   - テスト影響: ContentScheduleにエラー状態テストを新規追加。共通AsyncBoundaryの単体テスト。
-- [ ] **C027** `[P2]` `<improve>` risk=low — 再取得時の全画面spinner置換によるチラつきを解消(quiet再取得)
+- [~] **C027** `[P2]` `<improve>` risk=low — 再取得時の全画面spinner置換によるチラつきを解消(quiet再取得) _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/InboxPage.tsx`, `web/frontend/src/pages/HumanTasksPage.tsx`, `web/frontend/src/pages/NotificationsPage.tsx`, `web/frontend/src/pages/OrgsPage.tsx`, `web/frontend/src/pages/MarketplacePage.tsx`, `web/frontend/src/pages/AtlasPage.tsx`, `web/frontend/src/pages/SessionsPage.tsx`, `web/frontend/src/pages/BoardPage.tsx`
   - 軸: convenience, validity
   - 根拠: convenience: 多くのページで更新/操作後の非quiet load()がリスト全体をspinnerへ置換し既存表示が消えてチラつく(Inbox/HumanTasks/Notifications/Orgs/Marketplace/Atlas/Sessions/Board/Handoffs)。初回マウントのみフルローディング、再取得はquiet=trueで既存保持+控えめインジケータ/skeletonへ統一。
@@ -136,7 +136,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: validity/convenience: WS依存ページ(Inbox/Sessions/Orchestra)はポーリング廃止でWS断時にデータが静かに陳腐化するが警告無し。ヘッダは3s再接続ループで永遠に『再接続中』のまま恒久断にエスカレーションせず誤認を招く。共有Provider(C009)上で切断バナー『表示が古い可能性』を出し、一定回数失敗で『オフライン』へ昇格。
   - テスト影響: 切断状態のバナー表示/オフライン昇格テストを追加。
 
-### W4 — Dashboard＋画面別機能修正  (0/13)
+### W4 — Dashboard＋画面別機能修正  (4/13)
 
 - [ ] **C012** `[P1]` `<merge>` risk=medium — Dashboardの重複カードを統合(約11枚→7枚)
   - 対象: `web/frontend/src/pages/DashboardPage.tsx`
@@ -148,17 +148,17 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, functionality
   - 根拠: validity: 総提案数/承認率/改善速度/velocityがexecution-history limit=40窓に依存し『累計』を僭称。承認率は分母0で0%表示が実績ゼロと却下多数を区別不能。サーバ集計エンドポイントへ切替えるか、無理なら『直近40件の…』へ正直化し分母0は『データなし/—』に。velocityは手書きSVGをやめrecharts/共通チャートへ。
   - テスト影響: 集計表示テストを更新。サーバ集計を足す場合はバックエンドテストを追加。
-- [ ] **C017** `[P1]` `<fix>` risk=low — ナビ依存の死んだリストにアクション/遷移を付与(承認・詳細導線)
+- [~] **C017** `[P1]` `<fix>` risk=low — ナビ依存の死んだリストにアクション/遷移を付与(承認・詳細導線) _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/MarketplacePage.tsx`, `web/frontend/src/pages/RevenuePage.tsx`, `web/frontend/src/pages/OrgsPage.tsx`, `web/frontend/src/pages/HandoffsPage.tsx`, `web/frontend/src/pages/DashboardPage.tsx`
   - 軸: functionality, necessity, convenience
   - 根拠: functionality/necessity: Marketplaceの新規会社候補・Revenueのportfolio提案・Orgs詳細の未対応提案リストが読み取り専用で承認/会社化/詳細へ進めず(routeフィールド未使用)。Dashboard handoff一覧も承認へ飛べない。各行に『承認インボックスで開く』/該当画面リンクを付与しpriority降順ソートも実装、死んだ示唆を行動の起点にする。
   - テスト影響: 各行の遷移/起票テストを追加。
-- [ ] **C018** `[P1]` `<fix>` risk=low — install-division-button等の『成功が反映されない』非一貫挙動を修正
+- [x] **C018** `[P1]` `<fix>` risk=low — install-division-button等の『成功が反映されない』非一貫挙動を修正 _(状態: done)_
   - 対象: `web/frontend/src/pages/MarketplacePage.tsx`
   - 軸: functionality, validity
   - 根拠: functionality/validity: install-divisionが成功後にload()を呼ばず画面が更新されない(installCompany/scanは更新する)ため、成功トーストを見ても結果が反映されず再押下で二重追加を誘発=『壊れて見える』(P0級)。成功後にload()または局所更新を必ず行い、対象org取り違え防止に確認も挟む。
   - テスト影響: 追加成功後の再取得/反映テストを追加。
-- [ ] **C019** `[P2]` `<improve>` risk=low — ContentScheduleループ間隔のハードコード(interval:600)を可変化+可視化
+- [x] **C019** `[P2]` `<improve>` risk=low — ContentScheduleループ間隔のハードコード(interval:600)を可変化+可視化 _(状態: done)_
   - 対象: `web/frontend/src/pages/ContentSchedulePage.tsx`
   - 軸: validity, functionality, convenience
   - 根拠: validity/functionality: ジョブ側は1時間〜1週間選べるのにループ巡回間隔だけinterval:600固定・非表示でブラックボックス。実行間隔セレクトを開始ボタン近くに用意し送信値を可変化、最低でも『10分ごとに巡回』をUI明示。job-run-nowの連打防止(行単位disabled+スピナー)も追加。
@@ -168,17 +168,17 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: necessity, convenience, extensibility
   - 根拠: necessity/convenience: スタジオ/コンテンツ予約/引き渡し/収益が分散配置でワークフロー(生成→予約→引き渡し→収益)として連続せず、Studioは保存もAPI呼び出しも無い孤島でContentが生成した下書きと相互に流し込めない。『収益化』グループに連続配置し、Studioを承認待ち下書きを読み込む下書きビューアとして/content・/inboxのpublishから開けるよう接続。接続しないなら単独ナビは廃しContent詳細に内包。
   - テスト影響: Studioに下書き読み込みテストを追加。ナビ統合に伴う遷移テスト更新。
-- [ ] **C026** `[P2]` `<improve>` risk=low — 死蔵データの活用と生値露出の是正(last_detail/payload/created_at/ref等)
+- [~] **C026** `[P2]` `<improve>` risk=low — 死蔵データの活用と生値露出の是正(last_detail/payload/created_at/ref等) _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/ContentSchedulePage.tsx`, `web/frontend/src/pages/HandoffsPage.tsx`, `web/frontend/src/pages/HumanTasksPage.tsx`, `web/frontend/src/pages/AtlasPage.tsx`, `web/frontend/src/pages/SessionsPage.tsx`, `web/frontend/src/pages/AgentsPage.tsx`
   - 軸: functionality, necessity
   - 根拠: functionality/necessity: last_detail(失敗原因)・handoff payload整形/policy_reason/materialized_ref・HumanTask.ref/作成日時・KnownIssue.detail・subsystem.paths・exit_code異常強調・open/totalカウントが取得済みなのに未表示で診断/判断が不能。失敗時detail表示・主要キーの定義リスト化・ref/作成日時表示・件数バッジ活用を行い、生JSONはRAW折りたたみへ降格。
   - テスト影響: 失敗detail表示・件数バッジ等の表示テストを追加。
-- [ ] **C029** `[P2]` `<fix>` risk=low — Studio Xスレッド閾値バグ修正と出口(コピー/エクスポート)・永続化
+- [x] **C029** `[P2]` `<fix>` risk=low — Studio Xスレッド閾値バグ修正と出口(コピー/エクスポート)・永続化 _(状態: done)_
   - 対象: `web/frontend/src/pages/StudioPage.tsx`, `web/frontend/src/lib/contentFormat.ts`
   - 軸: functionality, validity, convenience
   - 根拠: functionality/validity: 文字数バッジ/状態がcount>280基準なのに実分割は接尾辞ぶん上限を縮め275〜280字で『緑・1ツイート』と実2分割が矛盾。判定をthread.length基準に統一。読み取り専用で各ツイート/全件/記事のコピー導線が無く目的未達→コピー/エクスポートを追加。title/bodyがuseStateのみでリロード消失→localStorage自動保存・復元。
   - テスト影響: 閾値境界(275-280字)の分割一致テスト・コピー/永続化テストを追加。
-- [ ] **C030** `[P2]` `<improve>` risk=medium — Onboardingのエラー/空状態追加・MarketplaceとのテーブルDRY化・初回出し分け
+- [~] **C030** `[P2]` `<improve>` risk=medium — Onboardingのエラー/空状態追加・MarketplaceとのテーブルDRY化・初回出し分け _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/OnboardingPage.tsx`, `web/frontend/src/pages/MarketplacePage.tsx`, `web/frontend/src/components/CompanyManifestTable.tsx`, `web/frontend/src/pages/__tests__/OnboardingPage.test.tsx`, `web/frontend/src/App.tsx`
   - 軸: necessity, maintainability, convenience
   - 根拠: necessity/maintainability: OnboardingとMarketplaceが同一API/型/installフローでerror/再試行/KPI列まで重複しOnboardingは劣化版。step2失敗で空テーブルのまま行き止まり(完了disabled)。共通CompanyManifestTableへ抽出、error/empty/KPI列を追加し、組織0件等で『初回のみ』ナビ出し分け/自動リダイレクトを検討。
@@ -193,18 +193,18 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, maintainability, convenience
   - 根拠: validity/maintainability: 行全体role=button内に編集/削除ボタンを内包する入れ子アンチパターン、詳細スライドパネルがrole=dialog/aria-modal/フォーカストラップ/Esc/初期フォーカス欠如(独自実装)、OrgIconがDate.now()で常時キャッシュ破棄。詳細トリガをChevronボタンに限定し行のrole=buttonを廃止、パネルをRadix Dialog化、アイコンversionは更新時のみbump。
   - テスト影響: 詳細パネルのEsc/フォーカス、行操作の分離テストを追加・更新。
-- [ ] **C034** `[P2]` `<fix>` risk=low — 入力検証・冪等性の強化(ナレッジ名/組織repoパス/会社重複/収益org)
+- [~] **C034** `[P2]` `<fix>` risk=low — 入力検証・冪等性の強化(ナレッジ名/組織repoパス/会社重複/収益org) _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/DataPage.tsx`, `web/frontend/src/pages/OrgsPage.tsx`, `web/frontend/src/pages/MarketplacePage.tsx`, `web/frontend/src/pages/RevenuePage.tsx`, `web/frontend/src/pages/BoardPage.tsx`
   - 軸: validity, functionality
   - 根拠: validity/functionality: ナレッジ作成が空チェックのみで拡張子/パストラバーサル/重複未検証、organization repoパスが無検証自由入力で孤児/誤ルーティング誘発、同一テンプレ重複作成の警告無し、Revenue組織名がdatalist自由入力でtypoで別組織記録、Board組織名/種別も無検証自由入力。クライアント前検証+確認+選択式化(存在しないorgは警告)で防ぐ。
   - テスト影響: 不正名/重複/未知org送信時の検証テストを追加。
-- [ ] **C036** `[P2]` `<improve>` risk=low — config/分析の生JSONダンプを構造化表示+Raw折りたたみ+コピー化
+- [x] **C036** `[P2]` `<improve>` risk=low — config/分析の生JSONダンプを構造化表示+Raw折りたたみ+コピー化 _(状態: done)_
   - 対象: `web/frontend/src/pages/AgentsPage.tsx`
   - 軸: convenience, maintainability
   - 根拠: convenience/maintainability: 設定ビューア/分析結果が生JSONダンプでエンドユーザー向けでなく、しかも結果が画面外の別カードに出て『何も起きない』視線断絶、推奨エージェントもraw ID表示で誰か不明・ジャンプ導線無し。主要フィールドを構造化表示+RawはコピーボタンつきでprogressLogクラス流用をやめ、結果は行内展開/モーダル化し自動スクロール、推奨はname解決+該当行リンク。
   - テスト影響: 構造化表示/コピー/ジャンプのテストを追加。
 
-### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (0/10)
+### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (1/10)
 
 - [ ] **C014** `[P1]` `<improve>` risk=high — ポリシー/モデル構成/プロンプトの生JSON手編集を構造化エディタ化
   - 対象: `web/frontend/src/pages/SettingsPage.tsx`, `/api/settings`
@@ -216,17 +216,17 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, functionality
   - 根拠: validity: quota soft>hardでも保存可、quiet_hours/window_hoursがHTML min/maxのみでJS検証なく範囲外値をPUTしデータ破壊。NotificationsのquietHours入力も0-23 clamp/NaNガード無し。保存前にsoft<=hard・0-23・>=1を検証し不正時はインラインエラー+該当フィールドへフォーカス、保存ボタンにdirty追跡。
   - テスト影響: 範囲外/相互不整合入力で保存ブロックされるテストを追加。
-- [ ] **C024** `[P2]` `<fix>` risk=low — inline style廃止とボタン変種統一(frontend規約準拠)
+- [~] **C024** `[P2]` `<fix>` risk=low — inline style廃止とボタン変種統一(frontend規約準拠) _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/ProposalsPage.tsx`, `web/frontend/src/pages/AgentsPage.tsx`, `web/frontend/src/pages/SessionsPage.tsx`, `web/frontend/src/pages/NotificationsPage.tsx`, `web/frontend/src/pages/RevenuePage.tsx`, `web/frontend/src/pages/BoardPage.tsx`, `web/frontend/src/pages/DataPage.tsx`, `web/frontend/src/index.css`
   - 軸: validity, maintainability
   - 根拠: validity/maintainability: frontend.md禁止のinline styleが多数(Proposals差分のハードコードhex #7ee787等でテーマ非追従、Agents/Sessions/Notifications/Revenue/Board/Data)。grid/カードもTailwind直書きとindex.cssユーティリティの二重基準。破壊/取消ボタンもbtn-danger↔btn-ghost↔btn-secondaryで危険シグナル不一致。差分色を.diff-add/.diff-del等クラス化、width等をユーティリティ化、ボタン変種(破壊=danger/主=primary/副=secondary/補助=ghost)を規定しfrontend.mdに明記。
   - テスト影響: 視覚回帰中心。クラス指定テストを一部追加可。
-- [ ] **C025** `[P2]` `<fix>` risk=medium — 検索/通知ポップオーバー/モーダルのa11y契約整備
+- [~] **C025** `[P2]` `<fix>` risk=medium — 検索/通知ポップオーバー/モーダルのa11y契約整備 _(状態: in_progress)_
   - 対象: `web/frontend/src/App.tsx`, `web/frontend/src/pages/OrgsPage.tsx`, `web/frontend/src/pages/DataPage.tsx`, `web/frontend/src/components/ConfirmDialog.tsx`
   - 軸: validity, convenience
   - 根拠: validity/convenience: 全体検索がrole=listbox宣言なのに子にrole=option/矢印キー/Enter/Escape/aria-activedescendant無し(ARIA契約違反)、通知ポップオーバーにdialog属性・フォーカストラップ無し、Orgs/DataのモーダルもEscape/フォーカストラップ/初期フォーカス欠如(DataはRadix未使用の素div)。Radix Combobox/Popover/Dialogへ置換しキーボード/aria/Escを一括担保。Ctrl/Cmd+K検索フォーカスも追加。
   - テスト影響: 検索キーボード操作・モーダルEsc/フォーカストラップのa11yテストを追加。
-- [ ] **C028** `[P2]` `<improve>` risk=medium — Atlas依存グラフSVGのアクセシビリティ/スケール改善
+- [~] **C028** `[P2]` `<improve>` risk=medium — Atlas依存グラフSVGのアクセシビリティ/スケール改善 _(状態: in_progress)_
   - 対象: `web/frontend/src/pages/AtlasPage.tsx`
   - 軸: validity, functionality, convenience
   - 根拠: validity/functionality: 円環固定レイアウト+ホバー専用ハイライトでノード増に破綻、ズーム/パン無し、role=imgで子のtext/円がスクリーンリーダ不可視、固定760x520でレスポンシブ非対応、キーボード/タッチ非対応。ノードを<button>/tabindex化しフォーカスハイライト・viewBox維持でwidth100%可変・テキスト代替(隣接リスト)を併設、規模超過時はフォースレイアウトへ。
@@ -241,7 +241,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, convenience
   - 根拠: validity/convenience: 日本語UIにSelect All/{n} tools/schema/legacy/driver/dry-runや列挙生値(running/pending/revenue/sales)が残り言語が不統一。ユーザー可視ラベルは日本語化(『すべて選択』『ツール』)、列挙値はlib/labels(C021)経由で和訳、driver/schema等の内部識別子を英語のまま残すなら方針をルール化し一貫適用。
   - テスト影響: ラベル文字列でのテスト取得箇所を和訳後文言へ更新。
-- [ ] **C040** `[P3]` `<fix>` risk=low — Help網羅性のナビ1:1化・収益セクション追加・事実誤り修正・コピー/リンク化
+- [x] **C040** `[P3]` `<fix>` risk=low — Help網羅性のナビ1:1化・収益セクション追加・事実誤り修正・コピー/リンク化 _(状態: done)_
   - 対象: `web/frontend/src/pages/HelpPage.tsx`, `web/frontend/src/App.tsx`
   - 軸: validity, necessity
   - 根拠: validity/necessity: acc-pages-helpが『APIキー取得先』と記載しAPIキー不使用という製品事実と自己矛盾(P1事実誤り)。/revenue『収益』のヘルプ欠落・wmux/board混載で目次がナビと非対応、ドリフト検出テストも無し。CodeBlockのコマンド/URLがコピー不可・非リンク。事実誤り削除、収益セクション追加、pageSectionsとNAVの差分検出vitest追加、CodeBlockにコピー/anchorを付与。

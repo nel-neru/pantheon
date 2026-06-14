@@ -313,8 +313,8 @@ it('shows a confirmation dialog before deleting a job', async () => {
   const user = userEvent.setup()
   await user.click(screen.getByRole('button', { name: /削除/ }))
 
-  // ダイアログが開く
-  expect(screen.getByRole('alertdialog', { hidden: true }) ?? screen.getByRole('dialog')).toBeInTheDocument()
+  // ダイアログが開く (Radix は role="dialog"; alertdialog がなければ dialog にフォールバック)
+  expect(screen.queryByRole('alertdialog', { hidden: true }) ?? screen.getByRole('dialog')).toBeInTheDocument()
   expect(screen.getByText('このジョブを削除しますか？')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '削除する' })).toBeInTheDocument()
 })

@@ -399,7 +399,10 @@ describe('DataPage', () => {
     renderWithRouter(<DataPage />)
 
     await user.click(await screen.findByRole('tab', { name: 'ナレッジ' }))
-    await user.click(await screen.findByRole('button', { name: '新規作成' }))
+    // When files list is empty, two "新規作成" buttons appear (header + empty-state).
+    // Click the first one — both open the same create modal.
+    const createButtons = await screen.findAllByRole('button', { name: '新規作成' })
+    await user.click(createButtons[0])
 
     const input = screen.getByLabelText('ファイル名')
     await user.type(input, '../evil.md')

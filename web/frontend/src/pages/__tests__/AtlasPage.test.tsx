@@ -365,12 +365,14 @@ describe('AtlasPage', () => {
   })
 
   it('generated_at uses formatDateTime (not raw ISO)', async () => {
-    mockApi.mockResolvedValue(atlas)
+    // Use a recent timestamp so the date is not flagged as stale (isStale=false → shows '生成:')
+    const recentIso = new Date(Date.now() - 30 * 60 * 1000).toISOString() // 30 min ago
+    mockApi.mockResolvedValue({ ...atlas, generated_at: recentIso })
     renderWithRouter(<AtlasPage />)
     await screen.findByText('分析 → 提案 → 承認 → 適用')
     // Should NOT show raw ISO string
-    expect(screen.queryByText('2026-06-06T00:00:00+00:00')).not.toBeInTheDocument()
-    // Should show a formatted date
+    expect(screen.queryByText(recentIso)).not.toBeInTheDocument()
+    // Should show a formatted date with the '生成:' prefix (non-stale path)
     expect(screen.getByText(/生成:/)).toBeInTheDocument()
   })
 })

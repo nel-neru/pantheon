@@ -274,7 +274,7 @@
       "rationale": "necessity/validity: HumanTasksの『完了』(不可逆・高リスク最終確認の場でこそ無確認は設計矛盾)、Boardのrunningタスクキャンセル(backendがPENDINGのみ許可するため必ず失敗する死んだ破壊操作)、Dashboardのinit(再初期化)/daemon stop、Proposals一括承認(コード適用を伴う)、SettingsのloadError中DEFAULT上書き保存。C002のConfirmDialogで確認を入れ、Boardのキャンセルはpendingのみに条件を絞る。",
       "test_impact": "各破壊操作テストを確認経由に更新。Boardはrunning行でキャンセル不可になることのテストを追加。",
       "wave": "W1",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C004",
@@ -462,7 +462,7 @@
       "rationale": "convenience: 多くのページで更新/操作後の非quiet load()がリスト全体をspinnerへ置換し既存表示が消えてチラつく(Inbox/HumanTasks/Notifications/Orgs/Marketplace/Atlas/Sessions/Board/Handoffs)。初回マウントのみフルローディング、再取得はquiet=trueで既存保持+控えめインジケータ/skeletonへ統一。",
       "test_impact": "軽微。quiet再取得で既存リストが保持されるテストを追加可。",
       "wave": "W3",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C035",
@@ -550,7 +550,7 @@
       "rationale": "functionality/necessity: Marketplaceの新規会社候補・Revenueのportfolio提案・Orgs詳細の未対応提案リストが読み取り専用で承認/会社化/詳細へ進めず(routeフィールド未使用)。Dashboard handoff一覧も承認へ飛べない。各行に『承認インボックスで開く』/該当画面リンクを付与しpriority降順ソートも実装、死んだ示唆を行動の起点にする。",
       "test_impact": "各行の遷移/起票テストを追加。",
       "wave": "W4",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C018",
@@ -569,7 +569,7 @@
       "rationale": "functionality/validity: install-divisionが成功後にload()を呼ばず画面が更新されない(installCompany/scanは更新する)ため、成功トーストを見ても結果が反映されず再押下で二重追加を誘発=『壊れて見える』(P0級)。成功後にload()または局所更新を必ず行い、対象org取り違え防止に確認も挟む。",
       "test_impact": "追加成功後の再取得/反映テストを追加。",
       "wave": "W4",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C019",
@@ -589,7 +589,7 @@
       "rationale": "validity/functionality: ジョブ側は1時間〜1週間選べるのにループ巡回間隔だけinterval:600固定・非表示でブラックボックス。実行間隔セレクトを開始ボタン近くに用意し送信値を可変化、最低でも『10分ごとに巡回』をUI明示。job-run-nowの連打防止(行単位disabled+スピナー)も追加。",
       "test_impact": "間隔送信値とrun連打防止のテストを追加。",
       "wave": "W4",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C020",
@@ -637,7 +637,7 @@
       "rationale": "functionality/necessity: last_detail(失敗原因)・handoff payload整形/policy_reason/materialized_ref・HumanTask.ref/作成日時・KnownIssue.detail・subsystem.paths・exit_code異常強調・open/totalカウントが取得済みなのに未表示で診断/判断が不能。失敗時detail表示・主要キーの定義リスト化・ref/作成日時表示・件数バッジ活用を行い、生JSONはRAW折りたたみへ降格。",
       "test_impact": "失敗detail表示・件数バッジ等の表示テストを追加。",
       "wave": "W4",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C029",
@@ -658,7 +658,7 @@
       "rationale": "functionality/validity: 文字数バッジ/状態がcount>280基準なのに実分割は接尾辞ぶん上限を縮め275〜280字で『緑・1ツイート』と実2分割が矛盾。判定をthread.length基準に統一。読み取り専用で各ツイート/全件/記事のコピー導線が無く目的未達→コピー/エクスポートを追加。title/bodyがuseStateのみでリロード消失→localStorage自動保存・復元。",
       "test_impact": "閾値境界(275-280字)の分割一致テスト・コピー/永続化テストを追加。",
       "wave": "W4",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C030",
@@ -682,7 +682,7 @@
       "rationale": "necessity/maintainability: OnboardingとMarketplaceが同一API/型/installフローでerror/再試行/KPI列まで重複しOnboardingは劣化版。step2失敗で空テーブルのまま行き止まり(完了disabled)。共通CompanyManifestTableへ抽出、error/empty/KPI列を追加し、組織0件等で『初回のみ』ナビ出し分け/自動リダイレクトを検討。",
       "test_impact": "Onboardingの失敗/空/step3/disabledゲートテストを追加。共有テーブルのテスト。",
       "wave": "W4",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C031",
@@ -745,7 +745,7 @@
       "rationale": "validity/functionality: ナレッジ作成が空チェックのみで拡張子/パストラバーサル/重複未検証、organization repoパスが無検証自由入力で孤児/誤ルーティング誘発、同一テンプレ重複作成の警告無し、Revenue組織名がdatalist自由入力でtypoで別組織記録、Board組織名/種別も無検証自由入力。クライアント前検証+確認+選択式化(存在しないorgは警告)で防ぐ。",
       "test_impact": "不正名/重複/未知org送信時の検証テストを追加。",
       "wave": "W4",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C036",
@@ -764,7 +764,7 @@
       "rationale": "convenience/maintainability: 設定ビューア/分析結果が生JSONダンプでエンドユーザー向けでなく、しかも結果が画面外の別カードに出て『何も起きない』視線断絶、推奨エージェントもraw ID表示で誰か不明・ジャンプ導線無し。主要フィールドを構造化表示+RawはコピーボタンつきでprogressLogクラス流用をやめ、結果は行内展開/モーダル化し自動スクロール、推奨はname解決+該当行リンク。",
       "test_impact": "構造化表示/コピー/ジャンプのテストを追加。",
       "wave": "W4",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C014",
@@ -832,7 +832,7 @@
       "rationale": "validity/maintainability: frontend.md禁止のinline styleが多数(Proposals差分のハードコードhex #7ee787等でテーマ非追従、Agents/Sessions/Notifications/Revenue/Board/Data)。grid/カードもTailwind直書きとindex.cssユーティリティの二重基準。破壊/取消ボタンもbtn-danger↔btn-ghost↔btn-secondaryで危険シグナル不一致。差分色を.diff-add/.diff-del等クラス化、width等をユーティリティ化、ボタン変種(破壊=danger/主=primary/副=secondary/補助=ghost)を規定しfrontend.mdに明記。",
       "test_impact": "視覚回帰中心。クラス指定テストを一部追加可。",
       "wave": "W5",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C025",
@@ -854,7 +854,7 @@
       "rationale": "validity/convenience: 全体検索がrole=listbox宣言なのに子にrole=option/矢印キー/Enter/Escape/aria-activedescendant無し(ARIA契約違反)、通知ポップオーバーにdialog属性・フォーカストラップ無し、Orgs/DataのモーダルもEscape/フォーカストラップ/初期フォーカス欠如(DataはRadix未使用の素div)。Radix Combobox/Popover/Dialogへ置換しキーボード/aria/Escを一括担保。Ctrl/Cmd+K検索フォーカスも追加。",
       "test_impact": "検索キーボード操作・モーダルEsc/フォーカストラップのa11yテストを追加。",
       "wave": "W5",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C028",
@@ -874,7 +874,7 @@
       "rationale": "validity/functionality: 円環固定レイアウト+ホバー専用ハイライトでノード増に破綻、ズーム/パン無し、role=imgで子のtext/円がスクリーンリーダ不可視、固定760x520でレスポンシブ非対応、キーボード/タッチ非対応。ノードを<button>/tabindex化しフォーカスハイライト・viewBox維持でwidth100%可変・テキスト代替(隣接リスト)を併設、規模超過時はフォースレイアウトへ。",
       "test_impact": "グラフのキーボード操作/aria代替テストを追加。",
       "wave": "W5",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C037",
@@ -939,7 +939,7 @@
       "rationale": "validity/necessity: acc-pages-helpが『APIキー取得先』と記載しAPIキー不使用という製品事実と自己矛盾(P1事実誤り)。/revenue『収益』のヘルプ欠落・wmux/board混載で目次がナビと非対応、ドリフト検出テストも無し。CodeBlockのコマンド/URLがコピー不可・非リンク。事実誤り削除、収益セクション追加、pageSectionsとNAVの差分検出vitest追加、CodeBlockにコピー/anchorを付与。",
       "test_impact": "NAVとpageSectionsのドリフト検出テストを新規追加。",
       "wave": "W5",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C041",

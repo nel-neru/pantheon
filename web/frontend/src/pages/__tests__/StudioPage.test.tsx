@@ -1,6 +1,6 @@
-import { screen, within } from '@testing-library/react'
+import { screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, it, beforeEach, vi } from 'vitest'
+import { expect, it, beforeEach, afterEach, vi } from 'vitest'
 
 import { StudioPage } from '../StudioPage'
 import { renderWithRouter } from '@/test/utils'
@@ -8,6 +8,11 @@ import { renderWithRouter } from '@/test/utils'
 // localStorage のモック（jsdom は localStorage を提供するが、テスト間で汚染しないようにリセット）
 beforeEach(() => {
   localStorage.clear()
+})
+
+// フェイクタイマーを使ったテストが失敗してもリアルタイマーに戻す（後続テストの連鎖タイムアウトを防ぐ）
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 // ── 既存テスト ────────────────────────────────────────────────────────────────
@@ -102,33 +107,35 @@ it('記事プレビューに「コピー」ボタンがある（note タブ）',
 })
 
 it('コピーボタンをクリックすると clipboard.writeText が呼ばれる', async () => {
-  const writeMock = vi.fn().mockResolvedValue(undefined)
-  Object.defineProperty(navigator, 'clipboard', {
-    value: { writeText: writeMock },
-    writable: true,
-    configurable: true,
-  })
+  // userEvent.setup() は内部で navigator.clipboard を自前のスタブに差し替えるため、
+  // スタブ初期化後に vi.spyOn でラップして呼び出しをキャプチャする。
+  const user = userEvent.setup()
+  // userEvent がスタブを設定した後に spy を張る
+  const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText')
 
   renderWithRouter(<StudioPage />)
-  const user = userEvent.setup()
   const long = 'あ'.repeat(600)
   await user.click(screen.getByLabelText('本文'))
   await user.paste(long)
   const copyAllBtn = await screen.findByRole('button', { name: /全件コピー/ })
   await user.click(copyAllBtn)
-  expect(writeMock).toHaveBeenCalled()
+  // ボタンの onClick は "void asyncFn()" で fire-and-forget のため、
+  // waitFor で非同期処理の完了（writeText 呼び出し）を待つ
+  await waitFor(() => expect(writeTextSpy).toHaveBeenCalled())
 })
 
 // ── 永続化テスト（C029） ───────────────────────────────────────────────────────
 
-it('本文を入力すると localStorage に保存される（デバウンス後）', async () => {
+it('本文を入力すると localStorage に保存される（デバウンス後）', () => {
+  // userEvent.type は内部 delay で fake timers と競合しデッドロックするため
+  // fireEvent.change で値を直接セットし、フェイクタイマーでデバウンス時間を進める
   vi.useFakeTimers()
   renderWithRouter(<StudioPage />)
-  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-  await user.type(screen.getByLabelText('本文'), 'テスト本文')
+  const textarea = screen.getByLabelText('本文')
+  fireEvent.change(textarea, { target: { value: 'テスト本文' } })
   vi.advanceTimersByTime(600)
   expect(localStorage.getItem('studio:body')).toBe('テスト本文')
-  vi.useRealTimers()
+  // afterEach の vi.useRealTimers() で後続テストへの影響を回避
 })
 
 it('localStorage に保存済みの本文が初期値として復元される', () => {

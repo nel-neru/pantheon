@@ -154,7 +154,7 @@ function ConfigModal({
             </Dialog.Close>
           </div>
           <Dialog.Description className="sr-only">
-            {config?.title ?? '設定の詳細'}
+            設定の詳細
           </Dialog.Description>
 
           {config ? (
