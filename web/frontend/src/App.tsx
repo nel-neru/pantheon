@@ -136,6 +136,7 @@ function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [env, setEnv] = useState<{ environment: string; env_label: string } | null>(null)
   const searchRef = useRef<HTMLDivElement | null>(null)
   const notificationsRef = useRef<HTMLDivElement | null>(null)
   const notifiedIds = useRef<Set<string>>(new Set())
@@ -168,6 +169,27 @@ function AppShell() {
     document.body.dataset.theme = theme
     window.localStorage.setItem(THEME_STORAGE_KEY, theme)
   }, [theme])
+
+  // 本番(PROD)/開発(DEV) 環境を取得してバッジ表示＋DEV はアクセント帯を出す（取り違え防止）。
+  useEffect(() => {
+    let alive = true
+    api<{ environment?: string; env_label?: string }>('GET', '/api/platform/status')
+      .then((status) => {
+        if (!alive) return
+        const resolved = {
+          environment: status.environment ?? 'production',
+          env_label: status.env_label ?? 'PROD',
+        }
+        setEnv(resolved)
+        if (typeof document !== 'undefined') {
+          document.body.dataset.env = resolved.environment
+        }
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -355,6 +377,15 @@ function AppShell() {
             </div>
 
             <div className="workspace-toolbar-actions">
+              {env ? (
+                <span
+                  className={cn('env-badge', env.environment)}
+                  title={`環境: ${env.environment === 'development' ? '開発 (DEV)' : '本番 (PROD)'}`}
+                >
+                  {env.env_label}
+                </span>
+              ) : null}
+
               <div className={cn('live-status', updatesConnected ? 'connected' : 'connecting')}>
                 <span className={cn('status-dot', updatesConnected ? 'connected' : 'connecting')} />
                 {updatesConnected ? 'リアルタイム接続中' : '再接続中'}

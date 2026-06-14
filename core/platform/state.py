@@ -75,6 +75,41 @@ def get_platform_home() -> Path:
     return home
 
 
+def resolve_environment() -> dict[str, str]:
+    """現在のプラットフォーム環境（production / development）を判定して返す。
+
+    dev サーバ（~/.pantheon-dev）と user サーバ（~/.pantheon）を GUI 上で一目で
+    区別するためのバッジ／わかりやすい URL に使う。判定の優先順:
+
+      1. ``PANTHEON_ENV`` の明示指定（prod/production または dev/development）
+      2. ``PANTHEON_HOME`` のディレクトリ名に ``-dev`` を含めば development
+      3. 既定は production
+
+    Returns:
+        ``environment``（"production"|"development"）, ``env_label``（"PROD"|"DEV"）,
+        ``friendly_host``（"pantheon.localhost"|"dev.pantheon.localhost"）を持つ dict。
+    """
+    explicit = os.environ.get("PANTHEON_ENV", "").strip().lower()
+    if explicit in {"dev", "development"}:
+        name = "development"
+    elif explicit in {"prod", "production"}:
+        name = "production"
+    else:
+        home_name = get_platform_home().name.lower()
+        name = "development" if "-dev" in home_name else "production"
+    if name == "development":
+        return {
+            "environment": "development",
+            "env_label": "DEV",
+            "friendly_host": "dev.pantheon.localhost",
+        }
+    return {
+        "environment": "production",
+        "env_label": "PROD",
+        "friendly_host": "pantheon.localhost",
+    }
+
+
 class PlatformStateManager:
     """
     Core（本社）のグローバルプラットフォームストアを管理する。

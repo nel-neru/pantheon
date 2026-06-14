@@ -9,7 +9,11 @@ from __future__ import annotations
 from core.metrics.outcomes import OutcomeStore
 from core.orchestration.task_queue import TaskQueue
 from core.org_factory import create_default_organization
-from core.platform.state import PlatformStateManager, get_platform_home
+from core.platform.state import (
+    PlatformStateManager,
+    get_platform_home,
+    resolve_environment,
+)
 
 
 def test_get_platform_home_honors_env(tmp_path, monkeypatch):
@@ -52,6 +56,48 @@ def test_task_queue_honors_home(tmp_path, monkeypatch):
     queue = TaskQueue()
     # キューファイルは get_platform_home() 配下に解決される
     assert str(queue.queue_file).startswith(str(home.resolve()))
+
+
+def test_resolve_environment_explicit_env(monkeypatch):
+    """PANTHEON_ENV の明示指定が最優先される。"""
+    monkeypatch.setenv("PANTHEON_ENV", "development")
+    info = resolve_environment()
+    assert info["environment"] == "development"
+    assert info["env_label"] == "DEV"
+    assert info["friendly_host"] == "dev.pantheon.localhost"
+
+    monkeypatch.setenv("PANTHEON_ENV", "production")
+    info = resolve_environment()
+    assert info["environment"] == "production"
+    assert info["env_label"] == "PROD"
+    assert info["friendly_host"] == "pantheon.localhost"
+
+
+def test_resolve_environment_from_home_name(tmp_path, monkeypatch):
+    """PANTHEON_ENV 未指定なら PANTHEON_HOME のディレクトリ名（-dev）で判定する。"""
+    monkeypatch.delenv("PANTHEON_ENV", raising=False)
+    monkeypatch.setenv("PANTHEON_HOME", str(tmp_path / ".pantheon-dev"))
+    assert resolve_environment()["environment"] == "development"
+
+    monkeypatch.setenv("PANTHEON_HOME", str(tmp_path / ".pantheon"))
+    assert resolve_environment()["environment"] == "production"
+
+
+def test_platform_status_reports_environment(tmp_path, monkeypatch):
+    """/api/platform/status が environment / env_label を返す（GUI バッジ用）。"""
+    from fastapi.testclient import TestClient
+
+    monkeypatch.delenv("PANTHEON_ENV", raising=False)
+    # PANTHEON_HOME 環境変数が正準の redirect 手段（PlatformStateManager も resolve_environment も
+    # core.platform.state.get_platform_home 経由で読む）。tmp の隔離 dev ホームを指す。
+    monkeypatch.setenv("PANTHEON_HOME", str(tmp_path / ".pantheon-dev"))
+
+    import web.server as server
+
+    with TestClient(server.app) as client:
+        data = client.get("/api/platform/status").json()
+    assert data["environment"] == "development"
+    assert data["env_label"] == "DEV"
 
 
 def test_settings_and_chat_paths_derive_from_home():

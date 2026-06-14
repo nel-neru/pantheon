@@ -177,6 +177,50 @@ code, kbd, pre, .mono {
   font-weight: 400;
 }
 
+/* 環境バッジ（PROD/DEV）— 本番と開発の取り違えを一目で防ぐ。 */
+.env-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+  user-select: none;
+  white-space: nowrap;
+}
+.env-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.env-badge.production {
+  background: var(--color-green-subtle);
+  color: var(--color-green);
+  border-color: oklch(0.632 0.168 145 / 25%);
+}
+.env-badge.development {
+  background: var(--color-yellow-subtle);
+  color: var(--color-yellow);
+  border-color: oklch(0.737 0.148 75 / 40%);
+}
+/* DEV 環境は画面最上部に黄色帯を出して、本番との取り違えを物理的に防ぐ。 */
+body[data-env='development'] .layout::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--color-yellow);
+  z-index: 200;
+  pointer-events: none;
+}
+
 .sidebar-nav {
   flex: 1;
   min-height: 0;

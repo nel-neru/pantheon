@@ -32,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.models.organization import ImprovementProposal, is_active_improvement_proposal_status
 from core.paths import resource_path, resource_root
-from core.platform.state import PlatformStateManager, get_platform_home
+from core.platform.state import PlatformStateManager, get_platform_home, resolve_environment
 from core.policy.engine import DEFAULT_POLICY, ApprovalDecision, PolicyEngine
 
 logger = logging.getLogger(__name__)
@@ -511,6 +511,8 @@ class PlatformStatusResponse(BaseModel):
     platform_home: str
     initialized: bool
     has_llm: bool
+    environment: str = "production"
+    env_label: str = "PROD"
 
 
 class DaemonStatusResponse(BaseModel):
@@ -628,6 +630,8 @@ PLATFORM_STATUS_EXAMPLE = {
     "platform_home": str(Path.home() / ".pantheon"),
     "initialized": True,
     "has_llm": True,
+    "environment": "production",
+    "env_label": "PROD",
 }
 DAEMON_STATUS_EXAMPLE = {
     "running": True,
@@ -1825,6 +1829,7 @@ async def api_platform_status() -> Dict[str, Any]:
         "platform_home": str(psm.platform_home),
         "initialized": psm.is_initialized(),
         "has_llm": _has_llm(),
+        **{k: v for k, v in resolve_environment().items() if k in ("environment", "env_label")},
     }
 
 
@@ -4938,17 +4943,21 @@ async def ws_updates(websocket: WebSocket) -> None:
         logger.info("Updates WebSocket client disconnected")
 
 
-def _open_browser_when_ready(port: int, *, timeout: float = 15.0) -> None:
+def _open_browser_when_ready(port: int, *, host: str = "localhost", timeout: float = 15.0) -> None:
     """サーバが listen を開始したらブラウザで GUI を開く（デーモンスレッド）。
 
     uvicorn.run() はブロッキングなので、別スレッドでポートの listen を待ってから
     既定ブラウザを開く。exe をダブルクリックした人がそのまま可視化サイトに入れる。
+
+    ``host`` は表示用のわかりやすいホスト名（例: ``pantheon.localhost`` /
+    ``dev.pantheon.localhost``）。``*.localhost`` は最新ブラウザが 127.0.0.1 に
+    自動解決するため、サーバの束縛先（127.0.0.1）を変えずに使える。
     """
     import socket
     import threading
     import webbrowser
 
-    url = f"http://localhost:{port}"
+    url = f"http://{host}:{port}"
 
     def _wait_and_open() -> None:
         deadline = time.monotonic() + timeout
@@ -4978,11 +4987,14 @@ def run_server(host: str = "127.0.0.1", port: int = 7860, open_browser: bool = F
     except Exception:  # noqa: BLE001 - 設定読込失敗時は drain しない
         _TASK_DRAIN_ENABLED = False
 
+    env = resolve_environment()
+    friendly = env["friendly_host"]
     print("\nPantheon Web GUI を起動しています...")
-    print(f"   URL: http://localhost:{port}")
+    print(f"   環境: {env['env_label']}（{env['environment']}）")
+    print(f"   URL: http://{friendly}:{port}/   (= http://localhost:{port}/)")
     print(f"   プラットフォーム: {PlatformStateManager().platform_home}")
     if open_browser:
-        _open_browser_when_ready(port)
+        _open_browser_when_ready(port, host=friendly)
     uvicorn.run(app, host=host, port=port)
 
 
