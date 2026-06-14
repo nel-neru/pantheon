@@ -29,6 +29,7 @@ type Organization = {
   management_mode?: string
   workspace_path?: string | null
   data_location?: string | null
+  initial_kpis?: string[]
   status: string
   last_active: string | null
   is_system?: boolean
@@ -461,6 +462,17 @@ function DetailPanel({
               </div>
             </div>
           </section>
+
+          {org.initial_kpis && org.initial_kpis.length > 0 ? (
+            <section className="detail-section">
+              <div className="detail-section-label">初期KPI</div>
+              <div className="flex flex-wrap gap-2">
+                {org.initial_kpis.map((kpi) => (
+                  <span key={kpi} className="badge badge-blue">{kpi}</span>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {/* Agents */}
           {org.agents.length > 0 && (

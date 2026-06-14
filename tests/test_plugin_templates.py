@@ -15,6 +15,7 @@ from core.orchestration.plugin_templates import (
     CATEGORY_PRESETS,
     scaffold_company_plugin,
     scaffold_division_plugin,
+    self_improvement_seed_division,
 )
 from core.org_factory import _build_division
 
@@ -219,3 +220,17 @@ def test_scaffold_company_plugin_strips_blank_divisions() -> None:
         "id", "ラベル", "genre", divisions=["有効部", "  ", "", "別の部"]
     )
     assert manifest["divisions"] == ["有効部", "別の部"]
+
+
+def test_self_improvement_seed_division_is_buildable():
+    """TPL-SEED: 自己改善シード事業部は org_evolution 型で _build_division が食べられる。"""
+    dept = self_improvement_seed_division()
+    assert dept["type"] == "org_evolution"
+    assert dept["teams"] and len(dept["teams"][0]["required_skills"]) == 2
+
+    division = _build_division(dept)
+    assert division.type == DivisionType.ORG_EVOLUTION
+    agents = [a for t in division.teams for a in t.agents]
+    assert agents  # 週次レビュー Agent が生成される
+    for agent in agents:
+        assert 2 <= len(agent.skills) <= 3

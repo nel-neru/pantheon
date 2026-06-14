@@ -30,6 +30,7 @@ const baseOrg = {
 const detailOrg = {
   ...baseOrg,
   icon_data: 'data:image/png;base64,ZmFrZQ==',
+  initial_kpis: ['有料記事の売上'],
   agents: [
     { id: 'agent-1', name: 'Planner', capability_id: 'planner', skills: ['analysis'] },
   ],
@@ -189,6 +190,9 @@ describe('OrgsPage', () => {
     expect(screen.getByText('未対応の改善提案')).toBeInTheDocument()
     expect(screen.getByText('Split the dashboard widget')).toBeInTheDocument()
     expect(screen.getAllByText('/Users/test/repos/acme').length).toBeGreaterThan(0)
+    // TPL-SEED: 初期KPI が詳細に表示される
+    expect(screen.getByText('初期KPI')).toBeInTheDocument()
+    expect(screen.getByText('有料記事の売上')).toBeInTheDocument()
   })
 
   it('shows a specific not-found message when loading details returns 404', async () => {

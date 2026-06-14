@@ -65,7 +65,11 @@ def test_install_company_plugin_creates_full_org(tmp_path):
     assert result["workspace_path"]
 
     org = psm.load_organization_by_name("note販売会社")
-    assert org is not None and len(org.divisions) == 2
+    # manifest の 2 事業部 + TPL-SEED の「改善・自己レビュー事業部」= 3
+    assert org is not None and len(org.divisions) == 3
+    assert "改善・自己レビュー事業部" in {d.name for d in org.divisions}
+    # 初期KPI が org に永続化される（KPI ダッシュボードの元データ・TPL-SEED §6.1）
+    assert org.initial_kpis == ["有料記事の売上"]
     assert org.get_all_agents()  # 各事業部に Specialist が生成される
     # workspace モード: git 不要・target_repo_path 無し・データ位置は workspace_path。
     assert org.management_mode == "workspace"
