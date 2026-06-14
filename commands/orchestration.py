@@ -90,7 +90,8 @@ async def cmd_orchestration_capabilities(args: argparse.Namespace) -> None:
     if gaps:
         print(f"\n  {'─' * 56}")
         print(f"  検出された能力ギャップ ({len(gaps)} 件)")
-        for gap in sorted(gaps, key=lambda item: item.priority):
+        _priority_rank = {"high": 0, "medium": 1, "low": 2}
+        for gap in sorted(gaps, key=lambda item: _priority_rank.get(item.priority, 99)):
             print(f"    [{gap.priority.upper()}] {gap.suggested_name} ({gap.suggested_type})")
             print(f"      → {gap.description}")
     else:
