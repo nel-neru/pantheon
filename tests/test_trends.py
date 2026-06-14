@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from core.trends.collectors.web import TrendSource, collect_web, parse_feed
+from core.trends.collectors.web import TrendSource, collect_web, load_sources, parse_feed
+from core.trends.collectors.youtube import load_channels
 from core.trends.models import TrendItem, normalize_url
 from core.trends.runner import collect_and_store
 from core.trends.scoring import _heuristic_score, score_trend
@@ -198,3 +199,34 @@ async def test_collect_and_store_e2e(tmp_path, monkeypatch):
     stored = TrendStore(platform_home=tmp_path).list()
     assert len(stored) == 2
     assert all(i.score >= 0 for i in stored)
+
+
+def test_bundled_trend_sources_are_well_formed():
+    """同梱 config/trend_sources.yaml が collector の契約を満たすことを構造検証する。
+
+    このファイルは手編集でソースを足す運用（"追加・削除はこのファイルだけで完結"）
+    なので、type の打ち間違いや genre 抜けなど **黙って収集が痩せる** 類の誤りを
+    早期に捕まえる。実ネットワークは叩かない（パース対象のメタだけ検証）。
+    """
+    sources = load_sources()  # 同梱の実ファイルを読む
+    assert sources, "同梱 trend_sources.yaml の sources が空"
+    for s in sources:
+        assert s.name, f"name 欠落: {s}"
+        assert s.url.startswith(("http://", "https://")), f"url が http(s) でない: {s}"
+        assert s.type in {"rss", "atom"}, f"未知の type={s.type!r}: {s.name}"
+        assert s.genre, f"genre 欠落: {s.name}"
+
+    channels = load_channels()
+    for c in channels:
+        assert c.channel_id.startswith("UC"), f"channel_id が UC... でない: {c}"
+        assert c.genre, f"genre 欠落: {c.name}"
+
+
+def test_claude_code_genre_has_multiple_sources():
+    """CC 設定最適化ループ（E フェーズ）の入力が単一フィードに痩せない soft floor。
+
+    `>= 2` の最小値ガード（等値ピンではない）。ソース追加では壊れず、CC ジャンルが
+    1 本以下へ退行したときだけ落ちる＝退行検知の意図に一致する。
+    """
+    cc = [s for s in load_sources() if s.genre == "claude_code"]
+    assert len(cc) >= 2, f"claude_code ソースが {len(cc)} 本（>=2 を期待）"

@@ -19,6 +19,36 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 25 — claude_code トレンドソースの拡充＋同梱 config の構造整合ガード  (2026-06-14 07:35)
+  Plan   : trend-watcher が「genre=claude_code は未設定」と報告したのを**敵対的に検証**したところ
+           不正確（Anthropic News RSS が既存・store が空なのは未収集なだけ）と判明。ただし
+           claude_code ソースが1本のみ＝E フェーズ（CC 設定最適化ループ）の入力が痩せている
+           構造的弱点は事実。受け入れ基準 = 一次情報の CC ソースを追加 / 同梱 trend_sources.yaml の
+           手編集による黙った退行（type 打ち間違い・genre 抜け・URL 不正）を捕まえる構造検証 /
+           CC ジャンルの soft floor（>=2、等値ピンにしない）/ 回帰ゼロ。なぜ今: 自己進化の燃料＝
+           外部信号の質が単一フィードに依存する穴を塞ぐ。Cycle24（runtime config）に対し
+           trends/config 整合で多様。完全可逆（ソース追加は config のみ・不正 URL も collector が
+           debug ログで非致命）。落とした候補: ①「未設定だから追加」→ trend-watcher の主張が誤りと
+           検証して却下 ②revenue --min-reach/--source-org 配線 ③atelier serve 導線。
+  Did    : work/trend-cc-sources-20260614。config/trend_sources.yaml に Claude Code 本体の
+           リリース Atom（https://github.com/anthropics/claude-code/releases.atom、GitHub 標準
+           エンドポイント・APIキー不要・新機能/挙動変更の一次情報）を genre=claude_code で追加
+           （計2本）。tests/test_trends.py に2本: test_bundled_trend_sources_are_well_formed
+           （同梱実ファイルを load_sources/load_channels で読み name/url=http(s)/type∈{rss,atom}/
+           genre/channel_id=UC.. を構造検証・ネットワーク不使用）、
+           test_claude_code_genre_has_multiple_sources（>=2 の soft floor＝追加では壊れず1本以下
+           退行のみ検知）。実 config が 7 ソース・claude_code 2 本を返すことを直接確認。
+  Check  : trend テスト 26/26 pass（既存24＋新2）。ruff 緑。本番ロジック改変なし（config＋test
+           のみ・collector は atom を汎用処理済み）のため Cycle23 同様サブエージェントレビューは
+           省き自己レビュー（URL=GitHub 標準・不正 URL も _fetch 隔離＋parse_feed の [] 返しで
+           非致命、soft floor は daemon-registry の等値ピン罠を避ける設計）。全件回帰ゲートは
+           merge_to_main のテストゲートに委譲。
+  Act    : （merge 後に追記）固定化: 「手編集で増える config は構造整合テストで黙った退行を捕まえる」
+           「退行検知は等値ピンでなく soft floor（>=N）にして追加で壊れないようにする」
+           「trend-watcher 等の web 由来主張は実 config で裏取りしてから動く」。
+  Next   : revenue daemon の CLI 露出（--min-reach/--source-org 配線）/ atelier serve 導線 /
+           SET-EXPOSE（token/quota/承認閾値を /api/settings へ）。
+
 Cycle 24 — モデルティア切替のライブ反映（heavy→opus を稼働中デーモンへ無停止適用）  (2026-06-14 07:10)
   Plan   : 自動再開（evolve_resume 経由）。git クリーン・全 work ブランチ merge 済みのため新規。
            trend-watcher 調査で Fable 5 のプラン同梱コスト変動が示唆されたのを起点に実コードを精査し、
