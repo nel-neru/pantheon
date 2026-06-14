@@ -62,11 +62,14 @@ function CodeBlock({ children, href }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
 
   function handleCopy() {
-    void navigator.clipboard.writeText(children).then(() => {
-      setCopied(true)
-      toast.success('コピーしました', { duration: 1500 })
-      setTimeout(() => setCopied(false), 1500)
-    })
+    void navigator.clipboard.writeText(children).then(
+      () => {
+        setCopied(true)
+        toast.success('コピーしました', { duration: 1500 })
+        setTimeout(() => setCopied(false), 1500)
+      },
+      () => toast.error('コピーに失敗しました'),
+    )
   }
 
   const codeEl = href ? (
