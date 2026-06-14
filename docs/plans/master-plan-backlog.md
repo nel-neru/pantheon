@@ -132,6 +132,12 @@
   dead code 削除（web/server.py `FALLBACK_MODELS`・`_PROVIDER_KEY_MAPPING`・`_get_provider_api_key`／main.py の同等
   vestigial 群）／tmp/ のレビュー成果物4件を git 管理から除外＋`tmp/` を .gitignore／docs 整合（AGENTS.md/daemon-status.md に
   revenue daemon 追記・README の既知失敗を 6→2 に修正）。回帰なし（1334 passed）。
+- ✅ **ENV-SEP dev/user 環境のデータ完全分離（2026-06-14）**: プラットフォームホームを `PANTHEON_HOME` で
+  切替（user=未設定→`~/.pantheon`・dev=`~/.pantheon-dev`）。**分離を破っていたハードコード ~/.pantheon を排除**
+  （`task_queue.QUEUE_FILE` 削除＝TaskQueue は既に get_platform_home 使用 / `web/server.py` の
+  SETTINGS_FILE・CHAT_SESSIONS_DIR / `agents/chat_agent.py` SETTINGS_FILE を get_platform_home 由来に）。
+  ヘルパ `scripts/{init-dev,serve-user,serve-dev}.ps1`（user:7860 / dev:7870）＋ `docs/environments.md`。
+  env 分離テスト5（収益/組織/タスクキュー/設定パスが PANTHEON_HOME で分離）。
 - 継続: 各サイクルでテストゲート + 敵対的レビュー + 計画書/該当 memory の更新（自己更新ルール）。
 
 ## Phase 5（X.1 が surfaced した「真の自律化」残工程）

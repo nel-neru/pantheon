@@ -13,7 +13,9 @@ from typing import Any, Iterator
 
 from core.platform.state import get_platform_home
 
-QUEUE_FILE = Path.home() / ".pantheon" / "task_queue.json"
+# 注: キューの保存先は TaskQueue.__init__ が get_platform_home()（PANTHEON_HOME を尊重）から
+# 解決する。旧 module 定数 QUEUE_FILE はハードコード ~/.pantheon で環境分離を破る dead code
+# だったため削除（2026-06-14 dev/prod 環境分離）。
 _FILE_LOCK = threading.RLock()
 
 
