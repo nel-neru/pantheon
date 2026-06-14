@@ -1,5 +1,5 @@
 ---
-description: 全デーモン（improvement/content/trend/watchdog）の稼働状態・heartbeat・レート制限を一覧する
+description: 全デーモン（improvement/content/trend/watchdog/revenue）の稼働状態・heartbeat・レート制限を一覧する
 ---
 
 # /daemon-status — 24h 自律基盤の状態を見る

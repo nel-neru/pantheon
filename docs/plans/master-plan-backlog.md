@@ -122,6 +122,12 @@
 - ✅ X.2 **§12 成功指標の検証 run**: `tests/test_success_metrics_e2e.py`（クリーン tmp_path で Phase 0 §12 を
   端から端まで駆動し pass・決定論・claude CLI 非依存）。会社プラグイン起動/手動収益記録→月次レポート/
   Meta-Overseer 提案→計画→基本実行/CLI 非依存性 の4 E2E。計画書 §12 の現況注記を実態へ更新。
+- ✅ **HYGIENE-1 リポジトリ衛生監査（2026-06-14）**: 多角監査ワークフロー（21 agent・docs/dead-code/garbage/packaging/plugin）
+  で 13 確定。修正: packaging spec に `scripts/`（watchdog .ps1）同梱漏れ＋check_build_spec へ追加（HIGH）／
+  namespace package 化していた core/{metrics,models,orchestration,quality,state} に `__init__.py`（collect_submodules 0→検出）／
+  dead code 削除（web/server.py `FALLBACK_MODELS`・`_PROVIDER_KEY_MAPPING`・`_get_provider_api_key`／main.py の同等
+  vestigial 群）／tmp/ のレビュー成果物4件を git 管理から除外＋`tmp/` を .gitignore／docs 整合（AGENTS.md/daemon-status.md に
+  revenue daemon 追記・README の既知失敗を 6→2 に修正）。回帰なし（1334 passed）。
 - 継続: 各サイクルでテストゲート + 敵対的レビュー + 計画書/該当 memory の更新（自己更新ルール）。
 
 ## Phase 5（X.1 が surfaced した「真の自律化」残工程）

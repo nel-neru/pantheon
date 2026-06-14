@@ -32,6 +32,7 @@ CRITICAL_DATA_TOKENS: Tuple[str, ...] = (
     "core",
     "agents",
     "server.py",
+    "scripts",  # watchdog の .ps1 等を実行時に resource_path("scripts", ...) で読む
 )
 
 # 実体が存在すべきパス（datas トークンに対応するリポジトリ内リソース）。
@@ -44,6 +45,7 @@ CRITICAL_PATHS: Tuple[str, ...] = (
     "core",
     "agents",
     "web/server.py",
+    "scripts",
 )
 
 # 実行時に文字列から動的解決され、宣言漏れだと exe で落ちる hiddenimports。

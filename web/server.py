@@ -50,57 +50,9 @@ SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
 CHAT_SESSIONS_DIR = Path.home() / ".pantheon" / "chat_sessions"
 DEFAULT_CORS_ORIGINS = ("http://localhost:5173",)
 CHAT_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-_PROVIDER_KEY_MAPPING = {
-    "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
-    "openai": ("openai_api_key", "OPENAI_API_KEY"),
-    "groq": ("groq_api_key", "GROQ_API_KEY"),
-    "github_models": ("github_models_api_key", "GITHUB_TOKEN"),
-    "gemini": ("gemini_api_key", "GOOGLE_API_KEY"),
-}
-FALLBACK_MODELS = {
-    "anthropic": [
-        "claude-opus-4-5",
-        "claude-sonnet-4-5",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku-20241022",
-        "claude-3-opus-20240229",
-        "claude-3-haiku-20240307",
-    ],
-    "openai": [
-        "gpt-4o",
-        "gpt-4o-mini",
-        "gpt-4-turbo",
-        "gpt-4",
-        "gpt-3.5-turbo",
-        "o1",
-        "o1-mini",
-        "o3-mini",
-    ],
-    "groq": [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-70b-versatile",
-        "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it",
-    ],
-    "github_models": [
-        "gpt-4o",
-        "gpt-4o-mini",
-        "claude-3-5-sonnet",
-        "meta-llama-3-70b-instruct",
-        "mistral-large",
-        "phi-3-medium-instruct-128k",
-        "ai21-jamba-instruct",
-    ],
-    "gemini": [
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-pro-exp",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b",
-    ],
-}
+# 注: ホスト型プロバイダのキー対応表/モデル一覧（旧 _PROVIDER_KEY_MAPPING / FALLBACK_MODELS）は
+# Claude Code CLI 専用化により完全な dead code だったため削除（2026-06-14 リポジトリ衛生監査）。
+# 生成は core/runtime/claude_code.ClaudeCodeProvider 経由のみ。モデル一覧は CLAUDE_MODELS を使う。
 DEFAULT_MODEL_CONFIGURATIONS = {
     "default": {
         "temperature": 0.2,
@@ -429,16 +381,6 @@ def _get_cached_models(provider: str) -> list[str] | None:
 
 def _set_cached_models(provider: str, models: list[str]) -> None:
     _model_cache[provider] = (models, time.time())
-
-
-def _get_provider_api_key(settings: Dict[str, Any], provider: str) -> str:
-    api_keys = settings.get("api_keys", {})
-    if not isinstance(api_keys, dict):
-        api_keys = {}
-    setting_key, env_key = _PROVIDER_KEY_MAPPING.get(provider, (None, None))
-    if not setting_key or not env_key:
-        return ""
-    return str(api_keys.get(provider) or settings.get(setting_key) or os.getenv(env_key, ""))
 
 
 def _normalize_request_path(
