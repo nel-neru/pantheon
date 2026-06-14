@@ -390,7 +390,7 @@
       "rationale": "validity/maintainability: hookが呼び出し毎にnew WebSocketを張り、App+OrchestraView+Inbox+ContentSchedule+Sessionsの5箇所で画面ごとに複数接続が発生。各インスタンスが別events stateと別3s再接続を持ち、同一イベントがN重処理→再取得多重発火。Context Providerで1本のWSを共有し各ページは購読のみ。WSスタブを配信可能に拡張して接続数/重複のテストを追加。",
       "test_impact": "WS no-opスタブを配信可能スタブへ拡張。購読系ページの再取得トリガテストを更新・追加。",
       "wave": "W3",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C010",
@@ -485,7 +485,7 @@
       "rationale": "validity/convenience: WS依存ページ(Inbox/Sessions/Orchestra)はポーリング廃止でWS断時にデータが静かに陳腐化するが警告無し。ヘッダは3s再接続ループで永遠に『再接続中』のまま恒久断にエスカレーションせず誤認を招く。共有Provider(C009)上で切断バナー『表示が古い可能性』を出し、一定回数失敗で『オフライン』へ昇格。",
       "test_impact": "切断状態のバナー表示/オフライン昇格テストを追加。",
       "wave": "W3",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C012",
@@ -895,7 +895,7 @@
       "rationale": "maintainability: streamSSEはapi.tsからexportされるが本番呼び出し皆無(テストmockのみ)で対応する/api/goals/stream・/api/analyze/streamもフロント未配線の両側デッドウェイト。setApiTokenも未呼び出し(C010で配線するなら例外)。frontend.mdが存在しないuseWebSocketを参照するdriftもある。SSE機能を使わないなら削除、使うなら配線。",
       "test_impact": "mocks.tsのstreamSSEモック行削除。SSE関連テストがあれば除去。",
       "wave": "W5",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C039",

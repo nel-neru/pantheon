@@ -171,7 +171,7 @@ function AppShell() {
   const searchRef = useRef<HTMLDivElement | null>(null)
   const notificationsRef = useRef<HTMLDivElement | null>(null)
   const notifiedIds = useRef<Set<string>>(new Set())
-  const { connected: updatesConnected, events } = usePlatformUpdates()
+  const { connected: updatesConnected, offline: updatesOffline, events } = usePlatformUpdates()
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -494,6 +494,11 @@ function AppShell() {
               </button>
             </div>
           </div>
+          {updatesOffline ? (
+            <div className="offline-banner" role="status">
+              オフライン — ライブ更新サーバーに接続できません。表示が古い可能性があります。
+            </div>
+          ) : null}
           <Outlet />
         </main>
       </div>

@@ -1642,6 +1642,17 @@ tr:hover td { background: var(--color-surface-2); }
   outline: none;
 }
 
+/* ライブ更新が恒久切断したときの警告バナー（C035） */
+.offline-banner {
+  margin: 8px 20px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  background: var(--color-yellow-subtle);
+  color: var(--color-yellow);
+  border: 1px solid oklch(0.737 0.148 75 / 35%);
+}
+
 /* -----------------------------------------------------------------------
    Toast (Sonner override)
 ----------------------------------------------------------------------- */

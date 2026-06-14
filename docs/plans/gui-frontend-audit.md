@@ -2,7 +2,7 @@
 
 - 生成: 2026-06-14 / 出典: workflow gui-frontend-audit (run w3bnm8rn9, 49 agents)
 - 対象GUI: **web/frontend (legacy / 既定UI)**
-- 進捗: **19/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
+- 進捗: **22/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
 - **このファイルが改善の正本**。各変更を着手→完了→検証で状態遷移させながら実装する。
 - 機械可読の進捗は `gui-frontend-audit-state.json`（本ファイルと対・JSONが正本）。
 - 由来: 全21画面の要素インベントリ→6軸（必要性/妥当性/機能性/利便性/拡張性/保守性）厳格評価→横断監査→重複排除した優先度付き計画（Workflow `gui-frontend-audit`）。
@@ -108,9 +108,9 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: necessity/validity/maintainability: 同一WSイベントがトースト+Bellポップオーバー+通知ページ+通知センターナビの最大4面で多重露出し語彙(success/info/error vs done/live/error)も不一致。Bellは未読概念が無く件数バッジが『未読』を詐称・pendingを『live』と誤表示。Bellを/api/notifications未読プレビューに置換しWS直結を廃止、WSはトースト専用、通知センターナビは削除(20→19)。statusラベルは保留/処理中/完了等に統一。
   - テスト影響: App.tsxのBell/トーストテストとNotificationsのバッジテストを更新。pending表示の文言テストを追加。
 
-### W3 — グローバル堅牢化（WS/401/非同期/オフライン）  (0/5)
+### W3 — グローバル堅牢化（WS/401/非同期/オフライン）  (2/5)
 
-- [ ] **C009** `[P1]` `<refactor>` risk=medium — usePlatformUpdatesを単一WS Providerに集約(多重接続/重複配信を解消)
+- [x] **C009** `[P1]` `<refactor>` risk=medium — usePlatformUpdatesを単一WS Providerに集約(多重接続/重複配信を解消) _(状態: done)_
   - 対象: `web/frontend/src/hooks/usePlatformUpdates.ts`, `web/frontend/src/App.tsx`, `web/frontend/src/components/OrchestraView.tsx`, `web/frontend/src/pages/InboxPage.tsx`, `web/frontend/src/pages/ContentSchedulePage.tsx`, `web/frontend/src/pages/SessionsPage.tsx`, `web/frontend/src/test/setup.ts`
   - 軸: validity, maintainability
   - 根拠: validity/maintainability: hookが呼び出し毎にnew WebSocketを張り、App+OrchestraView+Inbox+ContentSchedule+Sessionsの5箇所で画面ごとに複数接続が発生。各インスタンスが別events stateと別3s再接続を持ち、同一イベントがN重処理→再取得多重発火。Context Providerで1本のWSを共有し各ページは購読のみ。WSスタブを配信可能に拡張して接続数/重複のテストを追加。
@@ -130,7 +130,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: convenience, validity
   - 根拠: convenience: 多くのページで更新/操作後の非quiet load()がリスト全体をspinnerへ置換し既存表示が消えてチラつく(Inbox/HumanTasks/Notifications/Orgs/Marketplace/Atlas/Sessions/Board/Handoffs)。初回マウントのみフルローディング、再取得はquiet=trueで既存保持+控えめインジケータ/skeletonへ統一。
   - テスト影響: 軽微。quiet再取得で既存リストが保持されるテストを追加可。
-- [ ] **C035** `[P2]` `<add>` risk=low — ライブ更新切断バナーとオフライン昇格表示の追加
+- [x] **C035** `[P2]` `<add>` risk=low — ライブ更新切断バナーとオフライン昇格表示の追加 _(状態: done)_
   - 対象: `web/frontend/src/App.tsx`, `web/frontend/src/hooks/usePlatformUpdates.ts`, `web/frontend/src/pages/InboxPage.tsx`, `web/frontend/src/pages/SessionsPage.tsx`, `web/frontend/src/components/OrchestraView.tsx`
   - 軸: validity, convenience
   - 根拠: validity/convenience: WS依存ページ(Inbox/Sessions/Orchestra)はポーリング廃止でWS断時にデータが静かに陳腐化するが警告無し。ヘッダは3s再接続ループで永遠に『再接続中』のまま恒久断にエスカレーションせず誤認を招く。共有Provider(C009)上で切断バナー『表示が古い可能性』を出し、一定回数失敗で『オフライン』へ昇格。
@@ -204,7 +204,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: convenience/maintainability: 設定ビューア/分析結果が生JSONダンプでエンドユーザー向けでなく、しかも結果が画面外の別カードに出て『何も起きない』視線断絶、推奨エージェントもraw ID表示で誰か不明・ジャンプ導線無し。主要フィールドを構造化表示+RawはコピーボタンつきでprogressLogクラス流用をやめ、結果は行内展開/モーダル化し自動スクロール、推奨はname解決+該当行リンク。
   - テスト影響: 構造化表示/コピー/ジャンプのテストを追加。
 
-### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (2/10)
+### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (3/10)
 
 - [ ] **C014** `[P1]` `<improve>` risk=high — ポリシー/モデル構成/プロンプトの生JSON手編集を構造化エディタ化
   - 対象: `web/frontend/src/pages/SettingsPage.tsx`, `/api/settings`
@@ -231,7 +231,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, functionality, convenience
   - 根拠: validity/functionality: 円環固定レイアウト+ホバー専用ハイライトでノード増に破綻、ズーム/パン無し、role=imgで子のtext/円がスクリーンリーダ不可視、固定760x520でレスポンシブ非対応、キーボード/タッチ非対応。ノードを<button>/tabindex化しフォーカスハイライト・viewBox維持でwidth100%可変・テキスト代替(隣接リスト)を併設、規模超過時はフォースレイアウトへ。
   - テスト影響: グラフのキーボード操作/aria代替テストを追加。
-- [ ] **C037** `[P3]` `<delete>` risk=low — デッドコード削除(streamSSE/setApiToken)とドキュメントdrift修正
+- [x] **C037** `[P3]` `<delete>` risk=low — デッドコード削除(streamSSE/setApiToken)とドキュメントdrift修正 _(状態: done)_
   - 対象: `web/frontend/src/lib/api.ts`, `web/frontend/src/test/mocks.ts`, `web/frontend/src/lib/token.ts`, `.claude/rules/frontend.md`
   - 軸: maintainability
   - 根拠: maintainability: streamSSEはapi.tsからexportされるが本番呼び出し皆無(テストmockのみ)で対応する/api/goals/stream・/api/analyze/streamもフロント未配線の両側デッドウェイト。setApiTokenも未呼び出し(C010で配線するなら例外)。frontend.mdが存在しないuseWebSocketを参照するdriftもある。SSE機能を使わないなら削除、使うなら配線。
