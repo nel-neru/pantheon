@@ -211,8 +211,11 @@ class AgentFactory:
         from agents.generic_skill_agent import GenericSkillAgent
 
         safe_skills = list(dict.fromkeys(skills))[:3]
-        if len(safe_skills) < 2:
-            safe_skills.append(AgentSkill.DEEP_RESEARCH)
+        for fallback in (AgentSkill.DEEP_RESEARCH, AgentSkill.CODEBASE_EXPLORATION):
+            if len(safe_skills) >= 2:
+                break
+            if fallback not in safe_skills:
+                safe_skills.append(fallback)
         specialist = SpecialistAgent(
             name=name or "GenericSpecialist",
             skills=safe_skills[:3],
