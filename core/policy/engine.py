@@ -239,7 +239,7 @@ class PolicyEngine:
                 rule_name="auto_reject.empty_file_path",
             )
 
-        disabled_categories = set(cond.get("disabled_categories", []))
+        disabled_categories = set(cond.get("disabled_categories") or [])
         if p.get("category") in disabled_categories:
             return PolicyVerdict(
                 decision=ApprovalDecision.REJECT,
@@ -366,7 +366,7 @@ class PolicyEngine:
             )
 
         # カテゴリチェック
-        for cat in cond.get("categories", []):
+        for cat in cond.get("categories") or []:
             if cat == (p.get("category") or ""):
                 return PolicyVerdict(
                     decision=ApprovalDecision.HUMAN_REQUIRED,
@@ -376,7 +376,7 @@ class PolicyEngine:
 
         # ファイルパスチェック
         file_path = p.get("file_path", "")
-        for pattern in cond.get("file_patterns", []):
+        for pattern in cond.get("file_patterns") or []:
             if pattern in file_path:
                 return PolicyVerdict(
                     decision=ApprovalDecision.HUMAN_REQUIRED,
@@ -429,13 +429,13 @@ class PolicyEngine:
             return None  # 条件不満足 → 次のルールへ
 
         # カテゴリ許可リスト
-        allowed = cond.get("allowed_categories", [])
+        allowed = cond.get("allowed_categories") or []
         if allowed and (p.get("category") or "") not in allowed:
             return None
 
         # 禁止パターンチェック
         file_path = p.get("file_path", "")
-        for pattern in cond.get("forbidden_patterns", []):
+        for pattern in cond.get("forbidden_patterns") or []:
             if pattern in file_path:
                 return None
 
