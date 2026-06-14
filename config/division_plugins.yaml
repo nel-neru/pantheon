@@ -195,3 +195,87 @@ plugins:
     label: 顧客管理(簡易CRM)事業部
     category: operations
     description: 顧客・見込み客の管理とフォロー導線を簡易 CRM として整える
+
+  # --- PT-3 §7.4 補完（#2 note有料記事作成 + #4 フルファネル残3バリアント） -----
+  # note有料記事「作成」特化（販売側の note_monetization とは別物・§7.4 #2）。テンプレ形。
+  - id: note_paid_article
+    label: note有料記事 制作事業部
+    category: content
+    description: note 有料記事の企画・無料/有料境界設計・構成・執筆・編集に特化（販売最適化は別事業部）
+
+  # §7.4 #4 フルファネル/エコシステム: 既存 full_funnel（汎用 集客→収益化）に加え、
+  # チーム構成を差別化した 3 つの複合モデルを明示 department で定義する。
+  - id: funnel_short_video_digital
+    label: 短尺動画→デジタル商品ファネル事業部
+    category: full_funnel
+    description: 短尺動画（TikTok/Reels/Shorts）で集客し、デジタル商品販売まで一気通貫する
+    department:
+      name: 短尺動画→デジタル商品ファネル事業部
+      type: audience_development
+      mission: 短尺動画で新規リーチを獲得し、デジタル商品の販売まで通す
+      teams:
+        - name: Short Video Growth Team
+          mission: 短尺動画の企画・量産・アルゴリズム最適化で新規リーチを獲得する
+          required_skills:
+            - audience_growth
+            - performance_marketing
+        - name: Digital Product Team
+          mission: 集客導線に合わせたデジタル商品の企画・制作
+          required_skills:
+            - content_strategy
+            - knowledge_curation
+        - name: Product Sales Team
+          mission: 販売ページ・価格・購入導線の最適化で売上化する
+          required_skills:
+            - performance_analysis
+            - performance_marketing
+
+  - id: funnel_content_multiplatform
+    label: コンテンツ→複数PF同時収益化事業部
+    category: full_funnel
+    description: 1 つのコンテンツを複数プラットフォームへ展開し同時に収益化するハイブリッド
+    department:
+      name: コンテンツ→複数PF同時収益化事業部
+      type: content_production
+      mission: コンテンツを複数 PF へ最適化展開し、各 PF で同時に収益化する
+      teams:
+        - name: Core Content Team
+          mission: 軸となるコンテンツの企画・制作（各 PF への派生元）
+          required_skills:
+            - content_strategy
+            - knowledge_curation
+        - name: Multi-Platform Distribution Team
+          mission: 各 PF 仕様へ最適化して同時展開し横断のリーチを最大化する
+          required_skills:
+            - audience_growth
+            - performance_marketing
+        - name: Monetization Mix Team
+          mission: 広告・販売・アフィリエイトを PF 別に組み合わせ収益を最大化する
+          required_skills:
+            - performance_analysis
+            - performance_marketing
+
+  - id: funnel_ai_note_affiliate
+    label: AI生成→note+アフィ複合販売事業部
+    category: full_funnel
+    description: AI 活用でコンテンツを量産し、note 有料記事とアフィリエイトを複合で収益化する
+    department:
+      name: AI生成→note+アフィ複合販売事業部
+      type: content_production
+      mission: AI でコンテンツを量産し、note 販売とアフィリエイトの複線で収益化する
+      teams:
+        - name: AI Content Generation Team
+          mission: AI 活用でテーマ調査からドラフト量産までを高速化する
+          required_skills:
+            - content_strategy
+            - deep_research
+        - name: note Sales Team
+          mission: 有料記事の構成・価格・販売導線を最適化する
+          required_skills:
+            - content_strategy
+            - performance_marketing
+        - name: Affiliate Team
+          mission: 比較・レビューでアフィリエイト収益を作る（PR 表記順守）
+          required_skills:
+            - knowledge_curation
+            - performance_marketing
