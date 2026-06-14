@@ -120,7 +120,7 @@ python -m pytest tests/ -q --tb=short
 .\.venv\Scripts\python.exe -m pytest tests\ -q --tb=short
 ```
 
-> Windows では path-separator と `chmod` 由来の **6 件が既知の失敗**（回帰ではありません）。詳細は `CLAUDE.md` / `AGENTS.md` を参照。
+> Windows では `chmod`(0o600) 由来の **2 件が既知の失敗**（回帰ではありません。path-separator と order-flaky の旧4件は 2026-06-12 に修正済み）。詳細は `CLAUDE.md` / `AGENTS.md` を参照。
 
 ## コントリビュート / ライセンス / セキュリティ
 

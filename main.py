@@ -17,10 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
-import os
 import sys
-from pathlib import Path
 
 from commands import build_parser
 from commands.atlas import cmd_atlas as _cmd_atlas_impl
@@ -140,32 +137,10 @@ def _filter_proficiency_data_by_org(data: dict, org_name: str) -> dict:
     return filtered if org_aware else data
 
 
-SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
-_PROVIDER_KEY_MAPPING = {
-    "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
-    "openai": ("openai_api_key", "OPENAI_API_KEY"),
-    "groq": ("groq_api_key", "GROQ_API_KEY"),
-    "github_models": ("github_models_api_key", "GITHUB_TOKEN"),
-    "gemini": ("gemini_api_key", "GOOGLE_API_KEY"),
-}
+# 旧 SETTINGS_FILE / _PROVIDER_KEY_MAPPING / _resolve_llm_provider / _load_gui_settings
+# （ホスト型プロバイダ選択・GUI 設定読込）は Claude Code CLI 専用化で dead code だったため削除
+# （2026-06-14 リポジトリ衛生監査）。生成は claude CLI 経由のみ。
 _SAFE_QUERY_FILTER_FIELDS = {"id", "priority", "category", "title", "file_path", "status"}
-
-
-def _load_gui_settings() -> dict:
-    if not SETTINGS_FILE.exists():
-        return {}
-    try:
-        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def _resolve_llm_provider() -> str:
-    settings = _load_gui_settings()
-    provider = os.getenv("PANTHEON_DEFAULT_LLM_PROVIDER") or settings.get(
-        "llm_provider", "anthropic"
-    )
-    return provider if provider in _PROVIDER_KEY_MAPPING else "anthropic"
 
 
 def _require_api_key(command_name: str) -> None:

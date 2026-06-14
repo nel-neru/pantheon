@@ -64,3 +64,6 @@ web/frontend/.vite/
 # ジャンル別に自動生成される組織テンプレート（pantheon org create の出力、ユーザー固有）
 config/departments/generated/*.yaml
 !config/departments/generated/.gitkeep
+
+# 一時作業ディレクトリ（レビュー成果物・スクラッチ。auto-commit による誤追跡を防ぐ）
+tmp/

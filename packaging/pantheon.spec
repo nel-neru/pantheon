@@ -38,6 +38,8 @@ _raw_datas = [
     (_src("config"), "config"),
     (_src("skills"), "skills"),
     (_src("knowledge"), "knowledge"),
+    # watchdog の install/uninstall .ps1 等、実行時に resource_path("scripts", ...) で読むスクリプト
+    (_src("scripts"), "scripts"),
     # Atlas の AST 静的解析・フロントエンド検出が参照するソースツリー
     (_src("main.py"), "."),
     (_src("commands"), "commands"),
