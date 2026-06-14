@@ -352,34 +352,6 @@ class PreTaskOrchestrator:
     # Step 3: SELECT / SPAWN                                        #
     # ──────────────────────────────────────────────────────────── #
 
-    def _select_agents(self, required_skills: List[str], min_agents: int = 1) -> List[str]:
-        """
-        CapabilityRegistry からスキル要件に合うエージェントを選択する。
-        スキルマッチ率の高い順にソートして返す。
-        """
-        if not self._registry:
-            return []
-
-        agents = self._registry.list_agents()
-        if not agents:
-            return []
-
-        if not required_skills:
-            # スキル要件なし → 全エージェントから先頭を返す
-            return [a.id for a in agents[:min_agents]]
-
-        # スキルマッチスコアでランキング
-        scored = []
-        for agent in agents:
-            agent_skills = set(agent.skills)
-            required_set = set(required_skills)
-            match_count = len(agent_skills & required_set)
-            if match_count > 0 or not required_skills:
-                scored.append((agent.id, match_count))
-
-        scored.sort(key=lambda x: x[1], reverse=True)
-        return [aid for aid, _ in scored[: max(min_agents, 2)]]
-
     def _build_spawn_spec(self, required_skills: List[str]) -> Dict:
         """
         既存エージェントが不足している場合の新エージェント仕様を生成する。
