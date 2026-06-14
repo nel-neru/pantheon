@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any, List
@@ -126,7 +127,7 @@ async def cmd_session_show(args: argparse.Namespace) -> None:
     rec = orch.poll_session(args.id) or orch.get_session(args.id)
     if rec is None:
         print(f"[ERROR] session not found: {args.id}")
-        return
+        sys.exit(1)
     print(f"session {rec.id}")
     print(f"  name:      {rec.name}")
     print(f"  driver:    {rec.driver}")
@@ -147,7 +148,7 @@ async def cmd_session_stop(args: argparse.Namespace) -> None:
     rec = orch.stop_session(args.id)
     if rec is None:
         print(f"[ERROR] session not found: {args.id}")
-        return
+        sys.exit(1)
     print(f"[OK] session stopped: {rec.id}")
 
 
@@ -156,7 +157,7 @@ async def cmd_session_resume(args: argparse.Namespace) -> None:
     rec = orch.resume_session(args.id, force=getattr(args, "force", False))
     if rec is None:
         print(f"[ERROR] session not found: {args.id}")
-        return
+        sys.exit(1)
     limited = sum(1 for s in rec.surfaces if s.get("status") == "rate_limited")
     print(f"[OK] session resumed: {rec.id}  (status: {rec.status}, {limited} still rate-limited)")
     for sr in rec.surfaces:

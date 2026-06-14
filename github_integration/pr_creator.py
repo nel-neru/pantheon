@@ -60,7 +60,9 @@ async def create_improvement_pr(
             sha=file_obj.sha,
             branch=branch_name,
         )
-    except GithubException:
+    except GithubException as exc:
+        if getattr(exc, "status", 404) != 404:
+            raise  # 401/403/422/429/5xx は真因を握り潰さず表に出す
         repo.create_file(
             path=file_path,
             message=f"feat: {suggestion.get('title', 'Apply improvement')}",

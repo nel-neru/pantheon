@@ -192,6 +192,7 @@ async def cmd_agent_status(
         proficiencies = ", ".join(
             f"{skill}={record.get('proficiency', 1.0):.1f}/100"
             for skill, record in sorted(skills.items())
+            if isinstance(record, dict)
         )
         print(f"{agent_id[:20]:20} | {skill_names[:22]:22} | {proficiencies}")
     print(f"{'═' * 72}\n")
