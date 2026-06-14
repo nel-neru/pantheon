@@ -565,6 +565,12 @@ async def cmd_trends_untapped(args) -> None:
     await _impl(args)
 
 
+async def cmd_revenue_collect(args) -> None:
+    from commands.revenue import cmd_revenue_collect as _impl
+
+    await _impl(args)
+
+
 async def cmd_publish_connect(args) -> None:
     from commands.publish import cmd_publish_connect as _impl
 
@@ -650,6 +656,7 @@ HANDLERS = {
     "cmd_trends_list": cmd_trends_list,
     "cmd_trends_business_scan": cmd_trends_business_scan,
     "cmd_trends_untapped": cmd_trends_untapped,
+    "cmd_revenue_collect": cmd_revenue_collect,
     "cmd_publish_connect": cmd_publish_connect,
     "cmd_publish_status": cmd_publish_status,
     "cmd_publish_disconnect": cmd_publish_disconnect,

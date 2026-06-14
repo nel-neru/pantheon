@@ -4356,6 +4356,18 @@ async def api_capture_playbook(body: PlaybookCaptureRequest) -> Dict[str, Any]:
     return {"ok": True, "entry": asdict(entry)}
 
 
+@app.post("/api/revenue/collect", tags=["outcomes"])
+async def api_collect_revenue() -> Dict[str, Any]:
+    """外部プラットフォームから収益を自動収集する（REV-COLLECT・接続済みのみ）。
+
+    接続済みアダプタの売上を OutcomeStore へ記録し、未接続は「接続」人間タスクを一度だけ起票する
+    （実 API 認証は human-gate）。LLM 非依存。
+    """
+    from core.metrics.revenue_collectors import run_revenue_collection
+
+    return run_revenue_collection(platform_home=get_platform_home())
+
+
 @app.post("/api/outcomes", tags=["outcomes"])
 async def api_record_outcome(body: OutcomeRecordRequest) -> Dict[str, Any]:
     """成果イベントを 1 件記録する（GUI の手動入力フォーム用）。

@@ -567,6 +567,18 @@ def test_memory_playbook_api_capture_and_list(tmp_path, monkeypatch):
     )
 
 
+def test_revenue_collect_api(tmp_path, monkeypatch):
+    """REV-COLLECT: 既定アダプタ未接続なので収集0・接続タスク起票を API で確認する。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    resp = client.post("/api/revenue/collect")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["recorded"] == 0
+    assert set(data["needs_connection"]) == {"note", "x", "asp"}
+
+
 def test_settings_exposes_and_updates_quota_and_notifications(tmp_path, monkeypatch):
     """SET-EXPOSE: /api/settings がトークンクォータ・通知設定を露出し、PUT で更新できる。"""
     monkeypatch.setattr(server, "SETTINGS_FILE", tmp_path / "settings.json")
