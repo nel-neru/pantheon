@@ -139,8 +139,12 @@
 - 🔒 **PUB-AUTO Phase2 完全自動投稿（§1.1 原則3・HIGH）**: 全アダプタが auto モード未実装で
   `process_due_publish_jobs` が無人投稿できない＝「寝てる間に出力」未達。実送信は **human-gate**だが、
   X(REST)/WordPress(REST) の auto 経路の実装手前まで AI 可。
-- ⬜ **WIRE-MEM Self-Evolution + Layered Memory（§8 P2/§9・P2.3 配線）**: `PlaybookStore` を生成/参照経路へ
-  配線（agent が `top()` を prompt に、結果で `record_use()`/`add()`）＋ Memory Bank/file-based の統一メモリ層。
+- ✅ **WIRE-MEM Self-Evolution + Layered Memory（§8 P2/§9・P2.3 配線）**: `core/intelligence/memory_bank.MemoryBank`
+  （PlaybookStore を統一する Layered Memory ファサード・決定論/冪等/LLM 非依存）を新設し dead store を解消。
+  **recall 配線**: `BaseAgent.apply_skills_to_prompt` が有用度上位 Playbook をプロンプト末尾へ注入（空なら無変更）。
+  **capture 配線**: `BaseAgent._save_execution_knowledge` が成功実行を Playbook へ冪等蓄積（title 正規化で重複増殖防止）。
+  API `GET/POST /api/memory/playbook`。memory 10 + API 1 テスト。
+  （補足: `AgentKnowledgeAccumulator` との完全統合は将来課題＝今回は統一エントリ点 MemoryBank と Playbook 経路を配線）。
 - ⬜ **REV-COLLECT 外部API収益自動収集（§8 P1/§9）**: note/X/ASP の売上を定期取得し `OutcomeStore.record` へ。
   手動 POST/CSV からの脱却。実認証は human-gate。
 - ⬜ **TPL-SEED テンプレ標準シード（§6.1/§6.2）**: 会社/事業部テンプレに HQ Agent・初期KPI 永続化

@@ -4277,6 +4277,48 @@ async def api_update_notification_settings(body: NotificationSettingsRequest) ->
     return _notification_center().update_settings(patch)
 
 
+# --------------------------------------------------------------------------- #
+# Layered Memory / Playbook（WIRE-MEM）: 過去の学びの参照・蓄積                  #
+# --------------------------------------------------------------------------- #
+
+
+class PlaybookCaptureRequest(BaseModel):
+    """施策ノート（Playbook）を 1 件蓄積するリクエスト。"""
+
+    title: str
+    content: str
+    category: str = "general"
+    org_name: str = ""
+
+
+@app.get("/api/memory/playbook", tags=["memory"])
+async def api_list_playbook(limit: int = 10, category: Optional[str] = None) -> Dict[str, Any]:
+    """有用度上位の Playbook（過去の学び）を返す。"""
+    from dataclasses import asdict
+
+    from core.intelligence.memory_bank import MemoryBank
+
+    bank = MemoryBank(get_platform_home())
+    entries = bank.recall(category=category, limit=max(1, min(limit, 100)))
+    return {"items": [asdict(e) for e in entries], "count": len(entries)}
+
+
+@app.post("/api/memory/playbook", tags=["memory"])
+async def api_capture_playbook(body: PlaybookCaptureRequest) -> Dict[str, Any]:
+    """施策ノートを蓄積する（冪等: 同 title/category/org は二重追加しない）。"""
+    from dataclasses import asdict
+
+    from core.intelligence.memory_bank import MemoryBank
+
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title は必須です")
+    entry = MemoryBank(get_platform_home()).capture(
+        title, body.content, category=body.category, org_name=body.org_name
+    )
+    return {"ok": True, "entry": asdict(entry)}
+
+
 @app.post("/api/outcomes", tags=["outcomes"])
 async def api_record_outcome(body: OutcomeRecordRequest) -> Dict[str, Any]:
     """成果イベントを 1 件記録する（GUI の手動入力フォーム用）。

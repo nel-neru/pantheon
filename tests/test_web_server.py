@@ -539,6 +539,34 @@ def test_untapped_genres_api(tmp_path, monkeypatch):
     assert scan.json()["proposals"] == 1
 
 
+def test_memory_playbook_api_capture_and_list(tmp_path, monkeypatch):
+    """WIRE-MEM: Playbook の蓄積→一覧 API（冪等含む）。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    cap = client.post(
+        "/api/memory/playbook",
+        json={"title": "勝ちパターン", "content": "結論先出し", "category": "content"},
+    )
+    assert cap.status_code == 200, cap.text
+    # 冪等: 同 title/category/org は二重追加しない
+    client.post(
+        "/api/memory/playbook",
+        json={"title": "勝ちパターン", "content": "別内容", "category": "content"},
+    )
+
+    listed = client.get("/api/memory/playbook")
+    assert listed.status_code == 200, listed.text
+    data = listed.json()
+    assert data["count"] == 1
+    assert data["items"][0]["title"] == "勝ちパターン"
+
+    # title 必須
+    assert (
+        client.post("/api/memory/playbook", json={"title": "  ", "content": "x"}).status_code == 400
+    )
+
+
 def test_notifications_api_crud_and_settings(tmp_path, monkeypatch):
     """P3.3: 通知の作成→一覧/未読数→既読→設定更新の一連を API で検証する。"""
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
