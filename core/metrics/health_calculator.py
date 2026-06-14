@@ -85,4 +85,7 @@ class HealthCalculator:
             value = datetime.fromisoformat(timestamp)
         except ValueError:
             return False
+        # naive な日時は UTC として扱う（aware な now() との比較での TypeError を防ぐ）。
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
         return value >= datetime.now(timezone.utc) - timedelta(days=7)

@@ -546,9 +546,9 @@ class PreTaskOrchestrator:
     async def _execute_parallel(self, task, analysis, agent_factory):
         """複数エージェントを並列実行して結果を統合する。"""
         agents = [
-            agent_factory(aid)
+            agent
             for aid in analysis.recommended_agent_ids
-            if agent_factory(aid) is not None
+            if (agent := agent_factory(aid)) is not None
         ]
         if not agents:
             from agents.base import AgentResult
