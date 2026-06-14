@@ -2,7 +2,7 @@
 
 - 生成: 2026-06-14 / 出典: workflow gui-frontend-audit (run w3bnm8rn9, 49 agents)
 - 対象GUI: **web/frontend (legacy / 既定UI)**
-- 進捗: **39/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
+- 進捗: **42/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
 - **このファイルが改善の正本**。各変更を着手→完了→検証で状態遷移させながら実装する。
 - 機械可読の進捗は `gui-frontend-audit-state.json`（本ファイルと対・JSONが正本）。
 - 由来: 全21画面の要素インベントリ→6軸（必要性/妥当性/機能性/利便性/拡張性/保守性）厳格評価→横断監査→重複排除した優先度付き計画（Workflow `gui-frontend-audit`）。
@@ -136,7 +136,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: validity/convenience: WS依存ページ(Inbox/Sessions/Orchestra)はポーリング廃止でWS断時にデータが静かに陳腐化するが警告無し。ヘッダは3s再接続ループで永遠に『再接続中』のまま恒久断にエスカレーションせず誤認を招く。共有Provider(C009)上で切断バナー『表示が古い可能性』を出し、一定回数失敗で『オフライン』へ昇格。
   - テスト影響: 切断状態のバナー表示/オフライン昇格テストを追加。
 
-### W4 — Dashboard＋画面別機能修正  (11/13)
+### W4 — Dashboard＋画面別機能修正  (13/13)
 
 - [x] **C012** `[P1]` `<merge>` risk=medium — Dashboardの重複カードを統合(約11枚→7枚) _(状態: done)_
   - 対象: `web/frontend/src/pages/DashboardPage.tsx`
@@ -163,7 +163,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, functionality, convenience
   - 根拠: validity/functionality: ジョブ側は1時間〜1週間選べるのにループ巡回間隔だけinterval:600固定・非表示でブラックボックス。実行間隔セレクトを開始ボタン近くに用意し送信値を可変化、最低でも『10分ごとに巡回』をUI明示。job-run-nowの連打防止(行単位disabled+スピナー)も追加。
   - テスト影響: 間隔送信値とrun連打防止のテストを追加。
-- [~] **C020** `[P2]` `<merge>` risk=medium — 収益化パイプラインのナビ連続配置とStudio/Content接続(または統合) _(状態: in_progress)_
+- [x] **C020** `[P2]` `<merge>` risk=medium — 収益化パイプラインのナビ連続配置とStudio/Content接続(または統合) _(状態: done)_
   - 対象: `web/frontend/src/App.tsx`, `web/frontend/src/pages/StudioPage.tsx`, `web/frontend/src/pages/ContentSchedulePage.tsx`, `web/frontend/src/pages/InboxPage.tsx`, `web/frontend/src/lib/contentFormat.ts`
   - 軸: necessity, convenience, extensibility
   - 根拠: necessity/convenience: スタジオ/コンテンツ予約/引き渡し/収益が分散配置でワークフロー(生成→予約→引き渡し→収益)として連続せず、Studioは保存もAPI呼び出しも無い孤島でContentが生成した下書きと相互に流し込めない。『収益化』グループに連続配置し、Studioを承認待ち下書きを読み込む下書きビューアとして/content・/inboxのpublishから開けるよう接続。接続しないなら単独ナビは廃しContent詳細に内包。
@@ -178,7 +178,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: functionality, validity, convenience
   - 根拠: functionality/validity: 文字数バッジ/状態がcount>280基準なのに実分割は接尾辞ぶん上限を縮め275〜280字で『緑・1ツイート』と実2分割が矛盾。判定をthread.length基準に統一。読み取り専用で各ツイート/全件/記事のコピー導線が無く目的未達→コピー/エクスポートを追加。title/bodyがuseStateのみでリロード消失→localStorage自動保存・復元。
   - テスト影響: 閾値境界(275-280字)の分割一致テスト・コピー/永続化テストを追加。
-- [~] **C030** `[P2]` `<improve>` risk=medium — Onboardingのエラー/空状態追加・MarketplaceとのテーブルDRY化・初回出し分け _(状態: in_progress)_
+- [x] **C030** `[P2]` `<improve>` risk=medium — Onboardingのエラー/空状態追加・MarketplaceとのテーブルDRY化・初回出し分け _(状態: done)_
   - 対象: `web/frontend/src/pages/OnboardingPage.tsx`, `web/frontend/src/pages/MarketplacePage.tsx`, `web/frontend/src/components/CompanyManifestTable.tsx`, `web/frontend/src/pages/__tests__/OnboardingPage.test.tsx`, `web/frontend/src/App.tsx`
   - 軸: necessity, maintainability, convenience
   - 根拠: necessity/maintainability: OnboardingとMarketplaceが同一API/型/installフローでerror/再試行/KPI列まで重複しOnboardingは劣化版。step2失敗で空テーブルのまま行き止まり(完了disabled)。共通CompanyManifestTableへ抽出、error/empty/KPI列を追加し、組織0件等で『初回のみ』ナビ出し分け/自動リダイレクトを検討。
@@ -204,7 +204,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: convenience/maintainability: 設定ビューア/分析結果が生JSONダンプでエンドユーザー向けでなく、しかも結果が画面外の別カードに出て『何も起きない』視線断絶、推奨エージェントもraw ID表示で誰か不明・ジャンプ導線無し。主要フィールドを構造化表示+RawはコピーボタンつきでprogressLogクラス流用をやめ、結果は行内展開/モーダル化し自動スクロール、推奨はname解決+該当行リンク。
   - テスト影響: 構造化表示/コピー/ジャンプのテストを追加。
 
-### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (9/10)
+### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (10/10)
 
 - [x] **C014** `[P1]` `<improve>` risk=high — ポリシー/モデル構成/プロンプトの生JSON手編集を構造化エディタ化 _(状態: done)_
   - 対象: `web/frontend/src/pages/SettingsPage.tsx`, `/api/settings`
@@ -226,7 +226,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, convenience
   - 根拠: validity/convenience: 全体検索がrole=listbox宣言なのに子にrole=option/矢印キー/Enter/Escape/aria-activedescendant無し(ARIA契約違反)、通知ポップオーバーにdialog属性・フォーカストラップ無し、Orgs/DataのモーダルもEscape/フォーカストラップ/初期フォーカス欠如(DataはRadix未使用の素div)。Radix Combobox/Popover/Dialogへ置換しキーボード/aria/Escを一括担保。Ctrl/Cmd+K検索フォーカスも追加。
   - テスト影響: 検索キーボード操作・モーダルEsc/フォーカストラップのa11yテストを追加。
-- [~] **C028** `[P2]` `<improve>` risk=medium — Atlas依存グラフSVGのアクセシビリティ/スケール改善 _(状態: in_progress)_
+- [x] **C028** `[P2]` `<improve>` risk=medium — Atlas依存グラフSVGのアクセシビリティ/スケール改善 _(状態: done)_
   - 対象: `web/frontend/src/pages/AtlasPage.tsx`
   - 軸: validity, functionality, convenience
   - 根拠: validity/functionality: 円環固定レイアウト+ホバー専用ハイライトでノード増に破綻、ズーム/パン無し、role=imgで子のtext/円がスクリーンリーダ不可視、固定760x520でレスポンシブ非対応、キーボード/タッチ非対応。ノードを<button>/tabindex化しフォーカスハイライト・viewBox維持でwidth100%可変・テキスト代替(隣接リスト)を併設、規模超過時はフォースレイアウトへ。

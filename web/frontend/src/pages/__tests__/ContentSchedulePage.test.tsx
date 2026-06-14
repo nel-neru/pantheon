@@ -428,3 +428,22 @@ it('shows that theme is optional in the label', async () => {
   await screen.findByText('ジョブがありません')
   expect(screen.getByText(/任意・未指定なら組織のデフォルト方針で生成/)).toBeInTheDocument()
 })
+
+// ---- スタジオ導線（C020） ---------------------------------------------------
+
+it('run_count > 0 のジョブカードに「スタジオで整える」ボタンを表示する', async () => {
+  const runJob = { ...job, run_count: 3 }
+  routeGet([runJob])
+  renderWithRouter(<ContentSchedulePage />)
+
+  await screen.findByText('SNS Growth · SNS 投稿')
+  expect(screen.getByRole('button', { name: /スタジオで整える/ })).toBeInTheDocument()
+})
+
+it('run_count === 0 のジョブカードには「スタジオで整える」ボタンを表示しない', async () => {
+  routeGet([job]) // job.run_count === 0
+  renderWithRouter(<ContentSchedulePage />)
+
+  await screen.findByText('SNS Growth · SNS 投稿')
+  expect(screen.queryByRole('button', { name: /スタジオで整える/ })).not.toBeInTheDocument()
+})

@@ -281,6 +281,7 @@ export function MarketplacePage() {
                     )}
                   </>
                 )}
+                emptyTitle="会社プラグインがありません。"
                 onRetry={() => void load(false)}
                 onInstall={installCompanyConfirmed}
               />

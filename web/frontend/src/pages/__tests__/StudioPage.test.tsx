@@ -1,9 +1,19 @@
-import { screen, within, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, beforeEach, afterEach, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 
 import { StudioPage } from '../StudioPage'
 import { renderWithRouter } from '@/test/utils'
+
+// ナビゲーション状態付きでレンダリングするヘルパー（下書き読み込みテスト用）
+function renderWithNavState(state: Record<string, unknown>) {
+  return render(
+    <MemoryRouter initialEntries={[{ pathname: '/studio', state }]}>
+      <StudioPage />
+    </MemoryRouter>,
+  )
+}
 
 // localStorage のモック（jsdom は localStorage を提供するが、テスト間で汚染しないようにリセット）
 beforeEach(() => {
@@ -210,4 +220,50 @@ it('note タブと WordPress タブは異なる aria-label を持つ', () => {
   const labels = tabs.map((t) => t.textContent ?? '')
   expect(labels).toContain('note')
   expect(labels).toContain('WordPress')
+})
+
+// ── ナビゲーション経由の下書き読み込みテスト（C020） ─────────────────────────
+
+it('ナビゲーション状態から title と body を読み込んで下書きエリアに反映する', async () => {
+  renderWithNavState({ title: 'ナビ経由タイトル', body: 'ナビ経由本文', sourceLabel: 'インボックス' })
+  // useEffect による state 更新後の再レンダリングを waitFor で待つ。
+  // 本文はプレビューにも複製表示されるため、入力欄(textarea)の value で一意に検証する。
+  await waitFor(() => {
+    const textarea = screen.getByLabelText('本文') as HTMLTextAreaElement
+    expect(textarea.value).toBe('ナビ経由本文')
+  })
+})
+
+it('ナビゲーション状態を読み込むとバナーに読み込み元ラベルを表示する', async () => {
+  renderWithNavState({ title: '', body: 'バナー確認', sourceLabel: 'テスト画面' })
+  // useEffect 完了後にバナーが表示される
+  expect(await screen.findByText(/テスト画面/)).toBeInTheDocument()
+  expect(await screen.findByText(/から下書きを読み込みました/)).toBeInTheDocument()
+})
+
+it('バナーの「クリア」ボタンで下書きを空にしてバナーを消す', async () => {
+  renderWithNavState({ title: 'クリアテスト', body: 'クリアされる本文', sourceLabel: 'テスト' })
+  // バナーが表示されるまで待つ
+  await screen.findByText(/から下書きを読み込みました/)
+  const clearBtn = screen.getByRole('button', { name: /クリア/ })
+  await userEvent.click(clearBtn)
+  // バナーが消える
+  expect(screen.queryByText(/から下書きを読み込みました/)).not.toBeInTheDocument()
+  // 本文エリアが空になる
+  const textarea = screen.getByLabelText('本文') as HTMLTextAreaElement
+  expect(textarea.value).toBe('')
+})
+
+it('ナビゲーション状態が空のときバナーを表示しない', () => {
+  renderWithRouter(<StudioPage />)
+  expect(screen.queryByText(/から下書きを読み込みました/)).not.toBeInTheDocument()
+})
+
+it('ナビゲーション状態を読み込むと localStorage にも保存される', async () => {
+  // ナビ状態適用は即時 lsSave（デバウンスではない）。fake timers は waitFor とデッドロックするため使わない。
+  renderWithNavState({ title: 'LS保存タイトル', body: 'LS保存本文', sourceLabel: 'テスト' })
+  await waitFor(() => {
+    expect(localStorage.getItem('studio:body')).toBe('LS保存本文')
+    expect(localStorage.getItem('studio:title')).toBe('LS保存タイトル')
+  })
 })

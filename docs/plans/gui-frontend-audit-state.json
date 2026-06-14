@@ -613,7 +613,7 @@
       "rationale": "necessity/convenience: スタジオ/コンテンツ予約/引き渡し/収益が分散配置でワークフロー(生成→予約→引き渡し→収益)として連続せず、Studioは保存もAPI呼び出しも無い孤島でContentが生成した下書きと相互に流し込めない。『収益化』グループに連続配置し、Studioを承認待ち下書きを読み込む下書きビューアとして/content・/inboxのpublishから開けるよう接続。接続しないなら単独ナビは廃しContent詳細に内包。",
       "test_impact": "Studioに下書き読み込みテストを追加。ナビ統合に伴う遷移テスト更新。",
       "wave": "W4",
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "C026",
@@ -682,7 +682,7 @@
       "rationale": "necessity/maintainability: OnboardingとMarketplaceが同一API/型/installフローでerror/再試行/KPI列まで重複しOnboardingは劣化版。step2失敗で空テーブルのまま行き止まり(完了disabled)。共通CompanyManifestTableへ抽出、error/empty/KPI列を追加し、組織0件等で『初回のみ』ナビ出し分け/自動リダイレクトを検討。",
       "test_impact": "Onboardingの失敗/空/step3/disabledゲートテストを追加。共有テーブルのテスト。",
       "wave": "W4",
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "C031",
@@ -874,7 +874,7 @@
       "rationale": "validity/functionality: 円環固定レイアウト+ホバー専用ハイライトでノード増に破綻、ズーム/パン無し、role=imgで子のtext/円がスクリーンリーダ不可視、固定760x520でレスポンシブ非対応、キーボード/タッチ非対応。ノードを<button>/tabindex化しフォーカスハイライト・viewBox維持でwidth100%可変・テキスト代替(隣接リスト)を併設、規模超過時はフォースレイアウトへ。",
       "test_impact": "グラフのキーボード操作/aria代替テストを追加。",
       "wave": "W5",
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "C037",

@@ -52,6 +52,10 @@ export type CompanyManifestTableProps = {
   heading?: string
   /** 見出し下のサブテキスト */
   subtext?: ReactNode
+  /** 空状態のタイトル（省略時: 'テンプレートがありません'） */
+  emptyTitle?: string
+  /** 空状態のヒントテキスト（省略時: '利用可能な会社テンプレートが見つかりませんでした。'） */
+  emptyHint?: string
   /** 再試行コールバック（エラー状態で表示される再試行ボタン） */
   onRetry?: () => void
   /** インストール実行コールバック。ConfirmDialog 確認後に呼ばれる */
@@ -77,6 +81,8 @@ export function CompanyManifestTable({
   showGenreDescription = true,
   heading,
   subtext,
+  emptyTitle,
+  emptyHint,
   onRetry,
   onInstall,
 }: CompanyManifestTableProps) {
@@ -154,8 +160,8 @@ export function CompanyManifestTable({
           /* 空 */
           <EmptyState
             icon={PackageOpen}
-            title="テンプレートがありません"
-            hint="利用可能な会社テンプレートが見つかりませんでした。"
+            title={emptyTitle ?? 'テンプレートがありません'}
+            hint={emptyHint ?? '利用可能な会社テンプレートが見つかりませんでした。'}
           />
         ) : (
           /* テーブル */
