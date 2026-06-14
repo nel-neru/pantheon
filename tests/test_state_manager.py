@@ -90,6 +90,28 @@ class TestRepoStateManager:
         # original is untouched / still active
         assert state_manager.get_pending_improvement_proposals()[0]["id"] == str(p.id)
 
+    def test_pending_proposals_returns_newest_first(self, state_manager):
+        # Filenames are random uuids, so ordering must come from created_at, not
+        # the filesystem glob order. Newest (largest created_at) first, and the
+        # limit returns the newest subset rather than an arbitrary one.
+        from datetime import datetime, timedelta, timezone
+
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        ids = []
+        for i in range(3):
+            p = ImprovementProposal(
+                review_id=uuid4(),
+                title=f"P{i}",
+                description="d",
+                created_at=base + timedelta(days=i),
+            )
+            state_manager.save_improvement_proposal(p)
+            ids.append(str(p.id))
+        pending = state_manager.get_pending_improvement_proposals()
+        assert [p["id"] for p in pending] == [ids[2], ids[1], ids[0]]
+        top = state_manager.get_pending_improvement_proposals(limit=1)
+        assert [p["id"] for p in top] == [ids[2]]
+
     def test_save_and_load_organization(self, state_manager, tmp_path):
         org = Organization(name="MyOrg", purpose="Test purpose")
         state_manager.save_organization(org)
