@@ -112,6 +112,27 @@ class TestRepoStateManager:
         top = state_manager.get_pending_improvement_proposals(limit=1)
         assert [p["id"] for p in top] == [ids[2]]
 
+    def test_all_proposals_returns_newest_first(self, state_manager):
+        # get_all_improvement_proposals docstring promises 新しい順 (newest-first);
+        # filenames are random uuids so ordering must come from created_at.
+        from datetime import datetime, timedelta, timezone
+
+        base = datetime(2026, 2, 1, tzinfo=timezone.utc)
+        ids = []
+        for i in range(3):
+            p = ImprovementProposal(
+                review_id=uuid4(),
+                title=f"Q{i}",
+                description="d",
+                created_at=base + timedelta(days=i),
+            )
+            state_manager.save_improvement_proposal(p)
+            ids.append(str(p.id))
+        allp = state_manager.get_all_improvement_proposals()
+        assert [p["id"] for p in allp] == [ids[2], ids[1], ids[0]]
+        top = state_manager.get_all_improvement_proposals(limit=1)
+        assert [p["id"] for p in top] == [ids[2]]
+
     def test_save_and_load_organization(self, state_manager, tmp_path):
         org = Organization(name="MyOrg", purpose="Test purpose")
         state_manager.save_organization(org)
