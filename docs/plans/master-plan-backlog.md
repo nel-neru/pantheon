@@ -130,10 +130,12 @@
 > 「24/7 で常駐し、寝てる間に勝手に回る」最終形には**配線・常駐化・自動収集・実投稿**が残る。
 > 多くは Phase 1〜2 horizon の forward-scoped。実投稿/実配布は **human-gate**。
 
-- ⬜ **AUTO-1 常駐エンジンの daemon 化（§1.2/§1.3/§8）**: 既存純粋コアを常駐ループへ配線。
-  (a) revenue daemon（`analyze_revenue` + `scan_portfolio_proposals` を定期実行→承認キュー）、
-  (b) HQ 経営会議 cadence（日/週次で収益レポート自動生成→`HQInterventionProposer.propose_all`）、
-  `daemon_registry.KNOWN_DAEMONS` + 新 runner + watchdog desired-state。
+- ✅ **AUTO-1 常駐エンジンの daemon 化（§1.2/§1.3/§8）**: Meta-Overseer を 24/7 常駐化。
+  (a) revenue daemon（`RevenueScheduler`＝`analyze_revenue` 常時＋target>0 で `scan_portfolio_proposals`→承認キュー、
+  `daemon_registry` 登録・runner・frozen flag・heartbeat。**並列 /evolve セッションが出荷**）、
+  (b) **HQ 経営会議 cadence ＋可視化（本サイクルで追加）**: `RevenueScheduler.run_cycle` を拡張し target>0 で
+  `HQInterventionProposer.propose_all`（決定論・冪等）も実行＋`NotificationCenter` へサイクル要約通知
+  （§12「寝てる間に改善が進んでた」）。idle 安全契約（target<=0 は無起票・無通知）を維持。revenue 7 テスト。
 - 🔒 **PUB-AUTO Phase2 完全自動投稿（§1.1 原則3・HIGH）**: 全アダプタが auto モード未実装で
   `process_due_publish_jobs` が無人投稿できない＝「寝てる間に出力」未達。実送信は **human-gate**だが、
   X(REST)/WordPress(REST) の auto 経路の実装手前まで AI 可。

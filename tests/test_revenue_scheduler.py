@@ -115,3 +115,37 @@ def test_run_cycle_resilient_to_analysis_failure(tmp_path, monkeypatch):
 
     assert summary["cycle"] == 1
     assert summary["trend"] is None  # 分析失敗 → analysis 空のまま続行
+
+
+def test_idle_skips_hq_cadence_and_notifications(tmp_path, monkeypatch):
+    """target<=0 は HQ 経営会議 cadence も通知も出さない（idle 安全契約・AUTO-1）。"""
+    from core.notifications import NotificationCenter
+
+    home = _home(tmp_path, monkeypatch)
+    psm = PlatformStateManager(platform_home=home)
+    psm.save_organization(create_default_organization("Reachy", "集客"))
+
+    summary = asyncio.run(RevenueScheduler(platform_home=home, target=0.0).run_cycle())
+    assert summary["hq_proposals"] == 0
+    assert NotificationCenter(platform_home=home).unread_count() == 0
+
+
+def test_active_runs_hq_cadence_and_emits_notification(tmp_path, monkeypatch):
+    """target>0 は HQ 構造介入 cadence を回し、起票があれば通知センターへ要約を残す（AUTO-1）。"""
+    from core.notifications import NotificationCenter
+
+    home = _home(tmp_path, monkeypatch)
+    psm = PlatformStateManager(platform_home=home)
+    psm.save_organization(create_default_organization("Reachy", "集客"))
+    OutcomeStore(platform_home=home).record("Reachy", "impressions", 5000)
+
+    summary = asyncio.run(RevenueScheduler(platform_home=home, target=100000.0).run_cycle())
+
+    # 何らかの提案（ポートフォリオ + HQ）が起票され、可視化通知が 1 件以上残る。
+    total_new = summary["proposals"] + summary["hq_proposals"]
+    assert total_new > 0
+    notes = NotificationCenter(platform_home=home).list()
+    assert len(notes) >= 1
+    assert "自律経営サイクル" in notes[0]["message"]
+    # 起票された提案はすべて承認待ち（自動採用しない）。
+    assert all(p["status"] == "proposed" for p in _proposals_for(psm, "Reachy"))
