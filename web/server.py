@@ -4028,6 +4028,14 @@ async def api_batch_update_proposals(org_name: str, body: ProposalBatchRequest) 
             results.append({"proposal_id": proposal_id, "ok": True, **result})
         except HTTPException as exc:
             results.append({"proposal_id": proposal_id, "ok": False, "detail": exc.detail})
+        except Exception as exc:  # noqa: BLE001 — 1 件の予期せぬ失敗でバッチ全体を落とさない
+            results.append(
+                {
+                    "proposal_id": proposal_id,
+                    "ok": False,
+                    "detail": str(exc) or type(exc).__name__,
+                }
+            )
 
     updated = [item for item in results if item.get("ok")]
     failed = [item for item in results if not item.get("ok")]
