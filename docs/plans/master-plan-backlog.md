@@ -146,9 +146,13 @@
   (b) **HQ 経営会議 cadence ＋可視化（本サイクルで追加）**: `RevenueScheduler.run_cycle` を拡張し target>0 で
   `HQInterventionProposer.propose_all`（決定論・冪等）も実行＋`NotificationCenter` へサイクル要約通知
   （§12「寝てる間に改善が進んでた」）。idle 安全契約（target<=0 は無起票・無通知）を維持。revenue 7 テスト。
-- 🔒 **PUB-AUTO Phase2 完全自動投稿（§1.1 原則3・HIGH）**: 全アダプタが auto モード未実装で
-  `process_due_publish_jobs` が無人投稿できない＝「寝てる間に出力」未達。実送信は **human-gate**だが、
-  X(REST)/WordPress(REST) の auto 経路の実装手前まで AI 可。
+- 🟩 **PUB-AUTO Phase2 完全自動投稿（§1.1 原則3）= 安全境界まで出荷**: `core/publishing/auto_gate.py`
+  （無人実送信フラグ `auto_send_enabled`・既定 OFF）＋ `run_publish_job` の境界降格＝auto ジョブは
+  「フラグ ON かつ adapter.supports_auto_send」でない限り **assisted へ降格し送信の直前まで自動準備→handed_off
+  （人手が最終送信）**。これで 24h デーモンが寝ている間に投稿を準備し「出力ゼロ」を解消しつつ、取り消せない
+  外部送信は人手ゲートを維持。CLI `pantheon publish auto [on|off]`、API `GET/POST /api/publishing/auto`。
+  publish-auto 6 + API 1 テスト。**残（human-gate）**: 各アダプタの実 auto 送信（`supports_auto_send=True`＋
+  実 API/自動操作の実送信）。現状アダプタは全て `supports_auto_send=False`＝無人実送信は構造的に発火しない。
 - ✅ **WIRE-MEM Self-Evolution + Layered Memory（§8 P2/§9・P2.3 配線）**: `core/intelligence/memory_bank.MemoryBank`
   （PlaybookStore を統一する Layered Memory ファサード・決定論/冪等/LLM 非依存）を新設し dead store を解消。
   **recall 配線**: `BaseAgent.apply_skills_to_prompt` が有用度上位 Playbook をプロンプト末尾へ注入（空なら無変更）。

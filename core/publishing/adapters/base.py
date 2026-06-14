@@ -19,6 +19,9 @@ class BrowserPublisher:
     """ブラウザ自動操作系アダプタの基底。サブクラスは ``platform`` と ``_publish_live`` を定義する。"""
 
     platform: str = ""
+    #: 無人での実 auto 送信を実装済みか（PUB-AUTO）。既定 False＝実送信は人手ゲート（handed_off）。
+    #: True にできるのは各プラットフォームの実 auto 送信を実装したアダプタのみ（Phase 2 の拡張点）。
+    supports_auto_send: bool = False
 
     async def publish(
         self,

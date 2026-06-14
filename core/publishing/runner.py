@@ -14,7 +14,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.publishing.adapters import get_adapter
-from core.publishing.base import PUBLISH_MODE_AUTO, PublishContent, PublishResult, PublishTarget
+from core.publishing.auto_gate import auto_send_enabled
+from core.publishing.base import (
+    PUBLISH_MODE_ASSISTED,
+    PUBLISH_MODE_AUTO,
+    PublishContent,
+    PublishResult,
+    PublishTarget,
+)
 from core.publishing.publish_jobs import PublishJob, PublishJobStore
 
 
@@ -92,6 +99,24 @@ async def run_publish_job(
     home = Path(platform_home) if platform_home else store.platform_home
     content = _build_content(job)
     target = _build_target(job)
+
+    # PUB-AUTO 安全境界: auto ジョブでも「無人実送信フラグ ON」かつ「アダプタが実 auto 送信対応」
+    # でない限り、assisted（下書き準備→handed_off＝人手が最終送信）へ降格する。これにより
+    # デーモンは寝ている間に投稿を“送信の直前”まで自動準備しつつ、取り消せない外部送信は人手ゲートを保つ。
+    if target.mode == PUBLISH_MODE_AUTO:
+        try:
+            adapter_supports_auto = bool(
+                getattr(get_adapter(job.platform), "supports_auto_send", False)
+            )
+        except Exception:  # noqa: BLE001 — 未知プラットフォームは後段の通常処理でエラーになる
+            adapter_supports_auto = False
+        if not (auto_send_enabled(home) and adapter_supports_auto):
+            target = PublishTarget(
+                platform=job.platform,
+                account=job.account,
+                scheduled_at=job.scheduled_at,
+                mode=PUBLISH_MODE_ASSISTED,
+            )
 
     if dry_run:
         try:
@@ -195,6 +220,10 @@ async def process_due_publish_jobs(
     assisted モードは「最終送信は人間」が契約のため、どの自動実行経路からも
     絶対に発火させない（承認＝唯一の出荷ゲート。content_scheduler 側の
     _process_due_publish_jobs と同じ不変条件）。
+
+    PUB-AUTO: auto ジョブはここで実行されるが、無人実送信フラグ（``auto_gate.auto_send_enabled``）
+    が OFF（既定）またはアダプタが実 auto 送信未対応の間は run_publish_job 内で assisted へ降格し、
+    「下書き準備→handed_off（人手が最終送信）」になる。したがって外部への取り消せない送信は既定で発火しない。
     """
     results: List[Dict[str, Any]] = []
     executed = 0

@@ -567,6 +567,23 @@ def test_memory_playbook_api_capture_and_list(tmp_path, monkeypatch):
     )
 
 
+def test_publishing_auto_flag_api(tmp_path, monkeypatch):
+    """PUB-AUTO: 無人実送信フラグの GET/POST（既定 OFF）。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    got = client.get("/api/publishing/auto")
+    assert got.status_code == 200, got.text
+    assert got.json()["auto_send_enabled"] is False  # 既定 OFF（安全）
+
+    on = client.post("/api/publishing/auto", json={"enabled": True})
+    assert on.status_code == 200 and on.json()["auto_send_enabled"] is True
+    assert client.get("/api/publishing/auto").json()["auto_send_enabled"] is True
+
+    off = client.post("/api/publishing/auto", json={"enabled": False})
+    assert off.json()["auto_send_enabled"] is False
+
+
 def test_workspace_db_sync_and_stats_api(tmp_path, monkeypatch):
     """WS-2: JSON 正準→SQLite ミラー再構築＋集計の API（非破壊）。"""
     from core.metrics.outcomes import OutcomeStore

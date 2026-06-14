@@ -2311,6 +2311,29 @@ async def api_list_publishing_connections() -> List[Dict[str, Any]]:
     return [asdict(c) for c in _session_store().list_connections()]
 
 
+class AutoSendRequest(BaseModel):
+    """無人実送信フラグ（PUB-AUTO）の切り替え。"""
+
+    enabled: bool
+
+
+@app.get("/api/publishing/auto", tags=["publishing"])
+async def api_get_publish_auto() -> Dict[str, Any]:
+    """無人実送信フラグの状態を返す（PUB-AUTO・既定 OFF＝最終送信は人手 handed_off）。"""
+    from core.publishing.auto_gate import auto_send_enabled
+
+    return {"auto_send_enabled": auto_send_enabled(get_platform_home())}
+
+
+@app.post("/api/publishing/auto", tags=["publishing"])
+async def api_set_publish_auto(body: AutoSendRequest) -> Dict[str, Any]:
+    """無人実送信フラグを設定する。ON でも実 auto 送信対応アダプタが揃うまで送信はされない。"""
+    from core.publishing.auto_gate import set_auto_send_enabled
+
+    value = set_auto_send_enabled(body.enabled, platform_home=get_platform_home())
+    return {"ok": True, "auto_send_enabled": value}
+
+
 # 進行中の手動ログインフロー（platform → asyncio.Task）。同一プラットフォームへの
 # 多重起動でヘッドフルブラウザが乱立しないようにする。
 _login_tasks: Dict[str, "asyncio.Task[Any]"] = {}
