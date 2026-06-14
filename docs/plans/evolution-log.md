@@ -19,6 +19,40 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 24 — モデルティア切替のライブ反映（heavy→opus を稼働中デーモンへ無停止適用）  (2026-06-14 07:10)
+  Plan   : 自動再開（evolve_resume 経由）。git クリーン・全 work ブランチ merge 済みのため新規。
+           trend-watcher 調査で Fable 5 のプラン同梱コスト変動が示唆されたのを起点に実コードを精査し、
+           **ドキュメント vs 挙動の確定バグ**を発見: model_tiers.yaml は「heavy を opus に戻せば
+           即時・無停止」と謳うが、get_router() は _router をシングルトンキャッシュし reset_router()
+           はテスト専用＝**長時間デーモンは YAML 編集を再起動まで無視**。受け入れ基準 = YAML の
+           mtime 変化を検知して自動再読込 / hot path は stat 1 回のみ / 欠落・破損・FS 不安定で
+           生成を止めない・誤デフォルト降格しない / 新規テストで「reset 無しのライブ反映」と
+           「last-good 保持」を実証 / 回帰ゼロ・敵対レビュー通過。なぜ今: 24h 自律デーモンの
+           ライブ・コスト制御レバー（Fable 5 が課金になった瞬間に heavy→opus へ無停止切替）に直結し、
+           最近の test/daemon/meta 連発に対し runtime/ops 正確性で多様。完全可逆（既存キルスイッチ
+           PANTHEON_MODEL_ROUTING=0 健在）。落とした候補: ①Fable 5 sunset 日付を YAML へ焼き込み
+           →却下（web 由来・未検証の日付固定は逆に害。本サイクルは「日付に依存せず反応できる能力」
+           を作る）②revenue --min-reach/--source-org 配線（3度 defer の low-value dead surface）
+           ③SET-EXPOSE 設定露出（面が広く本サイクルでは可逆性低）。
+  Did    : work/model-tier-live-reload-20260614。core/runtime/model_router.py に
+           _config_signature()（mtime_ns、欠落/失敗は None・例外握り）を新設。get_router() を
+           `_router is None or (sig is not None and sig != _router_sig)` で再構築（sig=None＝
+           ファイル消失/stat 失敗時は last-good 維持＝churn も誤降格もしない）。reset_router() で
+           _router_sig もクリア。model_tiers.yaml コメントに mtime 再読込の仕組みを明記。
+           tests/test_model_router.py に3本（reset 無しのライブ反映＋get_router() is not first で
+           実再構築を確認 / mtime 不変なら同一インスタンス / ファイル消失で last-good 保持）。
+  Check  : 対象19/19 pass（既存16＋新3）。ruff 緑。test-triage GREEN（全件 1307 passed・基線
+           chmod 2 のみ・回帰0）。code-reviewer = **APPROVE**（所見ゼロ。reload ガードを全
+           エッジケース[出現/削除/transient/mtime衝突]で追跡し正、stat はロック内で deadlock/
+           contention 無し、キルスイッチ・broken-yaml fallback 不変、テストは reset 無しで
+           ライブ反映を実証しフレーク無し[5回反復]を確認）。
+  Act    : （merge 後に追記）固定化: 「ドキュメントが約束する挙動はシングルトンキャッシュで
+           容易に偽になる — 設定の hot-reload は mtime 検知＋last-good 保持で hot path を汚さず実現」
+           「web 由来の未検証ファクト（日付・価格）はコメントに焼かず、それに依存せず反応できる
+           能力をコードに入れる」。
+  Next   : revenue daemon の CLI 露出（--min-reach/--source-org 配線）/ atelier serve 導線 /
+           SET-EXPOSE（token/quota/承認閾値を /api/settings へ）。
+
 Cycle 23 — デーモン追加チェックリストをコード内へ固定化（複利化）  (2026-06-14 06:20)
   Plan   : Cycle 22 で露呈した「デーモン名が 2 テストで等値ピン」トラップの再発防止。受け入れ基準 =
            次にデーモンを足す人が必ず見る KNOWN_DAEMONS 定義の直前へ更新箇所を明記 / コメントの

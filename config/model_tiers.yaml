@@ -8,6 +8,8 @@
 #
 # heavy ティアは長時間・自律実行に最強の Fable 5（alias `fable`）を割り当てる
 # （Master Plan §9）。opus に戻す場合は heavy を opus に変更すればよい（即時・無停止）。
+# 「即時・無停止」はこのファイルの mtime 変化を get_router() が検知して自動再読込する
+# ため成立する（稼働中デーモンも次の生成から反映。model_router.get_router 参照）。
 
 tiers:
   heavy: fable     # 高難度/長時間自律: コード改変・メタ改善・セキュリティ（Fable 5）
