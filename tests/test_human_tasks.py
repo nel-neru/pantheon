@@ -38,6 +38,23 @@ def test_enqueue_helper_is_safe(tmp_path):
     assert HumanTaskStore(platform_home=tmp_path).list_tasks("open")
 
 
+def test_load_tolerates_corrupt_and_malformed_records(tmp_path):
+    """壊れた JSON / 不正レコードはスキップし、全体を壊さない。"""
+    import json
+
+    store = HumanTaskStore(platform_home=tmp_path)
+    # 壊れた JSON ファイル全体 -> 空リストにフォールバック
+    store.path.write_text("{not valid json", encoding="utf-8")
+    assert store.list_tasks() == []
+    # 有効レコード + 不正レコードが混在 -> 有効分のみ残る
+    valid = store.add("keep me")
+    payload = json.loads(store.path.read_text(encoding="utf-8"))
+    payload.append({"description": "missing required title"})  # title 無し -> スキップ
+    store.path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    kept = HumanTaskStore(platform_home=tmp_path).list_tasks()
+    assert [t.task_id for t in kept] == [valid.task_id]
+
+
 @pytest.mark.asyncio
 async def test_handed_off_publish_enqueues_human_task(tmp_path):
     """publishing が handed_off になると公開確認の人間タスクが積まれる。"""

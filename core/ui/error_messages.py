@@ -48,7 +48,7 @@ class ErrorMessageHelper:
             return self.format_error("ORG_NOT_FOUND", extra_context=str(e))
         if isinstance(e, FileNotFoundError):
             return self.format_error("REPO_NOT_FOUND", extra_context=str(e))
-        if type(e).__name__ in {"sqlite3.DatabaseError", "DatabaseError"}:
+        if type(e).__name__ == "DatabaseError":
             return self.format_error("DB_CORRUPTED", extra_context=str(e))
         if isinstance(e, PermissionError):
             return self.format_error("REPO_NOT_FOUND", extra_context=str(e))
