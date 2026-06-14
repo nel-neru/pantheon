@@ -177,9 +177,12 @@ def load_enabled(*, platform_home: Optional[Path] = None) -> Dict[str, Dict[str,
     out: Dict[str, Dict[str, Any]] = {}
     for name, entry in data.items():
         if isinstance(entry, dict):
+            raw_args = entry.get("args", [])
             out[str(name)] = {
                 "enabled": bool(entry.get("enabled")),
-                "args": [str(a) for a in entry.get("args", []) if isinstance(a, (str, int))],
+                "args": [str(a) for a in raw_args if isinstance(a, (str, int))]
+                if isinstance(raw_args, list)
+                else [],
             }
     return out
 

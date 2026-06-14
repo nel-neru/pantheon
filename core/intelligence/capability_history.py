@@ -22,6 +22,10 @@ class CapabilityAddition:
     gap_description: str
     added_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "CapabilityAddition":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
 
 class CapabilityHistoryTracker:
     """Append-only capability history tracker."""
@@ -49,7 +53,13 @@ class CapabilityHistoryTracker:
         lines = [
             line for line in self.file_path.read_text(encoding="utf-8").splitlines() if line.strip()
         ]
-        return [CapabilityAddition(**json.loads(line)) for line in lines[-limit:]]
+        out: list[CapabilityAddition] = []
+        for line in lines[-limit:]:
+            try:
+                out.append(CapabilityAddition.from_dict(json.loads(line)))
+            except Exception:  # 破損行/スキーマ進化レコードはスキップ
+                continue
+        return out
 
     def format_timeline(self) -> str:
         history = self.get_history(limit=100)
