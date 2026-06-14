@@ -213,12 +213,14 @@ def _resolve_project_root(config_path: Path, project_root: str | Path | None = N
 
 
 def load_config(
-    config_path: str | Path = "config/default.yaml",
+    config_path: str | Path | None = None,
     *,
     project_root: str | Path | None = None,
 ) -> AppConfig:
     """YAMLから設定を読み込み、関連設定ディレクトリも検証する。"""
-    path = Path(config_path)
+    from core.paths import resource_path
+
+    path = Path(config_path) if config_path is not None else resource_path("config", "default.yaml")
     data = _load_yaml_mapping(path) if path.exists() else {}
     root = _resolve_project_root(path, project_root=project_root)
 
