@@ -112,8 +112,20 @@ class BaseAgent(ABC):
         エージェントのスキルをシステムプロンプトに注入する。
         サブクラスは SYSTEM_PROMPT を apply_skills_to_prompt() で
         ラップすることでスキルを有効化できる。
+
+        さらに WIRE-MEM として、有用度上位の Playbook（過去の学び）を Layered Memory から
+        読み出してプロンプト末尾に注入する（エントリが無ければ何も足さない＝既存挙動を保つ）。
         """
-        return self._get_skill_engine().apply_skills_to_prompt(base_prompt, self.specialist.skills)
+        prompt = self._get_skill_engine().apply_skills_to_prompt(
+            base_prompt, self.specialist.skills
+        )
+        try:
+            from core.intelligence.memory_bank import MemoryBank
+
+            prompt += MemoryBank().recall_prompt_context()
+        except Exception:  # noqa: BLE001 — 記憶層の不調で生成を止めない
+            pass
+        return prompt
 
     def get_skill_tags(self) -> List[str]:
         """このエージェントのスキルに対応するナレッジタグを返す。"""
@@ -166,6 +178,20 @@ class BaseAgent(ABC):
         """
         if not result.success:
             return None
+
+        # WIRE-MEM: 成功実行を統一メモリ（Playbook）にも蓄積する。knowledge_manager の有無に
+        # 依存せず冪等（同 title は二重追加しない）。記憶層の不調で実行結果を壊さない。
+        try:
+            from core.intelligence.memory_bank import MemoryBank
+
+            MemoryBank().capture(
+                title=f"[{self.name}] {task.task_type}: {task.description[:60]}",
+                content=(result.thinking_process or task.description or ""),
+                category=task.task_type or "general",
+                org_name=self.name,
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
         manager = knowledge_manager or self.knowledge_manager
         if manager is None:
