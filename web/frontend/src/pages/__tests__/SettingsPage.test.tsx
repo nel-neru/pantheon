@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 
 import { SettingsPage } from '../SettingsPage'
-import { mockApi, mockStreamSSE } from '@/test/mocks'
+import { mockApi } from '@/test/mocks'
 import { renderWithRouter } from '@/test/utils'
 
 // APIトークン操作のモック
@@ -86,7 +86,6 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockApi.mockReset()
-    mockStreamSSE.mockReset()
     mockedGetApiToken.mockReturnValue('')
   })
 
@@ -602,10 +601,10 @@ describe('SettingsPage', () => {
     const rawButtons = screen.getAllByRole('button', { name: 'RAW (JSON)' })
     await user.click(rawButtons[0])
 
-    // RAWテキストに不正なJSONを入力
+    // RAWテキストに不正なJSONを入力（userEvent では { } は特殊文字なので fireEvent で直接設定）
     const rawTextarea = screen.getByLabelText('モデル構成 JSON')
     await user.clear(rawTextarea)
-    await user.type(rawTextarea, '{ invalid json }')
+    await user.type(rawTextarea, 'invalid json text')
 
     // 構造化に戻そうとする → エラーが出てトグルできない
     const backButton = screen.getByRole('button', { name: '構造化エディタ' })

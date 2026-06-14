@@ -412,7 +412,7 @@
       "rationale": "necessity/functionality: PANTHEON_API_TOKEN運用時、token.tsはURLクエリ取り込みのみでアプリ内の入力/更新/クリアUIが無く(setApiTokenは未呼び出しの死蔵)、api.tsは401でErrorを投げるだけ。未認証/期限切れユーザーは各ページが赤エラーを出すだけで復帰手段が分からず詰む。api.tsに401集中ハンドリング(未認証→トークン入力誘導)を入れ、SettingsにAPIトークンフィールド(setApiToken連携・マスク・クリア)を追加。",
       "test_impact": "401応答時の誘導テストとトークン設定/クリアのSettingsテストを追加。",
       "wave": "W3",
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "C011",
@@ -785,7 +785,7 @@
       "rationale": "validity/necessity: 安全境界に直結するpolicy_rules(auto_approve/human_required/auto_reject)がスキーマ検証なしの生JSONで、誤記で空条件保存が可能。prompt_templatesはString()で配列/オブジェクトを黙殺破壊、model_configsも型未検証。固定キー前提の構造化フォーム+JSONスキーマ検証へ作り替え、生JSONはRAWトグル裏に退避。空条件警告も出す。",
       "test_impact": "Settings保存テストを構造化エディタ前提へ再編。スキーマ検証失敗のテストを追加。",
       "wave": "W5",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C015",
@@ -805,7 +805,7 @@
       "rationale": "validity: quota soft>hardでも保存可、quiet_hours/window_hoursがHTML min/maxのみでJS検証なく範囲外値をPUTしデータ破壊。NotificationsのquietHours入力も0-23 clamp/NaNガード無し。保存前にsoft<=hard・0-23・>=1を検証し不正時はインラインエラー+該当フィールドへフォーカス、保存ボタンにdirty追跡。",
       "test_impact": "範囲外/相互不整合入力で保存ブロックされるテストを追加。",
       "wave": "W5",
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "C024",

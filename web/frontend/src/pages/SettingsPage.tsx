@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { AlertTriangle, ChevronDown, ChevronRight, Eye, EyeOff, KeyRound, RefreshCw, Save, Terminal, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -538,17 +538,13 @@ function PolicyEditor({ rules, onChange, rawMode, rawText, onRawChange, rawError
       {autoApproveEmpty ? (
         <div className="settings-status-bar warn">
           <AlertTriangle size={14} className="shrink-0" />
-          <span className="text-sm">
-            <strong>auto_approve</strong> の条件が空です。すべての操作が自動承認されます。安全境界に影響します。
-          </span>
+          <span className="text-sm">auto_approve の条件が空です。すべての操作が自動承認されます。安全境界に影響します。</span>
         </div>
       ) : null}
       {humanRequiredEmpty ? (
         <div className="settings-status-bar warn">
           <AlertTriangle size={14} className="shrink-0" />
-          <span className="text-sm">
-            <strong>human_required</strong> の条件が空です。人手確認がスキップされます。
-          </span>
+          <span className="text-sm">human_required の条件が空です。人手確認がスキップされます。</span>
         </div>
       ) : null}
       <PolicyCategoryEditor
@@ -809,12 +805,12 @@ export function SettingsPage() {
 
   type ValidationResult =
     | { ok: true; payload: Parameters<typeof api>[2] }
-    | { ok: false; errors: FieldErrors; promptErrors: Record<number, string>; firstRef?: RefObject<HTMLInputElement> }
+    | { ok: false; errors: FieldErrors; promptErrors: Record<number, string>; firstRef?: RefObject<HTMLInputElement | null> }
 
   const validate = (): ValidationResult => {
     const errors: FieldErrors = {}
     const promptErrors: Record<number, string> = {}
-    let firstRef: RefObject<HTMLInputElement> | undefined
+    let firstRef: RefObject<HTMLInputElement | null> | undefined
 
     // デーモン設定
     const intervalVal = daemonInterval
@@ -951,9 +947,7 @@ export function SettingsPage() {
 
   // ── 保存 ──────────────────────────────────────────────────────────────────
 
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault()
-
+  const handleSave = async () => {
     const result = validate()
     if (!result.ok) {
       setFieldErrors(result.errors)
@@ -1028,7 +1022,7 @@ export function SettingsPage() {
         ) : null}
 
         {!loading ? (
-          <form onSubmit={(e) => void handleSave(e)} className="flex flex-col gap-4">
+          <form onSubmit={(e) => { e.preventDefault() }} className="flex flex-col gap-4">
             {/* ── 読み込みエラーバー ── */}
             {loadError ? (
               <div className="settings-status-bar warn" role="alert">
@@ -1523,10 +1517,11 @@ export function SettingsPage() {
               ) : null}
               <button
                 id="save-button"
-                type="submit"
+                type="button"
                 className="btn btn-primary"
                 disabled={saving || !!loadError}
                 title={loadError ? '設定の読み込みに失敗しています。再読込してから保存してください。' : undefined}
+                onClick={() => void handleSave()}
               >
                 <Save size={14} />
                 {saving ? '保存中…' : '設定を保存'}

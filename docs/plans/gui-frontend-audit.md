@@ -2,7 +2,7 @@
 
 - 生成: 2026-06-14 / 出典: workflow gui-frontend-audit (run w3bnm8rn9, 49 agents)
 - 対象GUI: **web/frontend (legacy / 既定UI)**
-- 進捗: **22/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
+- 進捗: **25/42 完了**（done/verified）。状態凡例: `[x]`=完了/検証済 `[~]`=着手中 `[ ]`=未着手 `[-]`=見送り
 - **このファイルが改善の正本**。各変更を着手→完了→検証で状態遷移させながら実装する。
 - 機械可読の進捗は `gui-frontend-audit-state.json`（本ファイルと対・JSONが正本）。
 - 由来: 全21画面の要素インベントリ→6軸（必要性/妥当性/機能性/利便性/拡張性/保守性）厳格評価→横断監査→重複排除した優先度付き計画（Workflow `gui-frontend-audit`）。
@@ -108,14 +108,14 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: necessity/validity/maintainability: 同一WSイベントがトースト+Bellポップオーバー+通知ページ+通知センターナビの最大4面で多重露出し語彙(success/info/error vs done/live/error)も不一致。Bellは未読概念が無く件数バッジが『未読』を詐称・pendingを『live』と誤表示。Bellを/api/notifications未読プレビューに置換しWS直結を廃止、WSはトースト専用、通知センターナビは削除(20→19)。statusラベルは保留/処理中/完了等に統一。
   - テスト影響: App.tsxのBell/トーストテストとNotificationsのバッジテストを更新。pending表示の文言テストを追加。
 
-### W3 — グローバル堅牢化（WS/401/非同期/オフライン）  (2/5)
+### W3 — グローバル堅牢化（WS/401/非同期/オフライン）  (3/5)
 
 - [x] **C009** `[P1]` `<refactor>` risk=medium — usePlatformUpdatesを単一WS Providerに集約(多重接続/重複配信を解消) _(状態: done)_
   - 対象: `web/frontend/src/hooks/usePlatformUpdates.ts`, `web/frontend/src/App.tsx`, `web/frontend/src/components/OrchestraView.tsx`, `web/frontend/src/pages/InboxPage.tsx`, `web/frontend/src/pages/ContentSchedulePage.tsx`, `web/frontend/src/pages/SessionsPage.tsx`, `web/frontend/src/test/setup.ts`
   - 軸: validity, maintainability
   - 根拠: validity/maintainability: hookが呼び出し毎にnew WebSocketを張り、App+OrchestraView+Inbox+ContentSchedule+Sessionsの5箇所で画面ごとに複数接続が発生。各インスタンスが別events stateと別3s再接続を持ち、同一イベントがN重処理→再取得多重発火。Context Providerで1本のWSを共有し各ページは購読のみ。WSスタブを配信可能に拡張して接続数/重複のテストを追加。
   - テスト影響: WS no-opスタブを配信可能スタブへ拡張。購読系ページの再取得トリガテストを更新・追加。
-- [~] **C010** `[P1]` `<add>` risk=low — 401集中ハンドリングとSettingsのAPIトークン入力UIを追加 _(状態: in_progress)_
+- [x] **C010** `[P1]` `<add>` risk=low — 401集中ハンドリングとSettingsのAPIトークン入力UIを追加 _(状態: done)_
   - 対象: `web/frontend/src/lib/token.ts`, `web/frontend/src/lib/api.ts`, `web/frontend/src/pages/SettingsPage.tsx`, `web/frontend/src/App.tsx`
   - 軸: necessity, functionality
   - 根拠: necessity/functionality: PANTHEON_API_TOKEN運用時、token.tsはURLクエリ取り込みのみでアプリ内の入力/更新/クリアUIが無く(setApiTokenは未呼び出しの死蔵)、api.tsは401でErrorを投げるだけ。未認証/期限切れユーザーは各ページが赤エラーを出すだけで復帰手段が分からず詰む。api.tsに401集中ハンドリング(未認証→トークン入力誘導)を入れ、SettingsにAPIトークンフィールド(setApiToken連携・マスク・クリア)を追加。
@@ -204,14 +204,14 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 根拠: convenience/maintainability: 設定ビューア/分析結果が生JSONダンプでエンドユーザー向けでなく、しかも結果が画面外の別カードに出て『何も起きない』視線断絶、推奨エージェントもraw ID表示で誰か不明・ジャンプ導線無し。主要フィールドを構造化表示+RawはコピーボタンつきでprogressLogクラス流用をやめ、結果は行内展開/モーダル化し自動スクロール、推奨はname解決+該当行リンク。
   - テスト影響: 構造化表示/コピー/ジャンプのテストを追加。
 
-### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (3/10)
+### W5 — 一貫性/a11y/i18n/テスト/デッドコード  (5/10)
 
-- [ ] **C014** `[P1]` `<improve>` risk=high — ポリシー/モデル構成/プロンプトの生JSON手編集を構造化エディタ化
+- [x] **C014** `[P1]` `<improve>` risk=high — ポリシー/モデル構成/プロンプトの生JSON手編集を構造化エディタ化 _(状態: done)_
   - 対象: `web/frontend/src/pages/SettingsPage.tsx`, `/api/settings`
   - 軸: validity, necessity, functionality
   - 根拠: validity/necessity: 安全境界に直結するpolicy_rules(auto_approve/human_required/auto_reject)がスキーマ検証なしの生JSONで、誤記で空条件保存が可能。prompt_templatesはString()で配列/オブジェクトを黙殺破壊、model_configsも型未検証。固定キー前提の構造化フォーム+JSONスキーマ検証へ作り替え、生JSONはRAWトグル裏に退避。空条件警告も出す。
   - テスト影響: Settings保存テストを構造化エディタ前提へ再編。スキーマ検証失敗のテストを追加。
-- [ ] **C015** `[P1]` `<fix>` risk=low — 数値設定の相互/範囲検証を追加(soft<=hard・0-23・min/max)
+- [x] **C015** `[P1]` `<fix>` risk=low — 数値設定の相互/範囲検証を追加(soft<=hard・0-23・min/max) _(状態: done)_
   - 対象: `web/frontend/src/pages/SettingsPage.tsx`, `web/frontend/src/pages/NotificationsPage.tsx`
   - 軸: validity, functionality
   - 根拠: validity: quota soft>hardでも保存可、quiet_hours/window_hoursがHTML min/maxのみでJS検証なく範囲外値をPUTしデータ破壊。NotificationsのquietHours入力も0-23 clamp/NaNガード無し。保存前にsoft<=hard・0-23・>=1を検証し不正時はインラインエラー+該当フィールドへフォーカス、保存ボタンにdirty追跡。
