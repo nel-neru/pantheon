@@ -30,6 +30,7 @@ import {
 import { NavLink, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
 
+import { AuthTokenDialog } from '@/components/AuthTokenDialog'
 import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -492,6 +493,7 @@ function AppShell() {
         </main>
       </div>
       <Toaster theme={theme} position="bottom-right" richColors />
+      <AuthTokenDialog />
     </>
   )
 }

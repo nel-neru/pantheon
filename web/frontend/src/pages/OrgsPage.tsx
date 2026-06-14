@@ -1,7 +1,9 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Bot,
   ChevronRight,
+  ClipboardCopy,
   FileText,
   FolderOpen,
   Lock,
@@ -15,7 +17,12 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
-import { formatDate, healthClass } from '@/lib/utils'
+import { AsyncBoundary } from '@/components/AsyncBoundary'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { PageHeader } from '@/components/PageHeader'
+import { ScoreBar } from '@/components/ScoreBar'
+import { formatDateTime } from '@/lib/utils'
+import { priorityBadge, priorityLabel, statusBadge, statusLabel } from '@/lib/labels'
 
 type Organization = {
   id: string
@@ -80,59 +87,36 @@ type EditForm = { purpose: string; target_repo_path: string }
 
 const initialForm: OrgForm = { name: '', purpose: '', target_repo_path: '' }
 
-function ScoreTooltip({
-  label,
-  score,
-  description,
-}: {
-  label: string
-  score: number
-  description: string
-}) {
-  const normalizedScore = Math.max(0, Math.min(100, Math.round(score)))
-  const colorClass = normalizedScore >= 70 ? 'score-high' : normalizedScore >= 40 ? 'score-mid' : 'score-low'
-
-  return (
-    <div className="score-wrapper">
-      <div className="score-bar-container tooltip-trigger" aria-label={`${label}スコア ${normalizedScore}`} tabIndex={0}>
-        <div className="score-bar-label">{label}</div>
-        <div className="score-bar-track" aria-hidden="true">
-          <div className={`score-bar-fill ${colorClass}`} style={{ width: `${normalizedScore}%` }} />
-        </div>
-        <div className="score-bar-value">{normalizedScore}</div>
-        <div className="tooltip-content" role="tooltip">{description}</div>
-      </div>
-    </div>
-  )
-}
-
+/**
+ * OrgIcon — アイコン更新時のみ version を bump する（Date.now() 常時キャッシュ破棄を廃止）。
+ * iconData が変わったときに setVersion(Date.now()) することで 1 回だけ再取得させる。
+ */
 function OrgIcon({
   orgName,
   iconData,
   size = 32,
+  iconVersion,
 }: {
   orgName: string
   iconData?: string
   size?: number
+  iconVersion: number
 }) {
   const [errored, setErrored] = useState(false)
-  const [version, setVersion] = useState(() => Date.now())
 
   useEffect(() => {
     setErrored(false)
-    setVersion(Date.now())
   }, [orgName, iconData])
 
   const src = iconData?.startsWith('data:')
     ? iconData
-    : `/api/organizations/${encodeURIComponent(orgName)}/icon?v=${version}`
+    : `/api/organizations/${encodeURIComponent(orgName)}/icon?v=${iconVersion}`
 
   if (errored) {
     return (
       <div
         className="org-icon org-icon-fallback"
         aria-label={`${orgName} icon fallback`}
-        style={{ width: size, height: size }}
       >
         {orgName.slice(0, 2).toUpperCase()}
       </div>
@@ -151,7 +135,8 @@ function OrgIcon({
   )
 }
 
-function Modal({
+/** Radix Dialog ベースの汎用モーダル（Esc・フォーカストラップ・aria-modal 標準装備） */
+function OrgModal({
   open,
   title,
   description,
@@ -160,25 +145,25 @@ function Modal({
 }: {
   open: boolean
   title: string
-  description: string
-  children: ReactNode
+  description?: string
+  children: React.ReactNode
   onClose: () => void
 }) {
-  if (!open) return null
   return (
-    <div className="dialog-overlay" onClick={onClose}>
-      <div
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="dialog-title">{title}</div>
-        <div className="dialog-desc">{description}</div>
-        {children}
-      </div>
-    </div>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="dialog" aria-modal="true">
+          <Dialog.Title className="dialog-title">{title}</Dialog.Title>
+          {description ? (
+            <Dialog.Description className="dialog-desc">{description}</Dialog.Description>
+          ) : (
+            <Dialog.Description className="sr-only">{title}</Dialog.Description>
+          )}
+          {children}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 
@@ -200,15 +185,15 @@ function OrganizationTree({ divisions }: { divisions: TreeDivision[] }) {
           </summary>
           <div className="px-4 pb-4 flex flex-col gap-3">
             {division.teams.map((team) => (
-              <details key={team.id} open style={{ marginLeft: '12px' }}>
+              <details key={team.id} open className="ml-3">
                 <summary className="flex items-center justify-between gap-3 cursor-pointer py-2">
                   <div>
                     <div className="font-medium">{team.name}</div>
-                    <div className="text-xs text-muted">{team.mission || 'ミッション未設定'}</div>
+                    <div className="text-xs text-muted">{team.mission ?? 'ミッション未設定'}</div>
                   </div>
                   <span className="badge badge-blue text-xs">{team.agents.length} agents</span>
                 </summary>
-                <div className="flex flex-col gap-2 pt-2" style={{ marginLeft: '12px' }}>
+                <div className="flex flex-col gap-2 pt-2 ml-3">
                   {team.agents.map((agent) => (
                     <div key={agent.id} className="org-tree-agent-row">
                       <div>
@@ -230,46 +215,32 @@ function OrganizationTree({ divisions }: { divisions: TreeDivision[] }) {
   )
 }
 
-function DependencyMap({ divisions }: { divisions: TreeDivision[] }) {
-  if (divisions.length === 0) {
-    return <div className="text-muted text-sm">依存関係データはまだありません。</div>
+/**
+ * 依存マップ — depends_on がある Team のみ列挙する（擬似フロー図廃止）。
+ * 実際の depends_on がないチームは「依存関係なし」を示す。
+ */
+function DependencyList({ divisions }: { divisions: TreeDivision[] }) {
+  const deps = divisions.flatMap((div) =>
+    div.teams
+      .filter((t) => t.depends_on)
+      .map((t) => ({ teamName: t.name, dependsOn: t.depends_on as string, divisionName: div.name }))
+  )
+
+  if (deps.length === 0) {
+    return <div className="text-muted text-sm">定義された依存関係はありません。</div>
   }
 
   return (
-    <div className="dependency-map">
-      {divisions.map((division, divisionIndex) => (
-        <div key={division.id} className="dependency-division">
-          <div className="dependency-division-header">
-            <div>
-              <div className="dependency-division-title">{division.name}</div>
-              <div className="text-xs text-muted">{division.mission || division.type}</div>
-            </div>
-            <span className="badge badge-neutral">{division.type}</span>
-          </div>
-          <div className="dependency-lane">
-            {division.teams.map((team, teamIndex) => (
-              <div key={team.id} className="dependency-team-card">
-                <div className="dependency-team-head">
-                  <div className="font-medium">{team.name}</div>
-                  {team.depends_on ? <span className="badge badge-blue">依存: {team.depends_on}</span> : null}
-                </div>
-                <div className="dependency-team-meta">{team.mission || 'ミッション未設定'}</div>
-                <div className="dependency-agent-list">
-                  {team.agents.map((agent) => (
-                    <div key={agent.id} className="dependency-agent-chip">
-                      <div>{agent.name}</div>
-                      <div className="text-xs text-muted">{agent.skills.join(' / ')}</div>
-                    </div>
-                  ))}
-                </div>
-                {teamIndex < division.teams.length - 1 ? <div className="dependency-arrow">→</div> : null}
-              </div>
-            ))}
-          </div>
-          {divisionIndex < divisions.length - 1 ? <div className="dependency-cross-link">↓ 次の Division に引き継ぎ</div> : null}
-        </div>
+    <ul className="flex flex-col gap-2 text-sm">
+      {deps.map((d) => (
+        <li key={`${d.divisionName}-${d.teamName}`} className="flex items-center gap-2">
+          <span className="badge badge-neutral">{d.divisionName}</span>
+          <span className="font-medium">{d.teamName}</span>
+          <span className="text-muted">→ 依存:</span>
+          <span className="badge badge-blue">{d.dependsOn}</span>
+        </li>
       ))}
-    </div>
+    </ul>
   )
 }
 
@@ -284,6 +255,7 @@ function DetailPanel({
   onIconUpload,
   onResetIcon,
   iconBusy,
+  iconVersion,
 }: {
   org: OrgDetail
   onClose: () => void
@@ -295,252 +267,338 @@ function DetailPanel({
   onIconUpload: (e: React.ChangeEvent<HTMLInputElement>, orgName: string) => Promise<void>
   onResetIcon: (orgName: string) => Promise<void>
   iconBusy: boolean
+  iconVersion: number
 }) {
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [loadingProposals, setLoadingProposals] = useState(true)
+  const [proposalError, setProposalError] = useState<string | null>(null)
+  const [confirmMigrate, setConfirmMigrate] = useState(false)
+  const [confirmResetIcon, setConfirmResetIcon] = useState(false)
+  const closeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     setLoadingProposals(true)
+    setProposalError(null)
     api<Proposal[]>('GET', `/api/organizations/${encodeURIComponent(org.name)}/proposals`)
       .then(setProposals)
-      .catch(() => setProposals([]))
+      .catch((err: unknown) => {
+        setProposalError(err instanceof Error ? err.message : '提案の読み込みに失敗しました。')
+        setProposals([])
+      })
       .finally(() => setLoadingProposals(false))
   }, [org.name])
 
-  return (
-    <div className="detail-panel-overlay" onClick={onClose}>
-      <div className="detail-panel" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="detail-panel-header">
-          <div className="detail-panel-title-row">
-            <div className="detail-panel-title">{org.name}</div>
-            <div className="detail-panel-actions">
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-icon"
-                onClick={onEdit}
-                aria-label="編集"
-              >
-                <Pencil size={13} />
-              </button>
-              {org.is_system ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm btn-icon"
-                  disabled
-                  title="システム組織は削除できません"
-                  aria-label="システム組織は削除できません"
-                  style={{ opacity: 0.3, cursor: 'not-allowed' }}
-                >
-                  <Lock size={13} />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm btn-icon"
-                  onClick={onDelete}
-                  aria-label="削除"
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-icon"
-                onClick={onClose}
-                aria-label="閉じる"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
-          <div className="detail-panel-subtitle">{org.purpose}</div>
-        </div>
+  const copyPath = async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(path)
+      toast.success('パスをコピーしました。')
+    } catch {
+      toast.error('クリップボードへのコピーに失敗しました。')
+    }
+  }
 
-        {/* Body */}
-        <div className="detail-panel-body">
-          <section className="detail-section">
-            <div className="detail-section-label">アイコン</div>
-            <div className="detail-org-icon-row">
-              <OrgIcon orgName={org.name} iconData={org.icon_data} size={48} />
-              <div className="detail-org-icon-actions">
+  return (
+    <Dialog.Root open onOpenChange={(next) => { if (!next) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="detail-panel-overlay" onClick={onClose} />
+        <Dialog.Content
+          className="detail-panel"
+          aria-modal="true"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            closeRef.current?.focus()
+          }}
+        >
+          <Dialog.Title className="sr-only">{org.name} 詳細</Dialog.Title>
+          <Dialog.Description className="sr-only">{org.purpose}</Dialog.Description>
+
+          {/* Header */}
+          <div className="detail-panel-header">
+            <div className="detail-panel-title-row">
+              <div className="detail-panel-title">{org.name}</div>
+              <div className="detail-panel-actions">
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={iconBusy}
+                  className="btn btn-ghost btn-sm btn-icon"
+                  onClick={onEdit}
+                  aria-label="編集"
                 >
-                  アイコン変更
+                  <Pencil size={13} />
                 </button>
-                {org.icon_data ? (
+                {org.is_system ? (
+                  <span className="badge badge-neutral flex items-center gap-1">
+                    <Lock size={11} />
+                    システム
+                  </span>
+                ) : (
                   <button
                     type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => void onResetIcon(org.name)}
-                    disabled={iconBusy}
+                    className="btn btn-ghost btn-sm btn-icon"
+                    onClick={onDelete}
+                    aria-label="削除"
                   >
-                    リセット
+                    <Trash2 size={13} />
                   </button>
-                ) : null}
+                )}
+                <button
+                  ref={closeRef}
+                  type="button"
+                  className="btn btn-ghost btn-sm btn-icon"
+                  onClick={onClose}
+                  aria-label="閉じる"
+                >
+                  <X size={14} />
+                </button>
               </div>
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              style={{ display: 'none' }}
-              onChange={(e) => void onIconUpload(e, org.name)}
-            />
-          </section>
-
-          {/* Metrics row */}
-          <div className="detail-metrics">
-            <div className="detail-metric">
-              <div className="metric-label">健康スコア</div>
-              <div className={`detail-metric-val ${healthClass(org.health_score)}`}>
-                {org.health_score.toFixed(0)}
-              </div>
-              <div className="health-track mt-1">
-                <div
-                  className={`health-fill ${healthClass(org.health_score)}`}
-                  style={{ width: `${org.health_score}%` }}
-                />
-              </div>
-            </div>
-            <div className="detail-metric">
-              <div className="metric-label">自律スコア</div>
-              <div className="detail-metric-val">{org.autonomy_score.toFixed(0)}</div>
-            </div>
-            <div className="detail-metric">
-              <div className="metric-label">エージェント数</div>
-              <div className="detail-metric-val">{org.total_agents}</div>
-            </div>
-            <div className="detail-metric">
-              <div className="metric-label">未対応提案</div>
-              <div className="detail-metric-val">{org.pending_proposals}</div>
-            </div>
+            <div className="detail-panel-subtitle">{org.purpose}</div>
           </div>
 
-          {/* Info */}
-          <section className="detail-section">
-            <div className="detail-section-label">基本情報</div>
-            <div className="detail-kv">
-              <div className="detail-kv-row">
-                <FolderOpen size={13} />
-                <span className="detail-kv-key">ワークスペース</span>
-                {org.target_repo_path ? (
-                  <span className="detail-kv-val mono">{org.target_repo_path}</span>
-                ) : (
-                  <span className="badge badge-yellow">未設定（repo を割り当ててください）</span>
-                )}
-              </div>
-              <div className="detail-kv-row">
-                <span className="detail-kv-key ml-4">管理モード</span>
-                {org.management_mode === 'workspace' ? (
-                  <span className="badge badge-blue">workspace（git 不要）</span>
-                ) : (
-                  <>
-                    <span className="badge badge-neutral">repo（git 管理）</span>
+          {/* Body */}
+          <div className="detail-panel-body">
+            {/* Icon section */}
+            <section className="detail-section">
+              <div className="detail-section-label">アイコン</div>
+              <div className="detail-org-icon-row">
+                <OrgIcon orgName={org.name} iconData={org.icon_data} size={48} iconVersion={iconVersion} />
+                <div className="detail-org-icon-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={iconBusy}
+                  >
+                    アイコン変更
+                  </button>
+                  {org.icon_data ? (
                     <button
                       type="button"
-                      className="btn btn-secondary btn-sm ml-4"
-                      disabled={migrating}
-                      onClick={() => void onMigrate(org.name)}
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setConfirmResetIcon(true)}
+                      disabled={iconBusy}
                     >
-                      {migrating ? '移行中…' : 'workspace へ移行'}
+                      リセット
                     </button>
-                  </>
-                )}
+                  ) : null}
+                </div>
               </div>
-              <div className="detail-kv-row">
-                <span className="detail-kv-key ml-4">ステータス</span>
-                <span className="badge badge-neutral">{org.status}</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                className="hidden"
+                onChange={(e) => void onIconUpload(e, org.name)}
+              />
+            </section>
+
+            {/* Metrics row */}
+            <div className="detail-metrics">
+              <div className="detail-metric">
+                <div className="metric-label">健康スコア</div>
+                <ScoreBar score={org.health_score} label="健康スコア" />
               </div>
-              <div className="detail-kv-row">
-                <span className="detail-kv-key ml-4">最終活動</span>
-                <span className="detail-kv-val">{org.last_active ? formatDate(org.last_active) : '—'}</span>
+              <div className="detail-metric">
+                <div className="metric-label">自律スコア</div>
+                <ScoreBar score={org.autonomy_score} label="自律スコア" />
+              </div>
+              <div className="detail-metric">
+                <div className="metric-label">エージェント数</div>
+                <div className="detail-metric-val">{org.total_agents}</div>
+              </div>
+              <div className="detail-metric">
+                <div className="metric-label">未対応提案</div>
+                <div className={org.pending_proposals > 0 ? 'detail-metric-val text-yellow' : 'detail-metric-val'}>
+                  {org.pending_proposals > 0 ? (
+                    <Link
+                      to={`/improvements?org=${encodeURIComponent(org.name)}`}
+                      className="underline"
+                    >
+                      {org.pending_proposals}
+                    </Link>
+                  ) : (
+                    '0'
+                  )}
+                </div>
               </div>
             </div>
-          </section>
 
-          {org.initial_kpis && org.initial_kpis.length > 0 ? (
+            {/* Info */}
             <section className="detail-section">
-              <div className="detail-section-label">初期KPI</div>
-              <div className="flex flex-wrap gap-2">
-                {org.initial_kpis.map((kpi) => (
-                  <span key={kpi} className="badge badge-blue">{kpi}</span>
-                ))}
+              <div className="detail-section-label">基本情報</div>
+              <div className="detail-kv">
+                <div className="detail-kv-row">
+                  <FolderOpen size={13} />
+                  <span className="detail-kv-key">ワークスペース</span>
+                  {org.target_repo_path ? (
+                    <span className="detail-kv-val mono truncate" title={org.target_repo_path}>
+                      {org.target_repo_path}
+                    </span>
+                  ) : (
+                    <span className="badge badge-yellow">未設定（repo を割り当ててください）</span>
+                  )}
+                  {org.target_repo_path ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-icon btn-sm"
+                      onClick={() => void copyPath(org.target_repo_path)}
+                      aria-label="パスをコピー"
+                      title="コピー"
+                    >
+                      <ClipboardCopy size={12} />
+                    </button>
+                  ) : null}
+                </div>
+                <div className="detail-kv-row">
+                  <span className="detail-kv-key ml-4">管理モード</span>
+                  {org.management_mode === 'workspace' ? (
+                    <span className="badge badge-blue">workspace（git 不要）</span>
+                  ) : (
+                    <>
+                      <span className="badge badge-neutral">repo（git 管理）</span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm ml-4"
+                        disabled={migrating}
+                        onClick={() => setConfirmMigrate(true)}
+                      >
+                        {migrating ? '移行中…' : 'workspace へ移行'}
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div className="detail-kv-row">
+                  <span className="detail-kv-key ml-4">ステータス</span>
+                  <span className={`badge ${statusBadge(org.status)}`}>
+                    {statusLabel(org.status)}
+                  </span>
+                </div>
+                <div className="detail-kv-row">
+                  <span className="detail-kv-key ml-4">最終活動</span>
+                  <span className="detail-kv-val">{formatDateTime(org.last_active)}</span>
+                </div>
               </div>
             </section>
-          ) : null}
 
-          {/* Agents */}
-          {org.agents.length > 0 && (
+            {org.initial_kpis && org.initial_kpis.length > 0 ? (
+              <section className="detail-section">
+                <div className="detail-section-label">初期KPI</div>
+                <div className="flex flex-wrap gap-2">
+                  {org.initial_kpis.map((kpi) => (
+                    <span key={kpi} className="badge badge-blue">{kpi}</span>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {/* Agents */}
+            {org.agents.length > 0 && (
+              <section className="detail-section">
+                <div className="detail-section-label">
+                  <Bot size={12} />
+                  エージェント
+                </div>
+                <div className="detail-agents-list">
+                  {org.agents.map((a) => (
+                    <div key={a.id} className="detail-agent-row">
+                      <div className="detail-agent-name">{a.name}</div>
+                      <div className="mono text-muted text-xs">{a.capability_id}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Dependency map — simplified to actual depends_on only */}
+            <section className="detail-section">
+              <div className="detail-section-label">依存関係</div>
+              <DependencyList divisions={org.divisions ?? []} />
+            </section>
+
+            {/* Org tree */}
+            <section className="detail-section">
+              <div className="detail-section-label">組織ツリー</div>
+              <OrganizationTree divisions={org.divisions ?? []} />
+            </section>
+
+            {/* Proposals */}
             <section className="detail-section">
               <div className="detail-section-label">
-                <Bot size={12} />
-                エージェント
+                <FileText size={12} />
+                未対応の改善提案
               </div>
-              <div className="detail-agents-list">
-                {org.agents.map((a) => (
-                  <div key={a.id} className="detail-agent-row">
-                    <div className="detail-agent-name">{a.name}</div>
-                    <div className="mono text-muted" style={{ fontSize: '11px' }}>{a.capability_id}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <section className="detail-section">
-            <div className="detail-section-label">依存マップ</div>
-            <DependencyMap divisions={org.divisions ?? []} />
-          </section>
-
-          <section className="detail-section">
-            <div className="detail-section-label">組織ツリー</div>
-            <OrganizationTree divisions={org.divisions ?? []} />
-          </section>
-
-          {/* Proposals */}
-          <section className="detail-section">
-            <div className="detail-section-label">
-              <FileText size={12} />
-              未対応の改善提案
-            </div>
-            {loadingProposals ? (
-              <div className="text-muted text-sm">読み込み中…</div>
-            ) : proposals.length === 0 ? (
-              <div className="text-muted text-sm">未対応の提案はありません。</div>
-            ) : (
-              <div className="detail-proposals-list">
-                {proposals.map((p) => (
-                  <div key={p.id} className="detail-proposal-row">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={`badge ${
-                          p.priority === 'high'
-                            ? 'badge-red'
-                            : p.priority === 'medium'
-                              ? 'badge-yellow'
-                              : 'badge-neutral'
-                        }`}
-                      >
-                        {p.priority}
-                      </span>
-                      <span className="detail-proposal-title">{p.title}</span>
+              {loadingProposals ? (
+                <div className="text-muted text-sm">読み込み中…</div>
+              ) : proposalError ? (
+                <div className="text-sm text-red">{proposalError}</div>
+              ) : proposals.length === 0 ? (
+                <div className="text-muted text-sm">
+                  未対応の提案はありません。
+                  <Link
+                    to={`/improvements?org=${encodeURIComponent(org.name)}`}
+                    className="ml-2 underline text-muted text-sm"
+                  >
+                    提案を分析する →
+                  </Link>
+                </div>
+              ) : (
+                <div className="detail-proposals-list">
+                  {proposals.map((p) => (
+                    <div key={p.id} className="detail-proposal-row">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`badge ${priorityBadge(p.priority)}`}>
+                          {priorityLabel(p.priority)}
+                        </span>
+                        <span className="detail-proposal-title">{p.title}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {p.file_path ? (
+                          <span className="mono text-muted detail-proposal-file">{p.file_path}</span>
+                        ) : null}
+                        <Link
+                          to={`/improvements?org=${encodeURIComponent(org.name)}&proposal=${encodeURIComponent(p.id)}`}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          承認インボックスで開く →
+                        </Link>
+                      </div>
                     </div>
-                    {p.file_path && (
-                      <span className="mono text-muted detail-proposal-file">{p.file_path}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
-    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+
+      {/* Migrate to workspace confirm */}
+      <ConfirmDialog
+        open={confirmMigrate}
+        onOpenChange={setConfirmMigrate}
+        title="workspace へ移行"
+        description={
+          <>
+            <strong>{org.name}</strong> を workspace モードへ移行します。
+            <br />
+            この操作により git 管理が不要になりますが、<strong>元に戻すことはできません</strong>。
+            移行前に未コミットの変更がないことを確認してください。
+          </>
+        }
+        confirmLabel="移行する"
+        destructive
+        onConfirm={() => onMigrate(org.name)}
+      />
+
+      {/* Reset icon confirm */}
+      <ConfirmDialog
+        open={confirmResetIcon}
+        onOpenChange={setConfirmResetIcon}
+        title="アイコンをリセット"
+        description="設定済みのアイコンを削除します。この操作は元に戻せません。"
+        confirmLabel="リセット"
+        destructive
+        onConfirm={() => onResetIcon(org.name)}
+      />
+    </Dialog.Root>
   )
 }
 
@@ -560,26 +618,30 @@ function getDetailLoadErrorMessage(error: unknown, orgName: string) {
 export function OrgsPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState<OrgForm>(initialForm)
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState<Organization | null>(null)
-  const [deleteStep, setDeleteStep] = useState<1 | 2>(1)
-  const [deleteConfirmName, setDeleteConfirmName] = useState('')
   const [detail, setDetail] = useState<OrgDetail | null>(null)
   const [editing, setEditing] = useState<Organization | null>(null)
   const [editForm, setEditForm] = useState<EditForm>({ purpose: '', target_repo_path: '' })
   const [updatingIcon, setUpdatingIcon] = useState(false)
   const [migrating, setMigrating] = useState(false)
+  // iconVersion is bumped only on successful icon update/reset (not on every render)
+  const [iconVersion, setIconVersion] = useState(1)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const loadOrganizations = useCallback(async () => {
-    setLoading(true)
+  const loadOrganizations = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
     try {
       const data = await api<Organization[]>('GET', '/api/organizations')
       setOrganizations(data)
+      setLoadError(null)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '組織の読み込みに失敗しました。')
+      const message = error instanceof Error ? error.message : '組織の読み込みに失敗しました。'
+      setLoadError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -596,7 +658,7 @@ export function OrgsPage() {
   }, [])
 
   const refreshOrganizations = useCallback(async (orgName?: string) => {
-    await loadOrganizations()
+    await loadOrganizations(true)
     if (orgName) {
       await loadDetail(orgName)
     }
@@ -622,6 +684,7 @@ export function OrgsPage() {
     try {
       const iconData = await readFileAsDataUrl(file)
       await api('PUT', `/api/organizations/${encodeURIComponent(orgName)}/icon`, { icon_data: iconData })
+      setIconVersion((v) => v + 1)
       toast.success('アイコンを更新しました。')
       await refreshOrganizations(orgName)
     } catch (error) {
@@ -636,10 +699,12 @@ export function OrgsPage() {
     setUpdatingIcon(true)
     try {
       await api('DELETE', `/api/organizations/${encodeURIComponent(orgName)}/icon`)
+      setIconVersion((v) => v + 1)
       toast.success('アイコンをリセットしました。')
       await refreshOrganizations(orgName)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'アイコンのリセットに失敗しました。')
+      throw error
     } finally {
       setUpdatingIcon(false)
     }
@@ -664,23 +729,23 @@ export function OrgsPage() {
       await refreshOrganizations(orgName)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'workspace への移行に失敗しました。')
+      throw error
     } finally {
       setMigrating(false)
     }
   }
 
-  const closeDeleteModal = () => {
-    setDeleting(null)
-    setDeleteStep(1)
-    setDeleteConfirmName('')
-  }
-
   const confirmDelete = (org: Organization) => {
     if (org.is_system) return
     setDeleting(org)
-    setDeleteStep(1)
-    setDeleteConfirmName('')
     setDetail(null)
+  }
+
+  const closeCreate = () => {
+    if (!submitting) {
+      setShowCreate(false)
+      setCreateForm(initialForm)
+    }
   }
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -704,19 +769,12 @@ export function OrgsPage() {
   }
 
   const handleDelete = async () => {
-    if (!deleting || deleteConfirmName !== deleting.name) return
-    setSubmitting(true)
-    try {
-      await api('DELETE', `/api/organizations/${encodeURIComponent(deleting.name)}`)
-      toast.success('組織を削除しました。')
-      closeDeleteModal()
-      setDetail(null)
-      await loadOrganizations()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '組織の削除に失敗しました。')
-    } finally {
-      setSubmitting(false)
-    }
+    if (!deleting) return
+    await api('DELETE', `/api/organizations/${encodeURIComponent(deleting.name)}`)
+    toast.success('組織を削除しました。')
+    setDeleting(null)
+    setDetail(null)
+    await loadOrganizations()
   }
 
   const openEdit = (org: Organization) => {
@@ -741,42 +799,44 @@ export function OrgsPage() {
     }
   }
 
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText('pantheon org scan')
+      toast.success('コマンドをコピーしました。')
+    } catch {
+      toast.error('クリップボードへのコピーに失敗しました。')
+    }
+  }
+
   return (
     <>
-      <header className="page-header">
-        <div className="page-title">組織</div>
-        <div className="page-actions">
+      <PageHeader
+        title="組織"
+        actions={
           <button type="button" className="btn btn-primary" onClick={() => setShowCreate(true)}>
             <Plus size={14} />
             新規組織
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <div className="page-content flex flex-col gap-4">
-        {loading ? (
-          <div className="card">
-            <div className="card-body flex items-center gap-3">
-              <div className="spinner" />
-              <div className="text-muted">組織を読み込み中…</div>
-            </div>
-          </div>
-        ) : null}
-
-        {!loading && organizations.length === 0 ? (
-          <div className="welcome-card">
-            <div className="welcome-card-body">
-              <div className="welcome-header">
-                <div className="welcome-icon">
-                  <Sparkles size={22} />
-                </div>
-                <h2 className="welcome-title">Pantheon へようこそ</h2>
-                <p className="welcome-desc">
-                  AI 組織を作成して、コードの自律的な分析・改善を始めましょう。
-                  担当する git リポジトリ（ワークスペース）を指定して組織を作成してください。
-                </p>
-              </div>
-              <div className="welcome-actions flex items-center gap-2">
+        <AsyncBoundary
+          loading={loading}
+          error={loadError}
+          onRetry={() => void loadOrganizations()}
+          isEmpty={organizations.length === 0}
+          loadingText="組織を読み込み中…"
+          errorTitle="組織の読み込みに失敗しました"
+          emptyIcon={Sparkles}
+          emptyTitle="Pantheon へようこそ"
+          emptyHint={
+            <div className="flex flex-col items-center gap-3">
+              <p>
+                AI 組織を作成して、コードの自律的な分析・改善を始めましょう。
+                担当する git リポジトリ（ワークスペース）を指定して組織を作成してください。
+              </p>
+              <div className="flex items-center gap-2">
                 <Link to="/onboarding" className="btn btn-primary">
                   <Sparkles size={14} />
                   副業ポートフォリオを自動構築
@@ -790,31 +850,26 @@ export function OrgsPage() {
                   組織を作成
                 </button>
               </div>
-              <p className="welcome-note">
-                既存のリポジトリは <code>pantheon org scan</code> で一括登録できます。
+              <p className="text-sm text-muted">
+                既存のリポジトリは{' '}
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void copyCommand()}
+                  title="クリックでコピー"
+                >
+                  <ClipboardCopy size={12} />
+                  <code>pantheon org scan</code>
+                </button>
+                {' '}で一括登録できます。
               </p>
             </div>
-          </div>
-        ) : null}
-
-        {organizations.length > 0 ? (
+          }
+        >
           <div className="org-list">
             {organizations.map((org) => (
-              <div
-                key={org.name}
-                className="org-list-item"
-                role="button"
-                tabIndex={0}
-                aria-label={`${org.name} の詳細を開く`}
-                onClick={() => handleSelectDetail(org)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    handleSelectDetail(org)
-                  }
-                }}
-              >
-                <OrgIcon orgName={org.name} iconData={org.icon_data} />
+              <div key={org.name} className="org-list-item">
+                <OrgIcon orgName={org.name} iconData={org.icon_data} iconVersion={iconVersion} />
 
                 <div className="org-list-main">
                   <div className="org-list-name">{org.name}</div>
@@ -822,30 +877,44 @@ export function OrgsPage() {
                 </div>
 
                 <div className="org-list-scores">
-                  <ScoreTooltip
-                    label="健康"
-                    score={org.health_score}
-                    description="コードレビュー通過率・改善実行率から算出。100が最高。"
-                  />
-                  <ScoreTooltip
-                    label="自律"
-                    score={org.autonomy_score}
-                    description="エージェントの自律的な行動・意思決定の頻度から算出。"
-                  />
+                  <div className="flex flex-col gap-1">
+                    <div className="score-bar-label text-xs text-muted">健康</div>
+                    <ScoreBar
+                      score={org.health_score}
+                      label="健康スコア"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <div className="score-bar-label text-xs text-muted">自律</div>
+                    <ScoreBar
+                      score={org.autonomy_score}
+                      label="自律スコア"
+                    />
+                  </div>
                 </div>
 
                 <div className="org-list-meta">
-                  <span className="badge badge-neutral text-xs">{org.status}</span>
+                  <span className={`badge text-xs ${statusBadge(org.status)}`}>
+                    {statusLabel(org.status)}
+                  </span>
                   <span className="text-xs text-muted">{org.total_agents} エージェント</span>
                   {org.pending_proposals > 0 ? (
-                    <span className="badge badge-yellow text-xs">{org.pending_proposals} 提案</span>
+                    <button
+                      type="button"
+                      className="badge badge-yellow text-xs cursor-pointer"
+                      onClick={() => handleSelectDetail(org)}
+                      aria-label={`${org.pending_proposals} 件の未対応提案を開く`}
+                      title="未対応提案を表示"
+                    >
+                      {org.pending_proposals} 提案
+                    </button>
                   ) : null}
                   {org.last_active ? (
-                    <span className="text-xs text-muted">{formatDate(org.last_active)}</span>
+                    <span className="text-xs text-muted">{formatDateTime(org.last_active)}</span>
                   ) : null}
                 </div>
 
-                <div className="org-list-actions" onClick={(e) => e.stopPropagation()}>
+                <div className="org-list-actions">
                   <button
                     type="button"
                     className="btn btn-ghost btn-icon btn-sm"
@@ -856,16 +925,9 @@ export function OrgsPage() {
                     <Pencil size={14} />
                   </button>
                   {org.is_system ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-icon btn-sm"
-                      disabled
-                      aria-label="システム組織は削除できません"
-                      title="システム組織は削除できません"
-                      style={{ opacity: 0.3, cursor: 'not-allowed' }}
-                    >
-                      <Lock size={14} />
-                    </button>
+                    <span className="flex items-center gap-1 text-muted">
+                      <Lock size={13} aria-hidden="true" />
+                    </span>
                   ) : (
                     <button
                       type="button"
@@ -877,15 +939,23 @@ export function OrgsPage() {
                       <Trash2 size={14} />
                     </button>
                   )}
-                  <ChevronRight size={14} className="text-muted" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon btn-sm"
+                    onClick={() => handleSelectDetail(org)}
+                    aria-label={`${org.name} の詳細を開く`}
+                    title="詳細を開く"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
                 </div>
               </div>
             ))}
           </div>
-        ) : null}
+        </AsyncBoundary>
       </div>
 
-      {/* Detail side panel */}
+      {/* Detail side panel (Radix Dialog) */}
       {detail ? (
         <DetailPanel
           org={detail}
@@ -898,20 +968,16 @@ export function OrgsPage() {
           onIconUpload={handleIconUpload}
           onResetIcon={resetIcon}
           iconBusy={updatingIcon}
+          iconVersion={iconVersion}
         />
       ) : null}
 
-      {/* Create modal */}
-      <Modal
+      {/* Create modal (Radix Dialog) */}
+      <OrgModal
         open={showCreate}
         title="新規組織"
         description="1 組織 = 1 ワークスペース（git リポジトリ）。担当 repo は必須です。"
-        onClose={() => {
-          if (!submitting) {
-            setShowCreate(false)
-            setCreateForm(initialForm)
-          }
-        }}
+        onClose={closeCreate}
       >
         <form onSubmit={handleCreate} className="flex flex-col gap-4">
           <div className="input-group">
@@ -950,7 +1016,12 @@ export function OrgsPage() {
             />
           </div>
           <div className="dialog-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={closeCreate}
+              disabled={submitting}
+            >
               キャンセル
             </button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
@@ -959,10 +1030,10 @@ export function OrgsPage() {
             </button>
           </div>
         </form>
-      </Modal>
+      </OrgModal>
 
-      {/* Edit modal */}
-      <Modal
+      {/* Edit modal (Radix Dialog) */}
+      <OrgModal
         open={Boolean(editing)}
         title="組織を編集"
         description={`${editing?.name ?? ''} の情報を変更します。`}
@@ -988,11 +1059,19 @@ export function OrgsPage() {
               className="input"
               value={editForm.target_repo_path}
               onChange={(e) => setEditForm((c) => ({ ...c, target_repo_path: e.target.value }))}
-              placeholder="/Users/name/projects/repo"
+              placeholder="C:\\Users\\name\\projects\\repo"
             />
+            <p className="text-xs text-muted mt-1">
+              パスを変更すると組織に紐づくワークスペースが切り替わります。必要に応じて確認してください。
+            </p>
           </div>
           <div className="dialog-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => setEditing(null)}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => { if (!submitting) setEditing(null) }}
+              disabled={submitting}
+            >
               キャンセル
             </button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
@@ -1001,64 +1080,28 @@ export function OrgsPage() {
             </button>
           </div>
         </form>
-      </Modal>
+      </OrgModal>
 
-      {/* Delete confirm modal */}
-      <Modal
+      {/* Delete confirm (ConfirmDialog with confirmWord) */}
+      <ConfirmDialog
         open={Boolean(deleting)}
+        onOpenChange={(next) => { if (!next) setDeleting(null) }}
         title="組織を削除"
-        description=""
-        onClose={() => {
-          if (!submitting) closeDeleteModal()
-        }}
-      >
-        {deleting ? (
-          deleteStep === 1 ? (
-            <div className="flex flex-col gap-4">
-              <p className="text-sm">
-                組織「<strong>{deleting.name}</strong>」を削除しますか？
-                この操作は取り消せません。
-              </p>
-              <div className="dialog-actions">
-                <button type="button" className="btn btn-ghost" onClick={closeDeleteModal}>
-                  キャンセル
-                </button>
-                <button type="button" className="btn btn-danger" onClick={() => setDeleteStep(2)}>
-                  次へ
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-red">
-                確認のため、組織名「<strong>{deleting.name}</strong>」を入力してください。
-              </p>
-              <input
-                type="text"
-                className="input"
-                placeholder={deleting.name}
-                value={deleteConfirmName}
-                onChange={(e) => setDeleteConfirmName(e.target.value)}
-                autoFocus
-              />
-              <div className="dialog-actions">
-                <button type="button" className="btn btn-ghost" onClick={() => setDeleteStep(1)}>
-                  戻る
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  onClick={handleDelete}
-                  disabled={submitting || deleteConfirmName !== deleting.name}
-                >
-                  <Trash2 size={14} />
-                  {submitting ? '削除中' : '削除する'}
-                </button>
-              </div>
-            </div>
-          )
-        ) : null}
-      </Modal>
+        description={
+          <>
+            組織「<strong>{deleting?.name}</strong>」を削除しますか？この操作は取り消せません。
+          </>
+        }
+        confirmLabel="削除する"
+        destructive
+        confirmWord={deleting?.name}
+        confirmWordLabel={
+          <>
+            確認のため、組織名 <code>{deleting?.name}</code> を入力してください
+          </>
+        }
+        onConfirm={handleDelete}
+      />
     </>
   )
 }

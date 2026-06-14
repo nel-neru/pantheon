@@ -34,6 +34,7 @@ const detailOrg = {
   agents: [
     { id: 'agent-1', name: 'Planner', capability_id: 'planner', skills: ['analysis'] },
   ],
+  divisions: [],
 }
 
 const detailProposal = {
@@ -150,7 +151,31 @@ describe('OrgsPage', () => {
     expect(await screen.findByText('beta-team')).toBeInTheDocument()
   })
 
-  it('renders score bars for health and autonomy', async () => {
+  it('cancel button on create modal resets the form', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return []
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '組織を作成' }))
+    await user.type(screen.getByLabelText('名前'), 'partial-org')
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+
+    // dialog should close
+    await waitFor(() => {
+      expect(screen.queryByLabelText('名前')).not.toBeInTheDocument()
+    })
+
+    // re-open: form should be empty
+    await user.click(screen.getByRole('button', { name: '組織を作成' }))
+    expect(screen.getByLabelText('名前')).toHaveValue('')
+  })
+
+  it('renders score bars for health and autonomy using ScoreBar component', async () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/organizations') return [baseOrg]
       throw new Error(`Unexpected request: ${method} ${path}`)
@@ -158,16 +183,19 @@ describe('OrgsPage', () => {
 
     renderWithRouter(<OrgsPage />)
 
-    const orgListItem = await screen.findByRole('button', { name: 'acme-platform の詳細を開く' })
-    expect(within(orgListItem).getByText('健康')).toBeInTheDocument()
-    expect(within(orgListItem).getByText('自律')).toBeInTheDocument()
-    expect(within(orgListItem).getByText('72')).toBeInTheDocument()
-    expect(within(orgListItem).getByText('58')).toBeInTheDocument()
-    expect(orgListItem.querySelectorAll('.score-bar-fill')).toHaveLength(2)
-    expect(screen.getByText('コードレビュー通過率・改善実行率から算出。100が最高。')).toBeInTheDocument()
+    await screen.findByText('acme-platform')
+    // ScoreBar renders with role=meter and aria-label
+    const healthBar = screen.getByRole('meter', { name: '健康スコア' })
+    expect(healthBar).toBeInTheDocument()
+    expect(healthBar).toHaveAttribute('aria-valuenow', '72')
+    const autonomyBar = screen.getByRole('meter', { name: '自律スコア' })
+    expect(autonomyBar).toBeInTheDocument()
+    expect(autonomyBar).toHaveAttribute('aria-valuenow', '58')
+    // score-bar-fill is a child of the track inside the meter
+    expect(healthBar.querySelectorAll('.score-bar-fill')).toHaveLength(1)
   })
 
-  it('renders organizations as list items and opens the detail panel on click', async () => {
+  it('opens the detail panel via the chevron button and renders org details', async () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/organizations') return [baseOrg]
       if (method === 'GET' && path === '/api/organizations/acme-platform') return detailOrg
@@ -178,11 +206,10 @@ describe('OrgsPage', () => {
     const user = userEvent.setup()
     renderWithRouter(<OrgsPage />)
 
-    const orgListItem = await screen.findByRole('button', { name: 'acme-platform の詳細を開く' })
-    expect(orgListItem).toHaveClass('org-list-item')
-    expect(within(orgListItem).getByAltText('acme-platform')).toBeInTheDocument()
-
-    await user.click(orgListItem)
+    await screen.findByText('acme-platform')
+    // Detail is now opened via the Chevron button, not the whole card
+    const chevronBtn = screen.getByRole('button', { name: 'acme-platform の詳細を開く' })
+    await user.click(chevronBtn)
 
     expect(await screen.findByText('Planner')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'アイコン変更' })).toBeInTheDocument()
@@ -193,6 +220,44 @@ describe('OrgsPage', () => {
     // TPL-SEED: 初期KPI が詳細に表示される
     expect(screen.getByText('初期KPI')).toBeInTheDocument()
     expect(screen.getByText('有料記事の売上')).toBeInTheDocument()
+  })
+
+  it('detail panel is a Radix Dialog and closes with Esc key', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      if (method === 'GET' && path === '/api/organizations/acme-platform') return detailOrg
+      if (method === 'GET' && path === '/api/organizations/acme-platform/proposals') return []
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+    expect(await screen.findByText('Planner')).toBeInTheDocument()
+
+    // Dialog should have role=dialog
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+
+    // Close via Escape
+    await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByText('Planner')).not.toBeInTheDocument()
+    })
+  })
+
+  it('status badge uses statusLabel mapping (active → 稼働中)', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    renderWithRouter(<OrgsPage />)
+
+    await screen.findByText('acme-platform')
+    // status='active' → statusLabel → '稼働中'
+    expect(screen.getByText('稼働中')).toBeInTheDocument()
   })
 
   it('shows a specific not-found message when loading details returns 404', async () => {
@@ -268,7 +333,7 @@ describe('OrgsPage', () => {
     expect(await screen.findByText('Improve the org workflows')).toBeInTheDocument()
   })
 
-  it('migrates a repo org to workspace mode from the detail panel', async () => {
+  it('migrates a repo org to workspace mode via ConfirmDialog', async () => {
     let currentDetail = { ...detailOrg, management_mode: 'repo' as string }
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/organizations') return [baseOrg]
@@ -288,7 +353,15 @@ describe('OrgsPage', () => {
     renderWithRouter(<OrgsPage />)
 
     await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+    // The migrate button now opens a ConfirmDialog first
     await user.click(await screen.findByRole('button', { name: 'workspace へ移行' }))
+
+    // Confirm dialog should appear
+    const confirmDialog = await screen.findByRole('dialog', { name: 'workspace へ移行' })
+    expect(within(confirmDialog).getByText(/元に戻すことはできません/)).toBeInTheDocument()
+
+    // Click "移行する" to confirm
+    await user.click(within(confirmDialog).getByRole('button', { name: '移行する' }))
 
     await waitFor(() => {
       expect(mockApi).toHaveBeenCalledWith(
@@ -299,7 +372,7 @@ describe('OrgsPage', () => {
     expect(await screen.findByText('workspace（git 不要）')).toBeInTheDocument()
   })
 
-  it('shows a lock icon instead of a delete action for system organizations', async () => {
+  it('shows a lock icon for system organizations without a delete button', async () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/organizations') return [systemOrg]
       throw new Error(`Unexpected request: ${method} ${path}`)
@@ -308,11 +381,13 @@ describe('OrgsPage', () => {
     renderWithRouter(<OrgsPage />)
 
     expect(await screen.findByText('meta-improvement')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'システム組織は削除できません' })).toBeDisabled()
+    // System org: no delete button at all
     expect(screen.queryByLabelText('meta-improvement を削除')).not.toBeInTheDocument()
+    // No disabled delete button (inline style anti-pattern removed)
+    expect(screen.queryByRole('button', { name: 'システム組織は削除できません' })).not.toBeInTheDocument()
   })
 
-  it('deletes an organization only after the two-step confirmation matches the name', async () => {
+  it('deletes an organization via ConfirmDialog with name-match confirmation', async () => {
     let currentOrgs = [baseOrg]
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/organizations') return currentOrgs
@@ -329,15 +404,15 @@ describe('OrgsPage', () => {
     expect(await screen.findByText('acme-platform')).toBeInTheDocument()
     await user.click(screen.getByLabelText('acme-platform を削除'))
 
-    const stepOneDialog = screen.getByRole('dialog', { name: '組織を削除' })
-    expect(within(stepOneDialog).getByText(/この操作は取り消せません/)).toBeInTheDocument()
-    await user.click(within(stepOneDialog).getByRole('button', { name: '次へ' }))
+    // ConfirmDialog opens (Radix Dialog)
+    const dialog = await screen.findByRole('dialog', { name: '組織を削除' })
+    expect(within(dialog).getByText(/この操作は取り消せません/)).toBeInTheDocument()
 
-    const stepTwoDialog = screen.getByRole('dialog', { name: '組織を削除' })
-    const deleteButton = within(stepTwoDialog).getByRole('button', { name: '削除する' })
+    // The confirm button should be disabled until the org name is typed
+    const deleteButton = within(dialog).getByRole('button', { name: '削除する' })
     expect(deleteButton).toBeDisabled()
 
-    const input = within(stepTwoDialog).getByRole('textbox')
+    const input = within(dialog).getByRole('textbox', { name: '確認文字列' })
     await user.type(input, 'wrong-name')
     expect(deleteButton).toBeDisabled()
 
@@ -350,5 +425,85 @@ describe('OrgsPage', () => {
       expect(mockedToast.success).toHaveBeenCalledWith('組織を削除しました。')
     })
     expect(await screen.findByText('Pantheon へようこそ')).toBeInTheDocument()
+  })
+
+  it('icon reset requires ConfirmDialog confirmation', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      if (method === 'GET' && path === '/api/organizations/acme-platform') return detailOrg
+      if (method === 'GET' && path === '/api/organizations/acme-platform/proposals') return []
+      if (method === 'DELETE' && path === '/api/organizations/acme-platform/icon') {
+        return { ok: true }
+      }
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+    await user.click(await screen.findByRole('button', { name: 'リセット' }))
+
+    // ConfirmDialog opens
+    const dialog = await screen.findByRole('dialog', { name: 'アイコンをリセット' })
+    expect(within(dialog).getByText(/設定済みのアイコンを削除します/)).toBeInTheDocument()
+
+    // API should NOT have been called yet
+    expect(mockApi).not.toHaveBeenCalledWith('DELETE', '/api/organizations/acme-platform/icon')
+
+    // Confirm
+    await user.click(within(dialog).getByRole('button', { name: 'リセット' }))
+
+    await waitFor(() => {
+      expect(mockApi).toHaveBeenCalledWith('DELETE', '/api/organizations/acme-platform/icon')
+    })
+    await waitFor(() => {
+      expect(mockedToast.success).toHaveBeenCalledWith('アイコンをリセットしました。')
+    })
+  })
+
+  it('proposal list shows link to improvements page', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      if (method === 'GET' && path === '/api/organizations/acme-platform') return detailOrg
+      if (method === 'GET' && path === '/api/organizations/acme-platform/proposals') return [detailProposal]
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+    expect(await screen.findByText('Split the dashboard widget')).toBeInTheDocument()
+
+    // Priority label should be Japanese from priorityLabel
+    expect(screen.getByText('高')).toBeInTheDocument()
+
+    // Link to improvements inbox
+    const link = screen.getByRole('link', { name: '承認インボックスで開く →' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', expect.stringContaining('/improvements'))
+  })
+
+  it('proposal error and empty state show distinct messages', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      if (method === 'GET' && path === '/api/organizations/acme-platform') return detailOrg
+      if (method === 'GET' && path === '/api/organizations/acme-platform/proposals') {
+        throw new Error('proposals fetch failed')
+      }
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('proposals fetch failed')).toBeInTheDocument()
+    })
+    // Should NOT show the "no proposals" empty text when there's an error
+    expect(screen.queryByText('未対応の提案はありません。')).not.toBeInTheDocument()
   })
 })

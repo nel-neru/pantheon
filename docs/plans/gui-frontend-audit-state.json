@@ -412,7 +412,7 @@
       "rationale": "necessity/functionality: PANTHEON_API_TOKEN運用時、token.tsはURLクエリ取り込みのみでアプリ内の入力/更新/クリアUIが無く(setApiTokenは未呼び出しの死蔵)、api.tsは401でErrorを投げるだけ。未認証/期限切れユーザーは各ページが赤エラーを出すだけで復帰手段が分からず詰む。api.tsに401集中ハンドリング(未認証→トークン入力誘導)を入れ、SettingsにAPIトークンフィールド(setApiToken連携・マスク・クリア)を追加。",
       "test_impact": "401応答時の誘導テストとトークン設定/クリアのSettingsテストを追加。",
       "wave": "W3",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "C011",

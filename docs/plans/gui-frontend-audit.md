@@ -115,7 +115,7 @@ navItems をフラット20項目から NavGroup[]（type NavGroup = { label: str
   - 軸: validity, maintainability
   - 根拠: validity/maintainability: hookが呼び出し毎にnew WebSocketを張り、App+OrchestraView+Inbox+ContentSchedule+Sessionsの5箇所で画面ごとに複数接続が発生。各インスタンスが別events stateと別3s再接続を持ち、同一イベントがN重処理→再取得多重発火。Context Providerで1本のWSを共有し各ページは購読のみ。WSスタブを配信可能に拡張して接続数/重複のテストを追加。
   - テスト影響: WS no-opスタブを配信可能スタブへ拡張。購読系ページの再取得トリガテストを更新・追加。
-- [ ] **C010** `[P1]` `<add>` risk=low — 401集中ハンドリングとSettingsのAPIトークン入力UIを追加
+- [~] **C010** `[P1]` `<add>` risk=low — 401集中ハンドリングとSettingsのAPIトークン入力UIを追加 _(状態: in_progress)_
   - 対象: `web/frontend/src/lib/token.ts`, `web/frontend/src/lib/api.ts`, `web/frontend/src/pages/SettingsPage.tsx`, `web/frontend/src/App.tsx`
   - 軸: necessity, functionality
   - 根拠: necessity/functionality: PANTHEON_API_TOKEN運用時、token.tsはURLクエリ取り込みのみでアプリ内の入力/更新/クリアUIが無く(setApiTokenは未呼び出しの死蔵)、api.tsは401でErrorを投げるだけ。未認証/期限切れユーザーは各ページが赤エラーを出すだけで復帰手段が分からず詰む。api.tsに401集中ハンドリング(未認証→トークン入力誘導)を入れ、SettingsにAPIトークンフィールド(setApiToken連携・マスク・クリア)を追加。
