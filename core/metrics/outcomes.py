@@ -202,6 +202,8 @@ class OutcomeStore:
             payload = json.loads(self.outcomes_path.read_text(encoding="utf-8"))
         except (ValueError, OSError):
             return []
+        if not isinstance(payload, list):
+            return []
         events: List[OutcomeEvent] = []
         for item in payload:
             try:
