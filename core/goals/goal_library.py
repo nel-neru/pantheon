@@ -65,7 +65,16 @@ class GoalLibrary:
             data = json.loads(self.file_path.read_text(encoding="utf-8"))
         except Exception:
             return []
-        return [GoalTemplate(**item) for item in data.get("templates", [])]
+        allowed = set(GoalTemplate.__dataclass_fields__)
+        templates: list[GoalTemplate] = []
+        for item in data.get("templates", []) if isinstance(data, dict) else []:
+            if not isinstance(item, dict):
+                continue
+            try:
+                templates.append(GoalTemplate(**{k: v for k, v in item.items() if k in allowed}))
+            except Exception:  # 不正/レガシーレコードはスキップして全体を壊さない
+                continue
+        return templates
 
     def _save_all(self, templates: list[GoalTemplate]) -> None:
         self.file_path.parent.mkdir(parents=True, exist_ok=True)

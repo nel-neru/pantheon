@@ -58,7 +58,19 @@ class CoevolutionGraph:
             if not line.strip():
                 continue
             try:
-                points.append(json.loads(line))
+                obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if (
+                not isinstance(obj, dict)
+                or "org_score" not in obj
+                or "developer_approval_rate" not in obj
+            ):
+                continue
+            try:
+                obj["org_score"] = float(obj["org_score"])
+                obj["developer_approval_rate"] = float(obj["developer_approval_rate"])
+            except (TypeError, ValueError):
+                continue
+            points.append(obj)
         return points

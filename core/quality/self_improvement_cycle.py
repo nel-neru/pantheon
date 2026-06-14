@@ -51,12 +51,15 @@ class SelfImprovementCycle:
     def get_current_version(self) -> CoreVersion:
         if not self.version_file.exists():
             return CoreVersion(version="1.0.0", improved_at="", changes=[])
-        payload = json.loads(self.version_file.read_text(encoding="utf-8"))
-        return CoreVersion(
-            version=payload.get("version", "1.0.0"),
-            improved_at=payload.get("improved_at", ""),
-            changes=list(payload.get("changes", [])),
-        )
+        try:
+            payload = json.loads(self.version_file.read_text(encoding="utf-8"))
+            return CoreVersion(
+                version=payload.get("version", "1.0.0"),
+                improved_at=payload.get("improved_at", ""),
+                changes=list(payload.get("changes", [])),
+            )
+        except (ValueError, OSError, AttributeError):  # 破損/非dict は既定バージョンへ退避
+            return CoreVersion(version="1.0.0", improved_at="", changes=[])
 
     def run_meta_analysis_cycle(self, repo_root: Path) -> SelfImprovementRecord:
         started_at = datetime.now(timezone.utc).isoformat()
@@ -103,7 +106,10 @@ class SelfImprovementCycle:
         for line in self.history_file.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
-            records.append(SelfImprovementRecord(**json.loads(line)))
+            try:
+                records.append(SelfImprovementRecord(**json.loads(line)))
+            except (ValueError, TypeError):  # 破損行/不正レコードはスキップ
+                continue
         return records[-limit:]
 
     def _increment_version(self, version: str) -> str:
