@@ -25,7 +25,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from core.runtime.token_ledger import TokenLedger
 from core.runtime.usage_gate import RateLimitGate
@@ -91,6 +91,49 @@ def load_rules(path: Optional[Path] = None) -> QuotaRules:
         soft_limit_tokens=int(_num("soft_limit_tokens", DEFAULT_SOFT_LIMIT)),
         hard_limit_tokens=int(_num("hard_limit_tokens", DEFAULT_HARD_LIMIT)),
     )
+
+
+def save_rules(
+    *,
+    window_hours: Optional[float] = None,
+    soft_limit_tokens: Optional[int] = None,
+    hard_limit_tokens: Optional[int] = None,
+    path: Optional[Path] = None,
+) -> QuotaRules:
+    """token_quota.yaml にトークンクォータ上限を部分更新で永続化する（SET-EXPOSE / §4 P2-5）。
+
+    指定された項目のみ上書きし、未指定は現行値を保つ。正の数のみ受理し、不正値は無視する。
+    soft が hard を超える設定は安全側に入れ替える（soft <= hard を保証）。更新後の ``QuotaRules`` を返す。
+    """
+    import yaml
+
+    path = path or _config_path()
+    current = load_rules(path)
+    new_window = float(window_hours) if _is_pos(window_hours) else current.window_hours
+    new_soft = int(soft_limit_tokens) if _is_pos(soft_limit_tokens) else current.soft_limit_tokens
+    new_hard = int(hard_limit_tokens) if _is_pos(hard_limit_tokens) else current.hard_limit_tokens
+    if new_soft > new_hard:  # soft は hard 以下を保証（取り違え防止）
+        new_soft, new_hard = new_hard, new_soft
+
+    payload = {
+        "window_hours": new_window,
+        "soft_limit_tokens": new_soft,
+        "hard_limit_tokens": new_hard,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8"
+        )
+    except OSError as exc:  # pragma: no cover - 書き込み不可は握りつぶし
+        logger.warning("failed to persist token_quota.yaml: %s", exc)
+    return QuotaRules(
+        window_hours=new_window, soft_limit_tokens=new_soft, hard_limit_tokens=new_hard
+    )
+
+
+def _is_pos(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
 
 
 class QuotaGovernor:

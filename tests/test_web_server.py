@@ -567,6 +567,44 @@ def test_memory_playbook_api_capture_and_list(tmp_path, monkeypatch):
     )
 
 
+def test_settings_exposes_and_updates_quota_and_notifications(tmp_path, monkeypatch):
+    """SET-EXPOSE: /api/settings がトークンクォータ・通知設定を露出し、PUT で更新できる。"""
+    monkeypatch.setattr(server, "SETTINGS_FILE", tmp_path / "settings.json")
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    # クォータ設定は実 repo の token_quota.yaml を汚さないよう tmp へ向ける
+    quota_file = tmp_path / "token_quota.yaml"
+    monkeypatch.setattr("core.runtime.quota_governor._config_path", lambda: quota_file)
+
+    got = client.get("/api/settings")
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert "token_quota" in body and "notification_settings" in body
+    assert "soft_limit_tokens" in body["token_quota"]
+
+    resp = client.put(
+        "/api/settings",
+        json={
+            "token_quota": {
+                "window_hours": 6,
+                "soft_limit_tokens": 100000,
+                "hard_limit_tokens": 200000,
+            },
+            "notification_settings": {"min_level": "warn", "quiet_hours_start": 23},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    # 反映確認: クォータは token_quota.yaml（tmp）、通知は通知センターに永続化される。
+    from core.notifications import NotificationCenter
+    from core.runtime.quota_governor import load_rules
+
+    rules = load_rules(quota_file)
+    assert rules.soft_limit_tokens == 100000 and rules.hard_limit_tokens == 200000
+    assert rules.window_hours == 6
+    assert NotificationCenter(platform_home=tmp_path).get_settings()["min_level"] == "warn"
+
+
 def test_notifications_api_crud_and_settings(tmp_path, monkeypatch):
     """P3.3: 通知の作成→一覧/未読数→既読→設定更新の一連を API で検証する。"""
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)

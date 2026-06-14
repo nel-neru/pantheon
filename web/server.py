@@ -636,6 +636,9 @@ class SettingsResponse(BaseModel):
     model_configurations: dict[str, Any] = Field(default_factory=dict)
     prompt_templates: dict[str, str] = Field(default_factory=dict)
     policy_rules: dict[str, Any] = Field(default_factory=dict)
+    # SET-EXPOSE（§4 P2-5/P3-12）: トークンクォータ・通知を統一アプリ設定へ露出。
+    token_quota: dict[str, Any] = Field(default_factory=dict)
+    notification_settings: dict[str, Any] = Field(default_factory=dict)
     settings_file: str
     has_llm: bool
 
@@ -3167,6 +3170,9 @@ class SettingsUpdateRequest(ApiRequestModel):
     model_configurations: dict[str, Any] | None = None
     prompt_templates: dict[str, str] | None = None
     policy_rules: dict[str, Any] | None = None
+    # SET-EXPOSE: トークンクォータ上限・通知設定をアプリ設定から変更可能にする（§4 P2-5/P3-12）。
+    token_quota: dict[str, Any] | None = None
+    notification_settings: dict[str, Any] | None = None
 
 
 @app.get(
@@ -3208,8 +3214,22 @@ async def api_get_settings() -> Dict[str, Any]:
         ),
         "prompt_templates": s.get("prompt_templates", deepcopy(DEFAULT_PROMPT_TEMPLATES)),
         "policy_rules": s.get("policy_rules", deepcopy(DEFAULT_POLICY)),
+        "token_quota": _current_token_quota(),
+        "notification_settings": _notification_center().get_settings(),
         "settings_file": str(SETTINGS_FILE),
         "has_llm": _has_llm(s),
+    }
+
+
+def _current_token_quota() -> Dict[str, Any]:
+    """現在のトークンクォータ上限（token_quota.yaml）を dict で返す（SET-EXPOSE）。"""
+    from core.runtime.quota_governor import load_rules
+
+    rules = load_rules()
+    return {
+        "window_hours": rules.window_hours,
+        "soft_limit_tokens": rules.soft_limit_tokens,
+        "hard_limit_tokens": rules.hard_limit_tokens,
     }
 
 
@@ -3321,6 +3341,21 @@ async def api_update_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
         s["policy_rules"] = req.policy_rules
 
     _save_gui_settings(s)
+
+    # SET-EXPOSE: トークンクォータ上限は token_quota.yaml へ、通知設定は通知センターへ反映する
+    # （GUI 設定ファイルではなく各サブシステムの正準ストアに書く）。
+    if req.token_quota is not None:
+        from core.runtime.quota_governor import save_rules
+
+        tq = req.token_quota
+        save_rules(
+            window_hours=tq.get("window_hours"),
+            soft_limit_tokens=tq.get("soft_limit_tokens"),
+            hard_limit_tokens=tq.get("hard_limit_tokens"),
+        )
+    if req.notification_settings is not None:
+        _notification_center().update_settings(req.notification_settings)
+
     return {"status": "saved", "has_llm": _has_llm(s)}
 
 
