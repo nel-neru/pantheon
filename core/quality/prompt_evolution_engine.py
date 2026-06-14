@@ -107,16 +107,24 @@ class PromptEvolutionEngine:
     def _load(self) -> dict[str, PromptExperiment]:
         if not self.experiments_file.exists():
             return {}
-        payload = json.loads(self.experiments_file.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(self.experiments_file.read_text(encoding="utf-8"))
+        except (ValueError, OSError):  # 破損/切り詰めは空として扱う（missing-file と同じ）
+            return {}
+        if not isinstance(payload, dict):
+            return {}
         experiments: dict[str, PromptExperiment] = {}
         for item in payload.get("experiments", []):
-            variants = [PromptVariant(**variant) for variant in item.get("variants", [])]
-            experiment = PromptExperiment(
-                experiment_id=item["experiment_id"],
-                agent_name=item["agent_name"],
-                variants=variants,
-                created_at=item.get("created_at", ""),
-            )
+            try:
+                variants = [PromptVariant(**variant) for variant in item.get("variants", [])]
+                experiment = PromptExperiment(
+                    experiment_id=item["experiment_id"],
+                    agent_name=item["agent_name"],
+                    variants=variants,
+                    created_at=item.get("created_at", ""),
+                )
+            except (TypeError, KeyError, ValueError, AttributeError):  # 不正レコードはスキップ
+                continue
             experiments[experiment.experiment_id] = experiment
         return experiments
 
