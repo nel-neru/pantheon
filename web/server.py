@@ -4310,6 +4310,28 @@ async def api_collect_revenue() -> Dict[str, Any]:
     return run_revenue_collection(platform_home=get_platform_home())
 
 
+@app.post("/api/workspace-db/sync", tags=["workspace"])
+async def api_workspace_db_sync() -> Dict[str, Any]:
+    """JSON 正準から Workspace 集計 SQLite ミラーを再構築する（WS-2・非破壊・冪等）。"""
+    from core.state.workspace_db import sync_workspace_db
+
+    return sync_workspace_db(platform_home=get_platform_home())
+
+
+@app.get("/api/workspace-db/stats", tags=["workspace"])
+async def api_workspace_db_stats() -> Dict[str, Any]:
+    """Workspace ミラーの件数・最終同期時刻・org 別累計収益を返す（WS-2）。"""
+    from pathlib import Path
+
+    from core.state.workspace_db import WorkspaceDB, _default_db_path
+
+    db = WorkspaceDB(_default_db_path(Path(get_platform_home())))
+    try:
+        return {"stats": db.stats(), "revenue_by_org": db.revenue_by_org()}
+    finally:
+        db.close()
+
+
 @app.post("/api/outcomes", tags=["outcomes"])
 async def api_record_outcome(body: OutcomeRecordRequest) -> Dict[str, Any]:
     """成果イベントを 1 件記録する（GUI の手動入力フォーム用）。

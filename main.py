@@ -546,6 +546,18 @@ async def cmd_revenue_collect(args) -> None:
     await _impl(args)
 
 
+async def cmd_db_sync(args) -> None:
+    from commands.db import cmd_db_sync as _impl
+
+    await _impl(args)
+
+
+async def cmd_db_stats(args) -> None:
+    from commands.db import cmd_db_stats as _impl
+
+    await _impl(args)
+
+
 async def cmd_publish_connect(args) -> None:
     from commands.publish import cmd_publish_connect as _impl
 
@@ -632,6 +644,8 @@ HANDLERS = {
     "cmd_trends_business_scan": cmd_trends_business_scan,
     "cmd_trends_untapped": cmd_trends_untapped,
     "cmd_revenue_collect": cmd_revenue_collect,
+    "cmd_db_sync": cmd_db_sync,
+    "cmd_db_stats": cmd_db_stats,
     "cmd_publish_connect": cmd_publish_connect,
     "cmd_publish_status": cmd_publish_status,
     "cmd_publish_disconnect": cmd_publish_disconnect,

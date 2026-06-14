@@ -82,7 +82,11 @@
   `POST .../migrate-to-workspace`（workspace_root は設定→platform_home/workspaces フォールバック）、
   org 詳細 API に management_mode/workspace_path/data_location 露出、OrgsPage 詳細に「workspace へ移行」ボタン。
   backend 2 + CLI 2 + API 2 + frontend 1 テスト。実データ移動は意図的に範囲外（来歴として repo パス保持）。
-- ⬜ **WS-2 SQLite ストア（§5.2）**: JSON 正準 → SQLite（workspaces/organizations/... テーブル）へ段階移行。
+- ✅ **WS-2 SQLite ストア（§5.2・非破壊ミラー方式）**: `core/state/workspace_db.WorkspaceDB`
+  ＝JSON 正準（org/収益/Playbook）から **毎回再構築できる派生 SQLite ミラー**（organizations/divisions/agents/
+  revenue_records/playbooks/meta）。JSON は正準のまま（消えても再生成）＝移行リスク0。CLI `pantheon db sync|stats`、
+  API `POST/GET /api/workspace-db/sync|stats`（org 別累計収益の横断集計を実証）。backend 4 + API 1 テスト。
+  ※ canonical を SQLite へ完全移行するのは安全のため意図的に非目標（JSON 正準を維持）。
 
 ## Phase 3（アプリ化・UX）
 
@@ -163,8 +167,8 @@
   org_evolution 事業部）を全社に標準搭載（§6.2）。**WIRE-MEM（成功施策→Playbook 蓄積）＋AUTO-1（HQ エスカレーション）と噛み合い、
   立ち上げ初日から自己改善ループを持つ**。backend（company/templates）＋frontend テスト。
   残: 群統合（新会社を portfolio_advisor へ自動リンク）・専用 HQ Agent の明示生成は後続。
-- ⬜ **WS-2 SQLite ストア（§5.2・再掲）**: workspaces/organizations/.../revenue_records/execution_logs/app_settings
-  を §5.2 設計で実装し JSON 正準→SQLite へ段階移行（**保存層移行でリスク高・着手前に要確認**）。
+- ✅ **WS-2 SQLite ストア（§5.2・再掲）**: 非破壊ミラー方式で出荷（§5 セクション参照）。JSON 正準を維持し
+  SQLite を再構築可能な集計ビューとして追加（`core/state/workspace_db.py`・CLI `db sync|stats`・API）。
 - 🟩 **SET-EXPOSE 設定露出（§4 P2-5/P3-12）**: トークンクォータ上限と通知設定を統一アプリ設定へ露出。
   `quota_governor.save_rules`（token_quota.yaml writer・部分更新/soft≤hard 保証/不正値無視）＋ `/api/settings`
   GET/PUT に `token_quota`・`notification_settings` を追加（通知は NotificationCenter へ委譲）＋ SettingsPage
