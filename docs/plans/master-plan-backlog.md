@@ -145,8 +145,12 @@
   **capture 配線**: `BaseAgent._save_execution_knowledge` が成功実行を Playbook へ冪等蓄積（title 正規化で重複増殖防止）。
   API `GET/POST /api/memory/playbook`。memory 10 + API 1 テスト。
   （補足: `AgentKnowledgeAccumulator` との完全統合は将来課題＝今回は統一エントリ点 MemoryBank と Playbook 経路を配線）。
-- ⬜ **REV-COLLECT 外部API収益自動収集（§8 P1/§9）**: note/X/ASP の売上を定期取得し `OutcomeStore.record` へ。
-  手動 POST/CSV からの脱却。実認証は human-gate。
+- 🟩 **REV-COLLECT 外部API収益自動収集（§8 P1/§9）= 枠組み出荷**: `core/metrics/revenue_collectors/`
+  （`RevenueCollector` 基底＋note/X/ASP アダプタ＋`run_revenue_collection` オーケストレータ）。接続済みは
+  `OutcomeStore.record(dedupe_on_source)` で冪等記録、未接続は「接続してください」人間タスクを一度だけ起票。
+  CLI `pantheon revenue collect` ＋ API `POST /api/revenue/collect`。collectors 4 + API 1 テスト。
+  **実 API 認証・取得は human-gate**（`~/.pantheon/revenue_credentials/<source>.json` を接続後に各アダプタの
+  `fetch` を実装＝Phase 2）。それまで手動入力/CSV が fallback。残: 実 API 実装・daemon 巡回への組込。
 - 🟩 **TPL-SEED テンプレ標準シード（§6.1/§6.2）**: 会社プラグイン install を実体化。
   ①`Organization.initial_kpis` フィールド追加＋install で永続化＋org 詳細/一覧 API 露出＋OrgsPage「初期KPI」表示
   （= KPI ダッシュボードの素地・§6.1）。②`plugin_templates.self_improvement_seed_division`（週次レビュー Agent を持つ
