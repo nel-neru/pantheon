@@ -44,15 +44,21 @@ type Skill = {
   schema_version?: string
 }
 
-type RoutingAnalysis = {
-  recommended_agent_ids?: string[]
-  complexity?: string
-  [key: string]: unknown
+type RecommendedAgent = {
+  capability_id?: string
+  name: string
+  skills?: string[]
 }
 
+// /api/orchestration/analyze はフラット構造を返す（バックエンド実装に一致させる）。
 type RoutingResponse = {
   task_type: string
-  analysis: RoutingAnalysis
+  recommended_pattern?: string
+  recommended_agents?: RecommendedAgent[]
+  complexity?: string
+  reasoning?: string
+  confidence?: number
+  estimated_tokens?: number
 }
 
 type ConfigPanel = {
@@ -169,31 +175,14 @@ function ConfigModal({
   )
 }
 
-/** 分析結果の構造化表示 */
-function AnalysisDisplay({
-  routing,
-  runtimeAgents,
-  agents,
-}: {
-  routing: RoutingResponse
-  runtimeAgents: RuntimeAgent[]
-  agents: Agent[]
-}) {
-  const complexity = getComplexityBadge(routing.analysis.complexity)
-  const recommendedIds = routing.analysis.recommended_agent_ids ?? []
+/** 分析結果の構造化表示（バックエンドのフラットなレスポンスを読む） */
+function AnalysisDisplay({ routing }: { routing: RoutingResponse }) {
+  const complexity = getComplexityBadge(routing.complexity)
+  const recommended = routing.recommended_agents ?? []
 
-  /** ID から name を解決（runtimeAgents 優先、次に agents） */
-  function resolveName(id: string): string {
-    const rt = runtimeAgents.find((a) => a.id === id)
-    if (rt) return rt.name
-    const def = agents.find((a) => a.capability_id === id || a.name === id)
-    if (def) return def.name
-    return id
-  }
-
-  // recommended/complexity 以外の残りのフィールド
-  const extraEntries = Object.entries(routing.analysis).filter(
-    ([k]) => k !== 'recommended_agent_ids' && k !== 'complexity',
+  // task_type / complexity / recommended_agents 以外の残りフィールドを構造化表示
+  const extraEntries = Object.entries(routing).filter(
+    ([k]) => !['task_type', 'complexity', 'recommended_agents'].includes(k),
   )
 
   return (
@@ -201,17 +190,18 @@ function AnalysisDisplay({
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm text-muted">複雑さ:</span>
         <span className={`badge ${complexity.cls}`}>{complexity.label}</span>
-        {recommendedIds.length > 0 && (
+        {recommended.length > 0 && (
           <>
             <span className="text-sm text-muted">推奨:</span>
-            {recommendedIds.map((id) => {
-              const name = resolveName(id)
-              return (
-                <span key={id} className="badge badge-green text-xs" title={id}>
-                  {name === id ? id : `${name} (${id})`}
-                </span>
-              )
-            })}
+            {recommended.map((a, i) => (
+              <span
+                key={a.capability_id ?? a.name ?? i}
+                className="badge badge-green text-xs"
+                title={a.capability_id ?? a.name}
+              >
+                {a.name}
+              </span>
+            ))}
           </>
         )}
       </div>
@@ -233,7 +223,7 @@ function AnalysisDisplay({
         </dl>
       )}
 
-      <RawJsonAccordion payload={routing.analysis as Record<string, unknown>} />
+      <RawJsonAccordion payload={routing as Record<string, unknown>} />
     </div>
   )
 }
@@ -580,11 +570,7 @@ export function AgentsPage() {
                 </div>
 
                 {routing ? (
-                  <AnalysisDisplay
-                    routing={routing}
-                    runtimeAgents={runtimeAgents}
-                    agents={agents}
-                  />
+                  <AnalysisDisplay routing={routing} />
                 ) : (
                   <div className="empty-state py-6">
                     <Cpu className="empty-state-icon" size={24} />

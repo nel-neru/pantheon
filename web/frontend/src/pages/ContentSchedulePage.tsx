@@ -148,7 +148,6 @@ function ContentJobCard({
           {job.publish_platform ? (
             <span className="badge badge-green">
               {PUBLISH_PLATFORMS[job.publish_platform] ?? job.publish_platform}
-              {job.publish_mode === 'auto' ? '（自動）' : ''}
             </span>
           ) : null}
         </div>
@@ -659,18 +658,13 @@ export function ContentSchedulePage() {
                             onChange={(e) => setPublishMode(e.target.value)}
                           >
                             <option value="assisted">承認後に手動送信（補助）</option>
-                            <option value="auto">承認したら自動投稿</option>
                           </select>
                         </div>
                       ) : null}
                     </div>
                     {publishPlatform ? (
                       <p className="text-xs text-muted">
-                        承認すると投稿待ちに入り、
-                        {publishMode === 'auto'
-                          ? '予約時刻に自動投稿'
-                          : '投稿画面へ流し込み（最終送信は人間）'}
-                        されます。
+                        承認すると投稿待ちに入り、投稿画面へ流し込み（最終送信は人間）されます。
                       </p>
                     ) : null}
                     <div>

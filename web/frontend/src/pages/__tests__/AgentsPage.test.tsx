@@ -121,7 +121,7 @@ describe('AgentsPage', () => {
   })
 
   it('shows an analyzing state while orchestration analysis is running', async () => {
-    const request = deferred<{ task_type: string; analysis: { complexity: string } }>()
+    const request = deferred<{ task_type: string; complexity: string }>()
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/agents') return [agent]
       if (method === 'GET' && path === '/api/skills') return [skill]
@@ -138,7 +138,7 @@ describe('AgentsPage', () => {
 
     expect(screen.getByRole('button', { name: '分析中…' })).toBeDisabled()
 
-    request.resolve({ task_type: 'analysis', analysis: { complexity: 'low' } })
+    request.resolve({ task_type: 'analysis', complexity: 'low' })
     expect(await screen.findByText('複雑さ:')).toBeInTheDocument()
   })
 
@@ -148,13 +148,18 @@ describe('AgentsPage', () => {
       if (method === 'GET' && path === '/api/skills') return [skill]
       if (method === 'GET' && path === '/api/agents/runtime') return []
       if (method === 'GET' && path === '/api/orchestration/analyze/goal_execution') {
+        // バックエンド実装どおりのフラット構造（{analysis: {...}} ではない）
         return {
           task_type: 'goal_execution',
-          analysis: {
-            complexity: 'high',
-            recommended_agent_ids: ['planner', 'reviewer'],
-            notes: 'Needs coordination',
-          },
+          recommended_pattern: 'multi_agent',
+          recommended_agents: [
+            { capability_id: 'planner', name: 'Planner' },
+            { capability_id: 'reviewer', name: 'reviewer' },
+          ],
+          complexity: 'high',
+          reasoning: 'Needs coordination',
+          confidence: 0.8,
+          estimated_tokens: 1000,
         }
       }
       throw new Error(`Unexpected request: ${method} ${path}`)
@@ -168,11 +173,12 @@ describe('AgentsPage', () => {
     await user.click(screen.getByRole('button', { name: '分析' }))
 
     expect(await screen.findByText('高')).toBeInTheDocument()
-    // 'planner' resolves to 'Planner (planner)' via agent name resolution; 'reviewer' has no match so stays raw
-    expect(screen.getByText('Planner (planner)')).toBeInTheDocument()
-    expect(screen.getByText('reviewer')).toBeInTheDocument()
-    // 'notes' is shown in structured display (key-value dd)
-    expect(screen.getByText('Needs coordination')).toBeInTheDocument()
+    // 推奨エージェントが実際に表示される（フラット構造の recommended_agents[].name）
+    expect(screen.getByText('推奨:')).toBeInTheDocument()
+    expect(screen.getAllByText('Planner').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('reviewer').length).toBeGreaterThanOrEqual(1)
+    // reasoning などフラットな追加フィールドが構造化表示される
+    expect(screen.getAllByText('Needs coordination').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders runtime agents with Japanese status labels', async () => {
