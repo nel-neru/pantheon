@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -7,17 +7,22 @@ import {
   Eye,
   Inbox as InboxIcon,
   Lightbulb,
+  PenSquare,
   RefreshCw,
   Send,
   Trash2,
+  UserCheck,
   XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { priorityBadge, priorityLabel } from '@/lib/labels'
+import { formatDateTime } from '@/lib/utils'
 import { usePlatformUpdates } from '@/hooks/usePlatformUpdates'
 
-type InboxKind = 'proposal' | 'handoff' | 'publish'
+type InboxKind = 'proposal' | 'handoff' | 'publish' | 'human_task'
 
 type InboxItem = {
   kind: InboxKind
@@ -29,6 +34,8 @@ type InboxItem = {
   revenue_impact?: number
   platform?: string
   scheduled_at?: string | null
+  ref?: string
+  created_at?: string
   route: string
   status?: string
 }
@@ -37,6 +44,7 @@ type InboxCounts = {
   proposal: number
   handoff: number
   publish: number
+  human_task: number
   total: number
 }
 
@@ -45,41 +53,63 @@ type InboxResponse = {
   counts: InboxCounts
 }
 
-const KIND_FILTERS = ['all', 'publish', 'proposal', 'handoff'] as const
+const KIND_FILTERS = ['all', 'publish', 'proposal', 'handoff', 'human_task'] as const
 type KindFilter = (typeof KIND_FILTERS)[number]
 
 function kindLabel(kind: InboxKind): string {
   if (kind === 'proposal') return '改善提案'
   if (kind === 'handoff') return '引き渡し'
+  if (kind === 'human_task') return 'あなたのタスク'
   return '投稿待ち'
 }
 
 function kindBadge(kind: InboxKind): string {
   if (kind === 'proposal') return 'badge-blue'
   if (kind === 'handoff') return 'badge-neutral'
+  if (kind === 'human_task') return 'badge-yellow'
   return 'badge-green'
-}
-
-function priorityBadge(priority: string): string {
-  if (priority === 'high' || priority === 'critical') return 'badge-red'
-  if (priority === 'low') return 'badge-neutral'
-  return 'badge-yellow'
 }
 
 function KindIcon({ kind }: { kind: InboxKind }) {
   if (kind === 'proposal') return <Lightbulb size={14} />
   if (kind === 'handoff') return <ArrowRightLeft size={14} />
+  if (kind === 'human_task') return <UserCheck size={14} />
   return <Send size={14} />
+}
+
+// content_asset 提案の最小型（intervention_spec.content を取り出すため）。
+type ProposalDetail = {
+  id: string
+  title: string
+  category: string
+  intervention_spec?: {
+    content?: string
+    mode?: string
+  } | null
+}
+
+type ConfirmState = {
+  title: string
+  description?: ReactNode
+  confirmLabel: string
+  run: () => Promise<void>
 }
 
 export function InboxPage() {
   const navigate = useNavigate()
   const [items, setItems] = useState<InboxItem[]>([])
-  const [counts, setCounts] = useState<InboxCounts>({ proposal: 0, handoff: 0, publish: 0, total: 0 })
+  const [counts, setCounts] = useState<InboxCounts>({
+    proposal: 0,
+    handoff: 0,
+    publish: 0,
+    human_task: 0,
+    total: 0,
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const [actionId, setActionId] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const { events } = usePlatformUpdates()
 
   const load = useCallback(async (quiet = false) => {
@@ -109,7 +139,8 @@ export function InboxPage() {
       latest?.type &&
       (latest.type.startsWith('publish') ||
         latest.type.startsWith('proposal') ||
-        latest.type.startsWith('handoff'))
+        latest.type.startsWith('handoff') ||
+        latest.type.startsWith('human'))
     ) {
       void load(true)
     }
@@ -133,6 +164,58 @@ export function InboxPage() {
     }
   }
 
+  // ConfirmDialog 経由の破壊/外部送信操作用。失敗時は再 throw してダイアログを開いたままにする。
+  const directRun = async (fn: () => Promise<unknown>, successMsg: string): Promise<void> => {
+    try {
+      await fn()
+      toast.success(successMsg)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '操作に失敗しました。')
+      throw err
+    }
+  }
+
+  // content_asset 提案の本文をフェッチしてスタジオへ遷移する。
+  // 提案一覧から id が一致するものを探して intervention_spec.content を取り出す。
+  const sendToStudio = async (item: InboxItem) => {
+    if (item.kind === 'proposal') {
+      setActionId(`studio:${item.id}`)
+      try {
+        const proposals = await api<ProposalDetail[]>(
+          'GET',
+          `/api/organizations/${encodeURIComponent(item.org_name)}/proposals`,
+        )
+        const found = proposals.find((p) => p.id === item.id)
+        const body = found?.intervention_spec?.content ?? ''
+        if (!body) {
+          toast.error('この提案には本文が含まれていません。インボックスから詳細を確認してください。')
+          return
+        }
+        navigate('/studio', {
+          state: {
+            title: item.title,
+            body,
+            sourceLabel: 'インボックス（コンテンツ下書き）',
+          },
+        })
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : '提案の読み込みに失敗しました。')
+      } finally {
+        setActionId(null)
+      }
+    } else if (item.kind === 'handoff') {
+      // handoff は payload からタイトルと概要を本文に組み立てる（body fetch 不要）。
+      navigate('/studio', {
+        state: {
+          title: item.title,
+          body: '',
+          sourceLabel: '引き渡し（インボックス）',
+        },
+      })
+    }
+  }
+
   const approveItem = (item: InboxItem) => {
     const key = `${item.kind}:${item.id}`
     if (item.kind === 'proposal') {
@@ -151,14 +234,40 @@ export function InboxPage() {
         },
         '引き渡しを承認し、本文ドラフトを生成しました。',
       )
+    } else if (item.kind === 'human_task') {
+      // 人間タスクの完了（不可逆）— 確認ゲートを通す（C003/C006）。
+      setConfirm({
+        title: 'タスクを完了にしますか？',
+        description: (
+          <>
+            「{item.title}」を完了にします。<strong>この操作は取り消せません。</strong>
+          </>
+        ),
+        confirmLabel: '完了にする',
+        run: () =>
+          directRun(
+            () => api('POST', `/api/human-tasks/${encodeURIComponent(item.id)}/complete`),
+            'タスクを完了にしました。',
+          ),
+      })
     } else {
-      void runAction(
-        key,
-        async () => {
-          await api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/run`)
-        },
-        '投稿を実行しました。',
-      )
+      // 外部への実投稿（取り消し不能）— 必ず確認ゲートを通す（C001 / PUB-AUTO 人手ゲート）。
+      setConfirm({
+        title: '外部に投稿しますか？',
+        description: (
+          <>
+            「{item.title}」を {item.platform ?? '外部'} に公開します。
+            <strong>この操作は取り消せません。</strong>
+            {item.scheduled_at ? <>（予約: {item.scheduled_at}）</> : null}
+          </>
+        ),
+        confirmLabel: '投稿する',
+        run: () =>
+          directRun(
+            () => api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/run`),
+            '投稿を実行しました。',
+          ),
+      })
     }
   }
 
@@ -181,13 +290,21 @@ export function InboxPage() {
         '引き渡しを却下しました。',
       )
     } else {
-      void runAction(
-        key,
-        async () => {
-          await api('DELETE', `/api/publish-jobs/${encodeURIComponent(item.id)}`)
-        },
-        '投稿ジョブを取り消しました。',
-      )
+      // 投稿ジョブの削除（復元不能）— 確認ゲートを通す（C001/C002）。
+      setConfirm({
+        title: '投稿ジョブを取り消しますか？',
+        description: (
+          <>
+            「{item.title}」の投稿ジョブを削除します。<strong>取り消すと復元できません。</strong>
+          </>
+        ),
+        confirmLabel: '取り消す',
+        run: () =>
+          directRun(
+            () => api('DELETE', `/api/publish-jobs/${encodeURIComponent(item.id)}`),
+            '投稿ジョブを取り消しました。',
+          ),
+      })
     }
   }
 
@@ -203,13 +320,21 @@ export function InboxPage() {
   }
 
   const confirmPublish = (item: InboxItem) => {
-    void runAction(
-      `confirm:${item.id}`,
-      async () => {
-        await api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/confirm`)
-      },
-      '公開を確認しました。',
-    )
+    // 公開の確定（外部反映の確定・取り消し不能）— 確認ゲートを通す（C001）。
+    setConfirm({
+      title: '公開を確定しますか？',
+      description: (
+        <>
+          「{item.title}」の公開を確定します。<strong>この操作は取り消せません。</strong>
+        </>
+      ),
+      confirmLabel: '公開を確定',
+      run: () =>
+        directRun(
+          () => api('POST', `/api/publish-jobs/${encodeURIComponent(item.id)}/confirm`),
+          '公開を確認しました。',
+        ),
+    })
   }
 
   return (
@@ -227,14 +352,8 @@ export function InboxPage() {
       <div className="page-content flex flex-col gap-4">
         <div className="flex items-center gap-2 flex-wrap">
           {KIND_FILTERS.map((filter) => {
-            const count =
-              filter === 'all'
-                ? counts.total
-                : filter === 'proposal'
-                  ? counts.proposal
-                  : filter === 'handoff'
-                    ? counts.handoff
-                    : counts.publish
+            const count = filter === 'all' ? counts.total : counts[filter]
+            const label = filter === 'all' ? 'すべて' : kindLabel(filter)
             return (
               <button
                 key={filter}
@@ -242,13 +361,7 @@ export function InboxPage() {
                 className={`btn btn-sm ${kindFilter === filter ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setKindFilter(filter)}
               >
-                {filter === 'all'
-                  ? 'すべて'
-                  : filter === 'proposal'
-                    ? '改善提案'
-                    : filter === 'handoff'
-                      ? '引き渡し'
-                      : '投稿待ち'}
+                {label}
                 <span className="badge badge-neutral">{count}</span>
               </button>
             )
@@ -295,7 +408,7 @@ export function InboxPage() {
           ? visibleItems.map((item) => {
               const key = `${item.kind}:${item.id}`
               const isHandedOff = item.kind === 'publish' && item.status === 'handed_off'
-              const busy = actionId === key || actionId === `preview:${item.id}` || actionId === `confirm:${item.id}`
+              const busy = actionId === key || actionId === `preview:${item.id}` || actionId === `confirm:${item.id}` || actionId === `studio:${item.id}`
               return (
                 <div key={key} className="proposal-card">
                   <div className="proposal-header">
@@ -315,12 +428,17 @@ export function InboxPage() {
                         {(item.revenue_impact ?? 0) >= 2 ? (
                           <span className="badge badge-green">収益</span>
                         ) : null}
-                        <span className={`badge ${priorityBadge(item.priority)}`}>{item.priority}</span>
+                        <span className={`badge ${priorityBadge(item.priority)}`}>
+                          {priorityLabel(item.priority)}
+                        </span>
                         {item.platform ? <span className="badge badge-neutral">{item.platform}</span> : null}
                       </div>
                       <div className="text-sm text-fg2">
                         {item.org_name || '—'}
-                        {item.scheduled_at ? ` ・ 予約: ${item.scheduled_at}` : ''}
+                        {item.scheduled_at ? ` ・ 予約: ${formatDateTime(item.scheduled_at)}` : ''}
+                        {item.kind === 'human_task' && item.created_at
+                          ? ` ・ 作成: ${formatDateTime(item.created_at)}`
+                          : ''}
                       </div>
                     </div>
                   </div>
@@ -344,7 +462,7 @@ export function InboxPage() {
                           disabled={busy}
                         >
                           <CheckCircle size={14} />
-                          {item.kind === 'publish' ? '投稿' : '承認'}
+                          {item.kind === 'publish' ? '投稿' : item.kind === 'human_task' ? '完了' : '承認'}
                         </button>
                         {item.kind === 'publish' ? (
                           <button
@@ -360,15 +478,31 @@ export function InboxPage() {
                         ) : null}
                       </>
                     )}
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      onClick={() => rejectItem(item)}
-                      disabled={busy}
-                    >
-                      {item.kind === 'publish' ? <Trash2 size={14} /> : <XCircle size={14} />}
-                      {item.kind === 'publish' ? '取消' : '却下'}
-                    </button>
+                    {item.kind !== 'human_task' ? (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => rejectItem(item)}
+                        disabled={busy}
+                      >
+                        {item.kind === 'publish' ? <Trash2 size={14} /> : <XCircle size={14} />}
+                        {item.kind === 'publish' ? '取消' : '却下'}
+                      </button>
+                    ) : null}
+                    {/* content_asset 提案と handoff にスタジオ導線を表示する */}
+                    {(item.kind === 'proposal' && item.category === 'content_asset') ||
+                    item.kind === 'handoff' ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => void sendToStudio(item)}
+                        disabled={busy}
+                        title="下書き本文をスタジオで確認・編集する"
+                      >
+                        <PenSquare size={14} />
+                        スタジオで整える
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
@@ -382,6 +516,20 @@ export function InboxPage() {
             })
           : null}
       </div>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirm(null)
+        }}
+        title={confirm?.title ?? ''}
+        description={confirm?.description}
+        confirmLabel={confirm?.confirmLabel}
+        destructive
+        onConfirm={async () => {
+          if (confirm) await confirm.run()
+        }}
+      />
     </>
   )
 }

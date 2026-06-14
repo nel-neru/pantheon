@@ -4,11 +4,15 @@ import {
   Bot,
   Building2,
   CalendarClock,
+  CheckCheck,
   ChevronDown,
   ChevronRight,
+  Clipboard,
+  Coins,
   Database,
   HelpCircle,
   Info,
+  KanbanSquare,
   LayoutDashboard,
   Lightbulb,
   Map as MapIcon,
@@ -17,12 +21,78 @@ import {
   Terminal,
   Wrench,
 } from 'lucide-react'
+import { toast } from 'sonner'
+
+import { PageHeader } from '@/components/PageHeader'
+
+/** ページ内で使うナビルート定数（ドリフト検出テストで参照する）。
+ *  App.tsx の navGroups と 1:1 対応させること。 */
+export const PAGE_SECTION_ROUTES = [
+  '/dashboard',
+  '/orgs',
+  '/proposals',
+  '/agents',
+  '/handoffs',
+  '/content',
+  '/revenue',
+  '/sessions',
+  '/board',
+  '/data',
+  '/settings',
+  '/help',
+] as const
 
 type Section = {
   id: string
   title: string
+  /** ルートと1:1対応するセクションに付与（ドリフト検出用）*/
+  route?: string
   content: ReactNode
 }
+
+// ─── CodeBlock ────────────────────────────────────────────────────────────────
+
+type CodeBlockProps = {
+  children: string
+  /** href を渡すと a タグで開く（URL 向け） */
+  href?: string
+}
+
+function CodeBlock({ children, href }: CodeBlockProps) {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    void navigator.clipboard.writeText(children).then(() => {
+      setCopied(true)
+      toast.success('コピーしました', { duration: 1500 })
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
+  const codeEl = href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="help-code-link">
+      {children}
+    </a>
+  ) : (
+    <code className="help-code">{children}</code>
+  )
+
+  return (
+    <span className="help-code-wrap">
+      {codeEl}
+      <button
+        type="button"
+        aria-label={`「${children}」をコピー`}
+        className="help-code-copy"
+        onClick={handleCopy}
+      >
+        {copied ? <CheckCheck size={11} /> : <Clipboard size={11} />}
+      </button>
+    </span>
+  )
+}
+
+// ─── Accordion ────────────────────────────────────────────────────────────────
 
 function Accordion({ sections }: { sections: Section[] }) {
   const [open, setOpen] = useState<string | null>(sections[0]?.id ?? null)
@@ -46,9 +116,7 @@ function Accordion({ sections }: { sections: Section[] }) {
   )
 }
 
-function CodeBlock({ children }: { children: string }) {
-  return <code className="help-code">{children}</code>
-}
+// ─── Table ────────────────────────────────────────────────────────────────────
 
 function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
   return (
@@ -74,6 +142,8 @@ function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
     </div>
   )
 }
+
+// ─── Overview sections ────────────────────────────────────────────────────────
 
 const overviewSections: Section[] = [
   {
@@ -136,7 +206,7 @@ const overviewSections: Section[] = [
             <span className="help-step-num">1</span>
             <div>
               <strong>セットアップ</strong>
-              <p>生成はローカルの <code>claude</code> CLI を使います。API キーは不要です。初回に一度 <code>claude</code> を実行してログインし、設定画面で既定モデルを選びます。</p>
+              <p>生成はローカルの <CodeBlock>claude</CodeBlock> CLI を使います。API キーは不要です。初回に一度 <CodeBlock>claude</CodeBlock> を実行してログインし、設定画面で既定モデルを選びます。</p>
             </div>
           </li>
           <li>
@@ -149,8 +219,8 @@ const overviewSections: Section[] = [
           <li>
             <span className="help-step-num">3</span>
             <div>
-              <strong>対話・実行（wmux）</strong>
-              <p>wmux の汎用チャット（pantheon up で起動）や組織チャットから、分析やゴールを自然言語で実行します。</p>
+              <strong>対話・実行（wmux 連携・外部）</strong>
+              <p>wmux の汎用チャット（<CodeBlock>pantheon up</CodeBlock> で起動）や組織チャットから、分析やゴールを自然言語で実行します。この Web GUI は監視・承認・可視化に専念します。</p>
             </div>
           </li>
           <li>
@@ -164,12 +234,9 @@ const overviewSections: Section[] = [
       </div>
     ),
   },
-]
-
-const pageSections: Section[] = [
   {
-    id: 'workspace',
-    title: '対話・実行（wmux）',
+    id: 'wmux',
+    title: '対話・実行（wmux 連携・外部）',
     content: (
       <div className="help-prose">
         <div className="help-page-icon-row">
@@ -205,8 +272,36 @@ const pageSections: Section[] = [
       </div>
     ),
   },
+]
+
+// ─── Page sections（サイドナビと 1:1 対応）────────────────────────────────────
+
+const pageSections: Section[] = [
+  {
+    id: 'dashboard',
+    route: '/dashboard',
+    title: 'ダッシュボード',
+    content: (
+      <div className="help-prose">
+        <div className="help-page-icon-row">
+          <LayoutDashboard size={16} />
+          <span>システム全体のステータスとヘルスを確認します。</span>
+        </div>
+        <Table
+          headers={['項目', '内容']}
+          rows={[
+            ['プラットフォーム状態', 'LLM 設定状態、組織数、アクティブ数、バランスを表示します。'],
+            ['組織一覧', '組織ごとのヘルスと提案数を確認できます。'],
+            ['デーモン状態', '自動改善プロセスの起動、停止、PID、ログパスを管理します。'],
+            ['システム情報', 'claude CLI の稼働状態、既定モデル、設定取得状態を確認できます。'],
+          ]}
+        />
+      </div>
+    ),
+  },
   {
     id: 'orgs',
+    route: '/orgs',
     title: '組織',
     content: (
       <div className="help-prose">
@@ -228,6 +323,7 @@ const pageSections: Section[] = [
   },
   {
     id: 'proposals',
+    route: '/proposals',
     title: '改善提案',
     content: (
       <div className="help-prose">
@@ -248,7 +344,29 @@ const pageSections: Section[] = [
     ),
   },
   {
+    id: 'agents',
+    route: '/agents',
+    title: 'エージェント',
+    content: (
+      <div className="help-prose">
+        <div className="help-page-icon-row">
+          <Bot size={16} />
+          <span>登録されている Specialist Agent とスキルを確認します。</span>
+        </div>
+        <Table
+          headers={['項目', '内容']}
+          rows={[
+            ['登録済みエージェント', '名前、capability ID、説明、スキルをカードで確認できます。'],
+            ['スキルレジストリ', 'スキル名、ペルソナ、注力領域、説明を一覧表示します。'],
+            ['オーケストレーション分析', 'タスク種別ごとの推奨エージェントを確認できます。'],
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: 'handoffs',
+    route: '/handoffs',
     title: '引き渡し',
     content: (
       <div className="help-prose">
@@ -273,6 +391,7 @@ const pageSections: Section[] = [
   },
   {
     id: 'content',
+    route: '/content',
     title: 'コンテンツ予約',
     content: (
       <div className="help-prose">
@@ -297,20 +416,25 @@ const pageSections: Section[] = [
     ),
   },
   {
-    id: 'agents',
-    title: 'エージェント',
+    id: 'revenue',
+    route: '/revenue',
+    title: '収益',
     content: (
       <div className="help-prose">
         <div className="help-page-icon-row">
-          <Bot size={16} />
-          <span>登録されている Specialist Agent とスキルを確認します。</span>
+          <Coins size={16} />
+          <span>収益の集計・トラッキングを確認します。</span>
         </div>
+        <p>
+          組織が生み出した収益イベントを集計し、目標に対する進捗を可視化します。
+          各組織の収益データは承認済みハンドオフや公開済みコンテンツから自動的に記録されます。
+        </p>
         <Table
           headers={['項目', '内容']}
           rows={[
-            ['登録済みエージェント', '名前、capability ID、説明、スキルをカードで確認できます。'],
-            ['スキルレジストリ', 'スキル名、ペルソナ、注力領域、説明を一覧表示します。'],
-            ['オーケストレーション分析', 'タスク種別ごとの推奨エージェントを確認できます。'],
+            ['収益サマリ', '全組織の収益合計・目標・達成率をカードで確認できます。'],
+            ['収益イベント一覧', '日付・組織・金額・種別で収益イベントを一覧表示します。'],
+            ['グラフ', '期間別の収益推移をチャートで可視化します。'],
           ]}
         />
       </div>
@@ -318,6 +442,7 @@ const pageSections: Section[] = [
   },
   {
     id: 'atlas',
+    route: '/atlas',
     title: 'Atlas',
     content: (
       <div className="help-prose">
@@ -340,18 +465,19 @@ const pageSections: Section[] = [
   },
   {
     id: 'sessions',
-    title: 'セッション / 作業ボード',
+    route: '/sessions',
+    title: 'セッション',
     content: (
       <div className="help-prose">
         <div className="help-page-icon-row">
           <LayoutDashboard size={16} />
-          <span>AI の動作確認ダッシュボードと、人間用の作業ボードです。</span>
+          <span>AI の動作確認ダッシュボードです。</span>
         </div>
         <Table
-          headers={['画面', '内容']}
+          headers={['項目', '内容']}
           rows={[
-            ['セッション (/sessions)', 'wmux 上で動く各エージェント（1エージェント=1タブ）の状態・終了コード・claude 出力ログをライブ確認します。claude/wmux/driver の接続状態も表示します。'],
-            ['作業ボード (/board)', 'キュー / 実行中 / レビュー / 完了 の Kanban で、AI ループの外から人間がタスクを起票・キャンセルできます。'],
+            ['エージェント一覧', 'wmux 上で動く各エージェント（1エージェント=1タブ）の状態・終了コード・claude 出力ログをライブ確認します。'],
+            ['接続状態', 'claude / wmux / driver の接続状態を表示します。'],
             ['自動再開', 'エージェントが Claude のレート制限に当たると rate_limited 状態になり、リセット時刻に達すると自動的に再開されます。'],
           ]}
         />
@@ -359,21 +485,21 @@ const pageSections: Section[] = [
     ),
   },
   {
-    id: 'dashboard',
-    title: 'プラットフォーム',
+    id: 'board',
+    route: '/board',
+    title: '作業ボード',
     content: (
       <div className="help-prose">
         <div className="help-page-icon-row">
-          <LayoutDashboard size={16} />
-          <span>システム全体のステータスとヘルスを確認します。</span>
+          <KanbanSquare size={16} />
+          <span>人間用の作業ボードです。</span>
         </div>
         <Table
           headers={['項目', '内容']}
           rows={[
-            ['プラットフォーム状態', 'LLM 設定状態、組織数、アクティブ数、バランスを表示します。'],
-            ['組織一覧', '組織ごとのヘルスと提案数を確認できます。'],
-            ['デーモン状態', '自動改善プロセスの起動、停止、PID、ログパスを管理します。'],
-            ['システム情報', 'claude CLI の稼働状態、既定モデル、設定取得状態を確認できます。'],
+            ['Kanban ビュー', 'キュー / 実行中 / レビュー / 完了 の4列でタスクを管理します。'],
+            ['タスク起票', 'AI ループの外から人間がタスクを起票できます。'],
+            ['キャンセル', '実行中のタスクを人間の判断でキャンセルできます。'],
           ]}
         />
       </div>
@@ -381,6 +507,7 @@ const pageSections: Section[] = [
   },
   {
     id: 'data',
+    route: '/data',
     title: 'データ管理',
     content: (
       <div className="help-prose">
@@ -402,6 +529,7 @@ const pageSections: Section[] = [
   },
   {
     id: 'settings',
+    route: '/settings',
     title: '設定',
     content: (
       <div className="help-prose">
@@ -423,6 +551,7 @@ const pageSections: Section[] = [
   },
   {
     id: 'help',
+    route: '/help',
     title: 'ヘルプ',
     content: (
       <div className="help-prose">
@@ -435,13 +564,15 @@ const pageSections: Section[] = [
           rows={[
             ['概要', 'Pantheon の考え方と基本フローをまとめています。'],
             ['各画面の使い方', '各画面の用途と操作ポイントを確認できます。'],
-            ['設定・CLI・トラブル', 'API キー取得先、CLI コマンド、よくある問題を確認できます。'],
+            ['設定・CLI・トラブル', '起動とインストール、claude CLI、CLI コマンド、よくある問題を確認できます。'],
           ]}
         />
       </div>
     ),
   },
 ]
+
+// ─── Advanced sections ────────────────────────────────────────────────────────
 
 const advancedSections: Section[] = [
   {
@@ -456,7 +587,7 @@ const advancedSections: Section[] = [
         <p>
           Pantheon は <CodeBlock>Pantheon.exe</CodeBlock> 一つで GUI も CLI も使えます。引数なしで実行
           （ダブルクリック）すると<strong>フル起動（up）</strong>: Web GUI（監視）が立ち上がって
-          <CodeBlock>http://localhost:7860</CodeBlock> が既定ブラウザで開き、同時に wmux に汎用チャットタブが
+          <CodeBlock href="http://localhost:7860">http://localhost:7860</CodeBlock> が既定ブラウザで開き、同時に wmux に汎用チャットタブが
           起動します。
         </p>
         <Table
@@ -542,6 +673,8 @@ const advancedSections: Section[] = [
   },
 ]
 
+// ─── HelpPage ─────────────────────────────────────────────────────────────────
+
 export function HelpPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'pages' | 'advanced'>('overview')
 
@@ -553,10 +686,10 @@ export function HelpPage() {
 
   return (
     <div className="page-content">
-      <div className="page-header">
-        <h1 className="page-title">ヘルプ</h1>
-        <p className="page-subtitle">現在の画面構成に合わせた Pantheon の操作ガイドです。</p>
-      </div>
+      <PageHeader
+        title="ヘルプ"
+        subtitle="現在の画面構成に合わせた Pantheon の操作ガイドです。"
+      />
 
       <div className="help-tabs">
         {tabs.map((tab) => {

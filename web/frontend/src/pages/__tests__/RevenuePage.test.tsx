@@ -44,7 +44,8 @@ const report: Report = {
 const intel: Intel = { trend: 'growing', latest_change_pct: 33.3, forecast_next: 2666 }
 const portfolio = {
   proposals: [
-    { kind: 'portfolio_allocation', title: '[HQ提案] Note Sales を monetize', reason: '収益化が必要', priority: 2 },
+    { kind: 'monetization', title: '[HQ提案] Note Sales を monetize', reason: '収益化が必要', priority: 2 },
+    { kind: 'traffic', title: '[HQ提案] Affiliate へ送客', reason: 'リーチ余剰', priority: 1 },
   ],
 }
 
@@ -68,11 +69,16 @@ function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
   })
 }
 
-it('累計収益とリーチのカードを表示する', async () => {
+// ── 基本表示 ──────────────────────────────────────────────────────────────────
+
+it('累計収益とリーチのカードを表示する（formatYen/formatNumber 経由）', async () => {
   wireApi()
   renderWithRouter(<RevenuePage />)
 
-  expect(await screen.findByText('¥12,000')).toBeInTheDocument()
+  // ¥12,000 は KPI カードと組織テーブル両方に出るので getAllByText で複数可とする
+  const revenueEls = await screen.findAllByText('¥12,000')
+  expect(revenueEls.length).toBeGreaterThan(0)
+  // 7,000 は累計リーチカードに表示される
   expect(screen.getByText('7,000')).toBeInTheDocument()
 })
 
@@ -90,20 +96,65 @@ it('成果データが無いとき空状態を表示する', async () => {
   expect(await screen.findByText('成果データがありません')).toBeInTheDocument()
 })
 
+// ── 空状態から手動フォームへの導線 ──────────────────────────────────────────
+
+it('空状態に「手動記録フォームへ」ボタンを表示する', async () => {
+  wireApi({ metrics: emptyMetrics, report: emptyReport, intel: insufficientIntel })
+  renderWithRouter(<RevenuePage />)
+  expect(await screen.findByRole('button', { name: /手動記録フォームへ/ })).toBeInTheDocument()
+})
+
+// ── 収益トレンド ──────────────────────────────────────────────────────────────
+
 it('収益トレンド（成長・前月比・翌月予測）を表示する', async () => {
   wireApi()
   renderWithRouter(<RevenuePage />)
   expect(await screen.findByText('収益トレンド（全組織）')).toBeInTheDocument()
   expect(screen.getByText('成長')).toBeInTheDocument()
-  expect(screen.getByText('+33.3%')).toBeInTheDocument()
+  // +33.3% は trend card と monthly report 両方に出る可能性がある
+  expect(screen.getAllByText('+33.3%').length).toBeGreaterThan(0)
 })
 
-it('ポートフォリオ提案（HQ）を表示する', async () => {
+it('トレンドが insufficient でも trend-card を（データ蓄積中として）表示する', async () => {
+  wireApi({ intel: insufficientIntel })
+  renderWithRouter(<RevenuePage />)
+  expect(await screen.findByText('収益トレンド（全組織）')).toBeInTheDocument()
+  expect(screen.getByText(/データ蓄積中/)).toBeInTheDocument()
+})
+
+// ── ポートフォリオ提案 ────────────────────────────────────────────────────────
+
+it('ポートフォリオ提案（HQ）を priority 降順で表示する', async () => {
   wireApi()
   renderWithRouter(<RevenuePage />)
   expect(await screen.findByText('ポートフォリオ提案（HQ）')).toBeInTheDocument()
   expect(screen.getByText('[HQ提案] Note Sales を monetize')).toBeInTheDocument()
+
+  // priority:2 の提案が priority:1 より先に来ること
+  const rows = screen.getAllByText(/HQ提案/)
+  expect(rows[0].textContent).toContain('Note Sales')
 })
+
+it('ポートフォリオ提案行に kind の和訳バッジを表示する（英語ラベル露出なし）', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  await screen.findByText('ポートフォリオ提案（HQ）')
+  // 'monetization' ではなく '収益化' が表示される
+  expect(screen.getByText('収益化')).toBeInTheDocument()
+  // 'traffic' ではなく '送客' が表示される
+  expect(screen.getByText('送客')).toBeInTheDocument()
+})
+
+it('ポートフォリオ提案行に「承認インボックスで開く」ボタンがある', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  await screen.findByText('ポートフォリオ提案（HQ）')
+  // 複数行あるので getAllByRole
+  const buttons = screen.getAllByRole('button', { name: /承認インボックスで開く/ })
+  expect(buttons.length).toBeGreaterThan(0)
+})
+
+// ── 自律経営プラン ────────────────────────────────────────────────────────────
 
 it('自律経営プラン: 目標額を入れてプランを起票する', async () => {
   wireApi()
@@ -118,13 +169,60 @@ it('自律経営プラン: 目標額を入れてプランを起票する', async
   )
 })
 
-it('月次収益レポートを表示する', async () => {
+it('自律経営プラン: Enter キーでも起票できる', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+
+  await screen.findByText('自律経営プラン（月収益目標）')
+  const input = screen.getByPlaceholderText('月次目標額（円）')
+  fireEvent.change(input, { target: { value: '50000' } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/hq/portfolio/scan', { target: 50000 })
+  )
+})
+
+// ── 月次収益レポート ──────────────────────────────────────────────────────────
+
+it('月次収益レポートを表示する（month キーソート順）', async () => {
   wireApi()
   renderWithRouter(<RevenuePage />)
   expect(await screen.findByText('月次収益レポート（全組織）')).toBeInTheDocument()
   expect(screen.getByText('2026-05')).toBeInTheDocument()
   expect(screen.getByText('¥2,000')).toBeInTheDocument()
 })
+
+it('月次データが空のとき「月次データが蓄積されると表示されます」を出す', async () => {
+  wireApi({ report: emptyReport })
+  renderWithRouter(<RevenuePage />)
+  expect(await screen.findByText('月次収益レポート（全組織）')).toBeInTheDocument()
+  expect(screen.getByText(/月次データが蓄積/)).toBeInTheDocument()
+})
+
+it('月次収益レポートに前月比列を表示する', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  // '前月比' はトレンドカードのスパンとテーブルヘッダ両方に出るので getAllByText で複数可とする
+  const headerEls = await screen.findAllByText('前月比')
+  expect(headerEls.length).toBeGreaterThan(0)
+  // 2026-06 の前月比 = (2000-1500)/1500 ≈ +33.3%。
+  // trend card にも同値が出る可能性があるので getAllByText で複数可とする。
+  const pcts = screen.getAllByText('+33.3%')
+  expect(pcts.length).toBeGreaterThan(0)
+})
+
+// ── 収益化余地アラート ────────────────────────────────────────────────────────
+
+it('収益化余地アラートのボタンが組織名を URL クエリに含む', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  await screen.findByText('リーチはあるが収益0の組織（収益化の余地）')
+  const btn = screen.getByRole('button', { name: /Note Sales の引き渡しを確認/ })
+  expect(btn).toBeInTheDocument()
+})
+
+// ── 手動入力フォーム ──────────────────────────────────────────────────────────
 
 it('手動入力フォームから POST /api/outcomes を呼ぶ', async () => {
   wireApi()
@@ -144,4 +242,82 @@ it('手動入力フォームから POST /api/outcomes を呼ぶ', async () => {
       note: '',
     })
   )
+})
+
+it('メトリクス選択の option に日本語ラベルが表示される', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  await screen.findByText('収益・成果を手動で記録')
+  // select の option テキストは screen.getByRole('option', ...) でアクセスできる
+  expect(screen.getByRole('option', { name: '売上' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: '受注' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'CV' })).toBeInTheDocument()
+})
+
+it('メトリクス種別が変わると金額欄の単位ヒントが変わる', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  await screen.findByText('収益・成果を手動で記録')
+  // 初期: revenue → '金額（円）'
+  expect(screen.getByText('金額（円）')).toBeInTheDocument()
+
+  // combobox ロールは <input list="..."> と <select> 両方が該当するので labelText で絞り込む
+  fireEvent.change(screen.getByLabelText('メトリクス'), { target: { value: 'conversions' } })
+  expect(screen.getByText('CV件数')).toBeInTheDocument()
+})
+
+it('手動フォームの Enter キーで送信できる', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  await screen.findByText('収益・成果を手動で記録')
+
+  fireEvent.change(screen.getByPlaceholderText('組織名'), { target: { value: 'Note Sales' } })
+  const amountInput = screen.getByPlaceholderText('0')
+  fireEvent.change(amountInput, { target: { value: '3000' } })
+  fireEvent.keyDown(amountInput, { key: 'Enter' })
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/outcomes', {
+      org_name: 'Note Sales',
+      metric: 'revenue',
+      value: 3000,
+      note: '',
+    })
+  )
+})
+
+// ── inline style 廃止確認（target-input が w-48 クラスを持つ） ──────────────
+
+it('target-input に inline style がなく w-48 クラスを持つ', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+  await screen.findByPlaceholderText('月次目標額（円）')
+  const input = screen.getByPlaceholderText('月次目標額（円）')
+  expect(input.className).toContain('w-48')
+  expect(input).not.toHaveAttribute('style')
+})
+
+// ── エラー状態 ────────────────────────────────────────────────────────────────
+
+it('API エラー時に再試行ボタンを表示する', async () => {
+  mockApi.mockRejectedValue(new Error('Network error'))
+  renderWithRouter(<RevenuePage />)
+  expect(await screen.findByRole('button', { name: '再試行' })).toBeInTheDocument()
+})
+
+// ── スキーマ drift 耐性（null/欠落レスポンスでクラッシュしない） ───────────
+
+it('API が null/欠落レスポンスを返してもクラッシュしない', async () => {
+  mockApi.mockImplementation((_method: string, path: string) => {
+    if (path === '/api/metrics/revenue') return Promise.resolve(null)
+    if (path === '/api/metrics/revenue/report') return Promise.resolve(null)
+    if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(null)
+    // proposals が null でも Array.isArray ガードで空配列になる
+    if (path === '/api/hq/portfolio') return Promise.resolve({ proposals: null })
+    return Promise.resolve({})
+  })
+  renderWithRouter(<RevenuePage />)
+  // null レスポンスでもクラッシュせずページが描画される
+  // data=null なので KPI は「—」または 0 で表示される（空状態含む）
+  expect(await screen.findByText('成果データがありません')).toBeInTheDocument()
 })

@@ -4,7 +4,8 @@ import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
-import { priorityBadge } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { priorityBadge, priorityLabel } from '@/lib/labels'
 
 type Organization = {
   name: string
@@ -41,17 +42,17 @@ function DiffPreview({ diffText }: { diffText: string }) {
   }
 
   return (
-    <pre className="progress-log" style={{ whiteSpace: 'pre-wrap' }}>
+    <pre className="progress-log whitespace-pre-wrap">
       {diffText.split('\n').map((line, index) => {
-        const style = line.startsWith('+')
-          ? { color: '#7ee787', background: 'rgba(46, 160, 67, 0.14)' }
+        const cls = line.startsWith('+')
+          ? 'diff-add'
           : line.startsWith('-')
-            ? { color: '#ff7b72', background: 'rgba(248, 81, 73, 0.12)' }
+            ? 'diff-del'
             : line.startsWith('@@')
-              ? { color: '#79c0ff' }
+              ? 'diff-meta'
               : undefined
         return (
-          <div key={`${index}-${line}`} style={style}>
+          <div key={`${index}-${line}`} className={cls}>
             {line}
           </div>
         )
@@ -73,6 +74,8 @@ export function ProposalsPage() {
   const [proposalsError, setProposalsError] = useState<string | null>(null)
   const [approvalNotes, setApprovalNotes] = useState<Record<string, string>>({})
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  // 一括操作（不可逆・高ブラスト半径）は確認ゲートを通す（C003）。
+  const [batchConfirm, setBatchConfirm] = useState<'approve' | 'reject' | null>(null)
 
   const loadOrganizations = useCallback(async () => {
     setLoading(true)
@@ -348,15 +351,15 @@ export function ProposalsPage() {
                 onChange={handleSelectAll}
                 aria-label="表示中の提案をすべて選択"
               />
-              <span>Select All</span>
+              <span>すべて選択</span>
             </label>
             <span className="text-sm text-muted">{selectedIds.length} 件を選択中</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 className="btn btn-secondary btn-sm text-green"
-                onClick={() => void handleBatchAction('approve')}
-                disabled={selectedIds.length === 0 || actionId === 'approve'}
+                onClick={() => setBatchConfirm('approve')}
+                disabled={selectedIds.length === 0 || actionId !== null}
               >
                 <CheckCircle size={14} />
                 一括承認
@@ -364,8 +367,8 @@ export function ProposalsPage() {
               <button
                 type="button"
                 className="btn btn-danger btn-sm"
-                onClick={() => void handleBatchAction('reject')}
-                disabled={selectedIds.length === 0 || actionId === 'reject'}
+                onClick={() => setBatchConfirm('reject')}
+                disabled={selectedIds.length === 0 || actionId !== null}
               >
                 <XCircle size={14} />
                 一括却下
@@ -390,7 +393,7 @@ export function ProposalsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <div className="font-semibold truncate">{proposal.title}</div>
-                      <span className={`badge ${priorityBadge(proposal.priority)}`}>{proposal.priority}</span>
+                      <span className={`badge ${priorityBadge(proposal.priority)}`}>{priorityLabel(proposal.priority)}</span>
                       <span className="badge badge-neutral">{proposal.category}</span>
                       <span
                         className={`badge ${
@@ -471,6 +474,30 @@ export function ProposalsPage() {
             ))
           : null}
       </div>
+
+      <ConfirmDialog
+        open={batchConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setBatchConfirm(null)
+        }}
+        title={batchConfirm === 'approve' ? '選択した提案を一括承認しますか？' : '選択した提案を一括却下しますか？'}
+        description={
+          batchConfirm === 'approve' ? (
+            <>
+              選択中の {selectedIds.length} 件を承認します。承認はコードへの変更適用を伴い、まとめて実行されます。
+            </>
+          ) : (
+            <>
+              選択中の {selectedIds.length} 件を却下します。<strong>この操作は取り消せません。</strong>
+            </>
+          )
+        }
+        confirmLabel={batchConfirm === 'approve' ? '一括承認する' : '一括却下する'}
+        destructive={batchConfirm === 'reject'}
+        onConfirm={async () => {
+          if (batchConfirm) await handleBatchAction(batchConfirm)
+        }}
+      />
     </>
   )
 }

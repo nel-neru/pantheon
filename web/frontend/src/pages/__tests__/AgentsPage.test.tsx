@@ -26,6 +26,19 @@ const skill = {
   focus: 'quality',
 }
 
+const runtimeAgent = {
+  id: 'rt-1',
+  name: 'RuntimePlanner',
+  organization: 'Org1',
+  division: 'Div1',
+  team: 'Team1',
+  skills: ['analysis'],
+  status: 'running',
+  current_task: null,
+  proficiency: 75,
+  configuration: {},
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((res) => {
@@ -50,6 +63,7 @@ describe('AgentsPage', () => {
       if (method === 'GET' && path === '/api/skills') {
         return request.promise.then(([, skills]) => skills)
       }
+      if (method === 'GET' && path === '/api/agents/runtime') return []
       throw new Error(`Unexpected request: ${method} ${path}`)
     })
 
@@ -67,6 +81,7 @@ describe('AgentsPage', () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/agents') return []
       if (method === 'GET' && path === '/api/skills') return []
+      if (method === 'GET' && path === '/api/agents/runtime') return []
       throw new Error(`Unexpected request: ${method} ${path}`)
     })
 
@@ -93,6 +108,7 @@ describe('AgentsPage', () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/agents') return [agent]
       if (method === 'GET' && path === '/api/skills') return [skill]
+      if (method === 'GET' && path === '/api/agents/runtime') return []
       throw new Error(`Unexpected request: ${method} ${path}`)
     })
 
@@ -109,6 +125,7 @@ describe('AgentsPage', () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/agents') return [agent]
       if (method === 'GET' && path === '/api/skills') return [skill]
+      if (method === 'GET' && path === '/api/agents/runtime') return []
       if (method === 'GET' && path === '/api/orchestration/analyze/analysis') return request.promise
       throw new Error(`Unexpected request: ${method} ${path}`)
     })
@@ -129,6 +146,7 @@ describe('AgentsPage', () => {
     mockApi.mockImplementation(async (method, path) => {
       if (method === 'GET' && path === '/api/agents') return [agent]
       if (method === 'GET' && path === '/api/skills') return [skill]
+      if (method === 'GET' && path === '/api/agents/runtime') return []
       if (method === 'GET' && path === '/api/orchestration/analyze/goal_execution') {
         return {
           task_type: 'goal_execution',
@@ -150,8 +168,67 @@ describe('AgentsPage', () => {
     await user.click(screen.getByRole('button', { name: '分析' }))
 
     expect(await screen.findByText('高')).toBeInTheDocument()
-    expect(screen.getAllByText('planner').length).toBeGreaterThan(0)
+    // 'planner' resolves to 'Planner (planner)' via agent name resolution; 'reviewer' has no match so stays raw
+    expect(screen.getByText('Planner (planner)')).toBeInTheDocument()
     expect(screen.getByText('reviewer')).toBeInTheDocument()
-    expect(screen.getByText(/Needs coordination/)).toBeInTheDocument()
+    // 'notes' is shown in structured display (key-value dd)
+    expect(screen.getByText('Needs coordination')).toBeInTheDocument()
+  })
+
+  it('renders runtime agents with Japanese status labels', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/agents') return []
+      if (method === 'GET' && path === '/api/skills') return []
+      if (method === 'GET' && path === '/api/agents/runtime') return [runtimeAgent]
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    renderWithRouter(<AgentsPage />)
+
+    expect(await screen.findByText('RuntimePlanner')).toBeInTheDocument()
+    // status 'running' must be shown as Japanese label from lib/labels
+    expect(screen.getByText('実行中')).toBeInTheDocument()
+    // ScoreBar renders the score value
+    expect(screen.getByText('75')).toBeInTheDocument()
+  })
+
+  it('opens the config modal when the settings button is clicked', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/agents') return []
+      if (method === 'GET' && path === '/api/skills') return []
+      if (method === 'GET' && path === '/api/agents/runtime') return [
+        { ...runtimeAgent, configuration: { timeout: 30, model: 'claude' } },
+      ]
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<AgentsPage />)
+
+    expect(await screen.findByText('RuntimePlanner')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /設定/ }))
+
+    // Modal title should appear
+    expect(screen.getByText('RuntimePlanner のランタイム設定')).toBeInTheDocument()
+    // Key-value structured display
+    expect(screen.getByText('timeout')).toBeInTheDocument()
+    expect(screen.getByText('30')).toBeInTheDocument()
+  })
+
+  it('shows split running/idle counts in header badges', async () => {
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/agents') return []
+      if (method === 'GET' && path === '/api/skills') return []
+      if (method === 'GET' && path === '/api/agents/runtime') return [
+        { ...runtimeAgent, status: 'running' },
+        { ...runtimeAgent, id: 'rt-2', name: 'IdleAgent', status: 'idle' },
+      ]
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    renderWithRouter(<AgentsPage />)
+
+    expect(await screen.findByText('稼働 1')).toBeInTheDocument()
+    expect(screen.getByText('待機 1')).toBeInTheDocument()
   })
 })

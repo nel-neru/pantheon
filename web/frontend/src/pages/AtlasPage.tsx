@@ -1,17 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
-  AlertTriangle,
   GitBranch,
-  LayoutGrid,
   Map as MapIcon,
+  Minus,
   Network,
-  Route as RouteIcon,
-  Terminal,
+  Plus,
+  RotateCcw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime, formatNumber } from '@/lib/utils'
+import { AsyncBoundary } from '@/components/AsyncBoundary'
+import { PageHeader } from '@/components/PageHeader'
+import { RefreshButton } from '@/components/RefreshButton'
+import { Tabs } from '@/components/Tabs'
+
+// ─── Domain types ─────────────────────────────────────────────────────────────
 
 type FlowStatus = 'solid' | 'partial' | 'fragile' | 'unknown'
 
@@ -64,14 +70,11 @@ type AtlasModel = {
 }
 
 type TabKey = 'flows' | 'graph' | 'cli' | 'api' | 'subsystems'
+type StatusFilter = FlowStatus | 'all'
+type SortKey = 'lines' | 'files' | 'label'
+type SortDir = 'asc' | 'desc'
 
-const TABS: { key: TabKey; label: string; icon: typeof MapIcon }[] = [
-  { key: 'flows', label: '使用フロー', icon: GitBranch },
-  { key: 'graph', label: '依存グラフ', icon: Network },
-  { key: 'cli', label: 'CLI', icon: Terminal },
-  { key: 'api', label: 'API', icon: RouteIcon },
-  { key: 'subsystems', label: 'サブシステム', icon: LayoutGrid },
-]
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<FlowStatus, { label: string; cls: string }> = {
   solid: { label: '安定', cls: 'badge-green' },
@@ -80,10 +83,29 @@ const STATUS_META: Record<FlowStatus, { label: string; cls: string }> = {
   unknown: { label: '不明', cls: 'badge-neutral' },
 }
 
+const SEVERITY_LABEL: Record<string, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+}
+
 const SEVERITY_CLS: Record<string, string> = {
   high: 'badge-red',
   medium: 'badge-yellow',
   low: 'badge-neutral',
+}
+
+const SURFACE_CLS: Record<string, string> = {
+  cli: 'badge-neutral',
+  api: 'badge-blue',
+  ui: 'badge-green',
+}
+
+const TRIGGER_LABEL: Record<string, string> = {
+  cli: 'CLI',
+  api: 'API',
+  ui: 'UI',
+  event: 'イベント',
 }
 
 function methodBadge(method: string): string {
@@ -94,7 +116,39 @@ function methodBadge(method: string): string {
   return 'badge-neutral'
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function surfaceBadgeCls(surface: string): string {
+  const key = surface.toLowerCase()
+  if (key.startsWith('pantheon') || key === 'cli') return SURFACE_CLS.cli
+  if (key.includes('page') || key.includes('ui')) return SURFACE_CLS.ui
+  if (key.startsWith('/') || key === 'api') return SURFACE_CLS.api
+  return 'badge-neutral'
+}
+
+// ─── StatCard ─────────────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  onClick,
+}: {
+  label: string
+  value: string | number
+  onClick?: () => void
+}) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className="card text-left cursor-pointer hover:ring-1 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
+        onClick={onClick}
+      >
+        <div className="card-body flex flex-col gap-1">
+          <div className="text-2xl font-semibold mono">{value}</div>
+          <div className="text-xs text-muted">{label}</div>
+        </div>
+      </button>
+    )
+  }
   return (
     <div className="card">
       <div className="card-body flex flex-col gap-1">
@@ -105,18 +159,45 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   )
 }
 
-// ---- Dependency graph (subsystem level) rendered as a hand-rolled SVG -------
+// ─── Dependency Graph ──────────────────────────────────────────────────────────
+
+// Zoom levels: scale factors applied to viewBox (lower = more zoomed in)
+const ZOOM_LEVELS: readonly number[] = [1, 0.75, 0.5, 0.35]
+const ZOOM_LABELS: readonly string[] = ['100%', '133%', '200%', '286%']
+const ZOOM_DEFAULT = 0 // index into ZOOM_LEVELS
 
 function DependencyGraph({ graph }: { graph: AtlasModel['graph'] }) {
-  const [hovered, setHovered] = useState<string | null>(null)
-  const width = 760
-  const height = 520
-  const cx = width / 2
-  const cy = height / 2
+  const [focused, setFocused] = useState<string | null>(null)
+  const [zoomIdx, setZoomIdx] = useState(ZOOM_DEFAULT)
+  // Pan offset in viewBox coordinates (shifted from center)
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const isDragging = useRef(false)
+  const dragStart = useRef<{ mx: number; my: number; px: number; py: number } | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+
+  const BASE_WIDTH = 760
+  const BASE_HEIGHT = 520
+  const cx = BASE_WIDTH / 2
+  const cy = BASE_HEIGHT / 2
   const radius = 190
   const nodes = graph.nodes
   const maxFiles = Math.max(1, ...nodes.map((n) => n.files))
   const maxWeight = Math.max(1, ...graph.edges.map((e) => e.weight))
+
+  // Zoom scale: viewBox shrinks when zoomed in (fallback to 1 if index is out of range)
+  const scale = ZOOM_LEVELS[zoomIdx] ?? 1
+  const zoomLabel = ZOOM_LABELS[zoomIdx] ?? '100%'
+  const vbW = BASE_WIDTH * scale
+  const vbH = BASE_HEIGHT * scale
+  // Clamped pan so the view doesn't wander too far from content
+  const maxPan = ((1 - scale) / 2) * BASE_WIDTH + 100
+  const clampedPan = {
+    x: Math.max(-maxPan, Math.min(maxPan, pan.x)),
+    y: Math.max(-maxPan, Math.min(maxPan, pan.y)),
+  }
+  const vbX = (BASE_WIDTH - vbW) / 2 + clampedPan.x
+  const vbY = (BASE_HEIGHT - vbH) / 2 + clampedPan.y
+  const viewBox = `${vbX} ${vbY} ${vbW} ${vbH}`
 
   const positions = useMemo(() => {
     const map = new Map<string, { x: number; y: number }>()
@@ -127,21 +208,124 @@ function DependencyGraph({ graph }: { graph: AtlasModel['graph'] }) {
     return map
   }, [nodes, cx, cy])
 
+  // Adjacency list for text alternative
+  const adjacency = useMemo(() => {
+    const map = new Map<string, string[]>()
+    nodes.forEach((n) => map.set(n.id, []))
+    graph.edges.forEach((e) => {
+      map.get(e.source)?.push(e.target)
+    })
+    return map
+  }, [nodes, graph.edges])
+
+  const zoomIn = useCallback(() => {
+    setZoomIdx((z) => Math.min(z + 1, ZOOM_LEVELS.length - 1))
+  }, [])
+  const zoomOut = useCallback(() => {
+    setZoomIdx((z) => Math.max(z - 1, 0))
+    // When zooming out beyond default, also reset pan to avoid flying off-screen
+    setPan((p) => (zoomIdx <= 1 ? { x: 0, y: 0 } : p))
+  }, [zoomIdx])
+  const zoomReset = useCallback(() => {
+    setZoomIdx(ZOOM_DEFAULT)
+    setPan({ x: 0, y: 0 })
+  }, [])
+
+  // Mouse-drag pan
+  const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if ((e.target as Element).closest('[role="button"]')) return // don't pan when clicking a node
+    isDragging.current = true
+    dragStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y }
+    e.preventDefault()
+  }, [pan])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!isDragging.current || !dragStart.current || !svgRef.current) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const scaleX = vbW / rect.width
+    const scaleY = vbH / rect.height
+    const dx = (e.clientX - dragStart.current.mx) * scaleX
+    const dy = (e.clientY - dragStart.current.my) * scaleY
+    setPan({ x: dragStart.current.px - dx, y: dragStart.current.py - dy })
+  }, [vbW, vbH])
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false
+    dragStart.current = null
+  }, [])
+
   if (nodes.length === 0) {
-    return <div className="empty-state"><Network className="empty-state-icon" size={24} /><h3>グラフデータがありません</h3></div>
+    return (
+      <div className="empty-state">
+        <Network className="empty-state-icon" size={28} />
+        <h3>グラフデータがありません</h3>
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="text-sm text-muted">
-        ノード = サブシステム（円の大きさ ∝ ファイル数）、線 = import 依存（太さ ∝ 依存数）。ノードにホバーすると関連だけ強調します。
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-sm text-muted">
+          ノード = サブシステム（円の大きさ ∝ ファイル数）、線 = import 依存（太さ ∝ 依存数）。
+          ノードをクリック/フォーカスすると関連のみ強調します。ドラッグでパン。
+        </div>
+        {/* Zoom controls */}
+        <div className="flex items-center gap-1" role="group" aria-label="ズーム操作">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={zoomOut}
+            disabled={zoomIdx === 0}
+            aria-label="縮小"
+            title="縮小 (Zoom out)"
+          >
+            <Minus size={14} />
+          </button>
+          <span className="text-xs text-muted mono w-10 text-center" aria-live="polite" aria-label={`現在のズーム: ${zoomLabel}`}>
+            {zoomLabel}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={zoomIn}
+            disabled={zoomIdx === ZOOM_LEVELS.length - 1}
+            aria-label="拡大"
+            title="拡大 (Zoom in)"
+          >
+            <Plus size={14} />
+          </button>
+          {(zoomIdx !== ZOOM_DEFAULT || pan.x !== 0 || pan.y !== 0) ? (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={zoomReset}
+              aria-label="ズームをリセット"
+              title="リセット"
+            >
+              <RotateCcw size={14} />
+            </button>
+          ) : null}
+        </div>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="サブシステム依存グラフ" className="atlas-graph">
+      {/* SVG: width 100% responsive, viewBox drives zoom/pan */}
+      <svg
+        ref={svgRef}
+        viewBox={viewBox}
+        className={cn('atlas-graph w-full', zoomIdx > 0 ? 'cursor-grab active:cursor-grabbing' : '')}
+        role="group"
+        aria-label={`サブシステム依存グラフ（${nodes.length} ノード、ズーム ${zoomLabel}）`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        {/* edges */}
         {graph.edges.map((edge, i) => {
           const a = positions.get(edge.source)
           const b = positions.get(edge.target)
           if (!a || !b) return null
-          const active = hovered === null || hovered === edge.source || hovered === edge.target
+          const active = focused === null || focused === edge.source || focused === edge.target
           return (
             <line
               key={`${edge.source}-${edge.target}-${i}`}
@@ -155,45 +339,538 @@ function DependencyGraph({ graph }: { graph: AtlasModel['graph'] }) {
             />
           )
         })}
+        {/* nodes as focusable elements */}
         {nodes.map((node) => {
           const pos = positions.get(node.id)
           if (!pos) return null
           const r = 12 + Math.sqrt(node.files / maxFiles) * 22
-          const active = hovered === null || hovered === node.id
+          const active = focused === null || focused === node.id
+          const neighbors = adjacency.get(node.id) ?? []
+          const neighborLabels = neighbors
+            .map((nid) => nodes.find((n) => n.id === nid)?.label ?? nid)
+            .join('、')
+          const ariaDesc = neighbors.length > 0
+            ? `${node.label}（${node.files} ファイル）→ ${neighborLabels}`
+            : `${node.label}（${node.files} ファイル）`
           return (
             <g
               key={node.id}
-              onMouseEnter={() => setHovered(node.id)}
-              onMouseLeave={() => setHovered(null)}
-              className="atlas-graph-node"
+              tabIndex={0}
+              role="button"
+              aria-label={ariaDesc}
+              aria-pressed={focused === node.id}
+              className="atlas-graph-node focus-visible:outline-none"
+              onClick={() => setFocused(focused === node.id ? null : node.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setFocused(focused === node.id ? null : node.id)
+                }
+              }}
+              onFocus={() => setFocused(node.id)}
+              onBlur={() => setFocused(null)}
+              onMouseEnter={() => setFocused(node.id)}
+              onMouseLeave={() => setFocused(null)}
             >
-              <circle cx={pos.x} cy={pos.y} r={r} fillOpacity={active ? 0.85 : 0.25} />
-              <text x={pos.x} y={pos.y - r - 6} textAnchor="middle" className="atlas-graph-label">
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={r}
+                fillOpacity={active ? 0.85 : 0.25}
+                className={focused === node.id ? 'stroke-blue-400' : ''}
+                strokeWidth={focused === node.id ? 2 : 0}
+              />
+              <text x={pos.x} y={pos.y - r - 6} textAnchor="middle" className="atlas-graph-label" aria-hidden="true">
                 {node.label}
               </text>
-              <text x={pos.x} y={pos.y + 4} textAnchor="middle" className="atlas-graph-count">
+              <text x={pos.x} y={pos.y + 4} textAnchor="middle" className="atlas-graph-count" aria-hidden="true">
                 {node.files}
               </text>
             </g>
           )
         })}
       </svg>
+      {/* Text alternative: adjacency list */}
+      <details className="text-xs text-muted">
+        <summary className="cursor-pointer select-none">依存関係テキスト一覧</summary>
+        <ul className="mt-2 flex flex-col gap-1 list-none">
+          {nodes.map((node) => {
+            const neighbors = adjacency.get(node.id) ?? []
+            return (
+              <li key={node.id}>
+                <span className="font-semibold mono">{node.label}</span>
+                {' '}
+                <span className="text-muted">({node.files} ファイル)</span>
+                {neighbors.length > 0 ? (
+                  <>
+                    {' → '}
+                    {neighbors.map((nid) => nodes.find((n) => n.id === nid)?.label ?? nid).join('、')}
+                  </>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      </details>
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
+// ─── FlowsPanel ───────────────────────────────────────────────────────────────
+
+function FlowsPanel({
+  flows,
+  statusFilter,
+  onStatusFilterChange,
+}: {
+  flows: Flow[]
+  statusFilter: StatusFilter
+  onStatusFilterChange: (s: StatusFilter) => void
+}) {
+  const filtered = useMemo(
+    () => (statusFilter === 'all' ? flows : flows.filter((f) => f.status === statusFilter)),
+    [flows, statusFilter],
+  )
+
+  const STATUS_FILTER_TABS = useMemo(() => {
+    const all = flows.length
+    const solid = flows.filter((f) => f.status === 'solid').length
+    const partial = flows.filter((f) => f.status === 'partial').length
+    const fragile = flows.filter((f) => f.status === 'fragile').length
+    return [
+      { value: 'all' as StatusFilter, label: 'すべて', count: all },
+      { value: 'solid' as StatusFilter, label: '安定', count: solid },
+      { value: 'partial' as StatusFilter, label: '一部課題', count: partial },
+      { value: 'fragile' as StatusFilter, label: '要注意', count: fragile },
+    ]
+  }, [flows])
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Tabs
+        tabs={STATUS_FILTER_TABS}
+        value={statusFilter}
+        onChange={onStatusFilterChange}
+        ariaLabel="フロー状態フィルタ"
+      />
+      {filtered.length === 0 ? (
+        <div className="card">
+          <div className="card-body">
+            <div className="empty-state">
+              <GitBranch className="empty-state-icon" size={28} />
+              <h3>フローがありません</h3>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {filtered.map((flow) => {
+        const meta = STATUS_META[flow.status]
+        const triggerLabel = TRIGGER_LABEL[flow.trigger.kind] ?? flow.trigger.kind.toUpperCase()
+        return (
+          <div key={flow.id} className="card">
+            <div className="card-header">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={cn('badge', meta.cls)}>{meta.label}</span>
+                  <span className="card-title">{flow.name}</span>
+                </div>
+                <div className="card-description">{flow.summary}</div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="badge badge-neutral text-xs">{triggerLabel}</span>
+                <span className="badge badge-neutral mono text-xs">{flow.trigger.name}</span>
+              </div>
+            </div>
+            <div className="card-body flex flex-col gap-3">
+              <ol className="atlas-steps">
+                {flow.steps.map((step, i) => (
+                  <li key={i}>
+                    <span className="mono text-xs">{step.component}</span>
+                    <span className="text-muted"> — {step.action}</span>
+                  </li>
+                ))}
+              </ol>
+
+              {/* Surface tags with label */}
+              {flow.surfaces.length > 0 ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted">接点:</span>
+                  {flow.surfaces.map((surface) => (
+                    <span key={surface} className={cn('badge text-xs', surfaceBadgeCls(surface))}>
+                      {surface}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* Verification as tags */}
+              {flow.verification && flow.verification.length > 0 ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted">検証:</span>
+                  {flow.verification.map((v, i) => (
+                    <span key={i} className="badge badge-neutral mono text-xs">{v}</span>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-muted">検証なし（fragile 判定の根拠が不明）</div>
+              )}
+
+              {/* Known issues with detail */}
+              {flow.known_issues && flow.known_issues.length > 0 ? (
+                <div className="atlas-issues">
+                  <div className="text-xs font-semibold">既知の問題 ({flow.known_issues.length})</div>
+                  {flow.known_issues.map((issue, i) => (
+                    <div key={i} className="atlas-issue">
+                      <span className={cn('badge text-xs', SEVERITY_CLS[issue.severity] ?? 'badge-neutral')}>
+                        {SEVERITY_LABEL[issue.severity] ?? issue.severity}
+                      </span>
+                      <div className="min-w-0 flex flex-col gap-1">
+                        <div className="text-sm">{issue.title}</div>
+                        {issue.file ? <div className="text-xs mono text-muted">{issue.file}</div> : null}
+                        {issue.detail ? (
+                          <details className="text-xs text-muted">
+                            <summary className="cursor-pointer select-none">詳細</summary>
+                            <p className="mt-1">{issue.detail}</p>
+                          </details>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── CliPanel ─────────────────────────────────────────────────────────────────
+
+function CliPanel({
+  cli,
+  filter,
+  onFilterChange,
+  totalCount,
+}: {
+  cli: CliCommand[]
+  filter: string
+  onFilterChange: (v: string) => void
+  totalCount: number
+}) {
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <div className="card-title">CLI コマンド ({cli.length} / 全{totalCount}件)</div>
+          <div className="card-description">build_parser から実行時に抽出した pantheon サブコマンド（handler 有り）</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            className="input"
+            placeholder="コマンドを検索"
+            value={filter}
+            onChange={(e) => onFilterChange(e.target.value)}
+            aria-label="CLI コマンド検索"
+          />
+          {filter ? (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => onFilterChange('')}
+              aria-label="検索をクリア"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="card-body">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>コマンド</th>
+                <th>説明</th>
+                <th>
+                  引数
+                  <span className="text-xs text-muted font-normal ml-2">
+                    （<span className="badge badge-blue text-xs">必須</span> / <span className="badge badge-neutral text-xs">任意</span>）
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {cli.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="text-center text-muted py-4">
+                    該当コマンドなし
+                  </td>
+                </tr>
+              ) : null}
+              {cli.map((cmd) => (
+                <tr key={cmd.command}>
+                  <td className="mono text-sm">{cmd.command}</td>
+                  <td className="text-muted">{cmd.help || '—'}</td>
+                  <td>
+                    <div className="flex flex-wrap gap-1">
+                      {cmd.args.length === 0 ? <span className="text-xs text-muted">—</span> : null}
+                      {cmd.args.map((arg) => (
+                        <span
+                          key={arg.name}
+                          className={cn('badge text-xs', arg.required ? 'badge-blue' : 'badge-neutral')}
+                          title={arg.required ? '必須' : '任意'}
+                        >
+                          {arg.name}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── ApiPanel ─────────────────────────────────────────────────────────────────
+
+function ApiPanel({
+  routes,
+  filter,
+  onFilterChange,
+  totalCount,
+}: {
+  routes: ApiRoute[]
+  filter: string
+  onFilterChange: (v: string) => void
+  totalCount: number
+}) {
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <div className="card-title">API ルート ({routes.length} / 全{totalCount}件)</div>
+          <div className="card-description">FastAPI app から実行時に抽出した REST / WebSocket エンドポイント</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            className="input"
+            placeholder="パスを検索"
+            value={filter}
+            onChange={(e) => onFilterChange(e.target.value)}
+            aria-label="API ルート検索"
+          />
+          {filter ? (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => onFilterChange('')}
+              aria-label="検索をクリア"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="card-body">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>メソッド</th>
+                <th>パス</th>
+                <th>種別</th>
+              </tr>
+            </thead>
+            <tbody>
+              {routes.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="text-center text-muted py-4">
+                    該当ルートなし
+                  </td>
+                </tr>
+              ) : null}
+              {routes.map((route) => (
+                <tr key={`${route.kind}-${route.path}-${route.methods.join(',')}`}>
+                  <td>
+                    <div className="flex flex-wrap gap-1">
+                      {route.methods.map((m) => (
+                        <span key={m} className={cn('badge text-xs', methodBadge(m))}>{m}</span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="mono text-sm">{route.path}</td>
+                  <td>
+                    <span className={cn(
+                      'badge text-xs',
+                      route.kind === 'websocket' ? 'badge-blue' :
+                      route.kind === 'error' ? 'badge-red' :
+                      'badge-neutral'
+                    )}>
+                      {route.kind}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── SubsystemsPanel ──────────────────────────────────────────────────────────
+
+function SubsystemsPanel({ subsystems }: { subsystems: Subsystem[] }) {
+  const [sortKey, setSortKey] = useState<SortKey>('lines')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const sorted = useMemo(() => {
+    return [...subsystems].sort((a, b) => {
+      let diff = 0
+      if (sortKey === 'lines') diff = a.lines - b.lines
+      else if (sortKey === 'files') diff = a.files - b.files
+      else diff = a.label.localeCompare(b.label)
+      return sortDir === 'desc' ? -diff : diff
+    })
+  }, [subsystems, sortKey, sortDir])
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
+
+  const sortIcon = (key: SortKey) => {
+    if (sortKey !== key) return null
+    return sortDir === 'desc' ? ' ↓' : ' ↑'
+  }
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <div className="card-title">サブシステム在庫 ({subsystems.length})</div>
+          <div className="card-description">トップレベルの責務領域・ファイル数・行数（列ヘッダクリックでソート）</div>
+        </div>
+      </div>
+      <div className="card-body">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <button
+                    type="button"
+                    className="text-left font-semibold"
+                    onClick={() => handleSort('label')}
+                    aria-sort={sortKey === 'label' ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'}
+                  >
+                    サブシステム{sortIcon('label')}
+                  </button>
+                </th>
+                <th>役割</th>
+                <th>
+                  <button
+                    type="button"
+                    className="text-left font-semibold"
+                    onClick={() => handleSort('files')}
+                    aria-sort={sortKey === 'files' ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'}
+                  >
+                    ファイル{sortIcon('files')}
+                  </button>
+                </th>
+                <th>
+                  <button
+                    type="button"
+                    className="text-left font-semibold"
+                    onClick={() => handleSort('lines')}
+                    aria-sort={sortKey === 'lines' ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'}
+                  >
+                    行数{sortIcon('lines')}
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((sub) => (
+                <Fragment key={sub.id}>
+                  <tr
+                    className={sub.paths && sub.paths.length > 0 ? 'cursor-pointer hover:bg-muted/20' : undefined}
+                    onClick={
+                      sub.paths && sub.paths.length > 0
+                        ? () => setExpandedId(expandedId === sub.id ? null : sub.id)
+                        : undefined
+                    }
+                  >
+                    <td className="font-semibold">
+                      {sub.label}
+                      {sub.paths && sub.paths.length > 0 ? (
+                        <span className="text-xs text-muted ml-1">{expandedId === sub.id ? '▲' : '▼'}</span>
+                      ) : null}
+                    </td>
+                    <td className="text-muted">{sub.purpose}</td>
+                    <td className="mono text-sm">{sub.files}</td>
+                    <td className="mono text-sm">{formatNumber(sub.lines)}</td>
+                  </tr>
+                  {expandedId === sub.id && sub.paths && sub.paths.length > 0 ? (
+                    <tr>
+                      <td colSpan={4} className="bg-muted/10 py-2 px-4">
+                        <div className="text-xs text-muted font-semibold mb-1">対象パス:</div>
+                        <div className="flex flex-wrap gap-1">
+                          {sub.paths.map((p) => (
+                            <span key={p} className="badge badge-neutral mono text-xs">{p}</span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function AtlasPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const tabParam = (searchParams.get('tab') ?? 'flows') as TabKey
+  const validTabs: TabKey[] = ['flows', 'graph', 'cli', 'api', 'subsystems']
+  const tab: TabKey = validTabs.includes(tabParam) ? tabParam : 'flows'
+
   const [atlas, setAtlas] = useState<AtlasModel | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<TabKey>('flows')
   const [cliFilter, setCliFilter] = useState('')
   const [apiFilter, setApiFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
-  const load = async () => {
-    setLoading(true)
+  const setTab = (t: TabKey) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', t)
+    setSearchParams(next, { replace: true })
+  }
+
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
+    else setRefreshing(true)
     try {
       const data = await api<AtlasModel>('GET', '/api/atlas')
       setAtlas(data)
@@ -201,15 +878,19 @@ export function AtlasPage() {
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Atlas の読み込みに失敗しました。'
       setError(message)
-      toast.error(message)
+      if (quiet) {
+        // quiet re-fetch: only toast, keep existing data
+        toast.error(message)
+      }
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const statusCounts = useMemo(() => {
     const counts: Record<FlowStatus, number> = { solid: 0, partial: 0, fragile: 0, unknown: 0 }
@@ -234,295 +915,187 @@ export function AtlasPage() {
     return atlas.api.filter((r) => r.path.toLowerCase().includes(q) || r.name.toLowerCase().includes(q))
   }, [atlas, apiFilter])
 
+  // Generated_at freshness
+  const generatedAtDisplay = atlas ? formatDateTime(atlas.generated_at) : null
+  const generatedAtDate = atlas ? new Date(atlas.generated_at) : null
+  const isStale = generatedAtDate && !Number.isNaN(generatedAtDate.getTime())
+    ? Date.now() - generatedAtDate.getTime() > 3 * 60 * 60 * 1000 // > 3h
+    : false
+
+  const TAB_ITEMS = [
+    { value: 'flows' as TabKey, label: '使用フロー' },
+    { value: 'graph' as TabKey, label: '依存グラフ' },
+    { value: 'cli' as TabKey, label: 'CLI' },
+    { value: 'api' as TabKey, label: 'API' },
+    { value: 'subsystems' as TabKey, label: 'サブシステム' },
+  ]
+
+  const goToFlowsWithFilter = (status: StatusFilter) => {
+    setStatusFilter(status)
+    setTab('flows')
+  }
+
+  // Status badge classes: only show red for fragile when count > 0
+  const fragileCount = statusCounts.fragile
+  const fragileBadgeCls = fragileCount > 0 ? 'badge badge-red cursor-pointer' : 'badge badge-neutral cursor-pointer'
+
+  const headerActions = atlas ? (
+    <>
+      <button
+        type="button"
+        className="badge badge-green cursor-pointer"
+        onClick={() => goToFlowsWithFilter('solid')}
+        title="安定フローを表示"
+      >
+        安定 {statusCounts.solid}
+      </button>
+      <button
+        type="button"
+        className="badge badge-yellow cursor-pointer"
+        onClick={() => goToFlowsWithFilter('partial')}
+        title="一部課題フローを表示"
+      >
+        一部課題 {statusCounts.partial}
+      </button>
+      <button
+        type="button"
+        className={fragileBadgeCls}
+        onClick={() => goToFlowsWithFilter('fragile')}
+        title="要注意フローを表示"
+      >
+        要注意 {fragileCount}
+      </button>
+      {generatedAtDisplay ? (
+        <span className={cn('text-xs', isStale ? 'text-red-500' : 'text-muted')} title={generatedAtDisplay}>
+          {isStale ? '古い情報（' : '生成: '}{generatedAtDisplay}{isStale ? '）' : ''}
+        </span>
+      ) : null}
+      <RefreshButton onClick={() => void load(true)} busy={refreshing} />
+    </>
+  ) : (
+    <RefreshButton onClick={() => void load(false)} busy={loading || refreshing} />
+  )
+
   return (
     <>
-      <header className="page-header">
-        <div className="flex items-center gap-2">
-          <MapIcon size={18} />
-          <div className="page-title">Atlas — リポジトリ俯瞰</div>
-        </div>
-        <div className="page-actions">
-          {atlas ? (
-            <>
-              <span className="badge badge-green">{statusCounts.solid} 安定</span>
-              <span className="badge badge-yellow">{statusCounts.partial} 一部課題</span>
-              <span className="badge badge-red">{statusCounts.fragile} 要注意</span>
-            </>
-          ) : null}
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void load()} disabled={loading}>
-            再読み込み
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title={
+          <div className="flex items-center gap-2">
+            <MapIcon size={18} />
+            Atlas — リポジトリ俯瞰
+          </div>
+        }
+        actions={headerActions}
+      />
 
       <div className="page-content flex flex-col gap-5">
-        {loading ? (
-          <div className="card">
-            <div className="card-body flex items-center gap-3">
-              <div className="spinner" />
-              <div className="text-muted">リポジトリを解析中…</div>
-            </div>
-          </div>
-        ) : null}
-
-        {!loading && error ? (
-          <div className="card">
-            <div className="card-body">
-              <div className="empty-state">
-                <AlertTriangle className="empty-state-icon" size={28} />
-                <h3>Atlas の読み込みに失敗しました</h3>
-                <p>{error}</p>
-                <button type="button" className="btn btn-secondary" onClick={() => void load()}>
-                  再試行
-                </button>
+        <AsyncBoundary
+          loading={loading}
+          error={!atlas ? error : null}
+          onRetry={() => void load()}
+          loadingText="リポジトリを解析中…"
+          errorTitle="Atlas の読み込みに失敗しました"
+        >
+          {atlas ? (
+            <>
+              {/* StatCards — clickable, navigate to relevant tab */}
+              <div className="grid-4">
+                <StatCard
+                  label="使用フロー"
+                  value={atlas.overview.flows}
+                  onClick={() => setTab('flows')}
+                />
+                <StatCard
+                  label={`CLI コマンド（うち実行可能 ${atlas.cli.filter((c) => c.handler).length}）`}
+                  value={atlas.overview.cli_commands}
+                  onClick={() => setTab('cli')}
+                />
+                <StatCard
+                  label={`API ルート（REST + WS ${atlas.overview.websockets}）`}
+                  value={formatNumber(atlas.overview.api_routes + atlas.overview.websockets)}
+                  onClick={() => setTab('api')}
+                />
+                <StatCard
+                  label="UI ページ"
+                  value={atlas.overview.pages}
+                />
+                <StatCard
+                  label="サブシステム"
+                  value={atlas.overview.subsystems}
+                  onClick={() => setTab('subsystems')}
+                />
+                <StatCard
+                  label="モジュール（依存グラフ）"
+                  value={atlas.overview.modules}
+                  onClick={() => setTab('graph')}
+                />
+                <StatCard
+                  label="総ファイル数"
+                  value={formatNumber(atlas.overview.total_files)}
+                />
+                <StatCard
+                  label="総行数"
+                  value={formatNumber(atlas.overview.total_lines)}
+                />
               </div>
-            </div>
-          </div>
-        ) : null}
 
-        {!loading && !error && atlas ? (
-          <>
-            <div className="grid-4">
-              <StatCard label="使用フロー" value={atlas.overview.flows} />
-              <StatCard label="CLI コマンド" value={atlas.overview.cli_commands} />
-              <StatCard label={`API ルート (+WS ${atlas.overview.websockets})`} value={atlas.overview.api_routes} />
-              <StatCard label="UI ページ" value={atlas.overview.pages} />
-              <StatCard label="サブシステム" value={atlas.overview.subsystems} />
-              <StatCard label="モジュール" value={atlas.overview.modules} />
-              <StatCard label="総ファイル数" value={atlas.overview.total_files} />
-              <StatCard label="総行数" value={atlas.overview.total_lines.toLocaleString()} />
-            </div>
+              <Tabs
+                tabs={TAB_ITEMS}
+                value={tab}
+                onChange={setTab}
+                ariaLabel="Atlas タブ"
+              />
 
-            <div className="tab-bar" role="tablist">
-              {TABS.map((t) => {
-                const Icon = t.icon
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={tab === t.key}
-                    className={cn('tab-btn', tab === t.key && 'active')}
-                    onClick={() => setTab(t.key)}
-                  >
-                    <Icon size={14} />
-                    {t.label}
-                  </button>
-                )
-              })}
-            </div>
+              <div role="tabpanel" aria-label={TAB_ITEMS.find((t) => t.value === tab)?.label}>
+                {tab === 'flows' ? (
+                  <FlowsPanel
+                    flows={atlas.flows}
+                    statusFilter={statusFilter}
+                    onStatusFilterChange={setStatusFilter}
+                  />
+                ) : null}
 
-            {tab === 'flows' ? (
-              <div className="flex flex-col gap-4">
-                {atlas.flows.map((flow) => {
-                  const meta = STATUS_META[flow.status]
-                  return (
-                    <div key={flow.id} className="card">
-                      <div className="card-header">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className={cn('badge', meta.cls)}>{meta.label}</span>
-                            <span className="card-title">{flow.name}</span>
-                          </div>
-                          <div className="card-description">{flow.summary}</div>
+                {tab === 'graph' ? (
+                  <div className="card">
+                    <div className="card-header">
+                      <div>
+                        <div className="card-title">モジュール依存グラフ</div>
+                        <div className="card-description">
+                          {formatNumber(atlas.graph.file_count)} モジュールを {atlas.graph.nodes.length} サブシステムに集約
                         </div>
-                        <span className="badge badge-neutral mono text-xs">{flow.trigger.name}</span>
-                      </div>
-                      <div className="card-body flex flex-col gap-3">
-                        <ol className="atlas-steps">
-                          {flow.steps.map((step, i) => (
-                            <li key={i}>
-                              <span className="mono text-xs">{step.component}</span>
-                              <span className="text-muted"> — {step.action}</span>
-                            </li>
-                          ))}
-                        </ol>
-                        <div className="flex flex-wrap gap-1">
-                          {flow.surfaces.map((surface) => (
-                            <span key={surface} className="skill-tag">{surface}</span>
-                          ))}
-                        </div>
-                        {flow.verification && flow.verification.length > 0 ? (
-                          <div className="text-xs text-muted">
-                            検証: {flow.verification.join(' / ')}
-                          </div>
-                        ) : null}
-                        {flow.known_issues && flow.known_issues.length > 0 ? (
-                          <div className="atlas-issues">
-                            <div className="text-xs font-semibold">既知の問題 ({flow.known_issues.length})</div>
-                            {flow.known_issues.map((issue, i) => (
-                              <div key={i} className="atlas-issue">
-                                <span className={cn('badge text-xs', SEVERITY_CLS[issue.severity] ?? 'badge-neutral')}>
-                                  {issue.severity}
-                                </span>
-                                <div className="min-w-0">
-                                  <div className="text-sm">{issue.title}</div>
-                                  {issue.file ? <div className="text-xs mono text-muted">{issue.file}</div> : null}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-            ) : null}
-
-            {tab === 'graph' ? (
-              <div className="card">
-                <div className="card-header">
-                  <div>
-                    <div className="card-title">モジュール依存グラフ</div>
-                    <div className="card-description">{atlas.graph.file_count} モジュールを {atlas.graph.nodes.length} サブシステムに集約</div>
+                    <div className="card-body">
+                      <DependencyGraph graph={atlas.graph} />
+                    </div>
                   </div>
-                </div>
-                <div className="card-body">
-                  <DependencyGraph graph={atlas.graph} />
-                </div>
-              </div>
-            ) : null}
+                ) : null}
 
-            {tab === 'cli' ? (
-              <div className="card">
-                <div className="card-header">
-                  <div>
-                    <div className="card-title">CLI コマンド ({filteredCli.length})</div>
-                    <div className="card-description">build_parser から実行時に抽出した pantheon サブコマンド</div>
-                  </div>
-                  <input
-                    className="input"
-                    placeholder="コマンドを検索"
-                    value={cliFilter}
-                    onChange={(e) => setCliFilter(e.target.value)}
-                    aria-label="CLI コマンド検索"
+                {tab === 'cli' ? (
+                  <CliPanel
+                    cli={filteredCli}
+                    filter={cliFilter}
+                    onFilterChange={setCliFilter}
+                    totalCount={atlas.cli.filter((c) => c.handler).length}
                   />
-                </div>
-                <div className="card-body">
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>コマンド</th>
-                          <th>説明</th>
-                          <th>引数</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredCli.map((cmd) => (
-                          <tr key={cmd.command}>
-                            <td className="mono text-sm">{cmd.command}</td>
-                            <td className="text-muted">{cmd.help || '—'}</td>
-                            <td>
-                              <div className="flex flex-wrap gap-1">
-                                {cmd.args.length === 0 ? <span className="text-xs text-muted">—</span> : null}
-                                {cmd.args.map((arg) => (
-                                  <span key={arg.name} className={cn('badge text-xs', arg.required ? 'badge-blue' : 'badge-neutral')}>
-                                    {arg.name}
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+                ) : null}
 
-            {tab === 'api' ? (
-              <div className="card">
-                <div className="card-header">
-                  <div>
-                    <div className="card-title">API ルート ({filteredApi.length})</div>
-                    <div className="card-description">FastAPI app から実行時に抽出した REST / WebSocket エンドポイント</div>
-                  </div>
-                  <input
-                    className="input"
-                    placeholder="パスを検索"
-                    value={apiFilter}
-                    onChange={(e) => setApiFilter(e.target.value)}
-                    aria-label="API ルート検索"
+                {tab === 'api' ? (
+                  <ApiPanel
+                    routes={filteredApi}
+                    filter={apiFilter}
+                    onFilterChange={setApiFilter}
+                    totalCount={atlas.api.length}
                   />
-                </div>
-                <div className="card-body">
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>メソッド</th>
-                          <th>パス</th>
-                          <th>種別</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredApi.map((route) => (
-                          <tr key={`${route.kind}-${route.path}-${route.methods.join(',')}`}>
-                            <td>
-                              <div className="flex flex-wrap gap-1">
-                                {route.methods.map((m) => (
-                                  <span key={m} className={cn('badge text-xs', methodBadge(m))}>{m}</span>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="mono text-sm">{route.path}</td>
-                            <td>
-                              <span className={cn('badge text-xs', route.kind === 'websocket' ? 'badge-blue' : 'badge-neutral')}>
-                                {route.kind}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+                ) : null}
 
-            {tab === 'subsystems' ? (
-              <div className="card">
-                <div className="card-header">
-                  <div>
-                    <div className="card-title">サブシステム在庫 ({atlas.subsystems.length})</div>
-                    <div className="card-description">トップレベルの責務領域・ファイル数・行数</div>
-                  </div>
-                </div>
-                <div className="card-body">
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>サブシステム</th>
-                          <th>役割</th>
-                          <th>ファイル</th>
-                          <th>行数</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...atlas.subsystems].sort((a, b) => b.lines - a.lines).map((sub) => (
-                          <tr key={sub.id}>
-                            <td className="font-semibold">{sub.label}</td>
-                            <td className="text-muted">{sub.purpose}</td>
-                            <td className="mono text-sm">{sub.files}</td>
-                            <td className="mono text-sm">{sub.lines.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                {tab === 'subsystems' ? (
+                  <SubsystemsPanel subsystems={atlas.subsystems} />
+                ) : null}
               </div>
-            ) : null}
-
-            <div className="text-xs text-muted">
-              生成時刻: {new Date(atlas.generated_at).toLocaleString()}
-            </div>
-          </>
-        ) : null}
+            </>
+          ) : null}
+        </AsyncBoundary>
       </div>
     </>
   )

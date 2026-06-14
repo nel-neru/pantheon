@@ -1,0 +1,1300 @@
+{
+  "generated": "2026-06-14",
+  "source": "workflow gui-frontend-audit (run w3bnm8rn9, 49 agents)",
+  "target_gui": "web/frontend (legacy / 既定UI)",
+  "status_legend": [
+    "pending",
+    "in_progress",
+    "done",
+    "verified",
+    "skipped"
+  ],
+  "summary": "現状の web/frontend は「堆積型」の典型で、刷新ではなく作り直しに近い再設計が要る。最も深刻なのは安全境界の崩壊で、外部SNS実投稿(publish run)・ジョブ/タスク/接続/セッションの破壊操作・一括承認/却下が軒並み無確認ワンクリックで走り、「公開=人手ゲート」という製品思想とUIが正面から矛盾している(P0)。情報設計も破綻しており、20項目フラットのサイドバーは認知限界を大きく超え、承認インボックス/あなたのタスク/通知センターという3つの「要対応」導線が概念的に重複、収益化パイプライン(スタジオ/予約/引き渡し/収益)は分断、Studioは保存もできない孤島になっている。横断的にはErrorBoundary皆無・WS多重接続・401導線欠如・日付/数値/status色/ボタン変種/page-header/タブの実装分裂・inline style規約違反・未定義CSS変数が積み上がり、テストはapi全モックで「見せかけUI」と契約ズレを構造的に検出できない。死蔵データ(last_detail/payload詳細/priority/created_at等)と死んだ導線(承認/詳細へ飛べない読み取り専用リスト)が全画面に散在する。妥協せず、削除・統合・共通化・確認ゲート整備・IA再設計を一気に行うべき段階にある。",
+  "nav_redesign": "navItems をフラット20項目から NavGroup[]（type NavGroup = { label: string; items: NavItem[] }）へ再設計し、レンダリングで既存 .sidebar-section-label をグループ毎に出力する（CSSは新規不要、折りたたみ時はラベルを display:none 済み→代わりに .sidebar-group-divider を出す分岐を数行追加）。推奨5グループ・グループ内は頻度/ワークフロー順:\n\n(1)『はじめに』= ダッシュボード(最上段に昇格・『ホーム/ダッシュボード』へ改名)→ 初回セットアップ(2番目に降格、可能なら platform status で完了後は非表示)。ロゴ+ブランドは <NavLink to=\\\"/dashboard\\\"> で包みホーム導線化。\n\n(2)『要対応(Action Center)』= 承認インボックス(各項目に未処理件数バッジ)。/human-tasks は /api/inbox の human_task kind に集約、/notifications はナビ削除しBellポップオーバー(未読プレビュー+『すべて見る』)に一本化。3重の心的モデルを1つへ(C006/C007)。\n\n(3)『組織と提案』= 組織 → 改善提案(/inbox?kind=proposal の詳細 or 組織詳細パネルへ降格) → エージェント。実行ドメイン(セッション/ボード)もここに寄せるか(5)へ。\n\n(4)『収益化(Monetization)』= スタジオ → コンテンツ予約 → 引き渡し → 収益 をワークフロー順に連続配置。Studio は下書きビューアとして Content/Inbox の publish から開ける接続を前提(C020)。\n\n(5)『システム/高度な設定』(折りたたみ可)= 連携設定(旧プラットフォーム接続・ダッシュボードの『プラットフォーム』とラベル衝突するため改名) → マーケットプレイス → Atlas(リポジトリ地図、開発者向け) → セッション → 作業ボード → データ管理 → 設定 → ヘルプ。\n\n合わせて: ラベル整理(『プラットフォーム』→『ダッシュボード』、『Atlas』→『Atlas(リポジトリ地図)』、『プラットフォーム接続』→『連携設定』)、折りたたみ時の全項目 title/Tooltip 付与(C005)、アイコン重複(Boxes/Blocks)の見直し、AGENTS.md の新Webページ手順に『追加時は適切なグループへ、末尾フラット追加禁止』を明記して堆積を防止。これによりトップ可視領域が高頻度の(1)〜(4)に絞られ、ナビ項目は20→17程度に縮小する。",
+  "wave_labels": {
+    "W0": "共通基盤（部品/lib/CSS）",
+    "W1": "P0 安全ゲート（破壊/外部送信の確認）",
+    "W2": "IA/ナビ再設計・承認/通知統合",
+    "W3": "グローバル堅牢化（WS/401/非同期/オフライン）",
+    "W4": "Dashboard＋画面別機能修正",
+    "W5": "一貫性/a11y/i18n/テスト/デッドコード"
+  },
+  "changes": [
+    {
+      "id": "C002",
+      "title": "全破壊/不可逆操作に統一確認ダイアログ(ConfirmDialog)を導入",
+      "priority": "P0",
+      "type": "add",
+      "risk": "medium",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/components/ConfirmDialog.tsx",
+        "web/frontend/src/pages/InboxPage.tsx",
+        "web/frontend/src/pages/HumanTasksPage.tsx",
+        "web/frontend/src/pages/ConnectionsPage.tsx",
+        "web/frontend/src/pages/ContentSchedulePage.tsx",
+        "web/frontend/src/pages/BoardPage.tsx",
+        "web/frontend/src/pages/ProposalsPage.tsx",
+        "web/frontend/src/pages/OrgsPage.tsx",
+        "web/frontend/src/pages/DataPage.tsx",
+        "web/frontend/src/pages/SessionsPage.tsx",
+        ".claude/rules/frontend.md"
+      ],
+      "axes": [
+        "necessity",
+        "validity",
+        "maintainability",
+        "convenience"
+      ],
+      "rationale": "necessity/validity/maintainability: publish取消(DELETE)・公開を確認・content-job削除・task キャンセル・接続切断・アイコンリセット・workspace片道移行・一括承認/却下が無確認で即実行され、確認手段もwindow.confirm/独自Modal/無確認と分裂。OrgsPageのtype-to-confirm Modalを Radix Dialog ベースの共通 ConfirmDialog(単純確認/名前一致確認の2モード)へ抽出し全破壊操作で再利用。Escape/フォーカストラップ/初期フォーカス/aria-modalも一括担保。",
+      "test_impact": "破壊操作テストが確認経由に変わり全面更新。ConfirmDialogの単体テスト(Esc/フォーカストラップ/名前一致)を新規追加。",
+      "wave": "W0",
+      "status": "done"
+    },
+    {
+      "id": "C008",
+      "title": "アプリ全体をErrorBoundaryで包みスキーマdrift耐性を確保",
+      "priority": "P1",
+      "type": "add",
+      "risk": "low",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/main.tsx",
+        "web/frontend/src/App.tsx",
+        "web/frontend/src/components/ErrorBoundary.tsx",
+        "web/frontend/src/pages/MarketplacePage.tsx",
+        "web/frontend/src/pages/RevenuePage.tsx",
+        "web/frontend/src/pages/HandoffsPage.tsx"
+      ],
+      "axes": [
+        "validity",
+        "maintainability"
+      ],
+      "rationale": "validity/maintainability: ErrorBoundaryが皆無で、API応答の形ズレ(null/欠落/型違い)で.map/.join/JSON.stringifyが例外→全画面ホワイトアウト。全テストがapi全モックで理想形のみ返すためdriftは検出不能。ルートErrorBoundary(フォールバック+再読み込み)を導入し、危険な配列/オブジェクトアクセスに既定値ガード(?? []/Array.isArray)を入れ、想定外形のレンダー耐性テストを追加。",
+      "test_impact": "ErrorBoundaryの単体テストと、空/null/型違いレスポンスでのページ非クラッシュテストを新規追加。",
+      "wave": "W0",
+      "status": "done"
+    },
+    {
+      "id": "C016",
+      "title": "未定義CSS変数の是正とdanger/primaryトークン統一",
+      "priority": "P1",
+      "type": "fix",
+      "risk": "low",
+      "scope": "global / DataPage",
+      "targets": [
+        "web/frontend/src/pages/DataPage.tsx",
+        "web/frontend/src/index.css"
+      ],
+      "axes": [
+        "validity",
+        "maintainability"
+      ],
+      "rationale": "validity/maintainability: index.cssは--color-accent/--color-red定義だが--color-danger(DataPage L295)と--color-primary(index.css L989)が未定義で色が当たらず、DataPageの履歴クリアがbtn-ghost灰のまま(他の破壊操作は赤btn-danger)。L295のinline styleを廃しbtn-danger化、L989を--color-accentに修正。var(--color-を@theme定義と突合する簡易チェックをビルド前に入れる。",
+      "test_impact": "軽微。破壊ボタンのclassテストを追加可。",
+      "wave": "W0",
+      "status": "done"
+    },
+    {
+      "id": "C021",
+      "title": "status/priority/levelのバッジ色・ラベルをlib/labelsに一元化",
+      "priority": "P2",
+      "type": "refactor",
+      "risk": "medium",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/lib/labels.ts",
+        "web/frontend/src/lib/utils.ts",
+        "web/frontend/src/pages/DashboardPage.tsx",
+        "web/frontend/src/pages/SessionsPage.tsx",
+        "web/frontend/src/pages/AgentsPage.tsx",
+        "web/frontend/src/pages/HandoffsPage.tsx",
+        "web/frontend/src/pages/BoardPage.tsx",
+        "web/frontend/src/pages/InboxPage.tsx",
+        "web/frontend/src/pages/NotificationsPage.tsx",
+        "web/frontend/src/pages/ProposalsPage.tsx"
+      ],
+      "axes": [
+        "validity",
+        "maintainability",
+        "convenience"
+      ],
+      "rationale": "validity/maintainability: statusBadgeがDashboard/Sessions/Agents/Handoffs/Boardで独自定義され同じpendingがyellow/neutralと食い違い、priorityBadgeも共通版とInbox版でlow/medium既定が逆。値も英語生表示(running/pending/high/low)で和訳画面と非対称。statusLabel/priorityLabel/levelLabelとbadgeマップをlib/labelsに集約し全badgeをそれ経由に、想定値の全集合と既定色を1箇所で定義。",
+      "test_impact": "各ページのbadge表示テストを共通ラベル前提へ更新。labelsの単体テスト追加。",
+      "wave": "W0",
+      "status": "done"
+    },
+    {
+      "id": "C022",
+      "title": "日付/時刻フォーマットをlib/utilsに統一(ロケール無しtoLocaleString全廃)",
+      "priority": "P2",
+      "type": "refactor",
+      "risk": "low",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/lib/utils.ts",
+        "web/frontend/src/pages/ContentSchedulePage.tsx",
+        "web/frontend/src/pages/AtlasPage.tsx",
+        "web/frontend/src/pages/DashboardPage.tsx",
+        "web/frontend/src/pages/ConnectionsPage.tsx",
+        "web/frontend/src/pages/NotificationsPage.tsx",
+        "web/frontend/src/pages/InboxPage.tsx"
+      ],
+      "axes": [
+        "validity",
+        "convenience",
+        "maintainability"
+      ],
+      "rationale": "validity/convenience: 共通formatDateがあるのにDataPage/Orgsのみ使用、他は5系統(秒までフル/独自formatConnectedAt/ロケール無し/生ISO)に分裂し『6/14 09:00』『2026/6/14 9:00:00』『2026-06-14T...』が混在。NotificationsとInboxは生ISO表示。formatDateTime(ja-JP)をutilsに追加し全独自実装と生表示を置換、相対表示+title絶対時刻に。ロケール無しtoLocaleString()は全廃。",
+      "test_impact": "日時表示テストを共通フォーマット前提へ更新。",
+      "wave": "W0",
+      "status": "done"
+    },
+    {
+      "id": "C023",
+      "title": "page-header/loading/empty-stateを共通コンポーネント化",
+      "priority": "P2",
+      "type": "refactor",
+      "risk": "low",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/components/PageHeader.tsx",
+        "web/frontend/src/components/LoadingCard.tsx",
+        "web/frontend/src/components/EmptyState.tsx",
+        "web/frontend/src/index.css",
+        "web/frontend/src/pages/ContentSchedulePage.tsx",
+        "web/frontend/src/pages/DataPage.tsx",
+        "web/frontend/src/pages/HelpPage.tsx",
+        "web/frontend/src/pages/AtlasPage.tsx",
+        "web/frontend/src/pages/OrgsPage.tsx"
+      ],
+      "axes": [
+        "maintainability",
+        "validity",
+        "convenience"
+      ],
+      "rationale": "maintainability/validity: page-header構造が3系統(div.page-title/+subtitle/+page wrapper+h1)、.page-subtitleはCSS未定義で3ページ未スタイル、loadingがspinnerカードと素テキストで割れ、empty-stateもアイコンサイズ24/28とinline padding混在。PageHeader/LoadingCard/EmptyState共通部品へ集約し.page-subtitleをindex.cssに定義、見出し構造とアイコン配置を統一。",
+      "test_impact": "各ページのヘッダ/loading/empty取得テストが共通部品で安定化。",
+      "wave": "W0",
+      "status": "done"
+    },
+    {
+      "id": "C033",
+      "title": "スコアバー/しきい値/status色の二重定義を共通ScoreBarへ集約",
+      "priority": "P2",
+      "type": "refactor",
+      "risk": "low",
+      "scope": "OrgsPage / DashboardPage / AgentsPage",
+      "targets": [
+        "web/frontend/src/components/ScoreBar.tsx",
+        "web/frontend/src/pages/OrgsPage.tsx",
+        "web/frontend/src/pages/DashboardPage.tsx",
+        "web/frontend/src/pages/AgentsPage.tsx",
+        "web/frontend/src/index.css"
+      ],
+      "axes": [
+        "maintainability",
+        "validity"
+      ],
+      "rationale": "maintainability/validity: スコアバーが一覧(ScoreTooltip: score-high/mid/low)と詳細(healthClass: good/warning/critical)でしきい値・色語彙が二重定義され乖離、自律スコアは一覧バー有り・詳細数値のみで不整合、health-fillのwidthがinline style。単一ScoreBarコンポーネント(共通しきい値/配色/凡例)に集約し一覧/詳細で共有、widthはCSS変数化。",
+      "test_impact": "ScoreBar単体テスト。各ページのスコア表示テストを共通部品前提へ更新。",
+      "wave": "W0",
+      "status": "done"
+    },
+    {
+      "id": "C038",
+      "title": "数値整形/更新ボタン呼称/タブUIの分裂を統一",
+      "priority": "P3",
+      "type": "refactor",
+      "risk": "low",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/lib/utils.ts",
+        "web/frontend/src/pages/RevenuePage.tsx",
+        "web/frontend/src/pages/AtlasPage.tsx",
+        "web/frontend/src/pages/DashboardPage.tsx",
+        "web/frontend/src/pages/AgentsPage.tsx",
+        "web/frontend/src/pages/DataPage.tsx",
+        "web/frontend/src/components/Tabs.tsx",
+        "web/frontend/src/components/RefreshButton.tsx",
+        "web/frontend/src/index.css"
+      ],
+      "axes": [
+        "validity",
+        "maintainability",
+        "convenience"
+      ],
+      "rationale": "validity/maintainability: 数値整形がja-JP千区切り/ロケール無し/桁数バラバラで混在、更新ボタンが『更新』『再読み込み』で揺れ可視テキストとaria-labelも不一致、タブが tab-bar/data-tabs/help-tabs の3系統(ARIA有無不揃い)。formatNumber/formatYen/formatScoreをutilsに集約、Refreshボタンを部品化し呼称を『更新』に統一しaria一致、共通Tabs(role=tablist/tab+aria-selected)へ移行。",
+      "test_impact": "DataPage等の『再読み込み』name取得テストを『更新』へ更新。共通Tabs/Refreshのテスト追加。",
+      "wave": "W0",
+      "status": "done"
+    },
+    {
+      "id": "C001",
+      "title": "外部公開(publish run)とdry-run/confirmに確認ゲートを必須化",
+      "priority": "P0",
+      "type": "fix",
+      "risk": "medium",
+      "scope": "InboxPage / publishing",
+      "targets": [
+        "web/frontend/src/pages/InboxPage.tsx",
+        "POST /api/publish-jobs/{id}/run",
+        "POST /api/publish-jobs/{id}/confirm",
+        "web/frontend/src/pages/__tests__/InboxPage.test.tsx"
+      ],
+      "axes": [
+        "necessity",
+        "validity",
+        "functionality"
+      ],
+      "rationale": "necessity/validity: kind==='publish'の『投稿』がPOST /publish-jobs/{id}/runを無確認ワンクリックで発火し、note/X/WordPressへ取り消し不能な外部公開を実行する。『公開=人手ゲート』という製品の安全境界(CLAUDE.md/PUB-AUTO)と真っ向から矛盾し、最も損害の大きい操作が最も軽いガードになっている逆転。媒体名・本文要約・予約時刻を出すRadix AlertDialog確認を必須化し、preview(dry-run)→approveの二段導線にする。",
+      "test_impact": "InboxPage.test の『投稿で run を叩く』テストが確認ダイアログ経由に変わるため要更新。確認→実行/キャンセルのテストを追加。",
+      "wave": "W1",
+      "status": "verified"
+    },
+    {
+      "id": "C003",
+      "title": "HumanTasks/Board/Dashboard/Settings等の確認なし破壊操作を是正",
+      "priority": "P0",
+      "type": "fix",
+      "risk": "medium",
+      "scope": "HumanTasksPage / BoardPage / DashboardPage / ProposalsPage / SettingsPage",
+      "targets": [
+        "web/frontend/src/pages/HumanTasksPage.tsx",
+        "web/frontend/src/pages/BoardPage.tsx",
+        "web/frontend/src/pages/DashboardPage.tsx",
+        "web/frontend/src/pages/ProposalsPage.tsx",
+        "web/frontend/src/pages/SettingsPage.tsx"
+      ],
+      "axes": [
+        "necessity",
+        "validity",
+        "functionality"
+      ],
+      "rationale": "necessity/validity: HumanTasksの『完了』(不可逆・高リスク最終確認の場でこそ無確認は設計矛盾)、Boardのrunningタスクキャンセル(backendがPENDINGのみ許可するため必ず失敗する死んだ破壊操作)、Dashboardのinit(再初期化)/daemon stop、Proposals一括承認(コード適用を伴う)、SettingsのloadError中DEFAULT上書き保存。C002のConfirmDialogで確認を入れ、Boardのキャンセルはpendingのみに条件を絞る。",
+      "test_impact": "各破壊操作テストを確認経由に更新。Boardはrunning行でキャンセル不可になることのテストを追加。",
+      "wave": "W1",
+      "status": "done"
+    },
+    {
+      "id": "C004",
+      "title": "サイドバーIAをグループ化データ構造へ再設計(NavGroup[])",
+      "priority": "P1",
+      "type": "refactor",
+      "risk": "medium",
+      "scope": "AppShell / global nav",
+      "targets": [
+        "web/frontend/src/App.tsx",
+        "web/frontend/src/index.css",
+        "AGENTS.md"
+      ],
+      "axes": [
+        "necessity",
+        "validity",
+        "convenience",
+        "extensibility"
+      ],
+      "rationale": "necessity/validity/convenience: navItemsが20項目フラットで唯一の見出し『ワークスペース』が全項目を覆う=セクション分けの体を成さず、ミラーズ7±2の約3倍で毎回線形スキャン。優先度づけ皆無で初回1回の『初回セットアップ』が最上段を恒久占有。NavGroup={label,items}配列に再設計し既存.sidebar-section-labelで5グループ(はじめに/要対応/組織と提案/収益化/システム)を出力、グループ内は頻度・ワークフロー順。折りたたみ時はラベル代替にグループ区切り線を出す。",
+      "test_impact": "ナビ描画テストがあれば構造変更で要更新。グループ見出し出力のテストを追加。",
+      "wave": "W2",
+      "status": "done"
+    },
+    {
+      "id": "C005",
+      "title": "折りたたみ時の全ナビ判別不能を是正(title/Tooltip付与)",
+      "priority": "P1",
+      "type": "fix",
+      "risk": "low",
+      "scope": "AppShell",
+      "targets": [
+        "web/frontend/src/App.tsx"
+      ],
+      "axes": [
+        "convenience",
+        "validity"
+      ],
+      "rationale": "convenience/validity: 折りたたみ時に全NavLinkのラベルをnullで消すのにtitle属性もツールチップも一切無く、20アイコンだけでは判別不能=折りたたみが実質使用不能(P0級の利便性破壊)。各NavLinkにtitle={item.label}またはRadix Tooltipを付与。トグルのラベル『ナビゲーション』も動作を表さず改名。",
+      "test_impact": "軽微。折りたたみ時のtitle/aria存在テストを追加可。",
+      "wave": "W2",
+      "status": "done"
+    },
+    {
+      "id": "C006",
+      "title": "承認系3画面(/inbox・/proposals・/human-tasks)を/inbox承認ハブに統合",
+      "priority": "P1",
+      "type": "merge",
+      "risk": "high",
+      "scope": "InboxPage / ProposalsPage / HumanTasksPage / nav",
+      "targets": [
+        "web/frontend/src/pages/InboxPage.tsx",
+        "web/frontend/src/pages/ProposalsPage.tsx",
+        "web/frontend/src/pages/HumanTasksPage.tsx",
+        "web/frontend/src/App.tsx",
+        "/api/inbox",
+        "/api/proposals",
+        "/api/human-tasks"
+      ],
+      "axes": [
+        "necessity",
+        "maintainability",
+        "convenience"
+      ],
+      "rationale": "necessity/maintainability: 3導線が『溜まった承認を捌く』単一ジョブを分割し、どこを見れば全部終わるか判別不能。Inboxは既にproposal承認で同一API(approve/reject)を呼びProposalsはサブセット。/api/inboxにhuman_task kindを足して集約、proposalの詳細(diff/approval_notes/一括)はInbox行展開へ取り込み、/proposalsと/human-tasksをナビから外す。承認分岐ロジックが1箇所に集約され重複解消。",
+      "test_impact": "大。3ページのテストを統合構成へ再編。/api/inboxにhuman_task追加のバックエンド/契約テストが必要。",
+      "wave": "W2",
+      "status": "done"
+    },
+    {
+      "id": "C007",
+      "title": "通知をライブ(トースト)と永続(/notifications)に役割分離しBellを一本化",
+      "priority": "P1",
+      "type": "merge",
+      "risk": "medium",
+      "scope": "AppShell / NotificationsPage",
+      "targets": [
+        "web/frontend/src/App.tsx",
+        "web/frontend/src/pages/NotificationsPage.tsx",
+        "/api/notifications",
+        "web/frontend/src/hooks/usePlatformUpdates.ts"
+      ],
+      "axes": [
+        "necessity",
+        "validity",
+        "maintainability"
+      ],
+      "rationale": "necessity/validity/maintainability: 同一WSイベントがトースト+Bellポップオーバー+通知ページ+通知センターナビの最大4面で多重露出し語彙(success/info/error vs done/live/error)も不一致。Bellは未読概念が無く件数バッジが『未読』を詐称・pendingを『live』と誤表示。Bellを/api/notifications未読プレビューに置換しWS直結を廃止、WSはトースト専用、通知センターナビは削除(20→19)。statusラベルは保留/処理中/完了等に統一。",
+      "test_impact": "App.tsxのBell/トーストテストとNotificationsのバッジテストを更新。pending表示の文言テストを追加。",
+      "wave": "W2",
+      "status": "done"
+    },
+    {
+      "id": "C009",
+      "title": "usePlatformUpdatesを単一WS Providerに集約(多重接続/重複配信を解消)",
+      "priority": "P1",
+      "type": "refactor",
+      "risk": "medium",
+      "scope": "global / hooks",
+      "targets": [
+        "web/frontend/src/hooks/usePlatformUpdates.ts",
+        "web/frontend/src/App.tsx",
+        "web/frontend/src/components/OrchestraView.tsx",
+        "web/frontend/src/pages/InboxPage.tsx",
+        "web/frontend/src/pages/ContentSchedulePage.tsx",
+        "web/frontend/src/pages/SessionsPage.tsx",
+        "web/frontend/src/test/setup.ts"
+      ],
+      "axes": [
+        "validity",
+        "maintainability"
+      ],
+      "rationale": "validity/maintainability: hookが呼び出し毎にnew WebSocketを張り、App+OrchestraView+Inbox+ContentSchedule+Sessionsの5箇所で画面ごとに複数接続が発生。各インスタンスが別events stateと別3s再接続を持ち、同一イベントがN重処理→再取得多重発火。Context Providerで1本のWSを共有し各ページは購読のみ。WSスタブを配信可能に拡張して接続数/重複のテストを追加。",
+      "test_impact": "WS no-opスタブを配信可能スタブへ拡張。購読系ページの再取得トリガテストを更新・追加。",
+      "wave": "W3",
+      "status": "done"
+    },
+    {
+      "id": "C010",
+      "title": "401集中ハンドリングとSettingsのAPIトークン入力UIを追加",
+      "priority": "P1",
+      "type": "add",
+      "risk": "low",
+      "scope": "global / SettingsPage",
+      "targets": [
+        "web/frontend/src/lib/token.ts",
+        "web/frontend/src/lib/api.ts",
+        "web/frontend/src/pages/SettingsPage.tsx",
+        "web/frontend/src/App.tsx"
+      ],
+      "axes": [
+        "necessity",
+        "functionality"
+      ],
+      "rationale": "necessity/functionality: PANTHEON_API_TOKEN運用時、token.tsはURLクエリ取り込みのみでアプリ内の入力/更新/クリアUIが無く(setApiTokenは未呼び出しの死蔵)、api.tsは401でErrorを投げるだけ。未認証/期限切れユーザーは各ページが赤エラーを出すだけで復帰手段が分からず詰む。api.tsに401集中ハンドリング(未認証→トークン入力誘導)を入れ、SettingsにAPIトークンフィールド(setApiToken連携・マスク・クリア)を追加。",
+      "test_impact": "401応答時の誘導テストとトークン設定/クリアのSettingsテストを追加。",
+      "wave": "W3",
+      "status": "done"
+    },
+    {
+      "id": "C011",
+      "title": "ContentSchedule等のエラー/空状態欠落を是正し非同期状態を統一",
+      "priority": "P1",
+      "type": "fix",
+      "risk": "low",
+      "scope": "ContentSchedulePage / HumanTasksPage / NotificationsPage",
+      "targets": [
+        "web/frontend/src/pages/ContentSchedulePage.tsx",
+        "web/frontend/src/pages/HumanTasksPage.tsx",
+        "web/frontend/src/pages/NotificationsPage.tsx",
+        "web/frontend/src/components/AsyncBoundary.tsx"
+      ],
+      "axes": [
+        "validity",
+        "convenience",
+        "maintainability"
+      ],
+      "rationale": "validity/convenience: ContentScheduleはPromise.allSettledで失敗を握りつぶしerror/再試行UIが皆無→API失敗時に空カードで無言。他は三項チェーンとloading/error独立判定で分岐形式も分裂。全ページにAlertTriangle空状態+再試行を必須化し、共通AsyncBoundary(loading/error/empty)へ寄せる。",
+      "test_impact": "ContentScheduleにエラー状態テストを新規追加。共通AsyncBoundaryの単体テスト。",
+      "wave": "W3",
+      "status": "done"
+    },
+    {
+      "id": "C027",
+      "title": "再取得時の全画面spinner置換によるチラつきを解消(quiet再取得)",
+      "priority": "P2",
+      "type": "improve",
+      "risk": "low",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/pages/InboxPage.tsx",
+        "web/frontend/src/pages/HumanTasksPage.tsx",
+        "web/frontend/src/pages/NotificationsPage.tsx",
+        "web/frontend/src/pages/OrgsPage.tsx",
+        "web/frontend/src/pages/MarketplacePage.tsx",
+        "web/frontend/src/pages/AtlasPage.tsx",
+        "web/frontend/src/pages/SessionsPage.tsx",
+        "web/frontend/src/pages/BoardPage.tsx",
+        "web/frontend/src/pages/HandoffsPage.tsx"
+      ],
+      "axes": [
+        "convenience",
+        "validity"
+      ],
+      "rationale": "convenience: 多くのページで更新/操作後の非quiet load()がリスト全体をspinnerへ置換し既存表示が消えてチラつく(Inbox/HumanTasks/Notifications/Orgs/Marketplace/Atlas/Sessions/Board/Handoffs)。初回マウントのみフルローディング、再取得はquiet=trueで既存保持+控えめインジケータ/skeletonへ統一。",
+      "test_impact": "軽微。quiet再取得で既存リストが保持されるテストを追加可。",
+      "wave": "W3",
+      "status": "done"
+    },
+    {
+      "id": "C035",
+      "title": "ライブ更新切断バナーとオフライン昇格表示の追加",
+      "priority": "P2",
+      "type": "add",
+      "risk": "low",
+      "scope": "global / live pages",
+      "targets": [
+        "web/frontend/src/App.tsx",
+        "web/frontend/src/hooks/usePlatformUpdates.ts",
+        "web/frontend/src/pages/InboxPage.tsx",
+        "web/frontend/src/pages/SessionsPage.tsx",
+        "web/frontend/src/components/OrchestraView.tsx"
+      ],
+      "axes": [
+        "validity",
+        "convenience"
+      ],
+      "rationale": "validity/convenience: WS依存ページ(Inbox/Sessions/Orchestra)はポーリング廃止でWS断時にデータが静かに陳腐化するが警告無し。ヘッダは3s再接続ループで永遠に『再接続中』のまま恒久断にエスカレーションせず誤認を招く。共有Provider(C009)上で切断バナー『表示が古い可能性』を出し、一定回数失敗で『オフライン』へ昇格。",
+      "test_impact": "切断状態のバナー表示/オフライン昇格テストを追加。",
+      "wave": "W3",
+      "status": "done"
+    },
+    {
+      "id": "C012",
+      "title": "Dashboardの重複カードを統合(約11枚→7枚)",
+      "priority": "P1",
+      "type": "merge",
+      "risk": "medium",
+      "scope": "DashboardPage",
+      "targets": [
+        "web/frontend/src/pages/DashboardPage.tsx"
+      ],
+      "axes": [
+        "necessity",
+        "maintainability",
+        "convenience"
+      ],
+      "rationale": "necessity/maintainability: ヘルス×3・組織数×3・LLM状態×3・更新ボタン×3・/api/tasksカード×2の重複。platform-status+health-scoreを1カードに統合、metric-platform-health/health-score-monitor-text/system-info-kv-llm/platform-llm-badgeを削除、execution-monitor+task-queueをタスク1カードに統合し更新ボタンを1つへ。組織数の真実をorganizations.lengthに一本化。",
+      "test_impact": "Dashboard要素テストを統合後構成へ更新。削除カードのテストを除去。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C013",
+      "title": "Dashboard累計メトリクスのlimit=40依存を是正(サーバ集計化orラベル正直化)",
+      "priority": "P1",
+      "type": "fix",
+      "risk": "medium",
+      "scope": "DashboardPage / metrics",
+      "targets": [
+        "web/frontend/src/pages/DashboardPage.tsx",
+        "/api/execution-history",
+        "web/server.py"
+      ],
+      "axes": [
+        "validity",
+        "functionality"
+      ],
+      "rationale": "validity: 総提案数/承認率/改善速度/velocityがexecution-history limit=40窓に依存し『累計』を僭称。承認率は分母0で0%表示が実績ゼロと却下多数を区別不能。サーバ集計エンドポイントへ切替えるか、無理なら『直近40件の…』へ正直化し分母0は『データなし/—』に。velocityは手書きSVGをやめrecharts/共通チャートへ。",
+      "test_impact": "集計表示テストを更新。サーバ集計を足す場合はバックエンドテストを追加。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C017",
+      "title": "ナビ依存の死んだリストにアクション/遷移を付与(承認・詳細導線)",
+      "priority": "P1",
+      "type": "fix",
+      "risk": "low",
+      "scope": "MarketplacePage / RevenuePage / OrgsPage(detail) / HandoffsPage",
+      "targets": [
+        "web/frontend/src/pages/MarketplacePage.tsx",
+        "web/frontend/src/pages/RevenuePage.tsx",
+        "web/frontend/src/pages/OrgsPage.tsx",
+        "web/frontend/src/pages/HandoffsPage.tsx",
+        "web/frontend/src/pages/DashboardPage.tsx"
+      ],
+      "axes": [
+        "functionality",
+        "necessity",
+        "convenience"
+      ],
+      "rationale": "functionality/necessity: Marketplaceの新規会社候補・Revenueのportfolio提案・Orgs詳細の未対応提案リストが読み取り専用で承認/会社化/詳細へ進めず(routeフィールド未使用)。Dashboard handoff一覧も承認へ飛べない。各行に『承認インボックスで開く』/該当画面リンクを付与しpriority降順ソートも実装、死んだ示唆を行動の起点にする。",
+      "test_impact": "各行の遷移/起票テストを追加。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C018",
+      "title": "install-division-button等の『成功が反映されない』非一貫挙動を修正",
+      "priority": "P1",
+      "type": "fix",
+      "risk": "low",
+      "scope": "MarketplacePage",
+      "targets": [
+        "web/frontend/src/pages/MarketplacePage.tsx"
+      ],
+      "axes": [
+        "functionality",
+        "validity"
+      ],
+      "rationale": "functionality/validity: install-divisionが成功後にload()を呼ばず画面が更新されない(installCompany/scanは更新する)ため、成功トーストを見ても結果が反映されず再押下で二重追加を誘発=『壊れて見える』(P0級)。成功後にload()または局所更新を必ず行い、対象org取り違え防止に確認も挟む。",
+      "test_impact": "追加成功後の再取得/反映テストを追加。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C019",
+      "title": "ContentScheduleループ間隔のハードコード(interval:600)を可変化+可視化",
+      "priority": "P2",
+      "type": "improve",
+      "risk": "low",
+      "scope": "ContentSchedulePage",
+      "targets": [
+        "web/frontend/src/pages/ContentSchedulePage.tsx"
+      ],
+      "axes": [
+        "validity",
+        "functionality",
+        "convenience"
+      ],
+      "rationale": "validity/functionality: ジョブ側は1時間〜1週間選べるのにループ巡回間隔だけinterval:600固定・非表示でブラックボックス。実行間隔セレクトを開始ボタン近くに用意し送信値を可変化、最低でも『10分ごとに巡回』をUI明示。job-run-nowの連打防止(行単位disabled+スピナー)も追加。",
+      "test_impact": "間隔送信値とrun連打防止のテストを追加。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C020",
+      "title": "収益化パイプラインのナビ連続配置とStudio/Content接続(または統合)",
+      "priority": "P2",
+      "type": "merge",
+      "risk": "medium",
+      "scope": "StudioPage / ContentSchedulePage / nav / Inbox",
+      "targets": [
+        "web/frontend/src/App.tsx",
+        "web/frontend/src/pages/StudioPage.tsx",
+        "web/frontend/src/pages/ContentSchedulePage.tsx",
+        "web/frontend/src/pages/InboxPage.tsx",
+        "web/frontend/src/lib/contentFormat.ts"
+      ],
+      "axes": [
+        "necessity",
+        "convenience",
+        "extensibility"
+      ],
+      "rationale": "necessity/convenience: スタジオ/コンテンツ予約/引き渡し/収益が分散配置でワークフロー(生成→予約→引き渡し→収益)として連続せず、Studioは保存もAPI呼び出しも無い孤島でContentが生成した下書きと相互に流し込めない。『収益化』グループに連続配置し、Studioを承認待ち下書きを読み込む下書きビューアとして/content・/inboxのpublishから開けるよう接続。接続しないなら単独ナビは廃しContent詳細に内包。",
+      "test_impact": "Studioに下書き読み込みテストを追加。ナビ統合に伴う遷移テスト更新。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C026",
+      "title": "死蔵データの活用と生値露出の是正(last_detail/payload/created_at/ref等)",
+      "priority": "P2",
+      "type": "improve",
+      "risk": "low",
+      "scope": "ContentSchedulePage / HandoffsPage / HumanTasksPage / AtlasPage / SessionsPage / Agents",
+      "targets": [
+        "web/frontend/src/pages/ContentSchedulePage.tsx",
+        "web/frontend/src/pages/HandoffsPage.tsx",
+        "web/frontend/src/pages/HumanTasksPage.tsx",
+        "web/frontend/src/pages/AtlasPage.tsx",
+        "web/frontend/src/pages/SessionsPage.tsx",
+        "web/frontend/src/pages/AgentsPage.tsx"
+      ],
+      "axes": [
+        "functionality",
+        "necessity"
+      ],
+      "rationale": "functionality/necessity: last_detail(失敗原因)・handoff payload整形/policy_reason/materialized_ref・HumanTask.ref/作成日時・KnownIssue.detail・subsystem.paths・exit_code異常強調・open/totalカウントが取得済みなのに未表示で診断/判断が不能。失敗時detail表示・主要キーの定義リスト化・ref/作成日時表示・件数バッジ活用を行い、生JSONはRAW折りたたみへ降格。",
+      "test_impact": "失敗detail表示・件数バッジ等の表示テストを追加。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C029",
+      "title": "Studio Xスレッド閾値バグ修正と出口(コピー/エクスポート)・永続化",
+      "priority": "P2",
+      "type": "fix",
+      "risk": "low",
+      "scope": "StudioPage",
+      "targets": [
+        "web/frontend/src/pages/StudioPage.tsx",
+        "web/frontend/src/lib/contentFormat.ts"
+      ],
+      "axes": [
+        "functionality",
+        "validity",
+        "convenience"
+      ],
+      "rationale": "functionality/validity: 文字数バッジ/状態がcount>280基準なのに実分割は接尾辞ぶん上限を縮め275〜280字で『緑・1ツイート』と実2分割が矛盾。判定をthread.length基準に統一。読み取り専用で各ツイート/全件/記事のコピー導線が無く目的未達→コピー/エクスポートを追加。title/bodyがuseStateのみでリロード消失→localStorage自動保存・復元。",
+      "test_impact": "閾値境界(275-280字)の分割一致テスト・コピー/永続化テストを追加。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C030",
+      "title": "Onboardingのエラー/空状態追加・MarketplaceとのテーブルDRY化・初回出し分け",
+      "priority": "P2",
+      "type": "improve",
+      "risk": "medium",
+      "scope": "OnboardingPage / MarketplacePage",
+      "targets": [
+        "web/frontend/src/pages/OnboardingPage.tsx",
+        "web/frontend/src/pages/MarketplacePage.tsx",
+        "web/frontend/src/components/CompanyManifestTable.tsx",
+        "web/frontend/src/pages/__tests__/OnboardingPage.test.tsx",
+        "web/frontend/src/App.tsx"
+      ],
+      "axes": [
+        "necessity",
+        "maintainability",
+        "convenience"
+      ],
+      "rationale": "necessity/maintainability: OnboardingとMarketplaceが同一API/型/installフローでerror/再試行/KPI列まで重複しOnboardingは劣化版。step2失敗で空テーブルのまま行き止まり(完了disabled)。共通CompanyManifestTableへ抽出、error/empty/KPI列を追加し、組織0件等で『初回のみ』ナビ出し分け/自動リダイレクトを検討。",
+      "test_impact": "Onboardingの失敗/空/step3/disabledゲートテストを追加。共有テーブルのテスト。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C031",
+      "title": "Dashboard組織一覧をサマリ縮小し正は/orgsに一本化",
+      "priority": "P2",
+      "type": "merge",
+      "risk": "low",
+      "scope": "DashboardPage / OrgsPage",
+      "targets": [
+        "web/frontend/src/pages/DashboardPage.tsx",
+        "web/frontend/src/pages/OrgsPage.tsx"
+      ],
+      "axes": [
+        "maintainability",
+        "necessity"
+      ],
+      "rationale": "maintainability/necessity: Dashboardの組織一覧テーブルが/orgsの読み取り専用サブセットで同一概念(健康/提案数)を二重メンテ。Dashboardは『弱い/強い組織トップN+全件は/orgsへ』のサマリに縮小、フル一覧の正は/orgsに統一。ナビは役割が違うため両方残す。",
+      "test_impact": "Dashboard組織テーブルのテストをサマリ前提へ更新。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C032",
+      "title": "OrgsPage行カードのボタン入れ子アンチパターンと詳細パネルa11y是正",
+      "priority": "P2",
+      "type": "fix",
+      "risk": "medium",
+      "scope": "OrgsPage",
+      "targets": [
+        "web/frontend/src/pages/OrgsPage.tsx"
+      ],
+      "axes": [
+        "validity",
+        "maintainability",
+        "convenience"
+      ],
+      "rationale": "validity/maintainability: 行全体role=button内に編集/削除ボタンを内包する入れ子アンチパターン、詳細スライドパネルがrole=dialog/aria-modal/フォーカストラップ/Esc/初期フォーカス欠如(独自実装)、OrgIconがDate.now()で常時キャッシュ破棄。詳細トリガをChevronボタンに限定し行のrole=buttonを廃止、パネルをRadix Dialog化、アイコンversionは更新時のみbump。",
+      "test_impact": "詳細パネルのEsc/フォーカス、行操作の分離テストを追加・更新。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C034",
+      "title": "入力検証・冪等性の強化(ナレッジ名/組織repoパス/会社重複/収益org)",
+      "priority": "P2",
+      "type": "fix",
+      "risk": "low",
+      "scope": "DataPage / OrgsPage / MarketplacePage / RevenuePage / BoardPage",
+      "targets": [
+        "web/frontend/src/pages/DataPage.tsx",
+        "web/frontend/src/pages/OrgsPage.tsx",
+        "web/frontend/src/pages/MarketplacePage.tsx",
+        "web/frontend/src/pages/RevenuePage.tsx",
+        "web/frontend/src/pages/BoardPage.tsx"
+      ],
+      "axes": [
+        "validity",
+        "functionality"
+      ],
+      "rationale": "validity/functionality: ナレッジ作成が空チェックのみで拡張子/パストラバーサル/重複未検証、organization repoパスが無検証自由入力で孤児/誤ルーティング誘発、同一テンプレ重複作成の警告無し、Revenue組織名がdatalist自由入力でtypoで別組織記録、Board組織名/種別も無検証自由入力。クライアント前検証+確認+選択式化(存在しないorgは警告)で防ぐ。",
+      "test_impact": "不正名/重複/未知org送信時の検証テストを追加。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C036",
+      "title": "config/分析の生JSONダンプを構造化表示+Raw折りたたみ+コピー化",
+      "priority": "P2",
+      "type": "improve",
+      "risk": "low",
+      "scope": "AgentsPage",
+      "targets": [
+        "web/frontend/src/pages/AgentsPage.tsx"
+      ],
+      "axes": [
+        "convenience",
+        "maintainability"
+      ],
+      "rationale": "convenience/maintainability: 設定ビューア/分析結果が生JSONダンプでエンドユーザー向けでなく、しかも結果が画面外の別カードに出て『何も起きない』視線断絶、推奨エージェントもraw ID表示で誰か不明・ジャンプ導線無し。主要フィールドを構造化表示+RawはコピーボタンつきでprogressLogクラス流用をやめ、結果は行内展開/モーダル化し自動スクロール、推奨はname解決+該当行リンク。",
+      "test_impact": "構造化表示/コピー/ジャンプのテストを追加。",
+      "wave": "W4",
+      "status": "done"
+    },
+    {
+      "id": "C014",
+      "title": "ポリシー/モデル構成/プロンプトの生JSON手編集を構造化エディタ化",
+      "priority": "P1",
+      "type": "improve",
+      "risk": "high",
+      "scope": "SettingsPage",
+      "targets": [
+        "web/frontend/src/pages/SettingsPage.tsx",
+        "/api/settings"
+      ],
+      "axes": [
+        "validity",
+        "necessity",
+        "functionality"
+      ],
+      "rationale": "validity/necessity: 安全境界に直結するpolicy_rules(auto_approve/human_required/auto_reject)がスキーマ検証なしの生JSONで、誤記で空条件保存が可能。prompt_templatesはString()で配列/オブジェクトを黙殺破壊、model_configsも型未検証。固定キー前提の構造化フォーム+JSONスキーマ検証へ作り替え、生JSONはRAWトグル裏に退避。空条件警告も出す。",
+      "test_impact": "Settings保存テストを構造化エディタ前提へ再編。スキーマ検証失敗のテストを追加。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C015",
+      "title": "数値設定の相互/範囲検証を追加(soft<=hard・0-23・min/max)",
+      "priority": "P1",
+      "type": "fix",
+      "risk": "low",
+      "scope": "SettingsPage / NotificationsPage",
+      "targets": [
+        "web/frontend/src/pages/SettingsPage.tsx",
+        "web/frontend/src/pages/NotificationsPage.tsx"
+      ],
+      "axes": [
+        "validity",
+        "functionality"
+      ],
+      "rationale": "validity: quota soft>hardでも保存可、quiet_hours/window_hoursがHTML min/maxのみでJS検証なく範囲外値をPUTしデータ破壊。NotificationsのquietHours入力も0-23 clamp/NaNガード無し。保存前にsoft<=hard・0-23・>=1を検証し不正時はインラインエラー+該当フィールドへフォーカス、保存ボタンにdirty追跡。",
+      "test_impact": "範囲外/相互不整合入力で保存ブロックされるテストを追加。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C024",
+      "title": "inline style廃止とボタン変種統一(frontend規約準拠)",
+      "priority": "P2",
+      "type": "fix",
+      "risk": "low",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/pages/ProposalsPage.tsx",
+        "web/frontend/src/pages/AgentsPage.tsx",
+        "web/frontend/src/pages/SessionsPage.tsx",
+        "web/frontend/src/pages/NotificationsPage.tsx",
+        "web/frontend/src/pages/RevenuePage.tsx",
+        "web/frontend/src/pages/BoardPage.tsx",
+        "web/frontend/src/pages/DataPage.tsx",
+        "web/frontend/src/index.css",
+        ".claude/rules/frontend.md"
+      ],
+      "axes": [
+        "validity",
+        "maintainability"
+      ],
+      "rationale": "validity/maintainability: frontend.md禁止のinline styleが多数(Proposals差分のハードコードhex #7ee787等でテーマ非追従、Agents/Sessions/Notifications/Revenue/Board/Data)。grid/カードもTailwind直書きとindex.cssユーティリティの二重基準。破壊/取消ボタンもbtn-danger↔btn-ghost↔btn-secondaryで危険シグナル不一致。差分色を.diff-add/.diff-del等クラス化、width等をユーティリティ化、ボタン変種(破壊=danger/主=primary/副=secondary/補助=ghost)を規定しfrontend.mdに明記。",
+      "test_impact": "視覚回帰中心。クラス指定テストを一部追加可。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C025",
+      "title": "検索/通知ポップオーバー/モーダルのa11y契約整備",
+      "priority": "P2",
+      "type": "fix",
+      "risk": "medium",
+      "scope": "AppShell / OrgsPage / DataPage",
+      "targets": [
+        "web/frontend/src/App.tsx",
+        "web/frontend/src/pages/OrgsPage.tsx",
+        "web/frontend/src/pages/DataPage.tsx",
+        "web/frontend/src/components/ConfirmDialog.tsx"
+      ],
+      "axes": [
+        "validity",
+        "convenience"
+      ],
+      "rationale": "validity/convenience: 全体検索がrole=listbox宣言なのに子にrole=option/矢印キー/Enter/Escape/aria-activedescendant無し(ARIA契約違反)、通知ポップオーバーにdialog属性・フォーカストラップ無し、Orgs/DataのモーダルもEscape/フォーカストラップ/初期フォーカス欠如(DataはRadix未使用の素div)。Radix Combobox/Popover/Dialogへ置換しキーボード/aria/Escを一括担保。Ctrl/Cmd+K検索フォーカスも追加。",
+      "test_impact": "検索キーボード操作・モーダルEsc/フォーカストラップのa11yテストを追加。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C028",
+      "title": "Atlas依存グラフSVGのアクセシビリティ/スケール改善",
+      "priority": "P2",
+      "type": "improve",
+      "risk": "medium",
+      "scope": "AtlasPage",
+      "targets": [
+        "web/frontend/src/pages/AtlasPage.tsx"
+      ],
+      "axes": [
+        "validity",
+        "functionality",
+        "convenience"
+      ],
+      "rationale": "validity/functionality: 円環固定レイアウト+ホバー専用ハイライトでノード増に破綻、ズーム/パン無し、role=imgで子のtext/円がスクリーンリーダ不可視、固定760x520でレスポンシブ非対応、キーボード/タッチ非対応。ノードを<button>/tabindex化しフォーカスハイライト・viewBox維持でwidth100%可変・テキスト代替(隣接リスト)を併設、規模超過時はフォースレイアウトへ。",
+      "test_impact": "グラフのキーボード操作/aria代替テストを追加。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C037",
+      "title": "デッドコード削除(streamSSE/setApiToken)とドキュメントdrift修正",
+      "priority": "P3",
+      "type": "delete",
+      "risk": "low",
+      "scope": "lib / docs",
+      "targets": [
+        "web/frontend/src/lib/api.ts",
+        "web/frontend/src/test/mocks.ts",
+        "web/frontend/src/lib/token.ts",
+        ".claude/rules/frontend.md"
+      ],
+      "axes": [
+        "maintainability"
+      ],
+      "rationale": "maintainability: streamSSEはapi.tsからexportされるが本番呼び出し皆無(テストmockのみ)で対応する/api/goals/stream・/api/analyze/streamもフロント未配線の両側デッドウェイト。setApiTokenも未呼び出し(C010で配線するなら例外)。frontend.mdが存在しないuseWebSocketを参照するdriftもある。SSE機能を使わないなら削除、使うなら配線。",
+      "test_impact": "mocks.tsのstreamSSEモック行削除。SSE関連テストがあれば除去。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C039",
+      "title": "日本語UIへの英語ラベル混入を是正(Select All/tools/dry-run等)",
+      "priority": "P3",
+      "type": "fix",
+      "risk": "low",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/pages/ProposalsPage.tsx",
+        "web/frontend/src/pages/AgentsPage.tsx",
+        "web/frontend/src/pages/SessionsPage.tsx",
+        "web/frontend/src/pages/SettingsPage.tsx",
+        "web/frontend/src/pages/InboxPage.tsx",
+        "web/frontend/src/lib/labels.ts"
+      ],
+      "axes": [
+        "validity",
+        "convenience"
+      ],
+      "rationale": "validity/convenience: 日本語UIにSelect All/{n} tools/schema/legacy/driver/dry-runや列挙生値(running/pending/revenue/sales)が残り言語が不統一。ユーザー可視ラベルは日本語化(『すべて選択』『ツール』)、列挙値はlib/labels(C021)経由で和訳、driver/schema等の内部識別子を英語のまま残すなら方針をルール化し一貫適用。",
+      "test_impact": "ラベル文字列でのテスト取得箇所を和訳後文言へ更新。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C040",
+      "title": "Help網羅性のナビ1:1化・収益セクション追加・事実誤り修正・コピー/リンク化",
+      "priority": "P3",
+      "type": "fix",
+      "risk": "low",
+      "scope": "HelpPage",
+      "targets": [
+        "web/frontend/src/pages/HelpPage.tsx",
+        "web/frontend/src/App.tsx"
+      ],
+      "axes": [
+        "validity",
+        "necessity"
+      ],
+      "rationale": "validity/necessity: acc-pages-helpが『APIキー取得先』と記載しAPIキー不使用という製品事実と自己矛盾(P1事実誤り)。/revenue『収益』のヘルプ欠落・wmux/board混載で目次がナビと非対応、ドリフト検出テストも無し。CodeBlockのコマンド/URLがコピー不可・非リンク。事実誤り削除、収益セクション追加、pageSectionsとNAVの差分検出vitest追加、CodeBlockにコピー/anchorを付与。",
+      "test_impact": "NAVとpageSectionsのドリフト検出テストを新規追加。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C041",
+      "title": "prefers-reduced-motion対応とルート遷移時フォーカス/スクロール",
+      "priority": "P3",
+      "type": "improve",
+      "risk": "low",
+      "scope": "global",
+      "targets": [
+        "web/frontend/src/index.css",
+        "web/frontend/src/App.tsx"
+      ],
+      "axes": [
+        "validity",
+        "convenience"
+      ],
+      "rationale": "validity/convenience: アニメーション/トランジション27箇所にprefers-reduced-motionガードが皆無で動き酔い配慮欠落。ルート遷移時のmainフォーカス移動・スクロール先頭リセットも無い。index.css末尾にreduced-motionメディアクエリを追加、Outlet遷移時にフォーカス/スクロールをリセット。",
+      "test_impact": "軽微。reduced-motion適用の視覚確認中心。",
+      "wave": "W5",
+      "status": "done"
+    },
+    {
+      "id": "C042",
+      "title": "フロント/バック契約テストとWS実挙動スモークを追加(見せかけUI検出)",
+      "priority": "P3",
+      "type": "add",
+      "risk": "low",
+      "scope": "test",
+      "targets": [
+        "web/frontend/src/test/mocks.ts",
+        "web/frontend/src/test/setup.ts",
+        "web/frontend/src/lib/api.ts",
+        "web/server.py"
+      ],
+      "axes": [
+        "maintainability",
+        "validity"
+      ],
+      "rationale": "maintainability/validity: 全ページがapiを全モックし理想形のみ返すため、ボタンが意味ある副作用を起こすか・叩く{method,path}がweb/server.py実ルートと一致するか・WS多重接続/重複が検出できない。主要破壊/外部送信フロー(publish run・handoff approve・org delete)の{method,path}を実ルートallowlistと突合する軽量契約テスト、最低1ページMSWで401/500/形違いを通すスモークを追加。",
+      "test_impact": "契約テスト/MSWスモークを新規追加。既存テストへの影響は限定的。",
+      "wave": "W5",
+      "status": "done"
+    }
+  ],
+  "deletions": [
+    {
+      "text": "ナビ項目 nav-notifications(通知センター): ツールバーBell+ポップオーバーと完全重複。削除しBellに一本化(C007)",
+      "status": "pending"
+    },
+    {
+      "text": "ナビ項目 nav-proposals(改善提案): /inbox承認ハブへ統合しトップレベルから削除、詳細は/inbox?kind=proposal(C006)",
+      "status": "pending"
+    },
+    {
+      "text": "ナビ項目 nav-human-tasks(あなたのタスク): /api/inbox の human_task kindへ集約しナビから削除(C006)",
+      "status": "pending"
+    },
+    {
+      "text": "Dashboard metric-platform-health: group_health_scoreの三重表示。削除しゲージ1箇所へ(C012)",
+      "status": "pending"
+    },
+    {
+      "text": "Dashboard platform-llm-badge: LLM状態の三重掲示。削除しsystem-info-cardへ集約(C012)",
+      "status": "pending"
+    },
+    {
+      "text": "Dashboard health-score-monitor-text(N件の組織を監視中): total_organizations三重目の飾り。削除(C012)",
+      "status": "pending"
+    },
+    {
+      "text": "Dashboard system-info-kv-llm: ヘッダsystem-info-badgeとllmReady二重表示。削除(C012)",
+      "status": "pending"
+    },
+    {
+      "text": "Dashboard execution-monitor-refresh / task-queue-refresh: 同一refreshTasksの重複ボタン。統合し片方削除(C012)",
+      "status": "pending"
+    },
+    {
+      "text": "Dashboard health-score-card: 単一フィールド表示のためだけのカード。platform-status-cardへ移設し削除(C012)",
+      "status": "pending"
+    },
+    {
+      "text": "ContentSchedule daemon-pid-text: エンドユーザーに無価値なPID常時表示。削除/詳細退避(C026)",
+      "status": "pending"
+    },
+    {
+      "text": "AgentsPage agent-card-schema-badge: 内部メタschema_versionの表面常時表示。表面から削除しビューア詳細へ(C036)",
+      "status": "pending"
+    },
+    {
+      "text": "lib/api.ts streamSSE と test/mocks.ts の streamSSE モック行: 本番呼び出し皆無のデッドコード(C037)",
+      "status": "pending"
+    },
+    {
+      "text": "lib/token.ts setApiToken: 未呼び出しの死蔵(C010でトークン入力UIに配線しない場合は削除)(C037)",
+      "status": "pending"
+    },
+    {
+      "text": "HelpPage acc-pages-help内の『APIキー取得先』記述: API不使用と矛盾する事実誤り。削除(C040)",
+      "status": "pending"
+    },
+    {
+      "text": "Studio/Content の重複『下書き工場・外部公開しない』境界説明とStudio単独ナビ(接続しない場合): Content詳細へ内包しナビから削除(C020)",
+      "status": "pending"
+    },
+    {
+      "text": "SettingsPage driver-badge の表面常時表示: 診断専用。詳細折りたたみへ退避(表面から削除)",
+      "status": "pending"
+    },
+    {
+      "text": "AppShell live-status-indicator の常時『リアルタイム接続中』文言: 正常時ノイズ。ドットのみ/非表示に降格(切断時のみ文言)",
+      "status": "pending"
+    }
+  ],
+  "page_verdicts": [
+    {
+      "page": "AppShell",
+      "route": "(global shell)",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "P0: 折りたたみ時に全ナビラベルを消すのに title/ツールチップが無く20アイコンの判別不能=折りたたみが実質使用不能（sidebar-collapse-toggle / 全 nav-*）",
+        "P1: 通知件数バッジが『未読』を詐称（既読化されず減らない＋WSのみでリロード消失）し利用者を誤誘導、pending を『live』と誤表示",
+        "P1: 情報設計崩壊 — 20項目フラット＋単一見出し、承認/タスク/提案/通知センターの役割重複、通知センターナビはベルと完全重複で削除対象",
+        "P1: 同一WSイベントがトースト＋ベル＋通知ページ＋通知センターナビの最大4面で語彙不一致のまま多重露出",
+        "P1: アクセシビリティ欠陥 — 検索 listbox に option/矢印キー/Escape 無し(ARIA契約違反)、通知ポップオーバーに dialog 属性・フォーカストラップ無し",
+        "P2: インベントリ欠落 — 実在の env-badge(GET /api/platform/status) が未掲載でAPIは2本でなく3本、ロゴ/ブランドは /dashboard へのホーム導線が無い死んだ要素"
+      ]
+    },
+    {
+      "page": "OnboardingPage",
+      "route": "/onboarding",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "MarketplacePage と中核機能が重複（同一API・同一型・同一installフロー・エラー文言までリテラル重複）。共通コンポーネント化されておらず保守が二重化し、Onboarding 側は KPI 列と error/再試行 state を欠く劣化版になっている",
+        "『作成』が確認なしで実 Organization を生成する破壊的（状態生成）操作。確認ダイアログも実行中スピナーも無く誤クリックで実会社が即起動する",
+        "Step1 が『事業部・エージェント・初期KPI・人間タスクまで揃う』と約束しているのに Step2 は label と divisions しか表示せず（initial_kpis/description は型にあるが未使用）、Step3 は『収益ページで記録』と案内するのに該当リンクが無い、と表示と導線が約束を裏切っている"
+      ]
+    },
+    {
+      "page": "DashboardPage",
+      "route": "/dashboard",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "重複の山: ヘルス×3・組織数×3・LLM状態×3・更新ボタン×3・/api/tasksカード×2。merge/delete で約11枚→7枚に圧縮すべき",
+        "破壊操作に確認が無い: header-init-button(POST /api/init) と daemon-stop-button(稼働停止) は規約違反、AlertDialog 必須",
+        "不正確なメトリクス: 総提案数/承認率/改善速度が limit=40 履歴ウィンドウ依存で累計を僭称→サーバ集計化かラベル正直化",
+        "死んだ/誤誘導の導線: 組織なし空状態に作成リンク無し、ログパス開けない、『APIキーを保存』案内が廃止済み方式、handoff→承認の遷移欠落",
+        "規約違反: 全プログレスバー/ゲージ/SVGチャートが inline style={{}}（frontend.md 禁止）、velocityは recharts を使わず手書きSVGで保守性低"
+      ]
+    },
+    {
+      "page": "InboxPage",
+      "route": "/inbox",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "P0: publish の『投稿』(実外部投稿 POST /run)が確認ダイアログ無しの単一クリックで外部公開される — PUB-AUTO 人手ゲート方針違反",
+        "P0/P1: publish の『取消』(DELETE=復元不可)と『公開を確認』(実公開確定)もノーガードで誤クリックが致命的",
+        "P2: カードに本文要約も dry-run 結果表示も無く、承認判断に必要な情報が画面上に無い(『開く』依存)",
+        "P2: scheduled_at/priority の生値(ISO文字列/英語enum)露出、revenue バッジが閾値だけで情報量不足、非quiet load で一覧が消えるチラつき",
+        "保守性: kind×status のアクション分岐(approveItem/rejectItem/badge/JSX)が3〜5箇所に重複直書き — アクション定義テーブルへ集約すべき"
+      ]
+    },
+    {
+      "page": "NotificationsPage",
+      "route": "/notifications",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "静音時間入力(quiet_hours_start/end)が 0-23 のclamp/NaNガード無しで範囲外値をPUT送信—データ整合性の即時修正対象(P1)",
+        "通知行から組織/提案など発生元への遷移導線が皆無で、通知が行動につながらない死んだ表示になっている",
+        "WebSocket(既存 useWebSocket)未使用で自動更新が無く、新着を手動『更新』しないと気づけない受動的設計",
+        "表示品質と一貫性: created_at の生文字列、level の英語生値、既読の opacity 単独表現、select即時/時間onBlur の保存モデル不統一",
+        "frontend.md 違反(inline style 3箇所)と重複ロジック(時間入力2つ・行レイアウト)の未コンポーネント化による保守性低下"
+      ]
+    },
+    {
+      "page": "HumanTasksPage",
+      "route": "/human-tasks",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "完了ボタンが不可逆操作を確認なしで即実行（P0）— 高リスク承認/実投稿の最終確認という目的と真っ向から矛盾。Radix確認ダイアログ必須。",
+        "判断文脈の欠落 — HumanTask.ref・作成日時・優先度/リスクが未表示で、人間がタイトルだけで承認させられる。安全ゲートが実質無効化。",
+        "API が返す open/total カウントを取得済みなのに UI で完全に未使用 — 未対応件数バッジ等で活用すべき死蔵データ。",
+        "live キューなのに自動更新が無く手動『更新』依存 + 再取得時の全画面spinnerちらつき + error の toast/カード二重表示 + 全行同値の kind バッジ（飾り）。"
+      ]
+    },
+    {
+      "page": "ConnectionsPage",
+      "route": "/connections",
+      "overall": "keep",
+      "biggest_problems": [
+        "切断ボタンが確認ダイアログなしで即 DELETE され、誤クリックで storage_state セッションが消失(再ログイン必須)— Radix AlertDialog 等で確認必須 (P1)",
+        "ログイン待機ポーリングが120秒タイムアウトや失敗時に無通知で消えるため、ユーザーが接続の成否を判断できない — タイムアウト/失敗時に toast 追加 (P2)",
+        "接続フローが別ブラウザを開く外部遷移であることが UI から予告されず、クリック後に何が起きるか不明 — 事前案内文を追加 (P2)",
+        "初回ロード失敗が error カードと toast.error で二重通知され、connect 側は login_started/login_in_progress の重複分岐・冗長な disabled 条件など小さな実装ノイズが散在 (P2)"
+      ]
+    },
+    {
+      "page": "OrgsPage",
+      "route": "/orgs",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "詳細パネルと全モーダルにフォーカストラップ/Esc/初期フォーカス/aria-labelledby が無く、行カードはボタン入れ子のアクセシビリティ・アンチパターン（Radix Dialog 化＋詳細トリガの単一ボタン化で是正）",
+        "workspace移行とアイコンリセットが確認なし単一クリックの破壊操作（片道のworkspace移行に影響説明付き確認ダイアログ、リセットに確認/undoを必須化）",
+        "未対応提案バッジ・提案数メトリクス・提案リスト・CLI scan注記が表示のみの死んだ導線（提案は承認/閲覧へリンク、scanはコピー/実行ボタン化してactionable化）",
+        "スコアバー/しきい値/status色/パス例が一覧と詳細・create/editで二重定義かつ不整合（共通ScoreBar・statusラベル&カラーマップ・パス例の統一）",
+        "フロント規約違反の inline style 多用と OrgIcon の Date.now() 常時キャッシュ破棄（ユーティリティクラス化＋アイコン更新時のみversion bump）"
+      ]
+    },
+    {
+      "page": "MarketplacePage",
+      "route": "/marketplace",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "install-division-button: 成功時にload()を呼ばず画面が更新されない非一貫挙動(P0)。二重追加を誘発し『壊れて見える』。成功後の再取得 or 局所更新が必須。",
+        "会社作成/事業部追加という実体生成・変更操作が確認ダイアログ無しで即実行。install-companyは他行同時押下の余地もあり多重起動のリスク。確認ゲート+押下中の全体ガードが必要。",
+        "新規会社候補テーブルが死んだ導線: 候補を見ても承認/会社化へ進めない(routeフィールド未使用・/inboxリンク無し)。承認インボックスへの導線追加が必要。",
+        "一貫性の欠如: 会社/事業部テーブルに空状態が無い(候補のみ有)、loading再取得が全カードを置換しチラつく、2スキャンの進行表示が片方のみ、priority/categoryバッジが全件同色で装飾だけ。"
+      ]
+    },
+    {
+      "page": "ProposalsPage",
+      "route": "/proposals",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "一括却下・個別却下・一括承認が確認/Undo なしで不可逆実行される（CLAUDE.md の破壊操作禁止方針に違反, P0/P1）",
+        "batch ボタンの disabled が actionId==='approve'/'reject' で相互排他になっておらず、承認進行中に却下が押せる競合操作（P1）",
+        "ステータスフィルタの value=pending ラベル『未対応』が proposed/pending/in_progress を含むアクティブ集合を指し、別オプション『実行中』と意味が衝突するラベル不整合（P1）",
+        "確定済み提案にも常時表示される承認メモ textarea・diff 無し提案の空 details など機能しない死にUI、および組織0件空状態に作成/分析への導線CTAが無い行き止まり（P2）",
+        "3つの素 select(組織/ステータス/カテゴリ)に可視ラベル/aria-label が無くa11y・識別性が低い／diff プレビューがインライン style のハードコード色でテーマ非追従かつ frontend.md 規約違反（P2）"
+      ]
+    },
+    {
+      "page": "HandoffsPage",
+      "route": "/handoffs",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "却下・承認（claude生成を伴う高コスト/不可逆）に確認ダイアログが無く誤操作のガードゼロ（P1）",
+        "『本文のみ生成』が成功後にリスト再取得せず結果が画面に反映されない＝死んだフィードバック導線（P1）",
+        "3アクションが単一actionIdを共有し処理中ラベル(生成中/更新中)が重複、進行中の操作を判別不能（P1）",
+        "手動リフレッシュ手段が無く、payloadの生JSON・policy行の断片IDが運用判断に使えず有用フィールド(reason/file_path)も未活用（P2）"
+      ]
+    },
+    {
+      "page": "StudioPage",
+      "route": "/studio",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "P1 閾値バグ: 文字数バッジ/状態テキストが count>280 基準なのに実分割は接尾辞ぶん上限を縮めるため、275〜280字で『緑・1ツイート』表示と実際の2件分割が矛盾する（判定を thread.length 基準に統一）",
+        "P1 出口導線ゼロ: 分割ツイート・記事プレビューが全て読み取り専用で、コピー/エクスポートが一切無く『投稿前に整える』目的を達成できない（各ツイート/全件/記事のコピー導線を追加）",
+        "P1 永続化ゼロ: title/body が useState のみでリロード・画面遷移により全下書きが消失する（localStorage 自動保存・復元を実装）",
+        "P2 note/WordPress タブの実質重複: 描画差が『WordPress 記事』バッジ1枚のみ・アイコンも両方 FileText で判別不能（差別化 or 統合、最低限アイコン分離）"
+      ]
+    },
+    {
+      "page": "ContentSchedulePage",
+      "route": "/content",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "削除が確認ダイアログなしの即時DELETE(P0): 誤クリックでジョブが無警告消失。Radix AlertDialog かundo付きトーストを必須化",
+        "ループ駆動間隔が interval:600 でハードコード(P1): ジョブ側は1時間〜1週間選べるのにループ全体の巡回間隔だけ固定・非表示でブラックボックス化。可変化+可視化が必要",
+        "『今すぐ生成』に連打防止がなく(P1)重い生成を多重起動しうる: 行単位の処理中フラグ+disabled+スピナーを追加",
+        "repo連携組織0件時の導線欠如(P1): フォームは空セレクトのまま、送信後にトーストで初めて失敗。0件時は無効化+repo連携への誘導を表示",
+        "last_detail(失敗原因)を取得しながら未表示・last_status を英字生値で表示: 失敗診断がUIから不可能。STATUS_LABELS日本語化と失敗時の detail 表示で情報欠落を解消"
+      ]
+    },
+    {
+      "page": "RevenuePage",
+      "route": "/revenue",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "ポートフォリオ提案(portfolio-card/proposal-row)が読み取り専用で行動導線ゼロ・priority未使用。提案→起票/遷移のアクションを必須化し priority 降順ソートを実装(P1)。",
+        "trend-card と monthly-report-card がデータ不足/0件で無音消滅し、機能の存在自体が見えない。insufficient/空時の薄い案内を残し、時系列収益は折れ線グラフで1つに統合して重複解消(P2)。",
+        "日本語UIに英語ラベルが残る: メトリクス選択(revenue/sales/conversions)と kind バッジを和訳+説明付与。投稿KPIのクライアント側集計をサーバ集計へ統一し集計境界を揃える(P2)。",
+        "target-input が inline style={{ width:'12rem' }} で frontend 規約(inline style 禁止・Tailwind)に違反(line 373)→ w-48 等へ。月次/前月比は month キーで明示ソートしAPIキー順依存を除去(P2)。",
+        "空状態がGUI手動記録フォームを無視してCLI(`pantheon hq outcomes`)へ誘導し、alert-handoff-button は全行が無引数で同一 /handoffs へ遷移。GUI完結導線と対象組織の引き継ぎを実装(P2)。"
+      ]
+    },
+    {
+      "page": "AgentsPage",
+      "route": "/agents",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "設定を見る/表示の結果が画面外の別カードに出て『何も起きない』ように見える視線断絶（モーダルor行内展開＋自動スクロールで是正、P2）",
+        "推奨エージェントが raw ID 表示で誰か分からず、分析→実体への導線が死んでいる（name解決＋ジャンプリンク化、P2）",
+        "生JSONダンプ（設定ビューア・分析結果）がエンドユーザー向けでなく可読性が低い（構造化表示＋Raw折りたたみ＋コピー、P2）",
+        "status バッジが running/idle 以外を全て neutral に潰し error 等の異常系を視覚区別できない（status→色/日本語マップ拡張、P2）",
+        "CLAUDE.md フロント規約違反の inline style が5箇所（minWidth/padding/width）残存（クラス化、P2）"
+      ]
+    },
+    {
+      "page": "AtlasPage",
+      "route": "/atlas",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "依存グラフSVGが円環固定レイアウト+ホバー専用ハイライト: ノード増で破綻、ズーム/パン無し、キーボード/タッチ非対応、role=imgで子のラベルがスクリーンリーダ不可視(P1)",
+        "タブが未完成のWAI-ARIA Tabs(tabpanelロール/矢印キー/URL同期なし)で、再読込のたびにatlasごと消える設計により選択タブ・検索フィルタ・スクロール文脈が失われる",
+        "CLI/APIタブの検索+テーブル重複・StatCard8枚と状態バッジ3個のハードコード・5連の三項条件描画による本体肥大で保守性が低い(共通コンポーネント/配列駆動化が必要)",
+        "概要カード・StatCard・状態バッジが全てクリック不可の死んだ表示で俯瞰→詳細の導線が無い。加えてflow.state/known_issue.detail/subsystem.paths/frontend.pagesが未描画でデータ契約が空振り、概要値とタブ表示母数の不一致もある"
+      ]
+    },
+    {
+      "page": "SessionsPage",
+      "route": "/sessions",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "session-stop-button: 確認ダイアログ無しの破壊操作（誤クリックで稼働中エージェントを即停止／二重送信可能）— P0",
+        "agent-log-panel: openLog 時の1回取得スナップショットで自動追従せず『ライブ監視』を満たさない＋停止/削除済みセッション選択時の stale 表示 — P1",
+        "状態表示ロジックの重複: statusBadge と wmuxLabel・各 status 生英字表示が別管理で日本語化も不統一（ラベル/バッジを単一マップに集約すべき）",
+        "死んだ警告バッジ: claude CLI 未検出 / wmux 承認待ち・エラー が復旧導線を持たず表示のみ／runtime=null とerror が quiet 再取得で無言で握り潰される",
+        "レイアウト/データ未活用: grid-2 固定で狭幅破綻、created_at・role・log_path・exit_code異常強調が未活用、インライン style 規約違反(agent-log-empty-state)"
+      ]
+    },
+    {
+      "page": "BoardPage",
+      "route": "/board",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "running タスクのキャンセルXが backend と矛盾し必ず失敗する死んだ破壊操作（確認ダイアログも無し）— P0",
+        "『レビュー』カラムが実体 failed の誤ラベルでレビュー操作も無い／done と cancelled を同列同色で混在 — P0/P2",
+        "組織名・種別が無検証の自由入力で孤児/誤ルーティングを誘発、かつ inline style がフロント規約違反 — P0",
+        "『かんばん』を名乗るがステータス遷移/D&D/詳細表示が無く、詳細APIも未使用の死に導線で機能が看板に伴わない — P1"
+      ]
+    },
+    {
+      "page": "DataPage",
+      "route": "/data",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "新規作成ダイアログが自前実装でアクセシビリティ不備（Radix Dialog 未使用＝規約違反、フォーカストラップ/Escape/role 欠如）",
+        "破壊操作（履歴全削除・ファイル削除）が window.confirm 依存でアプリのトースト/ダイアログUIと不整合、確認UIが混在",
+        "フロント規約違反：履歴クリアボタンのインラインスタイル、page-title が div で見出しセマンティクス欠如",
+        "ヘッダー『再読み込み』とナレッジ『更新』の導線重複、保存ボタンの未変更/未保存破棄ガード欠如、Markdown プレビューが生テキスト pre 表示"
+      ]
+    },
+    {
+      "page": "SettingsPage",
+      "route": "/settings",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "モデル構成/プロンプト/ポリシールールが生JSON手編集（スキーマ検証なし）——ポリシーは安全境界に直結し誤記で空条件保存が可能、prompt_templatesはString()でデータ黙殺。構造化エディタ＋スキーマ検証へ作り替え必須(P1)",
+        "loadError(DEFAULTフォールバック)中に保存ボタンを押すと既定値で実設定を上書きできる破壊的経路。loadError中はdisableまたは確認を挟む(P1)",
+        "数値設定の相互/範囲検証が欠落：soft>hardでも保存可、quota_window/quiet時刻はHTML min/maxのみでJS検証なし。保存前にsoft<=hard・範囲・start/end意味を検証(P1)",
+        "取得失敗時の無音縮退：models失敗でモデル選択肢が1件に静かに減る、storageInfo=nullでカード丸ごと消える、has_llm||runtime二重ソースで検出判定が矛盾し得る。空状態/フォールバック告知を追加(P1-P2)",
+        "保存ボタンにdirty追跡が無く全項目を毎回一括PUT、検証失敗時も該当フィールドへ到達できない。dirty活性化＋インラインエラー＋フォーカス移動へ(P1)。加えてllm-model-selectのinline styleはフロント規約違反(P1)"
+      ]
+    },
+    {
+      "page": "HelpPage",
+      "route": "/help",
+      "overall": "overhaul",
+      "biggest_problems": [
+        "acc-pages-help が『API キー取得先』と記載しAPIキー不使用という製品事実と自己矛盾(P1事実誤り)",
+        "ライブナビの /revenue『収益』のヘルプ欠落・wmux/board混載で目次がナビと1:1非対応、ドリフト検出テストも無し(P1網羅性+保守性)",
+        "CodeBlock のコマンド/URLがコピー不可・非リンクで help の到達支援として機能していない(P2利便性)"
+      ]
+    }
+  ]
+}

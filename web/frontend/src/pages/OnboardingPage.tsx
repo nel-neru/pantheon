@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowRight, Building2, CheckCircle, Plus, Sparkles } from 'lucide-react'
+import { ArrowRight, CheckCircle, Sparkles } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
-
-type CompanyManifest = {
-  id: string
-  label: string
-  genre?: string
-  description?: string
-  divisions: string[]
-  initial_kpis?: string[]
-}
+import { CompanyManifestTable, type CompanyManifest } from '@/components/CompanyManifestTable'
 
 /**
  * 初回ウィザード（P3.2）— 「副業ポートフォリオ自動構築」へ誘導する。
@@ -22,13 +14,23 @@ type CompanyManifest = {
 export function OnboardingPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [manifests, setManifests] = useState<CompanyManifest[]>([])
+  /**
+   * manifests の 3 状態:
+   *   undefined = ローディング中
+   *   null      = エラー発生
+   *   []        = 空
+   *   [...]     = 通常リスト
+   */
+  const [manifests, setManifests] = useState<CompanyManifest[] | undefined | null>(undefined)
   const [installed, setInstalled] = useState<string[]>([])
   const [installing, setInstalling] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadCalled, setLoadCalled] = useState(false)
 
   const loadManifests = useCallback(async () => {
-    setLoading(true)
+    setManifests(undefined)
+    setLoadError(null)
+    setLoadCalled(true)
     try {
       const res = await api<{ manifests: CompanyManifest[] }>(
         'GET',
@@ -36,43 +38,55 @@ export function OnboardingPage() {
       )
       setManifests(res.manifests)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'テンプレートの読み込みに失敗しました。')
-    } finally {
-      setLoading(false)
+      const msg = err instanceof Error ? err.message : 'テンプレートの読み込みに失敗しました。'
+      setLoadError(msg)
+      setManifests(null)
+      toast.error(msg)
     }
   }, [])
 
+  // ステップ2 に初めて入ったときだけロードを起動する
   useEffect(() => {
-    if (step === 2 && manifests.length === 0) void loadManifests()
-  }, [step, manifests.length, loadManifests])
+    if (step === 2 && !loadCalled) void loadManifests()
+  }, [step, loadCalled, loadManifests])
 
-  const installCompany = useCallback(
-    async (id: string) => {
-      setInstalling(id)
-      try {
-        const res = await api<{ org_name: string; divisions: string[] }>(
-          'POST',
-          `/api/company-plugins/${encodeURIComponent(id)}/install`,
-          {}
-        )
-        toast.success(`「${res.org_name}」を起動しました。`)
-        setInstalled((prev) => (prev.includes(res.org_name) ? prev : [...prev, res.org_name]))
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : '会社の作成に失敗しました。')
-      } finally {
-        setInstalling(null)
-      }
-    },
-    []
-  )
+  const installCompany = useCallback(async (manifest: CompanyManifest): Promise<void> => {
+    setInstalling(manifest.id)
+    try {
+      const res = await api<{ org_name: string; divisions: string[] }>(
+        'POST',
+        `/api/company-plugins/${encodeURIComponent(manifest.id)}/install`,
+        {}
+      )
+      toast.success(`「${res.org_name}」を起動しました。`)
+      setInstalled((prev) => (prev.includes(res.org_name) ? prev : [...prev, res.org_name]))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '会社の作成に失敗しました。')
+      throw err
+    } finally {
+      setInstalling(null)
+    }
+  }, [])
+
+  const STEP_LABELS: Record<1 | 2 | 3, string> = {
+    1: 'はじめに',
+    2: 'テンプレを選ぶ',
+    3: '完了',
+  }
 
   return (
     <>
       <header className="page-header">
-        <div className="page-title">初回セットアップ</div>
+        <div>
+          <div className="page-title">初回セットアップ</div>
+          <div className="text-sm text-muted">
+            ステップ {step} / 3 — {STEP_LABELS[step]}
+          </div>
+        </div>
       </header>
 
       <div className="page-content flex flex-col gap-4">
+        {/* Step 1: Introduction */}
         {step === 1 ? (
           <div className="card">
             <div className="card-body flex flex-col gap-4">
@@ -80,10 +94,10 @@ export function OnboardingPage() {
                 <Sparkles size={18} />
                 <div className="font-semibold text-lg">副業ポートフォリオを自動構築</div>
               </div>
-              <p className="text-muted">
-                テンプレート（会社プラグイン）を選ぶだけで、事業部・エージェント・初期KPI・人間タスクまで
-                揃った「収益モデル会社」を 1 クリックで立ち上げます。複数立ち上げて、あなた専用の
-                副業ポートフォリオにしましょう。公開などの最終操作は承認制なので、勝手に外部送信はしません。
+              <p className="text-muted" id="step1-description">
+                テンプレートを選ぶだけで、事業部・エージェント・初期KPIが揃った「収益モデル会社」を
+                1クリックで立ち上げます。複数立ち上げてあなた専用の副業ポートフォリオにしましょう。
+                公開などの最終操作は承認制なので、勝手に外部送信はしません。
               </p>
               <div>
                 <button type="button" className="btn btn-primary" onClick={() => setStep(2)}>
@@ -95,62 +109,32 @@ export function OnboardingPage() {
           </div>
         ) : null}
 
+        {/* Step 2: Template selection */}
         {step === 2 ? (
           <>
             <div className="card">
-              <div className="card-body flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <Building2 size={16} />
-                  <div className="font-semibold">テンプレートから会社を立ち上げる</div>
-                </div>
-                <p className="text-muted text-sm">
-                  作りたい会社を選んで「作成」。複数選んでポートフォリオにできます。
-                </p>
-              </div>
+              <CompanyManifestTable
+                manifests={manifests}
+                error={loadError}
+                installing={installing}
+                installButtonLabel="作成"
+                confirmLabel="作成する"
+                showGenreDescription={false}
+                heading="テンプレートから会社を立ち上げる"
+                subtext="作りたい会社を選んで「作成」。複数選んでポートフォリオにできます。"
+                confirmTitle={(m) => `「${m.label}」を起動しますか？`}
+                confirmDescription={() => (
+                  <>
+                    この会社テンプレートから Organization を生成します。
+                    事業部・エージェント・初期KPIが自動的に設定されます。
+                  </>
+                )}
+                onRetry={() => void loadManifests()}
+                onInstall={installCompany}
+              />
             </div>
 
-            {loading ? (
-              <div className="card">
-                <div className="card-body flex items-center gap-3">
-                  <div className="spinner" />
-                  <div className="text-muted">テンプレートを読み込み中…</div>
-                </div>
-              </div>
-            ) : (
-              <div className="card">
-                <div className="card-body">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>会社</th>
-                        <th>事業部</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {manifests.map((m) => (
-                        <tr key={m.id}>
-                          <td className="font-medium">{m.label}</td>
-                          <td className="text-muted text-sm">{m.divisions.join(' / ')}</td>
-                          <td className="text-right">
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              disabled={installing === m.id}
-                              onClick={() => void installCompany(m.id)}
-                            >
-                              <Plus size={14} />
-                              作成
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
+            {/* Installed list */}
             {installed.length > 0 ? (
               <div className="card">
                 <div className="card-body flex flex-col gap-2">
@@ -182,6 +166,7 @@ export function OnboardingPage() {
           </>
         ) : null}
 
+        {/* Step 3: Completion */}
         {step === 3 ? (
           <div className="card">
             <div className="card-body flex flex-col gap-4">
@@ -189,9 +174,9 @@ export function OnboardingPage() {
                 <CheckCircle size={18} className="text-green" />
                 <div className="font-semibold text-lg">準備ができました</div>
               </div>
-              <p className="text-muted">
+              <p className="text-muted" id="step3-description">
                 {installed.length} 社のポートフォリオを起動しました。承認インボックスで初期タスクを確認し、
-                収益ページで成果を記録していきましょう。
+                組織ページで事業部とエージェントの状況を確認しましょう。
               </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <Link to="/dashboard" className="btn btn-primary">
