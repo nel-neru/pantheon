@@ -28,10 +28,19 @@ sources:
     type: atom
     genre: side_business
 
-  # Claude Code / Anthropic 自体のトレンド監視（リポジトリ設定の進化に反映）
+  # Claude Code / Anthropic 自体のトレンド監視（リポジトリ設定の進化に反映）。
+  # 複数ソースで「機能リリース」と「告知」を別経路から拾い、E フェーズ
+  # （CC 設定最適化ループ）の入力が単一フィードに痩せないようにする。
   - name: Anthropic News
     url: https://www.anthropic.com/rss.xml
     type: rss
+    genre: claude_code
+
+  # Claude Code 本体のリリース Atom（GitHub 標準エンドポイント・APIキー不要）。
+  # 新機能/挙動変更を一次情報で検知できる最も信号の濃い CC ソース。
+  - name: Claude Code Releases
+    url: https://github.com/anthropics/claude-code/releases.atom
+    type: atom
     genre: claude_code
 
 # YouTube チャンネル（APIキー不要のチャンネル RSS で最新動画を収集）。
