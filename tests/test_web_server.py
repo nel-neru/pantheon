@@ -567,6 +567,30 @@ def test_memory_playbook_api_capture_and_list(tmp_path, monkeypatch):
     )
 
 
+def test_workspace_db_sync_and_stats_api(tmp_path, monkeypatch):
+    """WS-2: JSON 正準→SQLite ミラー再構築＋集計の API（非破壊）。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.org_factory import create_default_organization
+
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    psm.save_organization(create_default_organization("Reachy", "集客"))
+    OutcomeStore(platform_home=tmp_path).record("Reachy", "revenue", 2000, occurred_at="2026-06-01")
+
+    synced = client.post("/api/workspace-db/sync")
+    assert synced.status_code == 200, synced.text
+    assert synced.json()["counts"]["organizations"] == 1
+
+    stats = client.get("/api/workspace-db/stats")
+    assert stats.status_code == 200, stats.text
+    data = stats.json()
+    assert data["stats"]["organizations"] == 1
+    assert any(r["org_name"] == "Reachy" for r in data["revenue_by_org"])
+    # JSON 正準は破壊されない
+    assert psm.load_organization_by_name("Reachy") is not None
+
+
 def test_revenue_collect_api(tmp_path, monkeypatch):
     """REV-COLLECT: 既定アダプタ未接続なので収集0・接続タスク起票を API で確認する。"""
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
