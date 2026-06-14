@@ -80,6 +80,16 @@ class TestRepoStateManager:
         result = state_manager.update_proposal_status("nonexistent-id", "done")
         assert result is False
 
+    def test_update_with_id_prefix_does_not_match(self, state_manager):
+        # RepoStateManager matches on the FULL uuid filename stem, not a prefix.
+        # A truncated id must be a no-op (False), never a silent partial update.
+        p = ImprovementProposal(review_id=uuid4(), title="T", description="d")
+        state_manager.save_improvement_proposal(p)
+        result = state_manager.update_proposal_status(str(p.id)[:8], "done")
+        assert result is False
+        # original is untouched / still active
+        assert state_manager.get_pending_improvement_proposals()[0]["id"] == str(p.id)
+
     def test_save_and_load_organization(self, state_manager, tmp_path):
         org = Organization(name="MyOrg", purpose="Test purpose")
         state_manager.save_organization(org)
