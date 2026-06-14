@@ -663,7 +663,7 @@ knowledge_curation, agent_workflow_design, org_design, corporate_research"""
         response = self._llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
 
-        json_match = re.search(r"\{.*?\}", content, re.DOTALL)
+        json_match = re.search(r"\{.*\}", content, re.DOTALL)
         if not json_match:
             return self._decompose_with_template(goal)
 

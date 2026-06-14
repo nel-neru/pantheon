@@ -9,7 +9,6 @@ when unavailable. HTTP fetch only — generation stays on the claude CLI.
 
 from __future__ import annotations
 
-import html
 import logging
 import re
 from dataclasses import dataclass
@@ -98,7 +97,7 @@ def parse_timedtext(xml_text: str) -> str:
     """timedtext XML から字幕テキストを連結して返す（純関数、空なら ""）。"""
     if not xml_text or "<text" not in xml_text:
         return ""
-    parts = [html.unescape(_strip_tags(m)) for m in _TT_TEXT_RE.findall(xml_text)]
+    parts = [_strip_tags(m) for m in _TT_TEXT_RE.findall(xml_text)]
     return " ".join(p for p in parts if p).strip()
 
 

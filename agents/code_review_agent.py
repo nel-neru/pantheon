@@ -130,7 +130,7 @@ class CodeReviewAgent(BaseAgent):
         self.knowledge_manager = knowledge_manager
 
     async def run(self, task: AgentTask) -> AgentResult:
-        repo_path = Path(task.input.get("repo_path", "."))
+        repo_path = Path(task.input.get("repo_path", ".")).resolve()
 
         if not repo_path.exists():
             return AgentResult(
