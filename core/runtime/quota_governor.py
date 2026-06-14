@@ -11,8 +11,8 @@ Priority classes: ``critical`` > ``standard`` > ``background``.
 
 Decision table (per :func:`QuotaGovernor.allow`):
 * rate-limit gate active        → deny everything (defer to A-1's pause)
-* spend ≥ hard limit            → allow only ``critical`` (downgraded to light tier)
-* soft ≤ spend < hard           → deny ``background``; allow the rest, downgraded
+* spend ≥ hard limit            → allow only ``critical`` (downgraded one tier)
+* soft ≤ spend < hard           → deny ``background``; allow the rest, downgraded one tier
 * spend < soft limit            → allow everything, no downgrade
 
 ``PANTHEON_QUOTA_GOVERNOR=0`` disables the governor (always-allow kill switch).

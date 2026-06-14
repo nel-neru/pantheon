@@ -240,7 +240,7 @@ class CodeReviewAgent(BaseAgent):
                 content = f.read_text(encoding="utf-8", errors="ignore")
                 if len(content) > MAX_FILE_SIZE_BYTES:
                     content = content[:MAX_FILE_SIZE_BYTES] + "\n... (truncated)"
-                rel = str(f.relative_to(repo_root))
+                rel = f.relative_to(repo_root).as_posix()
                 result[rel] = content
                 total_chars += len(content)
             except OSError:

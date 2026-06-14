@@ -155,8 +155,6 @@ class CapabilityRegistry:
         self, days_threshold: int = 90, days: Optional[int] = None
     ) -> List[dict]:
         """Return capabilities unused longer than the threshold or never used."""
-        from datetime import timezone
-
         threshold = days if days is not None else days_threshold
         threshold_dt = datetime.now(timezone.utc)
         unused: List[dict] = []
