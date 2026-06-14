@@ -5,9 +5,13 @@ cycle it:
 
 * reads recorded revenue (:meth:`OutcomeStore.revenue_by_month`) and computes a
   revenue analysis (:func:`analyze_revenue` — MoM / trend / next-month forecast),
-* when a positive monthly ``target`` is configured, scans for portfolio proposals
-  (:func:`scan_portfolio_proposals`) and enqueues them on the **approval gate**
-  (idempotent; never auto-adopted).
+* when a positive monthly ``target`` is configured (= Meta-Overseer active), it
+  runs the autonomous management cadence (§1.3 Module A): scans for portfolio
+  proposals (:func:`scan_portfolio_proposals`) AND runs the HQ structural-intervention
+  cadence (:meth:`HQInterventionProposer.propose_all` — deterministic org diagnostics),
+  enqueuing both on the **approval gate** (idempotent; never auto-adopted), then
+  records a summary notification (:class:`NotificationCenter`) so progress is visible
+  ("寝てる間に改善が進んでた").
 
 Both steps are **LLM-non-dependent / pure** (no ``claude`` subprocess), so — unlike
 the trend/content daemons — this daemon does **not** consult the rate-limit gate
@@ -113,6 +117,7 @@ class RevenueScheduler:
             logger.info("revenue analysis failed: %s", exc)
 
         scan: Dict[str, Any] = {}
+        hq_created = 0
         if self._target > 0:
             try:
                 from core.hierarchy.portfolio_pipeline import scan_portfolio_proposals
@@ -126,6 +131,39 @@ class RevenueScheduler:
             except Exception as exc:  # noqa: BLE001
                 logger.info("portfolio proposal scan failed: %s", exc)
 
+            # HQ 経営会議 cadence（AUTO-1）: 子 org を診断し構造介入提案を承認ゲートへ起票する。
+            # propose_all は決定論ヒューリスティック（LLM 非依存・dedupe_key で冪等）なので
+            # トークンゲート不要。target>0（＝Meta-Overseer 稼働）でのみ動かし idle 安全契約を守る。
+            try:
+                from core.hierarchy.hq_interventions import HQInterventionProposer
+
+                hq_created = len(
+                    HQInterventionProposer(
+                        self._psm, source_org_name=self._source_org_name
+                    ).propose_all()
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.info("HQ intervention cadence failed: %s", exc)
+
+        # 可視化（§12「寝てる間に改善が進んでた」）: 何か起きたサイクルだけ通知センターへ要約を残す。
+        total_new = int(scan.get("proposals", 0)) + hq_created
+        trend = analysis.get("trend")
+        if total_new > 0 or trend == "declining":
+            try:
+                from core.notifications import NotificationCenter
+
+                NotificationCenter(self.platform_home).add(
+                    level="warn" if trend == "declining" else "info",
+                    message=(
+                        f"自律経営サイクル#{self._cycle_count}: 提案 {total_new} 件起票"
+                        f"（ポートフォリオ {int(scan.get('proposals', 0))} / HQ介入 {hq_created}）"
+                        f"・収益トレンド {trend}"
+                    ),
+                    org_name=self._source_org_name,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.info("overseer notification emit failed: %s", exc)
+
         summary = {
             "cycle": self._cycle_count,
             "started_at": started,
@@ -134,6 +172,7 @@ class RevenueScheduler:
             "trend": analysis.get("trend"),
             "forecast_next": analysis.get("forecast_next"),
             "proposals": scan.get("proposals", 0),
+            "hq_proposals": hq_created,
             "scanned": scan.get("scanned", 0),
             "scan_skipped": self._target <= 0,
         }
