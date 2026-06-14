@@ -148,7 +148,6 @@ function ContentJobCard({
           {job.publish_platform ? (
             <span className="badge badge-green">
               {PUBLISH_PLATFORMS[job.publish_platform] ?? job.publish_platform}
-              {job.publish_mode === 'auto' ? '（自動）' : ''}
             </span>
           ) : null}
         </div>
