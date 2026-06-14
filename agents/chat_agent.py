@@ -31,9 +31,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.platform.state import get_platform_home
+
 logger = logging.getLogger(__name__)
 
-SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
+# PANTHEON_HOME を尊重（dev/prod のデータ完全分離）。ハードコード ~/.pantheon は分離を破るため不可。
+SETTINGS_FILE = get_platform_home() / "gui_settings.json"
 DEFAULT_MODEL = ""  # empty => let the `claude` CLI pick its own default model
 
 # run_chat() の LLM 接続表示ラベル。F1 以降、生成経路はローカル ``claude`` CLI のみ。

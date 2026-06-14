@@ -46,8 +46,10 @@ UI_ENV = "PANTHEON_UI"  # "legacy"(既定) | "atelier" — serve/up の --ui か
 PROJECT_ROOT = resource_root()
 KNOWLEDGE_DIR = resource_path("knowledge")
 SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "Pantheon Core", "meta-improvement"}
-SETTINGS_FILE = Path.home() / ".pantheon" / "gui_settings.json"
-CHAT_SESSIONS_DIR = Path.home() / ".pantheon" / "chat_sessions"
+# PANTHEON_HOME を尊重して解決する（dev/prod 環境のデータ完全分離）。プロセス起動時の
+# PANTHEON_HOME で確定するため、dev サーバ（PANTHEON_HOME=...）と user サーバ（未設定）で別領域になる。
+SETTINGS_FILE = get_platform_home() / "gui_settings.json"
+CHAT_SESSIONS_DIR = get_platform_home() / "chat_sessions"
 DEFAULT_CORS_ORIGINS = ("http://localhost:5173",)
 CHAT_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 # 注: ホスト型プロバイダのキー対応表/モデル一覧（旧 _PROVIDER_KEY_MAPPING / FALLBACK_MODELS）は
