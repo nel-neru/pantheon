@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle, FileDiff, Lightbulb, MessageSquareText, XCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -76,6 +76,7 @@ export function ProposalsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   // 一括操作（不可逆・高ブラスト半径）は確認ゲートを通す（C003）。
   const [batchConfirm, setBatchConfirm] = useState<'approve' | 'reject' | null>(null)
+  const proposalsRequestRef = useRef(0)
 
   const loadOrganizations = useCallback(async () => {
     setLoading(true)
@@ -96,12 +97,14 @@ export function ProposalsPage() {
   }, [])
 
   const loadProposals = useCallback(async (orgName: string) => {
+    const requestId = ++proposalsRequestRef.current
     setLoading(true)
     try {
       const data = await api<Proposal[]>(
         'GET',
         `/api/organizations/${encodeURIComponent(orgName)}/proposals`,
       )
+      if (proposalsRequestRef.current !== requestId) return // 古い org の応答は破棄
       setProposals(data)
       setApprovalNotes(
         Object.fromEntries(data.map((proposal) => [String(proposal.id), proposal.approval_notes ?? '']))
@@ -109,6 +112,7 @@ export function ProposalsPage() {
       setSelectedIds([])
       setProposalsError(null)
     } catch (error) {
+      if (proposalsRequestRef.current !== requestId) return
       const message = error instanceof Error ? error.message : '提案の読み込みに失敗しました。'
       setProposals([])
       setApprovalNotes({})
@@ -116,7 +120,7 @@ export function ProposalsPage() {
       setProposalsError(message)
       toast.error(message)
     } finally {
-      setLoading(false)
+      if (proposalsRequestRef.current === requestId) setLoading(false)
     }
   }, [])
 
@@ -213,12 +217,13 @@ export function ProposalsPage() {
     setActionId(action)
     try {
       const result = await api<{
-        results: { proposal_id: string; ok: boolean; status?: string }[]
+        results: { proposal_id: string; ok: boolean; status?: string; detail?: string }[]
       }>('POST', `/api/proposals/${encodeURIComponent(selectedOrg)}/batch`, {
         proposal_ids: selectedIds,
         action,
       })
       const updatedIds = result.results.filter((item) => item.ok).map((item) => item.proposal_id)
+      const failed = result.results.filter((item) => !item.ok)
       setProposals((current) =>
         current.map((proposal) =>
           updatedIds.includes(String(proposal.id))
@@ -226,8 +231,13 @@ export function ProposalsPage() {
             : proposal,
         ),
       )
-      setSelectedIds([])
-      toast.success(action === 'approve' ? `${updatedIds.length} 件の提案を承認しました。` : `${updatedIds.length} 件の提案を却下しました。`)
+      setSelectedIds((current) => current.filter((id) => !updatedIds.includes(id)))
+      if (updatedIds.length > 0) {
+        toast.success(action === 'approve' ? `${updatedIds.length} 件の提案を承認しました。` : `${updatedIds.length} 件の提案を却下しました。`)
+      }
+      if (failed.length > 0) {
+        toast.error(`${failed.length} 件は処理できませんでした。${failed[0].detail ? `（${failed[0].detail}）` : ''}`)
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '提案の一括操作に失敗しました。')
     } finally {

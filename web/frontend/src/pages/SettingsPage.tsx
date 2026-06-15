@@ -789,6 +789,7 @@ export function SettingsPage() {
   const handleSaveApiToken = () => {
     const trimmed = apiToken.trim()
     setApiToken(trimmed)
+    setApiTokenState(trimmed) // 表示中の controlled input を保存値と同期
     setApiTokenSaved(true)
     setTimeout(() => setApiTokenSaved(false), 2000)
     toast.success('APIトークンを保存しました。')
@@ -897,7 +898,7 @@ export function SettingsPage() {
         const { key, value } = promptEntries[i]
         if (!key.trim()) {
           promptErrors[i] = 'テンプレート名（キー）を入力してください。'
-        } else if (key.trim() in result) {
+        } else if (Object.prototype.hasOwnProperty.call(result, key.trim())) {
           promptErrors[i] = 'テンプレート名が重複しています。'
         } else {
           result[key.trim()] = value
