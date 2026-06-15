@@ -339,6 +339,15 @@ def _detect_success_rate_limit(content: str, is_error: bool) -> Optional[RateLim
     if not content:
         return None
     if is_error:
+        # result=null 等で content が生 JSON エンベロープになると、duration_ms 等の
+        # 数値統計（"429" 等）を緩い検知が誤マッチし、全プロセス共有 gate を誤 pause する。
+        stripped = content.strip()
+        if stripped[:1] in "{[":
+            try:
+                json.loads(stripped)
+                return None
+            except ValueError:
+                pass
         info = detect_rate_limit(content)
         return info if info.limited else None
     if len(content) > _SUCCESS_SCAN_MAX_CHARS:
