@@ -77,9 +77,11 @@ async def cmd_daemons_start(args: argparse.Namespace) -> None:
         if name == "improvement":
             extra.append(f"--max-files={args.max_files}")
         if name == "revenue":
-            # target を desired state に記録 → watchdog/再起動でも同じ目標で復元される。
-            # 0 以下はアイドル（分析ログのみ・提案は起票しない）= 安全な既定。
+            # target / source-org / min-reach を desired state に記録 → watchdog/再起動でも
+            # 同じ設定で復元される。target 0 以下はアイドル（分析ログのみ・提案は起票しない）。
             extra.append(f"--target={args.target}")
+            extra.append(f"--source-org-name={args.source_org}")
+            extra.append(f"--min-reach={args.min_reach}")
         result = spawn_daemon(name, args=extra)
         print(f"[{name}] {result['status']} (pid={result['pid']}, log={result['log_path']})")
 
@@ -200,6 +202,17 @@ def register(subparsers: Any) -> None:
         type=float,
         default=0.0,
         help="revenue のみ: 月収益目標（>0 でポートフォリオ提案を起票。0 以下はアイドル）",
+    )
+    sp.add_argument(
+        "--source-org",
+        default="HQ",
+        help="revenue のみ: ポートフォリオ提案の起票元 org 名（来歴 source_org_name、既定 HQ）",
+    )
+    sp.add_argument(
+        "--min-reach",
+        type=float,
+        default=0.0,
+        help="revenue のみ: ポートフォリオ提案で考慮する収益源の最小リーチ（0=フィルタ無し）",
     )
     sp.set_defaults(handler_name="cmd_daemons_start")
 

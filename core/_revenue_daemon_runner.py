@@ -20,7 +20,12 @@ logging.basicConfig(
 )
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """CLI（``pantheon daemons start revenue``）が渡すフラグと 1:1 で対応するパーサ。
+
+    切り出しているのは、CLI 側が組み立てる引数列をテストで本パーサに通し、
+    フラグ名のドリフト（``--source-org`` vs ``--source-org-name`` 等）を捕まえるため。
+    """
     parser = argparse.ArgumentParser(description="Pantheon Revenue Daemon")
     parser.add_argument("--interval", type=int, default=24 * 3600)
     parser.add_argument(
@@ -31,7 +36,11 @@ def main() -> None:
     )
     parser.add_argument("--source-org-name", default="HQ", dest="source_org_name")
     parser.add_argument("--min-reach", type=float, default=0.0, dest="min_reach")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     from core.hierarchy.revenue_scheduler import RevenueScheduler
 
