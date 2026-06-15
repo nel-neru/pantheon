@@ -231,3 +231,95 @@ class TestRepoStateManager:
         decisions = state_manager.get_recent_decisions(limit=2)
 
         assert [decision["id"] for decision in decisions] == ["d1", "broken"]
+
+    # ------------------------------------------------------------------
+    # 状態 load 経路の silent-drop 観測性（warn_skipped_state_file 経由）。
+    # 壊れた 1 ファイルは耐性のためスキップしつつ、黙って消えず警告で観測可能にする。
+    # ------------------------------------------------------------------
+
+    def test_get_recent_decisions_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        state_manager.record_decision("d1", "Valid", "Content", "Tester")
+        (state_manager.decisions_dir / "broken.json").write_text("{not json", encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            decisions = state_manager.get_recent_decisions()
+
+        assert [d["id"] for d in decisions] == ["d1"]
+        assert any("broken.json" in rec.message for rec in caplog.records)
+        assert (state_manager.decisions_dir / "broken.json").exists()  # 削除しない
+
+    def test_get_pending_improvement_proposals_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        good = ImprovementProposal(review_id=uuid4(), title="Good", description="d")
+        state_manager.save_improvement_proposal(good)
+        improvements_dir = state_manager.state_dir / "improvements"
+        (improvements_dir / "broken.json").write_text("{not json", encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            pending = state_manager.get_pending_improvement_proposals()
+
+        assert [p["title"] for p in pending] == ["Good"]
+        assert any("broken.json" in rec.message for rec in caplog.records)
+
+    def test_get_all_improvement_proposals_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        good = ImprovementProposal(review_id=uuid4(), title="Good", description="d")
+        state_manager.save_improvement_proposal(good)
+        improvements_dir = state_manager.state_dir / "improvements"
+        (improvements_dir / "broken.json").write_text("{not json", encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            allp = state_manager.get_all_improvement_proposals()
+
+        assert [p["title"] for p in allp] == ["Good"]
+        assert any("broken.json" in rec.message for rec in caplog.records)
+
+    def test_get_pending_proposals_warns_on_schema_invalid(self, state_manager, caplog):
+        import logging
+
+        # JSON としては妥当だが ImprovementProposal スキーマに合わない（review_id が不正 UUID）。
+        # dict API（get_pending_improvement_proposals）には現れるのにモデル API から
+        # 黙って消える不整合を警告で観測可能にする。
+        improvements_dir = state_manager.state_dir / "improvements"
+        improvements_dir.mkdir(exist_ok=True)
+        (improvements_dir / "bad-schema.json").write_text(
+            json.dumps(
+                {
+                    "id": "bad-schema",
+                    "review_id": "not-a-uuid",
+                    "status": "proposed",
+                    "title": "Schema invalid",
+                    "description": "d",
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            models = state_manager.get_pending_proposals()
+
+        assert models == []  # スキーマ不一致はモデル化できずスキップ
+        assert any("bad-schema.json" in rec.message for rec in caplog.records)
+
+    def test_list_session_contexts_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        state_manager.save_session_context("session-1", {"summary": "ok"})
+        (state_manager.sessions_dir / "broken.json").write_text("{not json", encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            sessions = state_manager.list_session_contexts()
+
+        assert {s["session_id"] for s in sessions} == {"session-1"}
+        assert any("broken.json" in rec.message for rec in caplog.records)
+
+    def test_safe_mtime_tolerates_missing_file(self, tmp_path):
+        # glob と sort の間でファイルが消えても、ソートキーは落ちず最古（0.0）扱いにする。
+        from core.state.manager import _safe_mtime
+
+        assert _safe_mtime(tmp_path / "does-not-exist.json") == 0.0
