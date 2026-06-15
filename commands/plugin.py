@@ -64,6 +64,28 @@ async def cmd_plugin_add_division(args: argparse.Namespace, *, get_psm: Any) -> 
     print(f"  事業部合計: {len(org.divisions)} 個")
 
 
+async def cmd_plugin_install_company(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """会社プラグイン manifest から Organization を起動する（GUI の install と同等の CLI 経路）。"""
+    from core.bootstrap import bootstrap_platform
+    from core.orchestration.company_plugins import install_company_plugin
+
+    psm = bootstrap_platform()
+    try:
+        result = install_company_plugin(
+            args.id, psm=psm, name=args.name or None, repo_path=args.repo or None
+        )
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+
+    print(f"\n[OK] 会社プラグイン '{args.id}' を起動しました: {result['org_name']}\n")
+    print(f"  事業部  : {', '.join(result['divisions'])}")
+    print(f"  Agent   : {result['agent_count']} / 人間タスク: {result['human_tasks_created']}")
+    print(f"  分離     : external / 管理: {result['management_mode']}")
+    print(f"  ワークスペース: {result['workspace_path']}")
+    print(f'\n次のステップ: pantheon business create --orgs "{result["org_name"]},..." で合成')
+
+
 async def cmd_plugin_scaffold_division(args: argparse.Namespace, *, get_psm: Any) -> None:
     """テンプレから事業部プラグインの雛形を生成する（表示、または --write でカタログ追記）。"""
     import yaml
@@ -128,6 +150,21 @@ def register(subparsers: Any) -> None:
         "--plugin", required=True, help="事業部プラグイン id（pantheon plugin list で確認）"
     )
     add_parser.set_defaults(handler_name="cmd_plugin_add_division")
+
+    install_company_parser = plugin_sub.add_parser(
+        "install-company",
+        help="会社プラグインから Organization を起動する（GUI の install と同等）",
+    )
+    install_company_parser.add_argument(
+        "--id", required=True, help="会社プラグイン id（pantheon plugin list で確認）"
+    )
+    install_company_parser.add_argument(
+        "--name", default="", help="Organization 名の上書き（省略可）"
+    )
+    install_company_parser.add_argument(
+        "--repo", default="", help="ワークスペースのパス（省略時は ~/.pantheon/workspaces 配下）"
+    )
+    install_company_parser.set_defaults(handler_name="cmd_plugin_install_company")
 
     scaffold_parser = plugin_sub.add_parser(
         "scaffold-division",
