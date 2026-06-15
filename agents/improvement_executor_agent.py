@@ -199,5 +199,7 @@ class ImprovementExecutorAgent(BaseAgent):
             logger.warning("ImprovementExecutorAgent: JSON parse failed: %s", e)
             return "", ""
         except Exception as e:
+            # run() は空 modified_content を success=False に写像する。例外を投げると
+            # scheduler の一括適用ループ全体が中断するため、他の失敗経路と同様に倒す。
             logger.error("ImprovementExecutorAgent: LLM call failed: %s", e)
-            raise
+            return "", ""
