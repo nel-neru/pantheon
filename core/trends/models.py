@@ -57,14 +57,24 @@ class TrendItem:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "TrendItem":
+        raw_topics = d.get("topics")
+        topics = (
+            [str(t) for t in raw_topics if isinstance(t, str)]
+            if isinstance(raw_topics, (list, tuple))
+            else []
+        )
+        try:
+            score = float(d.get("score", 0.0) or 0.0)
+        except (TypeError, ValueError):  # 非数値 score は 0.0 へ退避（記録全体を壊さない）
+            score = 0.0
         return cls(
             source=str(d.get("source", "")),
             url=str(d.get("url", "")),
             title=str(d.get("title", "")),
             summary=str(d.get("summary", "")),
-            topics=[str(t) for t in d.get("topics", []) if isinstance(t, str)],
+            topics=topics,
             genre=str(d.get("genre", "")),
-            score=float(d.get("score", 0.0) or 0.0),
+            score=score,
             raw_excerpt=str(d.get("raw_excerpt", "")),
             collected_at=str(d.get("collected_at", "") or _now_iso()),
             hash=str(d.get("hash", "")),

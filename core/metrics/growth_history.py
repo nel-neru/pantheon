@@ -97,7 +97,12 @@ class GrowthHistoryRecorder:
         parsed: list[datetime] = []
         for record in records:
             try:
-                parsed.append(datetime.fromisoformat(record.timestamp))
+                dt = datetime.fromisoformat(record.timestamp)
+                if (
+                    dt.tzinfo is None
+                ):  # 旧/外部由来の naive は UTC とみなし混在比較の TypeError を防ぐ
+                    dt = dt.replace(tzinfo=timezone.utc)
+                parsed.append(dt)
             except ValueError:
                 parsed = []
                 break

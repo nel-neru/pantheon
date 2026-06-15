@@ -65,7 +65,7 @@ class ContentJob:
         now = now or _now()
         try:
             return datetime.fromisoformat(self.next_run_at) <= now
-        except ValueError:
+        except (ValueError, TypeError):  # naive/不正な next_run_at で cycle 全体を落とさない
             return True
 
 

@@ -226,9 +226,10 @@ class CodebaseIndexer:
         if not self.index_path.exists():
             return None
         try:
-            return json.loads(self.index_path.read_text(encoding="utf-8"))
+            data = json.loads(self.index_path.read_text(encoding="utf-8"))
         except Exception:
             return None
+        return data if isinstance(data, dict) else None
 
     def _save_index(self, index: Dict[str, Any]) -> None:
         self.index_path.write_text(
@@ -245,6 +246,8 @@ def get_stale_files(index_path: Path, repo_root: Path) -> list[Path]:
     try:
         data = json.loads(index_file.read_text(encoding="utf-8"))
     except Exception:
+        return []
+    if not isinstance(data, dict):
         return []
 
     stale: list[Path] = []
@@ -268,6 +271,8 @@ def invalidate_cache(index_path: Path, file_paths: list[Path]) -> None:
     try:
         data = json.loads(index_file.read_text(encoding="utf-8"))
     except Exception:
+        return
+    if not isinstance(data, dict):
         return
 
     # build() stores keys as POSIX-normalized relative paths (.as_posix()), so
