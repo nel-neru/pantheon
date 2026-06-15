@@ -77,6 +77,23 @@ def test_run_content_job_generates_pending_content_asset(tmp_path):
     assert is_active_improvement_proposal_status(proposals[0].get("status"))
 
 
+def test_short_video_kind_is_known_and_generates(tmp_path):
+    """中立 short_video kind: 許可リストに載り、claude 不在でも決定論ドラフトを生成する。"""
+    from core.content.content_jobs import CONTENT_JOB_KINDS
+
+    assert "short_video" in CONTENT_JOB_KINDS
+
+    psm, org = _setup_org(tmp_path)
+    store = ContentJobStore(platform_home=tmp_path / "jobs")
+    job = store.add_job(ContentJob(org_name=org.name, kind="short_video", theme="AIツールの時短術"))
+    assert store.get_job(job.job_id).kind == "short_video"  # generic に丸められない
+
+    result = _run(run_content_job(job, psm))
+    assert result["ok"] is True and result["status"] == "generated"
+    proposals = psm.get_org_state_manager(org).get_all_improvement_proposals()
+    assert len(proposals) == 1 and proposals[0]["category"] == "content_asset"
+
+
 def test_run_content_job_stamps_publish_block_when_target_set(tmp_path):
     """投稿先が設定されたジョブの生成物には intervention_spec.publish が載る。"""
     psm, org = _setup_org(tmp_path)
