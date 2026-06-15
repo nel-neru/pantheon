@@ -3,6 +3,7 @@ import { AlertTriangle, BellRing, CheckCheck, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
+import { formatDateTime } from '@/lib/utils'
 
 type Notification = {
   id: string
@@ -221,7 +222,7 @@ export function NotificationsPage() {
                       {n.org_name ? <span className="text-muted text-sm">{n.org_name}</span> : null}
                       <span className="font-medium truncate">{n.message}</span>
                     </div>
-                    <div className="text-xs text-muted mt-1">{n.created_at}</div>
+                    <div className="text-xs text-muted mt-1">{formatDateTime(n.created_at)}</div>
                   </div>
                   {!n.read ? (
                     <button

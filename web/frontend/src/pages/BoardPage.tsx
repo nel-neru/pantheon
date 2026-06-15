@@ -139,9 +139,15 @@ export function BoardPage() {
       ),
       confirmLabel: 'キャンセルする',
       run: async () => {
-        await api('DELETE', `/api/tasks/${encodeURIComponent(task.id)}`)
-        toast.success('タスクをキャンセルしました。')
-        await loadData(true)
+        try {
+          await api('DELETE', `/api/tasks/${encodeURIComponent(task.id)}`)
+          toast.success('タスクをキャンセルしました。')
+          await loadData(true)
+        } catch (error) {
+          // re-throw して ConfirmDialog を開いたまま再試行可能にする
+          toast.error(error instanceof Error ? error.message : 'タスクのキャンセルに失敗しました。')
+          throw error
+        }
       },
     })
   }

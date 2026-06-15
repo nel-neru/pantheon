@@ -305,6 +305,9 @@ export function ContentSchedulePage() {
         void loadData(true)
       }, 300)
     }
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
   }, [events, loadData])
 
   const repoBoundOrgs = useMemo(() => orgs.filter((o) => o.target_repo_path), [orgs])
