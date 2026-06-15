@@ -19,6 +19,29 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 27 — .pantheon リセット/バックアップ系ディレクトリの gitignore 漏れを塞ぐ（DX/衛生）  (2026-06-15 19:30)
+  Plan   : Cycle 26 後の branch triage で、未マージ active ブランチ work/auto-20260614-150823 が
+           `.pantheon.reset-bak-20260614-150639/`（codebase_index.json 7152行 + sessions/*.json）を
+           7260行コミットしていたのを発見。診断: .gitignore は `.pantheon/` を無視するが、リセット時に
+           作られる `.pantheon.reset-bak-<ts>/` 等の**バックアップ変種は無視対象外**＝リセット直後の
+           auto-commit がランタイム状態を誤って拾う再発バグ。受け入れ基準 = バックアップ変種が無視され／
+           `.pantheon` 自体と追跡ファイルに過剰マッチせず／git check-ignore で実証。なぜ今: auto-commit
+           フックの定常ノイズ源（巨大 index/session の混入）を恒久的に断つ。Cycle 26（フィーチャ）に対し
+           DX/衛生で多様・完全可逆（ルール追加のみ）。落とした候補: ①intro-video 系 active ブランチの
+           landing→却下（別セッションの進行中フィーチャ＋2.7MB mp4、concurrent hazard で触らない）
+           ②junk auto ブランチの force-delete→却下（破壊的・gitignore 修正で再発防止すれば十分）。
+  Did    : work/gitignore-pantheon-bak-20260615。.gitignore に `.pantheon.*`（コメント付き）を
+           `.pantheon/` の直後に追加。
+  Check  : git check-ignore で実証 — `.pantheon.reset-bak-*/codebase_index.json`/`.pantheon.bak`/
+           `.pantheon.old/x` 全て無視、`.pantheon/...` は従来どおり52行目で無視（過剰マッチなし）、
+           `.pantheon` 始まりの追跡ファイルはゼロ（何も un-track しない）。.gitignore のみの変更で
+           コード非影響のため副エージェントレビューは省き自己敵対チェック（`.pantheon.` 始まりのみ・
+           将来 legit は `!` で除外可）。merge_to_main のテストゲートは通過。
+  Act    : merged ✅（0c0a2e4..a8830d7）。固定化: 「無視対象ディレクトリは『リセット/バックアップ
+           変種』まで含めて塞ぐ — `.pantheon/` だけでなく `.pantheon.*`」。
+  Next   : intro-video 系 active ブランチの取り扱い（別セッション完了待ち or 調整）/ R5-B 量産
+           Workflow で fallback→LLM creative 強化 / done ブランチ 16本の --prune 掃除。
+
 Cycle 26 — 中断していた R5-B 投稿カレンダーを完結（同梱182本生成→配線→決定的ビルド固定化）  (2026-06-15 19:15)
   Plan   : 自動再開（evolve_resume）。lock 無し=並行ワーカー無しを確認後、現在ブランチ
            work/r5-shortvideo-posts が checkpoint auto-commit に滞留（ahead 1・未マージ）。
