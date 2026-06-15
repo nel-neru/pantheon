@@ -19,6 +19,53 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 29 — 状態 load 経路の silent-drop を観測可能に（正確性/堅牢性）  (2026-06-16 自動再開)
+  Plan   : 自動再開（evolve_resume）。lock 無し=並行ワーカー無しを確認。中断点の診断: main は
+           Cycle 28 まで統合済み・ログも最新。未マージ active 4本を triage → 全て対象外
+           （auto-150823=reset-bak ゴミ／auto-021936・intro-video=別ストリームの 2.7MB mp4・
+           concurrent hazard／r4-robustness=Cycle 28 で「全件 main 既存＝冗長」と実証済み）＝
+           landing 候補は枯渇。そこで Cycle 1〜4 から繰り返し deferred されてきた「silent-drop に
+           警告」テーマを精査。load_organizations は既に warn_skipped_org_file で対応済みだが、
+           同型の黙殺 `except: continue` が core/state/manager.py に**5箇所残存**（決定・pending
+           提案・全提案・モデル検証・セッション）。特に get_all_improvement_proposals は承認率/
+           適用率メトリクスの母数で、破損ファイルの黙殺は指標を歪める確定バグ。受け入れ基準 =
+           5経路が削除せず警告で観測可能／返り値不変／既存ヘルパの後方互換とメッセージ不変／
+           回帰ゼロ・敵対レビュー通過。なぜ今: landing 候補枯渇後、最小・高確信・完全可逆（観測性の
+           追加のみ）で、メトリクス健全性に効く正確性改善。直近（CLI/DX/hygiene）と異なる「正確性・
+           堅牢性」カテゴリで多様性も確保。落とした候補: ①done/junk ブランチ prune（低レバ・破壊的）
+           ②R5-B 182本の LLM 強化（Workflow 大量 agent=無人運転の opt-in 範囲外）③ログ遅延補正
+           （Cycle 28 で実態は最新と確認・不要）。
+  Did    : work/state-load-warn-silent-drop-20260616。core/platform/state.py の
+           warn_skipped_org_file を汎用 warn_skipped_state_file(f, exc, kind) へ一般化（dedup マップ
+           _warned_org_files → _warned_state_files にリネーム、path+mtime 洪水抑止は維持）。
+           warn_skipped_org_file は後方互換の薄いラッパとして温存（メッセージ文言不変）。
+           core/state/manager.py の 5箇所の黙殺 continue を kind 付き警告に置換。レビュー所見対応で
+           list_session_contexts のソートキー p.stat().st_mtime を _safe_mtime に切り出し（glob↔sort
+           間でファイルが消えても一覧全体が落ちない競合耐性）。tests に 6件追加（5経路の警告＋
+           ファイル非削除＋_safe_mtime の欠損耐性）。
+  Check  : test-triage GREEN（1401 passed・基線 chmod 2件のみ・新規回帰 0、+6 テスト）。ruff 緑。
+           code-reviewer = APPROVE（所見ゼロ）。検証済み: 旧グローバル名の残参照ゼロ／
+           warn_skipped_org_file の外部契約（名前・"Organization ファイルの…"文言）保持／
+           get_pending_proposals の再構成パス（improvements_dir/<id>.json）が実ファイル名と一致・
+           id 欠落でも None.json で benign warn／関数内 import で循環回避（platform.state は manager を
+           lazy import）／返り値不変／schema-invalid テストが is_active 通過→model_validate 失敗の
+           意図経路を実行。レビュアーが surface した scope 外の既存競合（sort key の stat）は本サイクルの
+           「一覧を1ファイルで壊さない」意図と一致するため確定所見として同時修正。
+  Act    : merged ✅（36f74a0..51af5a4、--delete-branch。remote 未 push のローカル枝のため
+           push --delete エラーは benign）。固定化した学び（下記）。
+  Next   : done/junk ブランチの --prune 掃除（auto-150823 reset-bak ゴミ＋r4-robustness 冗長）/
+           同型の silent-drop 監査を他レイヤーへ（content_runner / trends / workspace_db の JSON load）/
+           R5-B 量産 Workflow で fallback 182本を LLM creative 強化（要 opt-in）。
+  学び（固定化）:
+    - 「1ファイル破損で全体を壊さない」耐性コードは握りつぶしと表裏一体。except: continue は必ず
+      観測点（警告ログ）を伴わせる。特にメトリクスの母数を読む load 経路（get_all_improvement_proposals）の
+      黙殺は、クラッシュより危険な「静かな指標歪み」を生む。一箇所直したら同型を grep で洗い出して横展開する。
+    - 共通の観測ヘルパは「洪水抑止（path+mtime で初回 WARNING・以降 DEBUG）」を内蔵し、ポーリング
+      daemon/web から多用されても安全にする。汎用化時は旧 API を薄いラッパで温存しメッセージ文言を保つ
+      （既存テストの契約を壊さない）。
+    - ソートキー内の I/O（p.stat()）は try の外で例外を投げる盲点。glob↔sort 間の競合に備え _safe_mtime の
+      ように取得不能を最古扱いへ吸収する。
+
 Cycle 28 — revenue daemon の --source-org / --min-reach を CLI 露出（収益配線の仕上げ）  (2026-06-16 自動再開)
   Plan   : 自動再開（evolve_resume）。lock 無し=並行ワーカー無しを確認。中断点の診断: main は
            Cycle 27 以降 P1〜P5（OrgService 統一/Business 実体/short_video kind/affiliate 外出し/
