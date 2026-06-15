@@ -78,7 +78,7 @@ async def cmd_init(args: argparse.Namespace, *, get_psm: Any, get_platform_home:
 async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: Path) -> None:
     """新しい Organization（子会社）を担当リポジトリ付きで登録する"""
     from core.bootstrap import bootstrap_platform
-    from core.org_factory import create_default_organization, create_organization_from_template
+    from core.org_service import create_org
 
     psm = bootstrap_platform()
 
@@ -94,23 +94,17 @@ async def cmd_org_add(args: argparse.Namespace, *, get_psm: Any, project_root: P
         sys.exit(1)
 
     isolation_level = getattr(args, "isolation_level", "standard")
-    if args.template:
-        template_path = project_root / "config" / "departments" / f"{args.template}.yaml"
-        org = create_organization_from_template(
-            args.name,
-            args.purpose or "",
-            template_path,
-            repo_path=repo_path,
-            isolation_level=isolation_level,
-        )
-    else:
-        org = create_default_organization(
-            args.name,
-            args.purpose or "",
-            repo_path=repo_path,
-            isolation_level=isolation_level,
-        )
-    psm.save_organization(org)
+    template_path = (
+        project_root / "config" / "departments" / f"{args.template}.yaml" if args.template else None
+    )
+    org = create_org(
+        args.name,
+        args.purpose or "",
+        isolation_level=isolation_level,
+        target_repo_path=repo_path,
+        template_path=template_path,
+        psm=psm,
+    )
 
     agents = org.get_all_agents()
     print("\n[OK] Organization を登録しました\n")
@@ -137,7 +131,7 @@ async def cmd_org_create(args: argparse.Namespace, *, get_psm: Any, project_root
 
     from core.bootstrap import bootstrap_platform
     from core.orchestration.org_template_designer import design_and_save
-    from core.org_factory import create_organization_from_template
+    from core.org_service import create_org
 
     psm = bootstrap_platform()
     if psm.load_organization_by_name(args.name):
@@ -163,18 +157,18 @@ async def cmd_org_create(args: argparse.Namespace, *, get_psm: Any, project_root
     template_path, departments = await design_and_save(args.genre)
     print(f"[OK] テンプレート保存: {template_path}（{len(departments)} 部門）")
 
-    org = create_organization_from_template(
+    org = create_org(
         args.name,
         args.purpose or f"{args.genre} 領域の自律 AI 組織",
-        template_path,
-        repo_path=repo_path,
         isolation_level=args.isolation_level,
         allowed_path_scope=[],
+        target_repo_path=repo_path,
+        template_path=template_path,
         industry_genre=args.genre,
         persona_id=args.persona or None,
         design_style=args.design or None,
+        psm=psm,
     )
-    psm.save_organization(org)
 
     agents = org.get_all_agents()
     print("\n[OK] Organization を量産しました\n")

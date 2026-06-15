@@ -913,6 +913,56 @@ def test_install_division_plugin_unknown_plugin_400(tmp_path, monkeypatch):
     assert resp.status_code == 400
 
 
+def _patch_create_org_home(tmp_path, monkeypatch):
+    """org 作成 API（bootstrap_platform 経由）を tmp_path に隔離する。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr("core.bootstrap.bootstrap_platform", lambda: psm)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    async def _noop_event(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(server, "_record_execution_event", _noop_event)
+    return psm
+
+
+def test_create_organization_external_via_api(tmp_path, monkeypatch):
+    """GUI から isolation_level=external を指定して外部Orgを作れる（CLI と同一挙動）。"""
+    psm = _patch_create_org_home(tmp_path, monkeypatch)
+    repo = tmp_path / "ws"
+    repo.mkdir()
+    resp = client.post(
+        "/api/organizations",
+        json={
+            "name": "Ext GUI Co",
+            "purpose": "外部Org",
+            "target_repo_path": str(repo),
+            "isolation_level": "external",
+            "allowed_path_scope": ["content/"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    loaded = psm.load_organization_by_name("Ext GUI Co")
+    assert loaded is not None
+    assert loaded.isolation_level == "external"
+    assert loaded.allowed_path_scope == ["content/"]
+
+
+def test_create_organization_defaults_standard_via_api(tmp_path, monkeypatch):
+    """isolation_level 省略時は standard（後方互換）。"""
+    psm = _patch_create_org_home(tmp_path, monkeypatch)
+    repo = tmp_path / "ws2"
+    repo.mkdir()
+    resp = client.post(
+        "/api/organizations",
+        json={"name": "Std GUI Co", "purpose": "p", "target_repo_path": str(repo)},
+    )
+    assert resp.status_code == 200, resp.text
+    loaded = psm.load_organization_by_name("Std GUI Co")
+    assert loaded is not None and loaded.isolation_level == "standard"
+
+
 def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
     """Web: 本文生成エンドポイントが受け手 org に本文ドラフト提案を作る（claude 不在＝決定論）。"""
     from core.org_factory import create_default_organization

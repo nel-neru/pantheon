@@ -421,6 +421,9 @@ class OrgCreateRequest(ApiRequestModel):
     purpose: str = Field(default="", max_length=2000)
     # 中核モデル「1 ワークスペース = 1 Organization」: 担当 repo は必須。
     target_repo_path: str = Field(min_length=1, max_length=4096)
+    # isolation_level を GUI でも第一級に（CLI と同一挙動）。external でないと境界ガードが効かない。
+    isolation_level: Literal["core", "standard", "external"] = "standard"
+    allowed_path_scope: List[str] = Field(default_factory=list, max_length=64)
 
     @field_validator("target_repo_path")
     @classmethod
@@ -3472,16 +3475,22 @@ async def api_org_migrate_to_workspace(org_name: str) -> Dict[str, Any]:
 async def api_create_organization(req: OrgCreateRequest) -> Dict[str, Any]:
     """新しい Organization を登録する"""
     from core.bootstrap import bootstrap_platform
-    from core.org_factory import create_default_organization
+    from core.org_service import create_org
 
     psm = bootstrap_platform()
     existing = psm.load_organization_by_name(req.name)
     if existing:
         raise HTTPException(status_code=409, detail=f"Organization '{req.name}' はすでに存在します")
 
-    org = create_default_organization(req.name, req.purpose)
-    org.target_repo_path = req.target_repo_path
-    psm.save_organization(org)
+    # CLI/エージェントと同一の単一経路（OrgService）を通す。GUI でも isolation を第一級に扱う。
+    org = create_org(
+        req.name,
+        req.purpose,
+        isolation_level=req.isolation_level,
+        allowed_path_scope=list(req.allowed_path_scope or []),
+        target_repo_path=req.target_repo_path,
+        psm=psm,
+    )
     await _record_execution_event(
         "organization_created",
         f"{org.name} を作成しました",

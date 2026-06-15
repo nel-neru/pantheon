@@ -73,6 +73,38 @@ Pantheonは複数のOrganizationを安全に共存させ、それぞれが独立
 - この機構は**特定の外部組織（アフィリエイト等）の知識を一切含まず**、すべての external 組織に
   等しく適用される。新しい外部目的Organizationを追加しても同じガードがそのまま効く。
 
+## 厳格ルール（2026-06-15 強化 — 仕組み化）
+
+GUI/CLI/エージェントで挙動が割れると管理が破綻するため、以下を**厳格ルール**として固定する。
+
+1. **新規事業＝外部 Organization。業務一式は兄弟リポジトリへ。**
+   新しい「事業/ビジネス」を始めるとき、その**業務データ・戦略・コンテンツ**（商材リスト・収益化
+   ロードマップ・生成済みコンテンツ等）を **`core/` `config/` `docs/` `content/` に置いてはならない**。
+   外部目的 Organization（`isolation_level="external"`）を作り、業務一式は pantheon の**兄弟 git
+   リポジトリ**（例 `C:\Users\neoma\NEL\<org>-org`）に置く。core が持つのは**汎用 capability のみ**
+   （例: `core/content` のコンテンツ生成、`core/metrics/outcomes` の成果記録）。
+   *アンチパターン（2026-06-15 是正済）*: `core/affiliate/` ＋ `config/affiliate_programs/` ＋
+   `docs/plans/...roadmap.md` ＋ `content/shortvideo_affiliate/` を本体に直書きしたこと。
+
+2. **組織生成は単一経路（OrgService）を通す。**
+   Organization の作成は **`core/org_service.py:create_org`** を唯一の入口とし、CLI（`commands/org.py`）・
+   Web API（`web/server.py:api_create_organization`）・自律パイプライン（`core/goals/org_instantiator.py`）
+   が全てここを通る。各所で `org_factory` を直叩き＋個別 `save_organization` する実装を増やさない
+   （経路差＝管理破綻の温床）。
+
+3. **`isolation_level` は全経路で第一級。GUI でも設定可能。**
+   CLI（`--isolation-level`）／GUI（`OrgCreateRequest.isolation_level`）／エージェント（自律生成は
+   既定 external）のいずれでも明示的に扱う。GUI で作った「外部Org」が standard 化して境界が効かない、
+   という経路差を作らない。
+
+4. **事業部（Division）の追加は `add_division_plugin` のみ。**
+   GUI（`POST /api/organizations/{org}/divisions`）も CLI（`plugin add-division`）も
+   `core/orchestration/division_plugins.py:add_division_plugin` を通す。新経路で `org.add_division` を
+   直接呼ぶ実装を増やさない。
+
+5. **再発防止ガード**: `scripts/check_core_neutrality.py` が `core/`/`config/`/`content/`/`docs/` への
+   業務固有アーティファクト混入を検査し、`.claude/hooks` の PostToolUse 統合フックから実行する。
+
 ## 関連する既存コンポーネント
 
 - `core/models/organization.py`: `Organization` の `purpose`/`target_repo_path` で外部目的を表現し、
