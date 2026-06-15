@@ -19,6 +19,39 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 26 — 中断していた R5-B 投稿カレンダーを完結（同梱182本生成→配線→決定的ビルド固定化）  (2026-06-15 19:15)
+  Plan   : 自動再開（evolve_resume）。lock 無し=並行ワーカー無しを確認後、現在ブランチ
+           work/r5-shortvideo-posts が checkpoint auto-commit に滞留（ahead 1・未マージ）。
+           診断: ensure_seeded()/load_committed_calendar() の**配線は書けているが、読込先である
+           同梱 content/shortvideo_affiliate/calendar.json のデータ生成が未実行**（ディレクトリごと
+           不在）＝中断点。配線が空回り（「同梱の半年分で即動く」公約が未達）。受け入れ基準 =
+           182本の実カレンダーをコミット / CLI が新環境で即動く / 決定的・byte安定 / 回帰ゼロ・
+           敵対レビュー通過。なぜ今: 中断サイクルの完結が最優先（auto-commit にしか無い未完成物の
+           landing）。スコープを「LLM不要の決定的 fallback 経路でビルド」に切り、182本のLLM生成
+           （高コスト・要 Workflow opt-in）は避けて可逆・無コストで完成。落とした候補: ①182本を
+           LLM生成→却下（コスト過大・本サイクルは土台作り、Workflow が後で replace_all 強化可能）
+           ②配線だけ landing→却下（読込先不在で dead code 化）。
+  Did    : work/r5-shortvideo-posts-20260615（中断ブランチ上で継続）。r5_build_{schedule,calendar}.py
+           を実行し plan_schedule+fallback_post（決定的）で 182本生成（2026-07-01〜12-29、16商材
+           ×6フック、全件 PR 明記・YMYL断定なし）。content/shortvideo_affiliate/ に json/csv/md。
+           code-reviewer 所見を修正: (1) CSV の \r\r\n 二重改行を根治（render_calendar_csv に
+           lineterminator="\n"、ビルドは newline="" で LF 単一書き）(2) created_at のウォールクロック
+           値を空化し commit 成果物を byte 安定化（ロード時に __post_init__ が seed 時刻で再スタンプ）
+           (3) .gitattributes eol=lf で autocrlf 由来の phantom diff を恒久固定化。
+  Check  : test-triage GREEN（1387 passed・基線 chmod 2 のみ・回帰0）。ruff 緑。再生成で json/csv/md
+           が byte 同一（決定的を実証）。ensure_seeded 182/冪等0、post_id=sv:001 決定的、コミット
+           blob は CSV LF×183（CRCRLF=0）を git cat-file で直接確認。code-reviewer = APPROVE-WITH-NITS
+           → 確定2件（CSV改行・created_at churn）を修正し再チェック緑。
+  Act    : merged ✅（92adf4d..088f339、9ファイル統合 push）。固定化した学び（下記 Next 上）。
+  Next   : R5-B 量産 Workflow で fallback 182本を LLM creative に段階強化（replace_all 配線済み）/
+           revenue daemon の CLI 露出（--min-reach/--source-org）/ atelier serve 導線。
+  学び（固定化）:
+    - 「生成して commit する成果物は決定的に — ウォールクロック(created_at)は空化してロード時
+       再スタンプ、改行は OS 変換を newline="" で抑止し .gitattributes eol=lf でピン」。
+       検証は「再生成して diff が空（byte 同一）」で担保する。
+    - 中断サイクルの再開は「配線は在るが供給データ/副作用が未実行」のパターンに注意
+       （ensure_seeded は在ったがデータが無く空回り）。読込先・出力先の実在を必ず確認する。
+
 Cycle 25 — claude_code トレンドソースの拡充＋同梱 config の構造整合ガード  (2026-06-14 07:35)
   Plan   : trend-watcher が「genre=claude_code は未設定」と報告したのを**敵対的に検証**したところ
            不正確（Anthropic News RSS が既存・store が空なのは未収集なだけ）と判明。ただし
