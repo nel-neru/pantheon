@@ -167,10 +167,12 @@ class MetaImprovementAnalyzer:
         local_modules: set[str],
     ) -> set[str]:
         imports: set[str] = set()
-        base_parts = module_name.split(".")[:-1]
-        if node.level:
+        if node.level:  # 相対 import のみ自モジュールのパッケージを前置する
+            base_parts = module_name.split(".")[:-1]
             trim = max(len(base_parts) - (node.level - 1), 0)
             base_parts = base_parts[:trim]
+        else:  # 絶対 import は前置しない（従来は pkg.pkg.a に誤解決し検知不能だった）
+            base_parts = []
         if node.module:
             target = ".".join(base_parts + node.module.split("."))
             if target in local_modules:

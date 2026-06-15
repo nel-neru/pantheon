@@ -197,6 +197,9 @@ async def cmd_hq_outcomes(args: argparse.Namespace, *, get_psm: Any) -> None:
         return
 
     # list（既定）
+    if not getattr(args, "org_name", None):
+        print("[ERROR] --org-name を指定してください（例: pantheon hq outcomes --org-name MyApp）")
+        sys.exit(1)
     summary = store.summary_for_org(args.org_name)
     print(f"\n成果サマリ — {args.org_name}（{summary.event_count} 件）\n")
     if not summary.by_metric:

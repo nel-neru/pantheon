@@ -77,6 +77,11 @@ def bootstrap_platform(core_repo_path: Optional[Path] = None) -> "PlatformStateM
 
     if not psm.is_initialized():
         psm.initialize(meta_improvement_org_id=str(meta.id))
+    else:
+        # platform.json が旧形式（キー欠落）で既存の場合は冪等にバックフィルする
+        cfg = psm.load_platform_config()
+        if not cfg.get("meta_improvement_org_id"):
+            psm.set_meta_improvement_org_id(str(meta.id))
 
     # デフォルトポリシーファイルを生成（未作成の場合のみ）
     policy_path = psm.platform_home / "policy.yaml"

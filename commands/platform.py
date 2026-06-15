@@ -343,20 +343,24 @@ def cmd_daemon_status(args: argparse.Namespace, *, get_platform_home: Any) -> No
     else:
         print("デーモンは起動していません。")
 
+    lines: list[str] = []
     if scheduler_log.exists():
-        lines = scheduler_log.read_text(encoding="utf-8").strip().splitlines()
-        recent = lines[-5:]
-        if recent:
-            print(f"\n直近の実行ログ ({len(lines)} サイクル合計):")
-            for line in recent:
-                try:
-                    data = json.loads(line)
-                    ts = data.get("started_at", "")[:19].replace("T", " ")
-                    triggered = data.get("triggered_orgs", 0)
-                    cycle = data.get("cycle", "?")
-                    print(f"  #{cycle:3}  {ts}  triggered={triggered}")
-                except Exception:
-                    pass
+        try:
+            lines = scheduler_log.read_text(encoding="utf-8").strip().splitlines()
+        except OSError:  # 稼働中デーモンの追記と競合（Windows 共有違反）でも落とさない
+            lines = []
+    recent = lines[-5:]
+    if recent:
+        print(f"\n直近の実行ログ ({len(lines)} サイクル合計):")
+        for line in recent:
+            try:
+                data = json.loads(line)
+                ts = data.get("started_at", "")[:19].replace("T", " ")
+                triggered = data.get("triggered_orgs", 0)
+                cycle = data.get("cycle", "?")
+                print(f"  #{cycle:3}  {ts}  triggered={triggered}")
+            except Exception:
+                pass
 
     print("\n起動: pantheon daemon start [--interval=3600]")
 
