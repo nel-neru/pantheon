@@ -59,6 +59,35 @@ plugins:
       - レビュー記事制作部
       - SEO・流入最適化部
 
+  - id: shortvideo_affiliate
+    label: AI短尺動画アフィリエイト会社
+    genre: short_video_affiliate
+    description: >-
+      AIツール/SaaS を題材に YouTube Shorts を 1 日 1 本量産し、概要欄の
+      アフィリエイトリンク（継続報酬中心）で収益化する会社。台本生成と改善は
+      Pantheon（pantheon affiliate）、撮影・投稿は人手。
+    initial_kpis:
+      - 投稿継続率（1日1本）
+      - 平均視聴維持率
+      - 概要欄リンクのクリック数
+      - 成果コンバージョン数
+      - 成果報酬額（円・継続報酬比率）
+    weekly_review: >-
+      月次（30本）で勝ちフック/勝ちツールを集計し、次月のツール比率・フック比率を
+      更新する。クリック→成約→報酬のファネルを見て継続報酬SaaSへ比重を寄せる。
+    human_tasks:
+      - アフィリエイト案件・提携プログラムの参加と最終選定
+      - 動画の撮影・編集・投稿（1日1本）と PR/景表法 表記の確認
+      - 成果実績（クリック/成約/報酬）の取り込み確認
+    divisions:
+      - 案件リサーチ部
+      - 動画台本制作部
+      - 投稿運用・分析部
+    runbook: >-
+      pantheon affiliate seed → programs（商材確認）→ calendar（半年分の予定）→
+      next（今日の1本を /inbox へ）→ 投稿後 done → record で成果記録 → stats で集計。
+      ロードマップ: docs/plans/shortvideo-affiliate-monetization-roadmap.md
+
   - id: sns_growth
     label: SNS 集客→収益化会社
     genre: social_media
