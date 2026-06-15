@@ -50,6 +50,9 @@ web/frontend/.vite/
 
 # Pantheon runtime state (per-repo): sessions, indexes, caches
 .pantheon/
+# Reset/backup variants of the runtime-state dir (e.g. .pantheon.reset-bak-<timestamp>/);
+# like .pantheon/ these are transient state and must never be swept into auto-commits.
+.pantheon.*
 
 # Claude Code — share project config (.claude/settings.json, agents, skills,
 # commands, rules, hooks, .mcp.json) but keep personal/secret bits local.
