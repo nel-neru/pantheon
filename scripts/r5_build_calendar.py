@@ -69,11 +69,19 @@ def main() -> None:
 
     posts.sort(key=lambda p: p.day_index)
 
+    # 決定的ビルド: created_at（ウォールクロック）を空にして commit 成果物を byte 安定化する。
+    # ensure_seeded でのロード時に __post_init__ が seed 時刻で再スタンプするので情報は失われない。
+    dicts = [p.to_dict() for p in posts]
+    for d in dicts:
+        d["created_at"] = ""
+
+    # 全出力を newline="" で書き OS のテキストモード変換を抑止する（LF 終端で byte 安定・
+    # .gitattributes の eol=lf と整合し、どの OS で再生成しても commit 差分が出ない）。
     (outdir / "calendar.json").write_text(
-        json.dumps([p.to_dict() for p in posts], ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(dicts, ensure_ascii=False, indent=2), encoding="utf-8", newline=""
     )
-    (outdir / "calendar.csv").write_text(render_calendar_csv(posts), encoding="utf-8")
-    (outdir / "posts.md").write_text(render_calendar_markdown(posts), encoding="utf-8")
+    (outdir / "calendar.csv").write_text(render_calendar_csv(posts), encoding="utf-8", newline="")
+    (outdir / "posts.md").write_text(render_calendar_markdown(posts), encoding="utf-8", newline="")
 
     fallback_n = len(posts) - produced
     print(f"calendar built: {len(posts)} posts ({produced} LLM, {fallback_n} fallback) -> {outdir}")

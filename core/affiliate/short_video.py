@@ -234,7 +234,9 @@ def load_committed_calendar() -> List[ShortVideoPost]:
 def render_calendar_csv(posts: List[ShortVideoPost]) -> str:
     """投稿カレンダーを CSV 文字列にする（一覧・予約管理用）。"""
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    # lineterminator="\n" に固定（既定 "\r\n" のままだと、書き出し側のテキストモードが
+    # \n を再変換して \r\r\n が混入する）。呼び出し側は newline="" で書くこと。
+    writer = csv.writer(buf, lineterminator="\n")
     writer.writerow(
         [
             "day",
