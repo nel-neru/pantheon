@@ -19,6 +19,38 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 32 — GUI pillar の未テスト派生ロジックに回帰テスト（多様性ピボット: テスト/フロント）  (2026-06-16 自動再開)
+  Plan   : 自動再開（evolve_resume）。lock 無し・main クリーン＝並行ワーカー無し、Cycle 31 まで統合済みで
+           中断は「サイクル間」。Cycle 31 の Next「網を広げる」に従い、近傍の正確性候補が本当に枯渇かを
+           実証してから多様性ピボット。候補 ①metrics 除算ゼロ ②scheduler の naive datetime 比較
+           ③atelier GUI 機能 ④別サブシステム堅牢性 ⑤テストカバレッジ穴。受け入れ基準 = 高確信・完全可逆な
+           1スライスを出荷し、投機的 churn はしない。なぜ今: 直近2サイクル（29/30 silent-drop）+31（無コード
+           監査）と別カテゴリで網を広げる必要。
+  Did    : work/atelier-page-regression-tests-20260616。まず①②④を**実証して棄却**: metrics の除算は
+           live_metrics/balanced_growth/group_balance/growth_history すべて empty/len ガード済、scheduler の
+           is_due は content_jobs/publish_jobs とも try/except で naive ガード済（r4 由来）、頭脳層
+           （orchestration/goals/intelligence）は mutable default・危険 max/min なし、web/server.py は
+           token guard（compare_digest）+パストラバーサル guard（resolve+relative_to）+SPA fallback は固定
+           index.html＝セキュリティ堅牢。**実バグ無し→churn 回避**。一方 atelier の pages.test.tsx は全
+           エンドポイントに [] を返すヘッダー描画スモークのみで、Observatory の graceful degradation と
+           Pantheon のフィルタが未テストと判明。frontend-dev に per-URL fetch モックで回帰テスト2本を委譲:
+           Observatory（pendingReview 集計 / usageDown="—" / rate-limited / daemon ラベル4分岐）+ Pantheon
+           （all/live/system フィルタ）。テストのみ・プロダクトコード無変更。
+  Check  : 自分で diff 検証→プロダクトコード無変更を実証。**敵対的レビューで確定所見1件**: Observatory の
+           pendingReview テストが `getAllByText('5')` で、`counts.agents=5` と衝突し集計が壊れても通る
+           false-positive → fixture を pending_handoffs=4（sum=6, 一意）にして `getByText('6')` へ修正。
+           daemon ラベルは reviewer の 🟢 指摘どおり paused 分岐を追加し4種網羅。vitest 31/31 緑・build 緑・
+           dist は gitignore でクリーン。code-reviewer = APPROVE（全 pin が一意で意味あり・false-positive
+           なし・MemoryRouter 配線適切・非フレーク）。
+  Act    : merged ✅（f98c8c9..c6b88a3、--delete-branch。remote 未 push 枝の push --delete は benign）。
+           固定化: [[testing-and-subagent-hazards]] に lesson 3「回帰テストは一意/load-bearing な値で pin。
+           subagent のテストは all-green でも非識別アサート（getAllByText().length>0）を敵対的に疑う」を追記。
+           学び: 「候補が薄い」局面は投機修正でなく**実証棄却→別カテゴリへ多様性ピボット**が正解
+           （Cycle 30/31 の方針を継続し、今回はテスト/フロントで実価値を出荷）。
+  Next   : 近傍の正確性/セキュリティは3サイクル連続で枯渇を実証。次は**基準を上げる/網を変える**:
+           ①publishing の実機 E2E（承認ゲート維持・実投稿は有人時のみ）②atelier の新機能スライス
+           （例: daemon/usage の専用ビュー）③大きめの設計提案を1本（自律基盤 or 収益化の次フェーズ）。
+
 Cycle 31 — 監査サイクル: 近傍の高価値候補は対処済みと確認（多様性ピボット・churn 回避）  (2026-06-16 自動再開)
   Plan   : Cycle 30 後、ログ記載どおり silent-drop から多様性ピボット。候補 ①CC ベストプラクティス採用
            ②提案順序の決定性 ③GUI/DX。受け入れ基準 = 具体的・高確信の改善のみ出荷し、投機的 churn は
