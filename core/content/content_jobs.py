@@ -15,7 +15,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # 生成するコンテンツの種類（org_handoff の kind と対応）。
-CONTENT_JOB_KINDS = ("content_brief", "audience_signal", "monetization_lead", "generic")
+CONTENT_JOB_KINDS = (
+    "content_brief",
+    "audience_signal",
+    "monetization_lead",
+    "short_video",
+    "generic",
+)
 
 
 def _now() -> datetime:
