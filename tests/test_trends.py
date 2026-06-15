@@ -230,3 +230,22 @@ def test_claude_code_genre_has_multiple_sources():
     """
     cc = [s for s in load_sources() if s.genre == "claude_code"]
     assert len(cc) >= 2, f"claude_code ソースが {len(cc)} 本（>=2 を期待）"
+
+
+def test_trend_store_warns_on_corrupt_line(tmp_path, caplog):
+    """破損 JSONL 行はスキップしつつ、dedup/スコアリング母数の目減りを警告で観測可能にする。"""
+    import logging
+
+    store = TrendStore(platform_home=tmp_path)
+    assert store.add(TrendItem(source="web", url="https://x.com/ok", title="Valid")) is True
+    # 既存ファイルに破損行を直接追記（json.loads が ValueError）。
+    with store.path.open("a", encoding="utf-8") as fh:
+        fh.write("{not valid json\n")
+
+    with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+        items = store.list()
+
+    assert [i.title for i in items] == ["Valid"]
+    assert any("トレンド" in rec.message for rec in caplog.records)
+    # 削除せず温存（修復すれば次回読める）。
+    assert store.path.exists()

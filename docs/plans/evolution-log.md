@@ -19,6 +19,41 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 30 — silent-drop 観測化を trends/content 層へ横展開（正確性/堅牢性）  (2026-06-16 自動再開)
+  Plan   : 自動再開（evolve_resume）。lock の PID 22540 は停止済み＝並行ワーカー無しを確認、main は
+           Cycle 29 まで統合済みでクリーン。中断点 triage: active 4本を再精査し、r4-robustness は
+           diff が 42行出るため「冗長」判定を鵜呑みにせず spot-check → human_tasks の fields フィルタ・
+           scheduler の try/except が**既に main に存在**することを実証（Cycle 28 判定は正しい・空振り回避）。
+           landing 候補は本当に枯渇。Cycle 29 の固定化学び「一箇所直したら同型を grep で横展開」に従い、
+           未監査と明記された trends/content 層の silent-drop を精査。母数を歪める3経路を特定:
+           ①trends/store.py `_iter_raw()` の破損 JSONL 行黙殺（dedup/スコアリング/ContentJob 変換の母数）
+           ②content_jobs.py `_load_raw()` の既存ファイル全体読込失敗黙殺（全 job が消失）
+           ③content_jobs.py `list_jobs()` の不正レコード黙殺。受け入れ基準 = 3経路が削除せず警告で
+           観測可能／返り値・制御フロー不変／Cycle 29 の共有ヘルパ warn_skipped_state_file を再利用／
+           回帰ゼロ・敵対レビュー通過。なぜ今: landing 枯渇後、最小・高確信・完全可逆（観測性のみ追加）で、
+           トレンド→収益/コンテンツ pipeline の母数健全性に効く。落とした候補: ①done/junk ブランチ
+           prune（低レバ・破壊的）②R5-B 182本の LLM 強化（Workflow 大量 agent=opt-in 範囲外）
+           ③store.py:30 の file-missing OSError（fresh state で benign・警告すると毎 cold poll で洪水）。
+  Did    : work/trends-content-silent-drop-20260616。3経路の黙殺 continue/return [] を
+           warn_skipped_state_file(path, exc, kind=...) 呼び出しに置換（trends は kind="トレンド"、
+           content は kind="ContentJob"）。content_jobs.py に module logger を追加。ヘルパは関数内 import
+           （既存 get_platform_home の import 規約に一致・循環回避を二重に担保）。file-missing の
+           早期 return より後ろに import を置き、benign パスではヘルパを読み込まない。tests +3
+           （test_content_jobs に malformed-record と corrupt-file、test_trends に corrupt-line。
+           いずれも返り値保存＋警告発火＋ファイル非削除を検証）。
+  Check  : 対象テスト 34/34 pass。test-triage GREEN（1405 passed・基線 chmod 2件のみ・新規回帰 0、+3）。
+           ruff 緑（2 test ファイルを format 再整形）。code-reviewer = APPROVE（所見ゼロ）。検証済み:
+           core.platform.state は trends/content を module-level import せず循環無し／flood-suppression は
+           1ファイル内複数破損で初回 WARNING・以降 DEBUG（マスクではなく洪水抑止）／warn 呼び出し自体は
+           raise しない（stat 内包・logger.log 非伝播）→ 従来 safe な load を壊さない／3テストは実際に
+           warned パスを通過（org_name 必須欠落で TypeError・不正 JSON で ValueError）。
+  Act    : merged ✅（後述）。固定化: 「stale checkpoint の冗長判定は diff 行数ではなく内容で実証する」
+           （三点 diff は古い merge-base 起点で main 取込済みでも差分が出るため、grep で実コード照合）。
+           silent-drop 横展開は state→trends/content まで到達。次サイクルは多様性のため別カテゴリへ。
+  Next   : 多様性ピボット — ①Claude Code best-practice 採用（trend-watcher で .claude/ 更新提案）
+           ②GUI/atelier の機能前進 or DX ③別カテゴリの堅牢性バグ探索。silent-drop は当面打ち止め
+           （workspace_db:122/170 は playbook 不在/close で benign と確認済み・対象外）。
+
 Cycle 29 — 状態 load 経路の silent-drop を観測可能に（正確性/堅牢性）  (2026-06-16 自動再開)
   Plan   : 自動再開（evolve_resume）。lock 無し=並行ワーカー無しを確認。中断点の診断: main は
            Cycle 28 まで統合済み・ログも最新。未マージ active 4本を triage → 全て対象外
