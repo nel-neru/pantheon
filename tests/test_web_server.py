@@ -963,6 +963,46 @@ def test_create_organization_defaults_standard_via_api(tmp_path, monkeypatch):
     assert loaded is not None and loaded.isolation_level == "standard"
 
 
+def test_business_api_crud_outcomes_compose(tmp_path, monkeypatch):
+    """Business の作成/一覧/取得/成果ロールアップ/合成（handoff化）が GUI から動く。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    create = client.post(
+        "/api/businesses",
+        json={
+            "name": "SVA",
+            "purpose": "短尺動画アフィリ事業",
+            "member_orgs": ["VideoCo", "AffiliateCo"],
+            "handoff_routes": [
+                {"from_org": "VideoCo", "to_org": "AffiliateCo", "kind": "content_brief"}
+            ],
+        },
+    )
+    assert create.status_code == 200, create.text
+
+    # 重複は 409
+    assert (
+        client.post("/api/businesses", json={"name": "SVA", "member_orgs": []}).status_code == 409
+    )
+    # 一覧に出る
+    listed = client.get("/api/businesses").json()["businesses"]
+    assert any(b["name"] == "SVA" for b in listed)
+    # 未知は 404
+    assert client.get("/api/businesses/Nope").status_code == 404
+
+    # 成果ロールアップ（member 会社の outcome を合算）
+    from core.metrics.outcomes import OutcomeStore
+
+    OutcomeStore(platform_home=tmp_path).record("AffiliateCo", "revenue", 100)
+    out = client.get("/api/businesses/SVA/outcomes")
+    assert out.status_code == 200 and out.json()["total_revenue"] == 100
+
+    # 合成（route → 保留ハンドオフ）
+    comp = client.post("/api/businesses/SVA/compose")
+    assert comp.status_code == 200 and comp.json()["created"] == 1
+
+
 def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
     """Web: 本文生成エンドポイントが受け手 org に本文ドラフト提案を作る（claude 不在＝決定論）。"""
     from core.org_factory import create_default_organization

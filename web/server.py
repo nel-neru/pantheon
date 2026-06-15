@@ -435,6 +435,21 @@ class OrgIconRequest(ApiRequestModel):
     icon_data: str = Field(max_length=512 * 1024)
 
 
+class BusinessRouteModel(ApiRequestModel):
+    from_org: str = Field(min_length=1, max_length=120)
+    to_org: str = Field(min_length=1, max_length=120)
+    kind: str = Field(default="content_brief", max_length=64)
+
+
+class BusinessCreateRequest(ApiRequestModel):
+    name: str = Field(min_length=1, max_length=120)
+    purpose: str = Field(default="", max_length=2000)
+    member_orgs: List[str] = Field(default_factory=list, max_length=64)
+    roles: Dict[str, str] = Field(default_factory=dict)
+    handoff_routes: List[BusinessRouteModel] = Field(default_factory=list, max_length=64)
+    kpis: List[str] = Field(default_factory=list, max_length=64)
+
+
 class AnalyzeRequest(ApiRequestModel):
     org_name: str = Field(min_length=1, max_length=120)
     max_files: int = Field(default=15, ge=1, le=50)
@@ -4058,6 +4073,81 @@ async def api_batch_update_proposals(org_name: str, body: ProposalBatchRequest) 
         "failed": len(failed),
         "results": results,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Business（会社の合成で事業を表す第一級実体）                                    #
+# --------------------------------------------------------------------------- #
+
+
+def _business_store():
+    from core.platform.business_store import BusinessStore
+
+    return BusinessStore(platform_home=_psm().platform_home)
+
+
+@app.get("/api/businesses", tags=["businesses"])
+async def api_list_businesses() -> Dict[str, Any]:
+    businesses = _business_store().list_businesses()
+    return {"businesses": [b.model_dump(mode="json") for b in businesses]}
+
+
+@app.post("/api/businesses", tags=["businesses"])
+async def api_create_business(req: BusinessCreateRequest) -> Dict[str, Any]:
+    from core.models.business import Business
+
+    store = _business_store()
+    if store.get(req.name):
+        raise HTTPException(status_code=409, detail=f"Business '{req.name}' はすでに存在します")
+    business = Business(
+        name=req.name,
+        purpose=req.purpose,
+        member_orgs=list(req.member_orgs or []),
+        roles=dict(req.roles or {}),
+        handoff_routes=[r.model_dump() for r in (req.handoff_routes or [])],
+        kpis=list(req.kpis or []),
+    )
+    store.save(business)
+    return business.model_dump(mode="json")
+
+
+@app.get("/api/businesses/{business_id}", tags=["businesses"])
+async def api_get_business(business_id: str) -> Dict[str, Any]:
+    business = _business_store().get(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+    return business.model_dump(mode="json")
+
+
+@app.get("/api/businesses/{business_id}/outcomes", tags=["businesses"])
+async def api_business_outcomes(business_id: str) -> Dict[str, Any]:
+    from core.metrics.outcomes import OutcomeStore
+
+    business = _business_store().get(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+    summary = OutcomeStore(platform_home=_psm().platform_home).summary_for_orgs(
+        business.member_orgs, label=business.name
+    )
+    return {
+        "business": business.name,
+        "member_orgs": business.member_orgs,
+        "by_metric": summary.by_metric,
+        "event_count": summary.event_count,
+        "total_revenue": summary.total_revenue,
+        "total_reach": summary.total_reach,
+    }
+
+
+@app.post("/api/businesses/{business_id}/compose", tags=["businesses"])
+async def api_compose_business(business_id: str) -> Dict[str, Any]:
+    """handoff_routes から保留ハンドオフを作成する（合成の実体化）。"""
+    store = _business_store()
+    business = store.get(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+    created = store.compose_handoffs(business)
+    return {"created": len(created), "handoff_ids": [h.handoff_id for h in created]}
 
 
 # --------------------------------------------------------------------------- #
