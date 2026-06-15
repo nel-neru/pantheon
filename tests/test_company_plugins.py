@@ -201,3 +201,32 @@ class TestCatalogPathInjection:
         # トップレベルがリスト（dict でない）壊れたカタログ。
         path.write_text("- just\n- a\n- list\n", encoding="utf-8")
         assert load_company_plugin_manifests(catalog_path=path) == []
+
+
+def test_install_video_production_archetype(tmp_path):
+    """新設した中立 video_production アーキタイプが external/workspace org を起動する。"""
+    from core.platform.state import PlatformStateManager
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    result = install_company_plugin("video_production", psm=psm)
+    assert result["ok"] is True
+    org = psm.load_organization_by_name(result["org_name"])
+    assert org is not None
+    assert org.isolation_level == "external"
+    assert org.management_mode == "workspace"
+    assert len(org.divisions) >= 1
+
+
+def test_cli_install_company_wired():
+    """会社プラグイン install が CLI からも叩ける（GUI 専用だった差を解消）。"""
+    from commands import build_parser
+
+    parser = build_parser()
+    args = parser.parse_args(
+        ["plugin", "install-company", "--id", "video_production", "--name", "VP"]
+    )
+    assert args.handler_name == "cmd_plugin_install_company"
+
+    import main
+
+    assert "cmd_plugin_install_company" in main.HANDLERS
