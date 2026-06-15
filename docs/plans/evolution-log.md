@@ -19,6 +19,47 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 28 — revenue daemon の --source-org / --min-reach を CLI 露出（収益配線の仕上げ）  (2026-06-16 自動再開)
+  Plan   : 自動再開（evolve_resume）。lock 無し=並行ワーカー無しを確認。中断点の診断: main は
+           Cycle 27 以降 P1〜P5（OrgService 統一/Business 実体/short_video kind/affiliate 外出し/
+           plugin install）+cp932/prompt 修正まで全てマージ済みだが evolution-log は Cycle 27 で
+           停止（ログが実態に約6サイクル遅延）。未マージ active 4本を triage → 3本は対象外
+           （auto-150823=reset-bak ゴミ／auto-021936・intro-video=別ストリームの 2.7MB mp4・
+           concurrent hazard で触らない）。残る work/r4-backend-robustness を精査したら**6件の堅牢化+
+           テストは全て既に main に存在**（別経路で取り込み済み）＝冗長な stale checkpoint で landing 対象消失。
+           そこで recurring Next（Cycle 25/26 で3回 deferred）の「revenue daemon CLI 露出」を選択。
+           受け入れ基準 = runner 対応済みの --source-org-name/--min-reach を `daemons start revenue` から
+           設定可能に / desired-state 記録で watchdog 復元にも効く / CLI↔runner のフラグ名ドリフトを
+           将来も捕まえるテスト / 回帰ゼロ・敵対レビュー通過。なぜ今: 滞留枝の triage で landing 候補が
+           尽き、収益サブシステムの設定可能性を完成させるのが最小・高確信・完全可逆な前進。落とした候補:
+           ①r4-robustness landing→冗長と判明し却下 ②junk 枝の force-delete→破壊的・低レバで却下
+           ③atelier serve 導線→既に web/server.py で配線済みと確認し却下。
+  Did    : work/revenue-daemon-cli-flags-20260616。commands/daemons.py の start サブパーサに
+           revenue 専用 --source-org（既定 HQ）/--min-reach（既定 0.0）を追加し、cmd_daemons_start で
+           revenue のみ --source-org-name=/--min-reach= を runner へ橋渡し（CLI 側は短い --source-org、
+           runner 側は --source-org-name に正規化）。core/_revenue_daemon_runner.py のパーサを
+           build_parser() に切り出し（main() 挙動不変）。tests/test_daemons_cli.py 新設（4件）:
+           値の橋渡し検証＋「CLI が組む引数列を build_parser がそのまま受理し正しい値になる」drift-guard
+           ＋安全な既定＋他 daemon に revenue フラグを付けない回帰防止。
+  Check  : test-triage GREEN（1396 passed・基線 chmod 2件のみ・新規回帰 0）。ruff 緑。
+           code-reviewer = APPROVE（所見ゼロ）。検証済み: フラグ名一致・float の str ラウンドトリップ
+           正確（locale 非依存）・subprocess は shell=False の list argv で unicode/特殊文字/インジェクション
+           安全・watchdog は verbatim argv で復元・他 daemon 非影響。
+  Act    : merged ✅（9914cf0..9aaf02a、--delete-branch。remote 未 push のローカル枝のため
+           push --delete エラーは benign）。固定化した学び（下記）。
+  Next   : evolution-log の Cycle 28 未満の遅延補正（P1〜P5 を要点だけ恒久ドキュメントへ統合・
+           本ログはアーカイブ検討）/ R5-B 量産 Workflow で fallback 182本を LLM creative 強化（要 opt-in）/
+           done ブランチ 18本＋junk auto 枝の --prune 掃除。
+  学び（固定化）:
+    - 中断再開の triage では「未マージ=未完成」と即断しない。stale checkpoint は cherry-pick --no-commit が
+      no-op か（=内容が既に main にあるか）を git grep で実証してから landing 要否を判断する
+      （今回 r4-robustness は全件 main 既存＝冗長と判明し空振りを回避）。
+    - CLI が内部 runner を subprocess 起動する設計では、CLI が組む引数列を runner 自身のパーサに
+      通す drift-guard テストでフラグ名（--source-org vs --source-org-name）の食い違いを恒久的に防ぐ。
+      そのために runner のパーサは build_parser() として切り出しテスト可能にする。
+    - bash ツールで multi-line commit を書くとき PowerShell の `@'...'@` here-string は使えない
+      （リテラル @ が混入する）。bash では複数 -m か実 heredoc/-F を使う。
+
 Cycle 27 — .pantheon リセット/バックアップ系ディレクトリの gitignore 漏れを塞ぐ（DX/衛生）  (2026-06-15 19:30)
   Plan   : Cycle 26 後の branch triage で、未マージ active ブランチ work/auto-20260614-150823 が
            `.pantheon.reset-bak-20260614-150639/`（codebase_index.json 7152行 + sessions/*.json）を
