@@ -19,6 +19,28 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 31 — 監査サイクル: 近傍の高価値候補は対処済みと確認（多様性ピボット・churn 回避）  (2026-06-16 自動再開)
+  Plan   : Cycle 30 後、ログ記載どおり silent-drop から多様性ピボット。候補 ①CC ベストプラクティス採用
+           ②提案順序の決定性 ③GUI/DX。受け入れ基準 = 具体的・高確信の改善のみ出荷し、投機的 churn は
+           しない（正直さ優先）。なぜ今: 直近2サイクルが load 層に集中したため別カテゴリで網を広げる。
+  Did    : work/evolution-log-cycle31-20260616（doc/memory のみ・コード変更なし）。2候補を実証調査:
+           ①trend-watcher で .claude/ を現行 CC ベストプラクティス（subagents/skills/hooks/MCP/model
+           tiers, 2026-06 時点）と照合 → **既に整合**（Fable 5 heavy tier・Opus 4.8 trailer・選択的 MCP・
+           秘密情報なし）。唯一の提案は未使用 Dynamic Workflows 用の validator hook=投機的につき**不採用**。
+           ②get_all/get_pending_improvement_proposals の順序 → **既に created_at 降順ソート済**（Round2 で
+           解決・memory 索引が stale だったので訂正）。さらに sort キーが str(created_at) の文字列ソートで
+           ある点を精査 → created_at は全て datetime.now(timezone.utc)＋Pydantic v2 ISO シリアライズ（UTC=
+           +00:00・小数 0桁 or 6桁の一様形式）のため**文字列ソート＝時系列順**（同秒の無小数は '+'<'.'で
+           最小 side に正しく並ぶ）＝**実バグではない**。よって出荷せず。
+  Check  : コード変更なし＝テスト不要（基線維持）。trend-watcher（web/trends 照合）と manager.py 実コード
+           読解で2候補の「対処済み」を実証。敵対的検証は不要（新規変更ゼロ）。
+  Act    : merged（doc/memory のみ）。固定化した学び: **「候補が薄い」と感じたら投機的に直さず、対処済みを
+           実証して記録する**（次の resume が同じ dead-end を再探索しない）。trend-watcher の MED 確信の
+           前方互換提案は opt-in 範囲外＝不採用が正解。string sort of uniform Pydantic ISO は時系列順。
+  Next   : 近傍の easy 候補は枯渇 → 次サイクルは**網を広げる/基準を上げる**: ①GUI/atelier の具体機能前進
+           ②publishing Phase2 auto（承認ゲート維持・実機投稿は無人運転では避ける）③別サブシステム
+           （orchestration/goals/metrics）の的を絞った堅牢性監査。いずれも単一スライス化してから着手。
+
 Cycle 30 — silent-drop 観測化を trends/content 層へ横展開（正確性/堅牢性）  (2026-06-16 自動再開)
   Plan   : 自動再開（evolve_resume）。lock の PID 22540 は停止済み＝並行ワーカー無しを確認、main は
            Cycle 29 まで統合済みでクリーン。中断点 triage: active 4本を再精査し、r4-robustness は
