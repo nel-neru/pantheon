@@ -28,6 +28,11 @@ from commands.affiliate import cmd_affiliate_record as _cmd_affiliate_record_imp
 from commands.affiliate import cmd_affiliate_seed as _cmd_affiliate_seed_impl
 from commands.affiliate import cmd_affiliate_stats as _cmd_affiliate_stats_impl
 from commands.atlas import cmd_atlas as _cmd_atlas_impl
+from commands.business import cmd_business_compose as _cmd_business_compose_impl
+from commands.business import cmd_business_create as _cmd_business_create_impl
+from commands.business import cmd_business_list as _cmd_business_list_impl
+from commands.business import cmd_business_outcomes as _cmd_business_outcomes_impl
+from commands.business import cmd_business_show as _cmd_business_show_impl
 from commands.chat import cmd_chat as _cmd_chat_impl
 from commands.doctor import cmd_doctor as _cmd_doctor_impl
 from commands.goal import cmd_goal_plan as _cmd_goal_plan_impl
@@ -257,6 +262,26 @@ async def cmd_affiliate_record(args) -> None:
 
 async def cmd_affiliate_stats(args) -> None:
     await _cmd_affiliate_stats_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_create(args) -> None:
+    await _cmd_business_create_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_list(args) -> None:
+    await _cmd_business_list_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_show(args) -> None:
+    await _cmd_business_show_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_outcomes(args) -> None:
+    await _cmd_business_outcomes_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_compose(args) -> None:
+    await _cmd_business_compose_impl(args, get_psm=_get_psm)
 
 
 async def cmd_plugin_list(args) -> None:
@@ -628,6 +653,11 @@ HANDLERS = {
     "cmd_affiliate_done": cmd_affiliate_done,
     "cmd_affiliate_record": cmd_affiliate_record,
     "cmd_affiliate_stats": cmd_affiliate_stats,
+    "cmd_business_create": cmd_business_create,
+    "cmd_business_list": cmd_business_list,
+    "cmd_business_show": cmd_business_show,
+    "cmd_business_outcomes": cmd_business_outcomes,
+    "cmd_business_compose": cmd_business_compose,
     "cmd_plugin_list": cmd_plugin_list,
     "cmd_plugin_add_division": cmd_plugin_add_division,
     "cmd_plugin_scaffold_division": cmd_plugin_scaffold_division,

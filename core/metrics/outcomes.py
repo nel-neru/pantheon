@@ -177,6 +177,22 @@ class OutcomeStore:
             stats["last"] = event.value
         return OutcomeSummary(org_name=org_name, by_metric=by_metric, event_count=len(events))
 
+    def summary_for_orgs(self, org_names: Iterable[str], *, label: str = "") -> OutcomeSummary:
+        """複数 org の成果を 1 つに合算する（Business 単位のロールアップ用）。"""
+        names = {str(n) for n in (org_names or [])}
+        events = [e for e in self._load() if e.org_name in names]
+        by_metric: Dict[str, Dict[str, float]] = {}
+        for event in events:
+            stats = by_metric.setdefault(event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0})
+            stats["sum"] += event.value
+            stats["count"] += 1
+            stats["last"] = event.value
+        return OutcomeSummary(
+            org_name=label or ",".join(sorted(names)),
+            by_metric=by_metric,
+            event_count=len(events),
+        )
+
     def revenue_by_month(self, org_name: Optional[str] = None) -> Dict[str, float]:
         """収益メトリクス（REVENUE_METRICS）を ``YYYY-MM`` バケットで合計する簡易レポート。
 
