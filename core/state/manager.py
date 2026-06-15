@@ -24,6 +24,15 @@ if TYPE_CHECKING:
     from core.models.organization import ImprovementProposal, Organization, QualityReview
 
 
+def _safe_mtime(path: Path) -> float:
+    """ソートキー用の堅牢な mtime。glob と sort の間でファイルが消えても落ちない
+    （ポーリングする daemon/web では稀に発生する競合）。取得不能なら 0.0（＝最古扱い）。"""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 class RepoStateManager:
     """
     各OrganizationのリポジトリRoot内に .pantheon/ ディレクトリを作り、
@@ -92,12 +101,15 @@ class RepoStateManager:
 
     def get_recent_decisions(self, limit: int = 10) -> list[Dict[str, Any]]:
         """最近の決定を取得（他のセッションが参照するため）"""
+        from core.platform.state import warn_skipped_state_file
+
         decisions = []
         for f in self.decisions_dir.glob("*.json"):
             try:
                 with open(f, "r", encoding="utf-8") as fp:
                     decisions.append(json.load(fp))
-            except (OSError, ValueError):
+            except (OSError, ValueError) as exc:
+                warn_skipped_state_file(f, exc, kind="決定")
                 continue
 
         def sort_key(decision: Dict[str, Any]) -> datetime:
@@ -136,12 +148,15 @@ class RepoStateManager:
         improvements_dir = self.state_dir / "improvements"
         if not improvements_dir.exists():
             return []
+        from core.platform.state import warn_skipped_state_file
+
         proposals = []
         for f in improvements_dir.glob("*.json"):
             try:
                 with open(f, "r", encoding="utf-8") as fp:
                     data = json.load(fp)
-            except (OSError, ValueError):
+            except (OSError, ValueError) as exc:
+                warn_skipped_state_file(f, exc, kind="改善提案")
                 continue
             if is_active_improvement_proposal_status(data.get("status")):
                 proposals.append(data)
@@ -159,12 +174,15 @@ class RepoStateManager:
         improvements_dir = self.state_dir / "improvements"
         if not improvements_dir.exists():
             return []
+        from core.platform.state import warn_skipped_state_file
+
         proposals = []
         for f in improvements_dir.glob("*.json"):
             try:
                 with open(f, "r", encoding="utf-8") as fp:
                     proposals.append(json.load(fp))
-            except (OSError, ValueError):
+            except (OSError, ValueError) as exc:
+                warn_skipped_state_file(f, exc, kind="改善提案")
                 continue
         # ファイル名は uuid4（時系列でソート不可）なので created_at 降順で並べてから
         # limit で切り詰める。docstring の「新しい順」を実際に保証する。
@@ -179,12 +197,19 @@ class RepoStateManager:
     def get_pending_proposals(self, limit: int = 20) -> list["ImprovementProposal"]:
         """Sprint 2 alias: 未対応 ImprovementProposal をモデルとして返す。"""
         from core.models.organization import ImprovementProposal
+        from core.platform.state import warn_skipped_state_file
 
+        improvements_dir = self.state_dir / "improvements"
         proposals = []
         for data in self.get_pending_improvement_proposals(limit=limit):
             try:
                 proposals.append(ImprovementProposal.model_validate(data))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 — JSON は妥当だがスキーマ不一致な1件で全体を壊さない
+                # dict API（get_pending_improvement_proposals）には現れるのにモデル API から
+                # 黙って消えるのは観測不能な不整合。元ファイルを特定して警告する。
+                warn_skipped_state_file(
+                    improvements_dir / f"{data.get('id')}.json", exc, kind="改善提案"
+                )
                 continue
         return proposals
 
@@ -264,10 +289,10 @@ class RepoStateManager:
 
     def list_session_contexts(self) -> list[Dict[str, Any]]:
         """保存済みセッションコンテキストの一覧を返す。"""
+        from core.platform.state import warn_skipped_state_file
+
         results = []
-        for path in sorted(
-            self.sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
-        ):
+        for path in sorted(self.sessions_dir.glob("*.json"), key=_safe_mtime, reverse=True):
             try:
                 with open(path, encoding="utf-8") as f:
                     ctx = json.load(f)
@@ -278,7 +303,8 @@ class RepoStateManager:
                         "summary": ctx.get("summary", ""),
                     }
                 )
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 — 1ファイルの破損で一覧全体を壊さない
+                warn_skipped_state_file(path, exc, kind="セッション")
                 continue
         return results
 

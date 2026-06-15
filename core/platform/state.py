@@ -22,24 +22,38 @@ logger = logging.getLogger(__name__)
 
 # 同じ破損ファイルが居座ると常時ポーリングの daemon/web で warning が洪水になるため、
 # path+mtime 単位で初回のみ WARNING、同一内容の再遭遇は DEBUG に落とす。
-_warned_org_files: Dict[str, float] = {}
+_warned_state_files: Dict[str, float] = {}
 
 
-def warn_skipped_org_file(f: Path, exc: Exception) -> None:
+def warn_skipped_state_file(f: Path, exc: Exception, kind: str = "状態") -> None:
+    """破損/検証失敗で読み込めなかった状態ファイルを、削除せず警告で観測可能にする。
+
+    黙って ``continue`` で捨てると「データが音もなく消失した」ように見えるため、永続化された
+    状態（Organization・改善提案・決定・セッション等）の load 経路で共通利用する。``kind`` は
+    ログに出す種別ラベル。常時ポーリングする daemon/web で洪水にならないよう、path+mtime 単位で
+    初回のみ WARNING・同一内容の再遭遇は DEBUG に落とす。ファイルは削除しない（修復すれば
+    次回読み込まれる）。
+    """
     try:
         mtime = f.stat().st_mtime
     except OSError:
         mtime = -1.0
     key = str(f)
-    level = logging.DEBUG if _warned_org_files.get(key) == mtime else logging.WARNING
-    _warned_org_files[key] = mtime
+    level = logging.DEBUG if _warned_state_files.get(key) == mtime else logging.WARNING
+    _warned_state_files[key] = mtime
     logger.log(
         level,
-        "Organization ファイルの読み込みをスキップ: %s (%s: %s)",
+        "%s ファイルの読み込みをスキップ: %s (%s: %s)",
+        kind,
         f,
         type(exc).__name__,
         exc,
     )
+
+
+def warn_skipped_org_file(f: Path, exc: Exception) -> None:
+    """後方互換: Organization ファイル用の薄いラッパ（メッセージは従来どおり）。"""
+    warn_skipped_state_file(f, exc, kind="Organization")
 
 
 def _migrate_legacy_home(new_home: Path) -> None:
