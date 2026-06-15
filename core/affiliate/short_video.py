@@ -131,6 +131,19 @@ class ShortVideoCalendarStore:
         out.sort(key=lambda p: p.day_index)
         return out
 
+    def ensure_seeded(self) -> int:
+        """ストアが空なら同梱データセット（content/shortvideo_affiliate/calendar.json）から取り込む。
+
+        取り込んだ件数を返す（既存があれば 0）。新しい環境でも `affiliate calendar/next`
+        が同梱の半年分カレンダーで即動くようにするためのフォールバック。
+        """
+        if self._load_raw():
+            return 0
+        posts = load_committed_calendar()
+        if not posts:
+            return 0
+        return self.replace_all(posts)
+
     def replace_all(self, posts: List[ShortVideoPost]) -> int:
         """カレンダー全体を置き換える（量産バッチの投入用）。件数を返す。"""
         self._save_raw([p.to_dict() for p in posts])
@@ -188,13 +201,42 @@ class ShortVideoCalendarStore:
         return updated
 
 
+def load_committed_calendar() -> List[ShortVideoPost]:
+    """リポジトリ同梱の ``content/shortvideo_affiliate/calendar.json`` を読む（無ければ空）。"""
+    try:
+        from core.paths import resource_path
+
+        path = resource_path("content", "shortvideo_affiliate", "calendar.json")
+    except Exception:  # noqa: BLE001 — パス解決失敗でも壊さない
+        return []
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    out: List[ShortVideoPost] = []
+    for d in data:
+        if not isinstance(d, dict):
+            continue
+        try:
+            out.append(ShortVideoPost.from_dict(d))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # エクスポータ（人間が作業しやすい形）                                          #
 # --------------------------------------------------------------------------- #
 def render_calendar_csv(posts: List[ShortVideoPost]) -> str:
     """投稿カレンダーを CSV 文字列にする（一覧・予約管理用）。"""
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    # lineterminator="\n" に固定（既定 "\r\n" のままだと、書き出し側のテキストモードが
+    # \n を再変換して \r\r\n が混入する）。呼び出し側は newline="" で書くこと。
+    writer = csv.writer(buf, lineterminator="\n")
     writer.writerow(
         [
             "day",

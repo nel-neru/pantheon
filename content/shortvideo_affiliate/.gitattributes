@@ -1,0 +1,5 @@
+# 生成物は LF 終端に固定する（r5_build_calendar.py が newline="" で LF を書く）。
+# core.autocrlf=true でも checkout で CRLF に変換させず、再生成時の phantom diff を防ぐ。
+*.json text eol=lf
+*.csv  text eol=lf
+*.md   text eol=lf
