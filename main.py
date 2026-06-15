@@ -20,13 +20,6 @@ import inspect
 import sys
 
 from commands import build_parser
-from commands.affiliate import cmd_affiliate_calendar as _cmd_affiliate_calendar_impl
-from commands.affiliate import cmd_affiliate_done as _cmd_affiliate_done_impl
-from commands.affiliate import cmd_affiliate_next as _cmd_affiliate_next_impl
-from commands.affiliate import cmd_affiliate_programs as _cmd_affiliate_programs_impl
-from commands.affiliate import cmd_affiliate_record as _cmd_affiliate_record_impl
-from commands.affiliate import cmd_affiliate_seed as _cmd_affiliate_seed_impl
-from commands.affiliate import cmd_affiliate_stats as _cmd_affiliate_stats_impl
 from commands.atlas import cmd_atlas as _cmd_atlas_impl
 from commands.business import cmd_business_compose as _cmd_business_compose_impl
 from commands.business import cmd_business_create as _cmd_business_create_impl
@@ -234,34 +227,6 @@ async def cmd_org_create(args) -> None:
     from commands.org import cmd_org_create as _impl
 
     await _impl(args, get_psm=_get_psm, project_root=PROJECT_ROOT)
-
-
-async def cmd_affiliate_seed(args) -> None:
-    await _cmd_affiliate_seed_impl(args, get_psm=_get_psm)
-
-
-async def cmd_affiliate_programs(args) -> None:
-    await _cmd_affiliate_programs_impl(args, get_psm=_get_psm)
-
-
-async def cmd_affiliate_calendar(args) -> None:
-    await _cmd_affiliate_calendar_impl(args, get_psm=_get_psm)
-
-
-async def cmd_affiliate_next(args) -> None:
-    await _cmd_affiliate_next_impl(args, get_psm=_get_psm)
-
-
-async def cmd_affiliate_done(args) -> None:
-    await _cmd_affiliate_done_impl(args, get_psm=_get_psm)
-
-
-async def cmd_affiliate_record(args) -> None:
-    await _cmd_affiliate_record_impl(args, get_psm=_get_psm)
-
-
-async def cmd_affiliate_stats(args) -> None:
-    await _cmd_affiliate_stats_impl(args, get_psm=_get_psm)
 
 
 async def cmd_business_create(args) -> None:
@@ -646,13 +611,6 @@ HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
     "cmd_org_create": cmd_org_create,
-    "cmd_affiliate_seed": cmd_affiliate_seed,
-    "cmd_affiliate_programs": cmd_affiliate_programs,
-    "cmd_affiliate_calendar": cmd_affiliate_calendar,
-    "cmd_affiliate_next": cmd_affiliate_next,
-    "cmd_affiliate_done": cmd_affiliate_done,
-    "cmd_affiliate_record": cmd_affiliate_record,
-    "cmd_affiliate_stats": cmd_affiliate_stats,
     "cmd_business_create": cmd_business_create,
     "cmd_business_list": cmd_business_list,
     "cmd_business_show": cmd_business_show,
