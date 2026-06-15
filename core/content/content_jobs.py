@@ -8,11 +8,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # 生成するコンテンツの種類（org_handoff の kind と対応）。
 CONTENT_JOB_KINDS = (
@@ -91,7 +94,11 @@ class ContentJobStore:
             return []
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            # 既存ファイルが読めない＝全 job が音もなく消失する。削除せず観測可能にする。
+            from core.platform.state import warn_skipped_state_file
+
+            warn_skipped_state_file(self.path, exc, kind="ContentJob")
             return []
         return data if isinstance(data, list) else []
 
@@ -106,8 +113,12 @@ class ContentJobStore:
         for d in self._load_raw():
             try:
                 jobs.append(ContentJob.from_dict(d))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as exc:
                 # 壊れた/不完全なレコード（手編集・移行など）はスキップして 500 を避ける。
+                # ただし黙殺せず観測可能にする（job 母数が静かに目減りするため）。
+                from core.platform.state import warn_skipped_state_file
+
+                warn_skipped_state_file(self.path, exc, kind="ContentJob")
                 continue
         return jobs
 

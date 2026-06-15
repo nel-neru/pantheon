@@ -29,6 +29,8 @@ class TrendStore:
             lines = self.path.read_text(encoding="utf-8").splitlines()
         except OSError:
             return []
+        from core.platform.state import warn_skipped_state_file
+
         out: List[dict] = []
         for line in lines:
             line = line.strip()
@@ -36,7 +38,9 @@ class TrendStore:
                 continue
             try:
                 rec = json.loads(line)
-            except ValueError:
+            except ValueError as exc:
+                # 破損行を黙って捨てると dedup/スコアリングの母数が静かに目減りする。
+                warn_skipped_state_file(self.path, exc, kind="トレンド")
                 continue
             if isinstance(rec, dict):
                 out.append(rec)

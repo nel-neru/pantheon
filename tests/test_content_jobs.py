@@ -221,3 +221,41 @@ def test_scheduler_self_stops_on_rate_limit(tmp_path, monkeypatch):
     stop = _run(sched.run_cycle())
     assert stop is True
     assert sched.status()["rate_limited"] is True
+
+
+# ---- silent-drop 観測性（warn_skipped_state_file 経由・Cycle 30 横展開）----
+
+
+def test_list_jobs_warns_on_malformed_record(tmp_path, caplog):
+    """壊れた 1 レコードはスキップしつつ、母数の目減りを警告で観測可能にする。"""
+    import logging
+
+    store = ContentJobStore(platform_home=tmp_path)
+    good = store.add_job(ContentJob(org_name="SNS Growth", theme="ok", interval_seconds=3600))
+    # 必須 org_name を欠く不正レコードを直接注入（from_dict が TypeError）。
+    raw = store._load_raw()
+    raw.append({"theme": "orphan", "interval_seconds": 3600})
+    store._save_raw(raw)
+
+    with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+        jobs = store.list_jobs()
+
+    assert [j.job_id for j in jobs] == [good.job_id]
+    assert any("ContentJob" in rec.message for rec in caplog.records)
+    # 黙殺と違いファイルは温存（修復すれば次回読める）。
+    assert store.path.exists()
+
+
+def test_load_raw_warns_on_corrupt_file(tmp_path, caplog):
+    """既存ファイルが壊れて全 job が消える事象を、削除せず警告で観測可能にする。"""
+    import logging
+
+    store = ContentJobStore(platform_home=tmp_path)
+    store.path.write_text("{not valid json", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+        jobs = store.list_jobs()
+
+    assert jobs == []
+    assert any("ContentJob" in rec.message for rec in caplog.records)
+    assert store.path.exists()
