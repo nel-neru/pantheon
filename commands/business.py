@@ -85,7 +85,7 @@ async def cmd_business_show(args: argparse.Namespace, *, get_psm: Any) -> None:
     if b is None:
         print(f"[ERROR] Business '{args.id}' が見つかりません")
         sys.exit(1)
-    print(f"\nBusiness — {b.name}\n")
+    print(f"\nBusiness - {b.name}\n")
     print(f"  id      : {b.id}")
     print(f"  目的    : {b.purpose}")
     print(f"  状態    : {b.status}")
