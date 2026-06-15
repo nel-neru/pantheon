@@ -16,7 +16,11 @@
 
 ## 現在のアクティブな計画
 
-**なし。** 直近の Group Structure & Monetization 計画は実装完了・main 反映済みのため整理済みです:
+- **`evolution-next-phase-backlog.md`** — `/evolve` の次フェーズ候補バックログ＋監査カバレッジ台帳
+  （小スライス枯渇後に着手する大きめ候補 §B と、検証済みクリーンな §A「やらないことリスト」）。
+  自動再開はここを読んで churn を避け、curated なキューから着手する。
+
+直近の Group Structure & Monetization 計画は実装完了・main 反映済みのため整理済みです:
 
 - 恒久的な決定・アーキテクチャ・残存する将来課題 → **`docs/design/group-monetization.md`**
 - 完了した計画段階ドキュメント（研究シード・推論過程） → **`docs/archive/plans/`** にアーカイブ
