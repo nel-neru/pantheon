@@ -100,6 +100,10 @@ class OrgInstantiator:
         spec = self._designer.design(goal.description, org_name=org_name)
         org = self._designer.instantiate(spec)
         org.purpose = goal.description
+        # 自律生成（人手を介さない）Org は既定で external 扱いにし、PolicyEngine の境界ガード
+        # （自ワークスペース外への越境提案を弾く）対象にする。core/standard を設計が明示した場合は尊重。
+        if getattr(org, "isolation_level", "standard") == "standard":
+            org.isolation_level = "external"
 
         return InstantiationResult(
             organization=org,
