@@ -120,6 +120,18 @@ def test_calendar_store_lifecycle(tmp_path):
     assert [p.day_index for p in up] == [2]
 
 
+def test_ensure_seeded_from_committed_dataset(tmp_path, monkeypatch):
+    # 同梱データセットの読み込みをモックして hermetic に検証する。
+    seed = [ShortVideoPost(day_index=1, date="2026-07-01", program_name="A", title="T")]
+    monkeypatch.setattr("core.affiliate.short_video.load_committed_calendar", lambda: list(seed))
+    store = ShortVideoCalendarStore(platform_home=tmp_path)
+    assert store.list_posts() == []
+    n = store.ensure_seeded()
+    assert n == 1 and len(store.list_posts()) == 1
+    # 2 回目は既存があるので取り込まない（冪等）。
+    assert store.ensure_seeded() == 0
+
+
 def test_calendar_store_corrupt_tolerant(tmp_path):
     store = ShortVideoCalendarStore(platform_home=tmp_path)
     store.path.write_text('[{"day_index": 1, "date": "2026-07-01"}, 9, "x"]', encoding="utf-8")

@@ -74,6 +74,7 @@ async def cmd_affiliate_programs(args: argparse.Namespace, *, get_psm: Any) -> N
 async def cmd_affiliate_calendar(args: argparse.Namespace, *, get_psm: Any) -> None:
     """投稿カレンダーの予定を表示する（既定は直近 limit 件）。"""
     store = _calendar_store()
+    store.ensure_seeded()  # 空なら同梱の半年分カレンダーを取り込む
     posts = store.list_posts()
     if not posts:
         print(
@@ -96,6 +97,7 @@ async def cmd_affiliate_calendar(args: argparse.Namespace, *, get_psm: Any) -> N
 async def cmd_affiliate_next(args: argparse.Namespace, *, get_psm: Any) -> None:
     """投稿すべき次の 1 本を全文表示し、人間タスク(/inbox)へ積む。"""
     store = _calendar_store()
+    store.ensure_seeded()  # 空なら同梱の半年分カレンダーを取り込む
     post = store.next_unposted()
     if post is None:
         print("未投稿の下書きがありません（全て投稿済み、またはカレンダー未生成）。")
