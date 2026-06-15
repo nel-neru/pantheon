@@ -220,8 +220,10 @@ class KnowledgeManager:
         entries: List[Dict[str, Any]] = []
         for path in self.knowledge_dir.glob("*.json"):
             try:
-                entries.append(json.loads(path.read_text(encoding="utf-8")))
+                record = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 continue
+            if isinstance(record, dict):  # 非 dict の壊れたファイルは読み取り全体を壊さない
+                entries.append(record)
         entries.sort(key=lambda record: record.get("created_at", ""), reverse=True)
         return entries
