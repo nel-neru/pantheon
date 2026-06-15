@@ -1,0 +1,243 @@
+# AIツール/SaaS アフィリエイト商材レジストリ（シード）
+#
+# 対象: AIツール/SaaS × YouTube Shorts × 日本語（docs/plans/shortvideo-affiliate-monetization-roadmap.md）
+# 用途: `pantheon affiliate seed` がこれを ~/.pantheon/affiliate_programs.json に取り込む。
+#       台本生成(generator)は has_affiliate=true を優先してツールを割り当てる。
+#
+# 重要: 料率・参加可否・recurring 条件は時期で変わる。本リストは「出発点」であり、
+#       実際の参加可否と最新料率は各 ASP / プログラムで必ず確認すること。
+#       has_affiliate=false は「公開アフィリが無い → 収益源にせず集客ネタに使う」もの。
+#
+# fields:
+#   name           表示名
+#   category       video / voice / writing / design / automation / research / general
+#   network        asp_a8 / asp_moshimo / asp_afb / partnerstack / impact / firstpromoter / direct / amazon / none
+#   url            紹介/登録の出発点（実リンクは各自取得）
+#   commission     料率の目安（文字列・要確認）
+#   recurring      継続報酬か（true=積み上がる本命）
+#   has_affiliate  公開アフィリの有無（false=集客ネタ専用）
+#   japan_ok       日本から参加/紹介しやすいか（true/partial/false）
+#   tier           a(主力) / b(補完) / c(集客ネタ)
+#   topics         動画ネタの切り口（フック生成のヒント）
+#   notes          補足
+
+programs:
+  - name: ElevenLabs
+    category: voice
+    network: firstpromoter
+    url: https://elevenlabs.io/affiliates
+    commission: "約22%（継続）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: a
+    topics: ["AIナレーション", "声のクローン", "多言語吹き替え", "YouTube用音声"]
+    notes: "音声AIの定番。ショートのナレーション需要と直結。"
+
+  - name: HeyGen
+    category: video
+    network: partnerstack
+    url: https://www.heygen.com/affiliate
+    commission: "継続あり（要確認）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: a
+    topics: ["AIアバター動画", "顔出しなし動画", "多言語アバター"]
+    notes: "顔出し不要の解説動画ネタが量産しやすい。"
+
+  - name: Synthesia
+    category: video
+    network: impact
+    url: https://www.synthesia.io/partners
+    commission: "単発+継続（要確認）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: a
+    topics: ["研修動画", "AIアバター", "ビジネス動画自動化"]
+    notes: "B2B寄り・単価高め。"
+
+  - name: Descript
+    category: video
+    network: partnerstack
+    url: https://www.descript.com/affiliate
+    commission: "約15-30%（要確認）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: a
+    topics: ["動画/音声編集", "文字で動画編集", "ポッドキャスト", "字幕自動化"]
+    notes: "編集の手間削減＝Before/Afterが作りやすい。"
+
+  - name: Pictory
+    category: video
+    network: direct
+    url: https://pictory.ai/affiliates
+    commission: "約20%（継続）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: a
+    topics: ["テキストから動画", "ブログを動画化", "ショート量産"]
+    notes: "ショート量産系。自分の運用とも親和。"
+
+  - name: InVideo AI
+    category: video
+    network: direct
+    url: https://invideo.io/affiliate-program/
+    commission: "約25-30%（継続）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: a
+    topics: ["プロンプトから動画", "ショート自動生成", "テンプレ動画"]
+    notes: "高料率・recurring。"
+
+  - name: Fliki
+    category: video
+    network: direct
+    url: https://fliki.ai/affiliates
+    commission: "約30%（継続）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: a
+    topics: ["テキスト読み上げ動画", "AI声", "ショート量産"]
+    notes: "低価格帯で申込ハードル低い＝成約率が出やすい。"
+
+  - name: Murf.ai
+    category: voice
+    network: impact
+    url: https://murf.ai/partners
+    commission: "継続あり（要確認）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: b
+    topics: ["AIナレーション", "プレゼン音声", "多言語"]
+    notes: "ElevenLabs比較ネタに使える。"
+
+  - name: Jasper
+    category: writing
+    network: partnerstack
+    url: https://www.jasper.ai/partners
+    commission: "約25-30%（継続）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: b
+    topics: ["AIライティング", "ブログ量産", "マーケコピー"]
+    notes: "英語中心だが料率高い。"
+
+  - name: Writesonic
+    category: writing
+    network: direct
+    url: https://writesonic.com/affiliate-program
+    commission: "約30%（継続）"
+    recurring: true
+    has_affiliate: true
+    japan_ok: partial
+    tier: b
+    topics: ["AI記事作成", "SEO記事", "チャットボット"]
+    notes: ""
+
+  - name: Canva
+    category: design
+    network: impact
+    url: https://www.canva.com/affiliates/
+    commission: "新規Pro/要素販売（要確認）"
+    recurring: false
+    has_affiliate: true
+    japan_ok: true
+    tier: b
+    topics: ["サムネ作成", "AI画像/Magic", "デザイン時短", "テンプレ"]
+    notes: "国内認知が高く紹介しやすい。Shortsのサムネ/素材ネタと相性◎。"
+
+  - name: Notion
+    category: automation
+    network: impact
+    url: https://www.notion.com/affiliates
+    commission: "新規課金（要確認）"
+    recurring: false
+    has_affiliate: true
+    japan_ok: true
+    tier: b
+    topics: ["Notion AI", "AIで議事録/要約", "タスク管理", "second brain"]
+    notes: "国内人気・テンプレ配布で導線を作りやすい。"
+
+  - name: Adobe (Firefly / Creative Cloud)
+    category: design
+    network: asp_a8
+    url: https://www.a8.net/
+    commission: "ASP案件（要確認）"
+    recurring: false
+    has_affiliate: true
+    japan_ok: true
+    tier: b
+    topics: ["AI画像生成", "Firefly", "Photoshop生成塗りつぶし", "動画(Premiere)"]
+    notes: "国内はASP(バリューコマース/A8等)経由。単価まとまる。"
+
+  # --- 集客ネタ専用（公開アフィリ無し or 限定的）。収益源にしない ---
+  - name: ChatGPT (OpenAI)
+    category: general
+    network: none
+    url: https://openai.com/
+    commission: "なし"
+    recurring: false
+    has_affiliate: false
+    japan_ok: true
+    tier: c
+    topics: ["ChatGPT活用", "プロンプト術", "GPTs", "効率化"]
+    notes: "公開アフィリ無し。再生数を取る集客ネタ→概要欄で有料周辺ツールへ送客。"
+
+  - name: Midjourney
+    category: design
+    network: none
+    url: https://www.midjourney.com/
+    commission: "なし"
+    recurring: false
+    has_affiliate: false
+    japan_ok: true
+    tier: c
+    topics: ["AI画像", "プロンプト", "作例"]
+    notes: "公開アフィリ無し。集客ネタ。"
+
+  - name: Perplexity
+    category: research
+    network: none
+    url: https://www.perplexity.ai/
+    commission: "なし（限定的）"
+    recurring: false
+    has_affiliate: false
+    japan_ok: true
+    tier: c
+    topics: ["AI検索", "リサーチ術", "情報収集"]
+    notes: "公開アフィリは限定的。集客ネタ扱い。"
+
+# 参加すべき ASP / ネットワーク（多数のSaaS案件にここからアクセス）
+networks:
+  - id: asp_a8
+    name: A8.net
+    url: https://www.a8.net/
+    note: "国内最大級ASP。AI/SaaS/スクール案件多数。審査ゆるめ。"
+  - id: asp_moshimo
+    name: もしもアフィリエイト
+    url: https://af.moshimo.com/
+    note: "Amazon/楽天もまとめやすい。W報酬。"
+  - id: asp_afb
+    name: afb
+    url: https://www.afi-b.com/
+    note: "SaaS/サービス案件。料率良いことが多い。"
+  - id: impact
+    name: Impact
+    url: https://impact.com/
+    note: "海外SaaSの直アフィリ基盤（Canva/Notion/Synthesia等）。"
+  - id: partnerstack
+    name: PartnerStack
+    url: https://partnerstack.com/
+    note: "海外SaaSのrecurringアフィリ（Jasper/Descript/HeyGen等）。"
+  - id: firstpromoter
+    name: FirstPromoter
+    url: https://firstpromoter.com/
+    note: "ElevenLabs等が採用。各ツール側で申請。"
