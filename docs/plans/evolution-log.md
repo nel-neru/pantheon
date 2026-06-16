@@ -1353,3 +1353,19 @@ Upgrade Program C2 — Agent tool-use / MCP  (2026-06-17)
   Act    : merged ✅。固定化: ツール時は strict-MCP を必ず pin（ambient 露出防止）/ gated は
            --disallowedTools かつサーバ非起動で Human-gate を保つ。
   Next   : C3 Reflexion 自己批評（self_evaluator のヒューリスティックを LLM-judge 化, max_iters 予算）。
+
+Upgrade Program C3 — Reflexion 自己批評ループ  (2026-06-17)
+  Plan   : ヒューリスティック自己評価を実 LLM-judge の generate→critique→refine に。受け入れ基準 =
+           opt-in（既定 off で従来挙動・回帰0）・max_iters 上限と任意のコスト天井で暴走しない・
+           offline は heuristic に決定的フォールバック。
+  Did    : work/reflexion-selfcritique-20260617。core/intelligence/reflexion.py 新規（ReflexionLoop:
+           best-keep, max_iters 既定2, 任意 cost_ceiling は C1 span から読む）。self_evaluator に
+           evaluate_llm()+_parse_judge() 追加（heuristic evaluate() は不変＝fallback, judge は
+           task_type="scoring"→haiku, 閾値6.0）。GenericSkillAgent に _maybe_reflexion()（env
+           PANTHEON_REFLEXION 既定 off, max_iters は 0..5 にクランプ）。
+  Check  : 新規 13/13 緑 / backend 1474 passed・既知2のみ・回帰0 / ruff 緑 /
+           code-reviewer = APPROVE-WITH-NITS（既定off byte一致・有界・worse非採用・fail-open予算 を検証）。
+           対応: 予算を refine 後にも再チェック（soft→締め）, docstring 文言修正, 既定off直接テスト追加,
+           max_iters 上限クランプ。
+  Act    : merged ✅。固定化: 品質ループは必ず opt-in＋有界＋offline 決定的（コスト増幅を既定で封じる）。
+  Next   : C4 敵対的マルチ検証（PARALLEL_FINDERS_VERIFY, 破棄 reviewer を実 critic 化）。

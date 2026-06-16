@@ -110,6 +110,45 @@ class GenericSkillAgent(BaseAgent):
         except Exception:  # tool wiring must never break a generation
             return None
 
+    def _maybe_reflexion(self, initial, task, messages, llm, tool_spec):
+        """``PANTHEON_REFLEXION`` が有効なら generate→critique→refine を回す（既定 off）。
+
+        既定では initial をそのまま返す（従来挙動・コスト不変）。失敗は best-effort で initial に倒す。
+        """
+        import os
+
+        if os.getenv("PANTHEON_REFLEXION", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            return initial
+        try:
+            from core.intelligence.reflexion import ReflexionLoop
+            from core.llm import LLMMessage
+
+            try:
+                max_iters = int(os.getenv("PANTHEON_REFLEXION_MAX_ITERS", "2") or "2")
+            except ValueError:
+                max_iters = 2
+            max_iters = max(0, min(5, max_iters))  # clamp: defense-in-depth upper bound
+
+            def refine_fn(prev: str, feedback: str) -> str:
+                refine_messages = list(messages) + [
+                    LLMMessage(role="assistant", content=prev),
+                    LLMMessage(
+                        role="user",
+                        content=(
+                            "上記の出力を次の批評に基づいて改善し、同じ形式で出力し直してください。\n"
+                            f"批評: {feedback}"
+                        ),
+                    ),
+                ]
+                return llm.complete(refine_messages, tool_spec=tool_spec)
+
+            best, _ev, _iters = ReflexionLoop(llm, max_iters=max_iters).run(
+                initial_output=initial, task_type=task.task_type, refine_fn=refine_fn
+            )
+            return best
+        except Exception:
+            return initial
+
     async def run(self, task: AgentTask) -> AgentResult:
         """スキルを活かしてタスクを実行する。"""
         system_prompt = self.apply_skills_to_prompt(GENERIC_BASE_PROMPT)
@@ -132,7 +171,9 @@ class GenericSkillAgent(BaseAgent):
                     ),
                 ),
             ]
-            response = llm.complete(messages, tool_spec=self._build_tool_spec())
+            tool_spec = self._build_tool_spec()
+            response = llm.complete(messages, tool_spec=tool_spec)
+            response = self._maybe_reflexion(response, task, messages, llm, tool_spec)
             try:
                 data = json.loads(response)
             except json.JSONDecodeError:
