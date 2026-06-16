@@ -115,8 +115,8 @@
 1. 3スキルを超えない
 2. スキルは「並べるだけ」でなく、実際のプロンプトや選定ロジックに効く組み合わせにする
 3. 新しいスキルを増やす場合は次もセットで更新する
-   - `core/models/organization.py` の `AgentSkill`
-   - `core/intelligence/agent_skill_engine.py` の `SKILL_DEFINITIONS`
+   - `core/models/organization.py` の `AgentSkill`（enum メンバー）
+   - `skills/<value>.yaml`（`SkillLoader` が読み込む定義。`id` は enum 値と一致。`SKILL_DEFINITIONS` 辞書は廃止）
    - `core/orchestration/task_router.py` の `TASK_SKILL_REQUIREMENTS`（必要なら）
    - 組織テンプレートやテスト
 4. 役割が広すぎる場合は新Agentに分割する

@@ -30,10 +30,43 @@ ENV/
 Thumbs.db
 
 # Environment / Secrets
+# The Stop-hook auto-commit pushes work branches to a (possibly public) remote every turn, so any
+# secret reaching the tree must be ignored. Patterns are credential-SHAPED (extensions / known
+# names), NOT broad substrings, so source like `secret_manager.py` / `test_secrets.py` stays tracked.
+# (The auto-commit hook additionally un-stages any secret-shaped file via .claude/hooks/sensitive-paths.mjs.)
 .env
-.env.local
-.env.production
-.env.*.local
+.env.*
+*.env
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.key
+*.pfx
+*.p12
+*.p8
+*.jks
+*.keystore
+*.ppk
+*.asc
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.npmrc
+.git-credentials
+.pgpass
+.netrc
+.pypirc
+secrets.json
+secret.json
+credentials.json
+secrets.yaml
+secrets.yml
+.secrets
+service-account*.json
+gcp-*.json
+aws-*.json
 
 # pytest / ruff / mypy
 .pytest_cache/

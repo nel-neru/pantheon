@@ -58,10 +58,13 @@ log(`Auditing ${flows.length} flow(s)`)
 phase('Audit flows')
 const verdicts = (
   await parallel(
+    // Delegate to the `flow-auditor` subagent so the audit procedure, the chmod-0o600 baseline
+    // carve-out, and the solid/partial/fragile rubric live in ONE place (.claude/agents/flow-auditor.md)
+    // instead of being re-embedded here (where it drifts from the agent prompt).
     flows.map((flow) => () =>
       agent(
-        `You are auditing ONE Pantheon usage flow end-to-end.\n\nFlow: ${flow.id} — ${flow.name}\nDocumented status: ${flow.status}\nVerification tests: ${JSON.stringify(flow.verification ?? [])}\nKnown issues recorded: ${flow.known_issue_count ?? 0}\n\nSteps:\n1. Run the verification tests with the venv: .venv/Scripts/python.exe -m pytest <files> -q (Bash, forward slashes). Treat the 2 known pre-existing Windows failures (chmod 0o600) as NOT regressions; anything else is real.\n2. Read core/atlas/data/flows.json for THIS flow's known_issues, open each cited file, and judge whether it is still present or already fixed (cite file:line). Do not guess — read the code.\n3. Decide an honest status: solid (tests pass, no issue left), partial (works but a medium issue remains), fragile (a high issue remains or tests fail).\nReturn ONLY the structured verdict.`,
-        { label: `audit:${flow.id}`, phase: 'Audit flows', schema: VERDICT_SCHEMA },
+        `Audit ONE Pantheon usage flow end-to-end and return the structured verdict.\n\nFlow id: ${flow.id}\nFlow name: ${flow.name}\nDocumented status: ${flow.status}\nVerification tests: ${JSON.stringify(flow.verification ?? [])}\nKnown issues recorded: ${flow.known_issue_count ?? 0}\n\nFollow your standard flow-audit procedure (run the verification tests; read each known_issue's cited file to judge whether it is still present or already fixed; decide honest solid/partial/fragile health per your rubric). Return ONLY the structured verdict.`,
+        { label: `audit:${flow.id}`, phase: 'Audit flows', agentType: 'flow-auditor', schema: VERDICT_SCHEMA },
       ),
     ),
   )

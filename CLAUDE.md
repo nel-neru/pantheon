@@ -84,7 +84,14 @@ uniqueness keys collided within one Windows clock tick; now disambiguated. If th
 - Do not break full-suite collection/execution, and do not break the explicit 404 handling in `web/server.py`.
 - `SpecialistAgent.skills`: min 2, max 3.
 - State location: global → `~/.pantheon`; repo-specific → `<repo>/.pantheon`.
-- A `PreToolUse` guard blocks `rm -rf`, `git push --force`, and edits to `.env`/credential files.
+- A `PreToolUse` guard (`guard-bash.mjs`, on Bash **and** PowerShell) blocks catastrophic deletes
+  (POSIX `rm -rf` in any flag spelling, PowerShell `Remove-Item -Recurse -Force`/`rd /s /q`,
+  `find / -delete`, `dd of=/dev/…`, disk format), `git push --force`/force-refspec, and shell
+  overwrite/read of secret files; `protect-secrets.mjs` blocks editing them. The shared denylist is
+  `.claude/hooks/sensitive-paths.mjs`. Validate hook edits with `node .claude/hooks/pantheon_hook_selftest.mjs`.
+- NOTE: the `settings.json` `Read(...)` deny list is NOT a hard boundary while `settings.local.json`
+  allows `Bash(*)` — a shell `cat`/`Get-Content` could otherwise read a secret, so `guard-bash.mjs`
+  also blocks shell reads of denylisted files. Treat the hooks (not the permission lists) as the real guard.
 
 ## `.claude/` tooling map (this repo's Claude Code customizations)
 
@@ -93,15 +100,20 @@ uniqueness keys collided within one Windows clock tick; now disambiguated. If th
 
 - **Subagents** (`.claude/agents/`), model-tiered by cognitive load: Opus —
   `code-reviewer` (read-only diff), `debugger`; Sonnet — `frontend-dev`, `flow-auditor`;
-  Haiku (mechanical/monitoring) — `test-triage` (separates the 6 known failures from real
+  Haiku (mechanical/monitoring) — `test-triage` (separates the 2 known failures from real
   regressions), `trend-watcher` (Claude Code trends → `.claude/` config suggestions),
   `doc-writer` (keep docs in sync).
 - **Skills** (`.claude/skills/`): `run-pantheon` (launch recipe), `pantheon-agent`
   (how to add a Pantheon-agent + skill correctly), `improvement-proposal-flow`,
-  `fastapi-endpoint` (add/modify a FastAPI route + test).
+  `fastapi-endpoint` (add/modify a FastAPI route + test), `atlas` (understand/extend the Repository Atlas).
 - **Commands** (`.claude/commands/`): `/add-cli-command`, `/add-web-page`, `/triage-tests`,
+  `/atlas` (show/audit the Repository Atlas), `/evolve` (long-running autonomous PDCA loop),
   `/daemon-status` (24h 自律基盤の状態), `/trend-report` (トレンド収集状況), `/spawn-org`
-  (ジャンル別 Organization を1コマンド量産).
+  (ジャンル別 Organization を1コマンド量産), plus the git-lifecycle commands
+  `/new-work-branch` · `/branch-status` · `/merge-to-main`.
 - **Rules** (`.claude/rules/`): path-scoped guidance for `*.py`, frontend, and `web/server.py`.
-- **MCP** (`.mcp.json`): Context7 (version-pinned docs) + Playwright (drive the frontend).
+- **Output-styles** (`.claude/output-styles/`): `rigor`, `diagram-first`.
+- **MCP** (`.mcp.json`): Context7 (version-pinned docs) + Playwright (drive the frontend) — both are
+  committed but **disabled by default** in the (git-ignored, personal) `settings.local.json`
+  `disabledMcpjsonServers`; remove them from that list to enable.
 - Full description: `docs/claude-code-setup.md`.

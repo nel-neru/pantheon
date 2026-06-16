@@ -19,8 +19,9 @@ Review checklist (report only what actually applies):
 - **Correctness**: logic errors, off-by-one, wrong async/await, unhandled edge cases, broken contracts.
 - **Pantheon conventions** (hard rules): new `.py` starts with `from __future__ import annotations`;
   no `datetime.utcnow()` (must be `datetime.now(timezone.utc)`); `SpecialistAgent.skills` is 2–3;
-  state goes to `~/.pantheon` (global) or `<repo>/.pantheon` (per-repo); a new skill updates BOTH the
-  `AgentSkill` enum and `AgentSkillEngine.SKILL_DEFINITIONS`; `web/server.py` 404 handling is preserved.
+  state goes to `~/.pantheon` (global) or `<repo>/.pantheon` (per-repo); a new skill adds the
+  `AgentSkill` enum member AND a `skills/<value>.yaml` (loaded by `SkillLoader`; YAML `id` == enum
+  value — there is no `SKILL_DEFINITIONS` dict); `web/server.py` 404 handling is preserved.
 - **Backend**: type hints on public functions; no blocking I/O in async FastAPI handlers; Pydantic v2
   patterns; no hosted-LLM SDK calls (use `core/runtime/claude_code`).
 - **Frontend (React 19)**: correct hook usage/deps, no needless re-renders, TS strict (no `any`),
@@ -34,5 +35,6 @@ Output, grouped by priority, each with file:line and a concrete fix:
 - 🟢 **Suggestion** (nice to have)
 
 End with a one-line verdict: APPROVE / APPROVE-WITH-NITS / REQUEST-CHANGES. Be specific and terse;
-do not restate unchanged code. If the diff only touches the 6 known-failing Windows tests' areas,
-note that those failures are pre-existing (see CLAUDE.md) and not caused by the change.
+do not restate unchanged code. The Windows test baseline is **2** known pre-existing failures
+(chmod 0o600); if the diff only touches those areas, note they are pre-existing (see CLAUDE.md) and
+not caused by the change. Do NOT wave through any OTHER new failure as "known".

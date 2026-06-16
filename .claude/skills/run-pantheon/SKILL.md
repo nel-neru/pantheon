@@ -1,6 +1,6 @@
 ---
 name: run-pantheon
-description: Launch and smoke-check the Pantheon app (FastAPI backend + React 19 frontend) on Windows. Use when asked to run, serve, start, preview, screenshot, or manually verify the app or a UI change.
+description: Launch and smoke-check the Pantheon app (FastAPI backend + React 19 frontend) on Windows. Use when asked to run, serve, start, preview, or manually verify the app or a UI change. (Screenshots need the Playwright MCP enabled — see CLAUDE.md MCP note; this skill only serves + curl-smoke-checks.)
 allowed-tools: Bash(pantheon*) Bash(npm*) Bash(.venv/Scripts/*) Bash(curl*)
 ---
 
@@ -32,8 +32,8 @@ Open the Vite URL it prints (default http://localhost:5173).
 ## Smoke check (no browser)
 
 ```
-curl -s http://localhost:7860/api/platform/status     # expect JSON
-curl -s -o /dev/null -w "%{http_code}" http://localhost:7860/nonexistent   # expect 404 (handled explicitly)
+curl.exe -s http://localhost:7860/api/platform/status     # expect JSON
+curl.exe -s -o NUL -w "%{http_code}" http://localhost:7860/nonexistent   # expect 404 (Windows: NUL, not /dev/null)
 ```
 
 ## Stop
