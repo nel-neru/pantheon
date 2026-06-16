@@ -1405,3 +1405,39 @@ Upgrade Program C4a — 観測ダッシュ + Eval ハーネス  (2026-06-17)
   Act    : merged ✅。固定化: 観測は read-only API＋best-effort span で本処理を汚さない／Eval は
            injectable runner/evaluator で offline 決定的。
   Next   : C5 セマンティック記憶（任意 fastembed + vendored BM25, PANTHEON_SEMANTIC_RECALL kill-switch）。
+
+Upgrade Program C5 — セマンティック記憶リコール（自動再開で完成）  (2026-06-17)
+  Plan   : 前セッションが embeddings.py 作成までで中断（ブランチ ahead 0・未コミット）。
+           完成済みコアを MemoryBank.recall へ配線。受け入れ基準 = query 無/kill-switch off で
+           byte 一致・既定 on で関連再ランク・テスト緑(既知2のみ)・敵対レビュー通過・merged。
+  Did    : work/semantic-memory-embeddings-20260617（resume）。embeddings.py（zero-dep BM25:
+           ASCII+CJK/半角カナ bigram, 任意 fastembed は PANTHEON_EMBEDDINGS opt-in で欠如時 BM25
+           へ silent fallback）。memory_bank.recall(query=) が候補プールを rank_scores で再ランク
+           （query 無/off/関連シグナル皆無は usefulness 順を維持＝byte 一致）。base.
+           apply_skills_to_prompt に keyword-only query、generic_skill_agent.run が task.description
+           を渡す。_YamlAgent override に query を貫通（回帰修正）。
+  Check  : 新規 21（embeddings7+memory_bank拡張+回帰）緑 / backend 1503 passed・既知2のみ・回帰0 /
+           ruff 緑 / code-reviewer = APPROVE（byte一致・タイブレーク安定・fallback ガード・
+           fastembed silent fallback・env 既定 on を検証, Critical/Warning 無し）。
+           ※ 1巡目 test-triage が _YamlAgent override の query 欠落 TypeError を2件検出→super 貫通で修正。
+  Act    : merged ✅（main 0a89f1f）。固定化: BaseAgent の公開メソッドにシグネチャ追加時は
+           agent_factory._YamlAgent 等の override も同時に更新（さもなくば run 経路で TypeError）。
+           query 再ランクは「関連シグナル皆無なら従来順を維持」で非マッチ時のゴミ提示を防ぐ。
+  Next   : C6 候補 — (a) 意味リコールを code_review/analyze 経路にも配線（repo/diff を query 化）、
+           (b) done ブランチ 22 本を branch_status --prune で掃除、(c) eval golden tasks 拡充。
+
+Cycle 2 — ブランチ衛生（done ローカル掃除）  (2026-06-17)
+  Plan   : C5 完了後の自然な締めとして、resume 毎に branch_status が出す done を掃除。
+           受け入れ基準 = done なローカル work/* のみ削除（merged 済みなので可逆）・active/未統合は不可侵・
+           test ゲート緑。多様性: C5(feature/intelligence) に対し DX/hygiene。
+  Did    : work/branch-hygiene-prune-20260617。branch_status.mjs --prune で done ローカル 10 本を削除
+           （adversarial-verify / agent-tooluse-mcp / branch-status-patch-equiv / harden-cc-config /
+           headless-exit-sidecar / langgraph-checkpoint-home / observability-dashboard-eval(-D, origin
+           統合済) / observability-spans / reflexion-selfcritique / task-queue-xproc-lock）。remote-only
+           done は別の慎重操作として保留。併せて本ログへ C5 エントリを載せて main へ反映。
+  Check  : prune は merged 判定(origin/main 統合済)のみ対象＝定義上安全・可逆 / active 3・未統合は不可侵を確認 /
+           merge_to_main の test ゲートで backend 緑(既知2のみ)を担保。
+  Act    : merged 予定。固定化: done 掃除は「ローカルのみ・merged 限定」で安全。remote-only done の掃除は
+           破壊操作(push --delete)に近いので resume 自動では行わず手動判断に委ねる。
+  Next   : C6 候補 — (a) 意味リコールを analyze 経路へ配線、(c) eval golden tasks 拡充、
+           (d) remote-only done ブランチの掃除を別途レビュー。
