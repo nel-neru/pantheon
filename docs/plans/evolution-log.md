@@ -19,6 +19,36 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 36 — publishing live 経路(note/wordpress)に空コンテンツガード（B-1 残: preview≥live を一様化）  (2026-06-16 自動再開)
+  Plan   : Cycle 35 で特定し reviewer も follow-up として明示した「検証の非対称の残り」を、ロード済みの
+           publishing 文脈を活かして高確信・低リスクで完結（再調査コスト0）。前提を実コードで確認: X の
+           `_publish_live` は元から空本文を弾くが note/wordpress は弾かず、空の下書きでもブラウザを起動して
+           空エディタを人間にハンドオフ（無駄起動＋空ドラフトの human task）。受け入れ基準 = note/wp が空を
+           ブラウザ未起動で ok=False・X 同契約・基線維持・回帰テスト・敵対レビュー通過。なぜ今: 直前 Cycle の
+           直接の穴埋めで preview≥live の honesty が一様化し収益化フローの信頼性が上がる。落とした候補:
+           実機 E2E（不可逆・有人時のみ）／B-2・B-3（多様性より「特定済みの穴を閉じる」完結を優先）。
+  Did    : work/publish-live-empty-validation-20260616（backend・自分で実装）。
+           ① `base.py`: 空判定の共有ヘルパ `_is_empty_content` + 共通エラー定数 `EMPTY_CONTENT_ERROR` を
+           追加し `_preview` を DRY 化（挙動は等価）。② `note.py`/`wordpress.py` `_publish_live`: 接続チェック
+           後・ブラウザ起動前に空ガード（空なら launcher_factory を呼ばず ok=False）。X は既存テスト挙動維持の
+           ため未変更（重複チェックは防御の深層として残置）。③ テスト: note 空ガード1本、`tests/
+           test_wordpress_publish_live.py` 新規5本（auto拒否/サイトURL欠落/未接続/空ガード未起動/assisted
+           ハンドオフ。wp live は従来未テスト＝カバレッジ向上）。
+  Check  : 対象 publishing テスト 43→48 緑。test-triage 全件 GREEN（1417 passed・基線 chmod 2件のみ・新規
+           回帰 0）。ruff クリーン。code-reviewer 敵対レビュー = **APPROVE**（critical/warning 0）。reviewer が
+           DRY リファクタの**挙動等価**（空判定の短絡・head/detail の非依存・error 文言の verbatim 移動）、
+           ガード precedence（launcher_factory 未呼出＝ブラウザ未起動を factory_calls==[] で discriminating に
+           検証）、None 安全を実証確認。reviewer 🟢 Suggestion「wp の auto-mode 分岐が未カバー」を採用し
+           auto 拒否テストを追加（note とカバレッジ parity）。
+  Act    : merged ✅（0d4384e..200e1d4、--delete-branch。remote 未 push の push --delete 失敗は benign）。
+           台帳 §A の publishing 行を「preview＋live 両経路で空検証」に更新・§B-1 の残タスクから「live note
+           空検証」を消す。固定化（学び）: 「同じ不変条件を全経路に置く＝防御の深層化」（Cycle 4 mode ガード /
+           Cycle 35 preview）を**実投稿の全アダプタ**へ完遂。共有ヘルパ＋定数で文言/判定を1箇所に集約し非対称の
+           再発を構造的に防止。前提実証→単一スライス→敵対レビュー→reviewer 提案で穴埋め、を3サイクル連続で実証。
+  Next   : B-2 残り（first Org 作成 empty-state CTA・初回ウィザード GUI 露出）／B-3 atelier 運用ビュー
+           （読み取り専用 daemon/usage 詳細パネル）／B-4 並行性テスト（state manager の競合・決定的に書く）。
+           publishing の残りは実機 E2E（有人時のみ）。
+
 Cycle 35 — publishing dry-run プレビューに投稿前バリデーション（B-1 収益化ハードニング最初のスライス）  (2026-06-16 自動再開)
   Plan   : 多様性ピボット（Cycle 34 はフロント機能 → 今回は backend/収益化）。台帳 §B-1 の「無人で安全な
            最初のスライス＝dry-run/プレビュー経路・投稿前バリデーション・失敗時エラー面のハードニング」を
