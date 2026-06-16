@@ -11,6 +11,8 @@ catalog_path 引数で yaml を直接渡す。
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -230,3 +232,30 @@ def test_cli_install_company_wired():
     import main
 
     assert "cmd_plugin_install_company" in main.HANDLERS
+
+
+def test_japanese_named_companies_get_distinct_workspaces(tmp_path):
+    """非ASCII（日本語）名の会社を複数 install しても workspace が衝突しない（slug 一意化）。"""
+    from core.platform.state import PlatformStateManager
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    # video_production / affiliate は同梱の中立アーキタイプ（label が日本語）。
+    r1 = install_company_plugin("video_production", psm=psm, name="動画制作社")
+    r2 = install_company_plugin("affiliate", psm=psm, name="アフィリエイト社")
+
+    assert r1["workspace_path"] and r2["workspace_path"]
+    # かつて両方 ".../workspaces/company" に丸まって衝突していた箇所。
+    assert r1["workspace_path"] != r2["workspace_path"]
+    # 同名なら同一・安定（決定的ハッシュ）
+    psm2 = PlatformStateManager(platform_home=tmp_path / "other")
+    r3 = install_company_plugin("video_production", psm=psm2, name="動画制作社")
+    assert Path(r3["workspace_path"]).name == Path(r1["workspace_path"]).name
+
+
+def test_ascii_named_company_workspace_unchanged(tmp_path):
+    """純ASCII名のワークスペース名は従来どおり（ハッシュ付与しない）。"""
+    from core.platform.state import PlatformStateManager
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    result = install_company_plugin("video_production", psm=psm, name="VideoCo")
+    assert Path(result["workspace_path"]).name == "VideoCo"

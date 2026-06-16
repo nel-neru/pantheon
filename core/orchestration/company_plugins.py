@@ -147,13 +147,20 @@ def install_company_plugin(
     if repo_path:
         ws = Path(repo_path)
     else:
+        import hashlib
         import re
 
         root = getattr(psm, "get_workspaces_root", lambda: None)() or (
             psm.platform_home / "workspaces"
         )
-        safe = re.sub(r"[^A-Za-z0-9_-]+", "-", org_name).strip("-") or "company"
-        ws = Path(root) / safe
+        slug = re.sub(r"[^A-Za-z0-9_-]+", "-", org_name).strip("-")
+        # 非ASCII名はスラッグが空/情報欠落で衝突する（例: 日本語名は全文字除去 → "" → "company"
+        # に丸まり、別名の会社同士が同一ワークスペースを共有してしまう）。純ASCII名は従来どおり、
+        # それ以外は org_name の短いハッシュを付けて会社ごとに一意・安定なディレクトリにする。
+        if not org_name.isascii() or not slug:
+            digest = hashlib.sha1(org_name.encode("utf-8")).hexdigest()[:8]
+            slug = f"{slug}-{digest}" if slug else f"company-{digest}"
+        ws = Path(root) / slug
     try:
         ws.mkdir(parents=True, exist_ok=True)
     except OSError:
