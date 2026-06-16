@@ -160,9 +160,10 @@
       "status": "partial",
       "known_issues": [
         { "severity": "medium", "title": "H 系自己チューニング層が未配線", "detail": "PolicyOptimizer/ConfigAutoTuner/TemplatePromoter 等が実行スケジュールに繋がっていない。", "file": "core/quality/config_autotuner.py" },
-        { "severity": "low", "title": "LangGraph チェックポイント DB が cwd 相対で接続リーク", "detail": "checkpointer が cwd に作られ ~/.pantheon 外。", "file": "core/quality/self_improvement_graph.py" }
+        { "severity": "medium", "title": "async 実行経路が同期 SqliteSaver と非互換（潜在）", "detail": "run_improvement_for_organization は async で ainvoke/astream を呼ぶが SqliteSaver は同期専用で NotImplementedError を投げる。現状この async 経路を駆動する呼び出し元が無いため潜在。駆動するなら AsyncSqliteSaver へ置換が必要。", "file": "core/quality/self_improvement_graph.py" }
       ],
       "resolved": [
+        { "title": "LangGraph チェックポイント DB を cwd 相対から ~/.pantheon 配下へ＋接続リーク（conn を try/finally で close）を根治", "file": "core/quality/self_improvement_graph.py" },
         { "title": "SelfImprovementLoop を agents[0] ハードコードから PreTaskOrchestrator + スキルマッチ選定へ（Phase 2）", "file": "core/quality/self_improvement_loop.py" },
         { "title": "Atlas known_issues から meta 提案を自動生成し Meta-Improvement Org が拾える（Phase 1）", "file": "core/atlas/proposal_generator.py" }
       ]
