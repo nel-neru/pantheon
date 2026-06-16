@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import signal
 import subprocess
 import sys
 import tempfile
@@ -37,7 +36,7 @@ from core.runtime.heartbeat import (
     read_heartbeat,
     stale_threshold_seconds,
 )
-from core.runtime.process_utils import pid_alive
+from core.runtime.process_utils import pid_alive, terminate_pid
 
 logger = logging.getLogger(__name__)
 
@@ -288,10 +287,12 @@ def stop_daemon(
     if pid is None:
         pid_file.unlink(missing_ok=True)
         return {"status": "not_running", "pid": None, "log_path": str(log_file)}
-    try:
-        os.kill(pid, signal.SIGTERM)
+    # Windows-safe 終了: terminate_pid は POSIX で os.kill(SIGTERM)、Windows で
+    # TerminateProcess を使う（生の os.kill(SIGTERM) は Windows でも動くが、liveness と同じく
+    # 単一ソース process_utils に集約して再ドリフトを防ぐ＝Cycle 44 の consolidation の完遂）。
+    if terminate_pid(pid):
         status = "stopped"
-    except OSError:
+    else:
         status = "already_stopped"
     pid_file.unlink(missing_ok=True)
     logger.info("daemon '%s' %s (pid=%s)", name, status, pid)

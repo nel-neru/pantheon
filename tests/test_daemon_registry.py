@@ -1,6 +1,6 @@
 """Tests for the daemon registry (core.runtime.daemon_registry).
 
-subprocess は決して実起動しない: Popen / os.kill を monkeypatch する。
+subprocess は決して実起動しない: Popen / terminate_pid を monkeypatch する。
 """
 
 from __future__ import annotations
@@ -124,7 +124,8 @@ def test_stop_kills_and_disables(tmp_path, monkeypatch):
     (tmp_path / "content_daemon.pid").write_text("555", encoding="utf-8")
     set_enabled("content", True, platform_home=tmp_path)
     killed: dict = {}
-    monkeypatch.setattr(registry.os, "kill", lambda pid, sig: killed.update(pid=pid, sig=sig))
+    # stop_daemon は単一ソース terminate_pid（Windows-safe）経由で kill する。
+    monkeypatch.setattr(registry, "terminate_pid", lambda pid: bool(killed.update(pid=pid)) or True)
 
     result = stop_daemon("content", platform_home=tmp_path)
     assert result["status"] == "stopped"
