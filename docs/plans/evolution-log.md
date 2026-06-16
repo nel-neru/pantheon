@@ -19,6 +19,38 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 35 — publishing dry-run プレビューに投稿前バリデーション（B-1 収益化ハードニング最初のスライス）  (2026-06-16 自動再開)
+  Plan   : 多様性ピボット（Cycle 34 はフロント機能 → 今回は backend/収益化）。台帳 §B-1 の「無人で安全な
+           最初のスライス＝dry-run/プレビュー経路・投稿前バリデーション・失敗時エラー面のハードニング」を
+           選定。前提を実コードで実証: `base._preview` は内容に関わらず**常に ok=True** を返す一方、実投稿
+           `_publish_live` は X が空本文を ok=False で弾き 280字超を警告する＝**検証の非対称**。空/不正な
+           下書きがプレビューで「成功」に見え、人間が handed_off まで進めてから初めて失敗に気づく。受け入れ
+           基準 = プレビューが空/長すぎを surface・既存 dry-run テスト不変・回帰テスト追加・基線維持・敵対
+           レビュー通過。なぜ今: 公開製品の核（収益化の最終1マイル）で、外部作用ゼロの preview のみ＝
+           完全可逆・無人安全。落とした候補: B-4 並行性テスト（フレーク化リスク中）／B-2 残り（直前 Cycle
+           と同カテゴリ＝多様性のため見送り）／実投稿 E2E（不可逆・有人時のみ）。
+  Did    : work/publish-preview-validation-20260616（backend のため自分で実装・委譲なし）。
+           ① `adapters/base.py` `_preview`: title も body も空（strip 後）なら ok=False「投稿内容が空です」、
+           非致命警告の拡張点 `_preview_warnings`（既定 []）を追加。あわせて旧 `content.title[:60]` の None
+           未ガードクラッシュ経路も `(content.title or "")` で解消（incidental hardening）。
+           ② `adapters/x.py` `_preview_warnings` override: 本文 280字超で警告（live と同文言・同じ `>` 境界）。
+           ③ `tests/test_publishing.py` 回帰テスト6本。スコープは preview(dry-run) のみ・live/status 遷移は不変。
+  Check  : test_publishing 20/20 緑。test-triage 全件 GREEN（1410 passed・基線 chmod 2件のみ・新規回帰 0）。
+           ruff check/format クリーン。code-reviewer 敵対レビュー = **APPROVE-WITH-NITS**（critical/warning 0）。
+           blast-radius を実証検証: run_publish_job の dry_run 分岐は `except(ValueError,NotImplementedError)`
+           のみで `_preview` は例外を投げず PublishResult を返す＝無影響、web endpoint は status 遷移を
+           `if not dry_run:` でガード＝ok=False でも誤 broadcast/遷移なし、content_scheduler は dry_run=False
+           のみ呼ぶ。reviewer の 🟢 Suggestion「LIMIT 境界パリティ」を採用し境界テスト追加（exactly LIMIT=
+           警告なし／LIMIT+1=警告で off-by-one を live と固定）。
+  Act    : merged ✅（9c9cdf8..bf524f1、--delete-branch。remote 未 push の push --delete 失敗は benign）。
+           台帳 §A に「publishing 投稿前バリデーション（preview）」行を追加・§B-1 を一部出荷に更新。
+           固定化（学び）: 「同じ検証を実投稿と preview の両方に置く（検証の非対称を作らない）」は Cycle 4 の
+           「mode ガードを全経路に置く＝防御の深層化」と同型。前提実証→単一スライス→敵対レビュー→
+           blast-radius 実証、が成熟コードでの安全な機能追加パターンとして再現。
+  Next   : B-1 残り（**live note の空コンテンツ検証**＝preview≥live の honesty を一様化・reviewer 指摘の
+           follow-up）／B-2 残り（first Org 作成への誘導 empty-state CTA）／B-3 atelier 運用ビュー
+           （読み取り専用 daemon/usage 詳細パネル）。
+
 Cycle 34 — atelier に claude CLI 未認証グローバルバナー（B-2 オンボーディング最初のスライス）  (2026-06-16 自動再開)
   Plan   : 自動再開（evolve_resume）。lock 無し・main クリーン・並行ワーカー無し、Cycle 33（バックログ
            新設）まで統合済みで中断は「サイクル間」。Cycle 33 が作った次フェーズ台帳の §B から選定。
