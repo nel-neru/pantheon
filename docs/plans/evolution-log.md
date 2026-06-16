@@ -19,6 +19,43 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 34 — atelier に claude CLI 未認証グローバルバナー（B-2 オンボーディング最初のスライス）  (2026-06-16 自動再開)
+  Plan   : 自動再開（evolve_resume）。lock 無し・main クリーン・並行ワーカー無し、Cycle 33（バックログ
+           新設）まで統合済みで中断は「サイクル間」。Cycle 33 が作った次フェーズ台帳の §B から選定。
+           最有力 B-2（オンボーディング UX）の前提「atelier に claude 認証状態の案内が手薄」を**実コードで
+           実証**: `/api/platform/status` の `has_llm`（=claude_available）はフロントのどこでも未消費・
+           Handbook の静的説明のみで、未認証時に動的に警告するライブ導線が無い＝実ギャップ確認。受け入れ
+           基準 = has_llm===false のときのみ全ページ上部に明示パネル＋Handbook 誘導／build+vitest 緑／
+           backend 基線維持／敵対レビュー通過。なぜ今: 「誰もが欲しがる」入口＝新規ユーザーが最初に詰まる
+           「claude 未認証で生成が動かない」を解消。読み取り表示の追加＝低リスク・完全可逆。落とした候補:
+           B-1 実機 E2E（実投稿は有人時のみ・要設計）／B-4 並行性テスト（フレーク化リスク中）／B-3 daemon
+           制御ビュー（破壊操作含む・有人向き）。
+  Did    : work/claude-status-banner-20260616。frontend-dev に委譲（冗長な TS/build 出力を本文脈外へ）。
+           ① `lib/types.ts` に `PlatformStatus`（has_llm 必須＋initialized/total_organizations/environment
+           を明示 optional）② 新 `components/ClaudeStatusBanner.tsx`: useApi で /api/platform/status を
+           30秒ポーリング、`has_llm===false` 確定時のみ警告バナー（role=status / aria-live=polite / rose
+           トーン、`claude` を code 表示、/handbook へ Link）。fail-safe ガード
+           `if (loading || error!==null || data===null || data.has_llm!==false) return null`。
+           ③ `Shell.tsx` の Masthead 直下・main 直前に配線（全ページ可視）④ 回帰テスト3本。
+  Check  : atelier vitest 34/34 緑・build 緑・dist は gitignore でクリーン。code-reviewer の**敵対的
+           レビュー（ミューテーションテスト実施）で確定 MAJOR 1件**: negative テスト (b)(c) が vacuously
+           true（loading 中も null なので fetch 解決を待たず通り、has_llm:true 誤表示や error 誤警告の
+           回帰を見逃す）= Cycle 32 固定化教訓の false-positive クラスそのもの。対応: 同一 API を読む
+           `ResolutionProbe`（positive anchor）を入れ、findByText で解決 commit を待ってから非表示を検証
+           するよう (b)(c) を書き直し。**自分でミューテーション検証**（has_llm 値チェックを外すと (b) が
+           正しく失敗）して load-bearing 化を実証。コンポーネント本体・配線・型・a11y・両テーマ CSS 変数・
+           バックエンド契約は reviewer が VERIFIED SOUND と確認。フロントのみ＝Python 無変更で backend
+           基線不変（merge ゲートも失敗2件=既知のみで通過）。
+  Act    : merged ✅（a6fabd1..1afccdd、--delete-branch。remote 未 push 枝の push --delete 失敗は benign）。
+           次フェーズ台帳 §A に「atelier オンボーディング: claude 認証可視化」行を追加・§B-2 を一部出荷に
+           更新。固定化: [[testing-and-subagent-hazards]] に lesson 4「非同期データ後ろの negative アサート
+           は ResolutionProbe 等の positive anchor で解決を待ってから検証（loading 中 null での vacuous-true
+           を回避）。疑わしければミューテーションで実証」を追記。学び: subagent のテストは all-green でも
+           negative パスを敵対的に疑う（Cycle 32 lesson 3 の継続強化）。台帳の §B から「前提実証→単一
+           スライス→敵対レビュー→ミューテーション検証」が実機能の出荷に有効と確認。
+  Next   : B-2 残り（first Org 作成への誘導・初回ウィザード導線）／B-3 atelier 運用ビュー（読み取り専用の
+           daemon/usage 詳細パネル）／B-1 publishing dry-run/プレビュー経路のハードニング（実投稿は有人時）。
+
 Cycle 33 — 監査台帳＋次フェーズ候補バックログの新設（メタ: 枯渇再発見の非効率を根治）  (2026-06-16 自動再開)
   Plan   : Cycle 32 後、近傍の小スライス候補が3サイクル連続で枯渇を実証（30 spot-check / 31 監査 /
            32 で metrics 除算・naive datetime・頭脳層・server セキュリティ・claude 不在 degradation を
