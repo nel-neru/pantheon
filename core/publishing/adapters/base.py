@@ -54,13 +54,40 @@ class BrowserPublisher:
 
     # ---- 共通の dry-run プレビュー ----
     def _preview(self, content: PublishContent, target: PublishTarget) -> PublishResult:
-        snippet = (content.body or "").strip().splitlines()
-        head = snippet[0][:80] if snippet else ""
+        # 投稿前バリデーション: プレビューは外部に作用しないが、実投稿（_publish_live）が
+        # 弾く不正コンテンツはここでも正直に ok=False で返す。さもないと空/不正な下書きが
+        # プレビューで「成功」に見え、人間が handed_off まで進めてから初めて失敗に気づく
+        # （検証の非対称を解消＝投稿前に問題を可視化する）。
+        title = (content.title or "").strip()
+        body = (content.body or "").strip()
+        if not title and not body:
+            return PublishResult(
+                ok=False,
+                platform=self.platform,
+                url="",
+                dry_run=True,
+                mode=target.mode,
+                error="投稿内容が空です（title も body もありません）",
+            )
+
+        head = body.splitlines()[0][:80] if body else ""
+        detail = f"dry-run: title='{title[:60]}' body_head='{head}'"
+        warnings = self._preview_warnings(content, target)
+        if warnings:
+            detail += " | 警告: " + " / ".join(warnings)
         return PublishResult(
             ok=True,
             platform=self.platform,
             url="",
             dry_run=True,
             mode=target.mode,
-            detail=f"dry-run: title='{content.title[:60]}' body_head='{head}'",
+            detail=detail,
         )
+
+    def _preview_warnings(self, content: PublishContent, target: PublishTarget) -> list[str]:
+        """プレビューに添える非致命的な投稿前警告（文字数超過など）の拡張点。
+
+        サブクラスがプラットフォーム固有の警告を返す（既定は警告なし）。致命的な不正は
+        ``_preview`` 側で ``ok=False`` にし、ここは「投稿はできるが人間が確認すべき」事項に使う。
+        """
+        return []

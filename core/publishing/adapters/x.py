@@ -44,6 +44,18 @@ class XPublisher(BrowserPublisher):
         self._session_store = session_store
         self._launcher_factory = launcher_factory
 
+    def _preview_warnings(self, content: PublishContent, target: PublishTarget) -> list[str]:
+        # 投稿前に文字数超過を可視化する（実投稿 _publish_live と同じ警告を dry-run でも出す）。
+        # 判定は len()（code point 数）の粗い近似で X 実機の weighted 算定とはずれるため、
+        # ゲートではなく「人間がコンポーズ画面で確認する前提の警告」専用（分割は Phase 2）。
+        text = (content.body or content.title or "").strip()
+        if len(text) > X_POST_CHAR_LIMIT:
+            return [
+                f"本文が {len(text)} 字で {X_POST_CHAR_LIMIT} 字を超えています"
+                "（投稿前に編集するかスレッド化してください。自動分割は Phase 2）"
+            ]
+        return []
+
     async def _publish_live(self, content: PublishContent, target: PublishTarget) -> PublishResult:
         if target.mode == PUBLISH_MODE_AUTO:
             return PublishResult(

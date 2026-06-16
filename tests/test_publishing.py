@@ -66,6 +66,91 @@ async def test_dry_run_does_not_change_job_status(tmp_path):
     assert store.get_job(job.job_id).status == "queued"  # 未変更
 
 
+async def test_dry_run_preview_rejects_empty_content():
+    # 投稿前バリデーション: title も body も空ならプレビューを ok=False で返す
+    # （空の下書きが「成功」に見えて handed_off まで進むのを防ぐ）。
+    for platform in SUPPORTED_PLATFORMS:
+        adapter = get_adapter(platform)
+        result = await adapter.publish(
+            PublishContent(title="   ", body="\n  \n"),  # 空白のみ = strip 後は空
+            PublishTarget(platform=platform),
+            dry_run=True,
+        )
+        assert result.ok is False
+        assert result.dry_run is True
+        assert "空" in (result.error or "")
+        assert result.url == ""  # 外部に作用していない
+
+
+async def test_dry_run_preview_ok_with_title_only():
+    # body が空でも title があればプレビューは成功（致命でない）。
+    adapter = get_adapter("note")
+    result = await adapter.publish(
+        PublishContent(title="見出しだけ", body=""),
+        PublishTarget(platform="note"),
+        dry_run=True,
+    )
+    assert result.ok is True and result.dry_run is True
+
+
+async def test_x_preview_warns_on_char_limit_overflow():
+    from core.publishing.adapters.x import X_POST_CHAR_LIMIT
+
+    long_body = "あ" * (X_POST_CHAR_LIMIT + 5)
+    result = await get_adapter("x").publish(
+        PublishContent(title="t", body=long_body),
+        PublishTarget(platform="x"),
+        dry_run=True,
+    )
+    # 文字数超過は致命でなく警告（投稿自体は可・人間が確認）。
+    assert result.ok is True and result.dry_run is True
+    assert "警告" in (result.detail or "")
+    assert str(X_POST_CHAR_LIMIT) in (result.detail or "")
+    assert str(X_POST_CHAR_LIMIT + 5) in (result.detail or "")
+
+
+async def test_x_preview_no_warning_under_char_limit():
+    result = await get_adapter("x").publish(
+        PublishContent(title="t", body="短い本文"),
+        PublishTarget(platform="x"),
+        dry_run=True,
+    )
+    assert result.ok is True
+    assert "警告" not in (result.detail or "")
+
+
+async def test_x_preview_char_limit_boundary_matches_live():
+    # `> X_POST_CHAR_LIMIT` の off-by-one を実投稿（_publish_live, x.py:111）と一致させて固定:
+    # ちょうど LIMIT 字は警告なし、LIMIT+1 字で初めて警告。
+    from core.publishing.adapters.x import X_POST_CHAR_LIMIT
+
+    exactly = await get_adapter("x").publish(
+        PublishContent(title="t", body="あ" * X_POST_CHAR_LIMIT),
+        PublishTarget(platform="x"),
+        dry_run=True,
+    )
+    assert exactly.ok is True
+    assert "警告" not in (exactly.detail or "")
+
+    over_by_one = await get_adapter("x").publish(
+        PublishContent(title="t", body="あ" * (X_POST_CHAR_LIMIT + 1)),
+        PublishTarget(platform="x"),
+        dry_run=True,
+    )
+    assert over_by_one.ok is True
+    assert "警告" in (over_by_one.detail or "")
+
+
+async def test_run_publish_job_dry_run_empty_keeps_status_and_reports(tmp_path):
+    # run_publish_job 経由でも空コンテンツの dry-run は ok=False を返し、status は不変。
+    store = PublishJobStore(platform_home=tmp_path)
+    job = store.add_job(PublishJob(org_name="o", platform="x", title="", body=""))
+    result = await run_publish_job(job, store=store, platform_home=tmp_path, dry_run=True)
+    assert result["ok"] is False and result["dry_run"] is True
+    assert "空" in (result["error"] or "")
+    assert store.get_job(job.job_id).status == "queued"  # dry-run は status を変えない
+
+
 async def test_successful_live_publish_records_outcome_and_log(tmp_path, monkeypatch):
     store = PublishJobStore(platform_home=tmp_path)
     job = store.add_job(PublishJob(org_name="Note Sales", platform="note", title="t", body="b"))
