@@ -64,5 +64,12 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+# DTZ (flake8-datetimez) mechanically enforces the repo-wide tz-aware rule
+# (no datetime.utcnow() / no naive datetime.now()) so the convention is caught
+# by lint instead of relying on prose + code-review. Production code is already
+# DTZ-clean; tests may construct naive fixture datetimes, so DTZ is waived there.
+select = ["E", "F", "I", "DTZ"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["DTZ"]
