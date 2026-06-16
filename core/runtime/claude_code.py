@@ -464,6 +464,7 @@ def run_claude_sync(
     extra_args: Optional[Sequence[str]] = None,
     task_type: Optional[str] = None,
     downgrade: bool = False,
+    tool_spec: Optional[Any] = None,
 ) -> LLMResponse:
     """Run a single headless ``claude -p`` generation and return an ``LLMResponse``.
 
@@ -499,6 +500,13 @@ def run_claude_sync(
     chosen_model = model or _route_model(task_type, prompt_chars, downgrade) or os.getenv(MODEL_ENV)
     effective_timeout = timeout or _default_timeout()
 
+    # Tool/MCP opt-in: when an agent declares tools, inject the real --mcp-config and
+    # bypass the fast-path (whose `--mcp-config {}` would collide with / disable MCP).
+    effective_extra = list(extra_args) if extra_args else []
+    tools_present = tool_spec is not None and not tool_spec.is_empty
+    if tools_present:
+        effective_extra += tool_spec.to_argv()
+
     def _invoke(use_fast: bool) -> subprocess.CompletedProcess:
         cli_args = _build_cli_args(
             binary,
@@ -506,7 +514,7 @@ def run_claude_sync(
             system_text,
             chosen_model,
             fast=use_fast,
-            extra_args=extra_args,
+            extra_args=effective_extra,
         )
         return subprocess.run(
             cli_args,
@@ -518,7 +526,11 @@ def run_claude_sync(
             cwd=str(cwd) if cwd else None,
         )
 
-    fast = bool(_fast_args())
+    # Tool calls intentionally have NO flag-rejection fallback: the retry-without-fast path
+    # below only triggers when `fast` is True, so on an older CLI that rejects --mcp-config/
+    # --allowedTools a tool-declaring agent hard-fails (ClaudeUnavailableError) rather than
+    # silently running without the tools it requires. Verify CLI support before enabling tools.
+    fast = False if tools_present else bool(_fast_args())
     started = time.monotonic()
     timed_out = False
     proc: Optional[subprocess.CompletedProcess] = None
@@ -620,6 +632,7 @@ async def run_claude(
     extra_args: Optional[Sequence[str]] = None,
     task_type: Optional[str] = None,
     downgrade: bool = False,
+    tool_spec: Optional[Any] = None,
 ) -> LLMResponse:
     """Async wrapper around :func:`run_claude_sync` (runs in a worker thread)."""
     return await asyncio.to_thread(
@@ -632,6 +645,7 @@ async def run_claude(
         extra_args=extra_args,
         task_type=task_type,
         downgrade=downgrade,
+        tool_spec=tool_spec,
     )
 
 
@@ -680,6 +694,8 @@ class ClaudeCodeProvider:
             timeout=kwargs.get("timeout"),
             task_type=kwargs.get("task_type"),
             downgrade=bool(kwargs.get("downgrade", False)),
+            extra_args=kwargs.get("extra_args"),
+            tool_spec=kwargs.get("tool_spec"),
         )
 
     async def stream(self, messages: MessageLike, model: Optional[str] = None, **kwargs: Any):
@@ -694,6 +710,8 @@ class ClaudeCodeProvider:
             model=kwargs.get("model") or self._model,
             cwd=self._cwd,
             task_type=kwargs.get("task_type"),
+            extra_args=kwargs.get("extra_args"),
+            tool_spec=kwargs.get("tool_spec"),
         )
 
     async def ainvoke(self, messages: MessageLike, **kwargs: Any) -> LLMResponse:
@@ -702,6 +720,8 @@ class ClaudeCodeProvider:
             model=kwargs.get("model") or self._model,
             cwd=self._cwd,
             task_type=kwargs.get("task_type"),
+            extra_args=kwargs.get("extra_args"),
+            tool_spec=kwargs.get("tool_spec"),
         )
 
     def complete(self, messages: MessageLike, **kwargs: Any) -> str:

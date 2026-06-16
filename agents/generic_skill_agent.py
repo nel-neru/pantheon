@@ -93,6 +93,23 @@ class GenericSkillAgent(BaseAgent):
         specialist = _make_specialist(skills, name=name)
         return cls(specialist=specialist, llm_client=llm_client)
 
+    def _build_tool_spec(self):
+        """YAML 定義(``_yaml_defn``)に tools/mcp があれば ToolSpec を返す（無ければ None）。
+
+        autonomous 実行なので ``allow_gated=False``: 書込/外部ツールは許可せず
+        ``--disallowedTools`` 側に置かれる（Human-in-the-Loop ゲートを保つ）。
+        定義を持たない素の GenericSkillAgent は常に None（従来の fast-path 維持）。
+        """
+        defn = getattr(self, "_yaml_defn", None)
+        if defn is None:
+            return None
+        try:
+            from core.runtime.tool_config import ToolSpec
+
+            return ToolSpec.from_definition(defn, allow_gated=False)
+        except Exception:  # tool wiring must never break a generation
+            return None
+
     async def run(self, task: AgentTask) -> AgentResult:
         """スキルを活かしてタスクを実行する。"""
         system_prompt = self.apply_skills_to_prompt(GENERIC_BASE_PROMPT)
@@ -115,7 +132,7 @@ class GenericSkillAgent(BaseAgent):
                     ),
                 ),
             ]
-            response = llm.complete(messages)
+            response = llm.complete(messages, tool_spec=self._build_tool_spec())
             try:
                 data = json.loads(response)
             except json.JSONDecodeError:
