@@ -19,6 +19,52 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 43 — Atlas（flows.json）を実態へ正直化＋ドリフト検出ガード  (2026-06-16 自動再開)
+  Plan   : 自動再開で git/log 精査 → Cycle 42（TaskQueue xproc-lock）完了・main 統合後の中断と判定
+           （main クリーン・未マージは auto×2/intro-video=別系統のみ・並行 worker/ロック無し）。多様性
+           ピボット（40 state / 41 honesty / 42 並行性＝backend Python 3連続 → 43 は Atlas/frontend）。
+           flows.json の非 solid フローを候補供給源に調べたところ、web-gui の「claude CLI リブランド前
+           ドキュメントドリフト」と chat の「useWebSocket dead code」が **両方とも既に解消済みなのに
+           stale のまま誤った health を報告**＝Atlas の不正直（将来の候補選定・/flow-audit を誤らせる、
+           実際に phantom issue を選びかけた）。受け入れ基準 = 実態を反映した honest な flows.json／
+           ドリフト検出ガード追加（再発防止の固定化）／テスト／check_flows green／レビュー／基線維持。
+           なぜ今: 不正直を発見した以上放置は正直性違反・高確信・低リスク・可逆。落とした候補:
+           env_separation の SETTINGS_FILE import 凍結フラジリティ（敏感ファイル web/server.py＋13箇所の
+           monkeypatch.setattr 結合で確信中・本番影響ほぼ無）／chat orphaned 面の削除（unattended で
+           公開 API＋テスト削除は非可逆寄り）。
+  Did    : work/atlas-flow-honesty-20260616（core/atlas/data/flows.json + scripts/check_flows.py +
+           tests/test_check_flows.py）。①web-gui: status partial→solid、known_issue（ドリフト）を
+           resolved へ（両ページともリブランド済み・HelpPage/DashboardPage/SettingsPage.test.tsx で
+           ガード）。stale な surface「全13ページ」→「全20ページ」・verification「vitest 12files/79」→
+           「31files/384」も同フォーカスで正直化。②chat: known_issue が削除済み useWebSocket.ts を指す
+           stale → 実態「Web チャット GUI 未実装・/api/chat・/ws/chat はバックエンド専用 orphaned surface」
+           へ low severity で再記述（file=web/server.py）、撤去を resolved へ記録、存在しない "ChatPage" を
+           surfaces から除去、verification に test_web_server.py 追加（status は partial 維持＝honest）。
+           ③固定化: check_flows.py に known_issues[].file / resolved[].file の実在検証を追加（既存の保守的
+           _is_single_file_path 判定のみ＝説明文・file 無しは誤検知しない）。削除済みファイルを指す stale な
+           known_issue を PostToolUse フック＋テストで自動検出。回帰テスト1本追加。
+  Check  : check_flows green（実 flows.json 19フロー pass）。test_check_flows 4/4（新ガードの teeth＝
+           missing 検出・descriptive/no-file 非検出を assert）。test-triage 全件 GREEN（1432 passed・失敗は
+           基線 chmod 2件のみ・新規回帰 0、Atlas 系 test_atlas_proposals/test_atlas 含め全通過）。ruff
+           クリーン。独立検証: flow-auditor が web-gui=solid（vitest 384 pass・ドリフト解消をファイル実読で
+           確認）/ chat=partial（useWebSocket.ts 不在・ChatPage 不在・/ws/chat はバックエンドのみを grep で
+           実証）と証拠付きで仮説を追認。code-reviewer 敵対レビュー = APPROVE-WITH-NITS（schema consumer
+           proposal_generator/introspect が空 known_issues・low severity を安全に扱うこと、ガードの誤検知
+           無を実証）。nit①「全13ページ」が同 hunk で stale → 「全20ページ」修正（実ページ20・ルート20）。
+           nit②chat verification がバックエンド被覆を過少表現 → test_web_server.py 追加。両対応。
+  Act    : merged ✅（94902fe..80fad81）。固定化（学び）: (1) **flows.json（Atlas）の非 solid issue を
+           /evolve 候補にする前に、その issue が今も真かを必ず実コードで再検証する**＝数件が既に解消済みの
+           stale で、phantom issue を選びかけた。Atlas の health はコード変更に追随せず腐る。(2) **検証器に
+           「参照先ファイルの実在」チェックを足すと doc/カタログのドリフトを機械的に捕捉できる**＝
+           check_flows は steps/verification の実在は見ていたが known_issues/resolved の file は素通りで、
+           削除済み useWebSocket.ts を指す issue が温存されていた（観測の穴を塞ぐ＝silent-drop 原則の
+           ドキュメント版）。(3) 不正直は「捏造」だけでなく「実態に追随しない stale な自己記述」でも起きる＝
+           発見したら同サイクルで実態へ寄せ、status の格上げ/格下げを honest に行う（Cycle 40 原則の拡張）。
+  Next   : env_separation の SETTINGS_FILE import-時凍結フラジリティ根治（遅延評価＋monkeypatch 互換の
+           設計が要・中確信）／フルの flow-audit 再ベースライン（残る非 solid フローにも stale が複数ある
+           可能性大・/flow-audit で網羅）／capability-gap-self-extension の「充足済みギャップを自動 implemented
+           化」（backend・bounded・low）。
+
 Cycle 42 — TaskQueue のクロスプロセスロックを Windows 対応化（lost update 根絶）  (2026-06-16 自動再開)
   Plan   : 多様性ピボット（40 state / 41 multi-agent-sessions honesty → 42 は別フロー work-board-tasks・
            並行性堅牢化）。flows.json の work-board-tasks（fragile）の issue「TaskQueue の fcntl ロックが
