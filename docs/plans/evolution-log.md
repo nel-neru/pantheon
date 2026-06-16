@@ -19,6 +19,49 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 41 — Headless poll の DONE 捏造を exit-code サイドカーで正直化  (2026-06-16 自動再開)
+  Plan   : 自動再開で git/log を精査 → Cycle 40 完了後の中断と判定（main クリーン・未完了作業なし）。
+           多様性ピボット（37–38 堅牢化 / 39 ツール / 40 state 規約 → 41 は別フロー・正確性=honesty）。
+           Cycle 40 で固定化した「flows.json 非 solid フローを境界明確な単一スライス候補の供給源にする」
+           に従い、multi-agent-sessions（fragile）の **high severity honesty バグ**「Headless poll が
+           exit code 無しに DONE を捏造し失敗を隠す」を選定。`HeadlessDriver.poll_surface` のクロスプロセス
+           分岐（in-memory Popen 無し）が、記録 pid が消えていると実 exit code を確認せず DONE（成功）を
+           捏造し非ゼロ終了/クラッシュを黙殺していた＝/evolve「緑を捏造しない」に直結。受け入れ基準 =
+           所有プロセスが exit code を知る各地点でサイドカー記録／クロスプロセス poll はそれを authoritative
+           に読む／不在+pid 消滅は FAILED（DONE 捏造しない）／pid 生存は RUNNING 維持／回帰テスト／所有
+           プロセス happy path 不変／レビュー通過／基線維持。なぜ今: high honesty バグ・境界明確・小スライス・
+           可逆。落とした候補: DynamicAgentSpawner dead-code 配線（execute() 挙動変更で中規模・リスク）／
+           MultiOrgExecutor 未配線（ライブキュー配線は中規模）／TaskQueue fcntl Windows no-op（robustness
+           寄りで多様性低・low）。
+  Did    : work/headless-exit-sidecar-20260616（core/runtime/multiplexer/headless_driver.py +
+           tests/test_session_orchestrator.py + core/atlas/data/flows.json + 本ログ）。①exit-code サイドカー
+           `<log_path>.exit`（log_path は Surface.to_dict() で永続化＝クロスプロセス再構築可能）を
+           `core/persistence.atomic_write_text` で torn write なく記録。書込点 = poll_surface 所有分岐
+           （proc.poll() が code 返却時）／open_surface OSError（起動失敗 -1）／close_surface terminate 後。
+           ②クロスプロセス分岐はサイドカーを最優先で読む（pid-reuse 由来の偽 RUNNING も回避）→ 存在すれば
+           DONE(0)/FAILED(非0)＋exit_code。不在で pid 消滅は FAILED（exit_code=None・warning ログ）。pid
+           生存は RUNNING。③回帰テスト4本（所有 poll がサイドカー書込／クロスプロセスがサイドカー読取で
+           DONE・FAILED/不在+pid消滅で FAILED・DONE 捏造せず/pid 生存で RUNNING 維持）。`_pid_alive` を
+           monkeypatch し OS 非依存に。④flows.json: 該当 issue を resolved へ移動（孤児 Popen issue は残存→
+           fragile 維持）。
+  Check  : 対象テスト 14/14・atlas/flow 系 50/50・check_flows green。ruff クリーン。merge_to_main 全件
+           ゲート GREEN（exit 1・失敗は基線 chmod 2件のみ・新規回帰 0）。code-reviewer 敵対レビュー =
+           APPROVE-WITH-NITS（サイドカー path 再構築性・FAILED フォールバックの誤り方向が安全側＝
+           execution_coordinator が FAILED を terminal 扱いし dependents SKIP・atomic_write_text の torn write
+           不在・所有 happy path 不変を実証検証）。nit①no-sidecar テストの pid-liveness 決定性が Windows
+           ハンドル意味論依存（POSIX で理論上フレーク）→ `_pid_alive` monkeypatch で OS 非依存化＋pid 生存
+           RUNNING テストも追加。
+  Act    : merged ✅（8921159..c2e2221, flows.json/log は後続コミット）。固定化（学び）: (1) 「成功の捏造
+           （false DONE）」と「失敗の捏造（false FAILED）」では前者が遥かに有害＝DONE は downstream の
+           承認/マージ判断を駆動するため、outcome 不明時は **FAILED に倒す（誤りは安全側）** が正準。
+           (2) クロスプロセスで終端 outcome を運ぶ正準手段は **log_path 隣接のサイドカーファイル**＝Surface
+           に既に永続化される log_path をアンカーにすれば別プロセスから同一 path を再構築でき、in-memory
+           ハンドルに依存しない。(3) OS 依存の決定性（Windows pid-reuse 意味論）に依拠するテストは
+           monkeypatch で振る舞いを固定し移植性を担保する。
+  Next   : multi-agent-sessions 残りの high「Headless Popen がプロセス跨ぎで孤児化（停止不能）」を pid 永続化
+           で（姉妹 issue・サイドカー基盤を流用可）／orchestration-routing の DynamicAgentSpawner dead-code
+           配線／work-board の MultiOrgExecutor 未配線（POST /api/tasks → process_pending）。
+
 Cycle 40 — LangGraph checkpoint DB を ~/.pantheon 配下へ＋接続リーク根治  (2026-06-16 自動再開)
   Plan   : 多様性ピボット（37–38 堅牢化 / 39 ツール → 40 は正確性・state 規約準拠）。flows.json の
            非 solid フロー（fragile 3 / partial 10）から、境界が明確で高確信・低リスクな
