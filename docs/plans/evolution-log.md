@@ -1369,3 +1369,22 @@ Upgrade Program C3 — Reflexion 自己批評ループ  (2026-06-17)
            max_iters 上限クランプ。
   Act    : merged ✅。固定化: 品質ループは必ず opt-in＋有界＋offline 決定的（コスト増幅を既定で封じる）。
   Next   : C4 敵対的マルチ検証（PARALLEL_FINDERS_VERIFY, 破棄 reviewer を実 critic 化）。
+
+Upgrade Program C4 — 敵対的マルチ検証パターン  (2026-06-17)
+  Plan   : 並列 finders→敵対的 verify→synthesize を第一級オーケストレーションパターン化。
+           破棄されていた reviewer/並列結果も消費。受け入れ基準 = 新パターンが dispatch され実
+           quality_score を記録・既定挙動は不変（パターン pin テスト維持）・回帰0。
+  Did    : work/adversarial-verify-20260617。pre_task_orchestrator.py: OrchestrationPattern.
+           PARALLEL_FINDERS_VERIFY + _execute_adversarial_verify()（finders並列→1体をverifierに
+           再利用→synthesize, heuristic 自己評価で実 quality）。execute() が dispatch＋
+           self._last_quality_score を _record_execution へ。_execute_review_loop は reviewer 出力を
+           output["review"] に添付（破棄しない）。_execute_parallel は他成功を _merged_outputs に
+           （代表は自己参照回避で除外）。analyze() に env PANTHEON_ADVERSARIAL_VERIFY（既定 off）の
+           security_audit/code_review 昇格。
+  Check  : 新規 13/13 緑 / backend 1485 passed・既知2のみ・回帰0 / ruff 緑 /
+           code-reviewer = APPROVE-WITH-NITS（既定不変・async例外安全・aliasing・quality honesty を検証）。
+           対応: _last_quality_score を __init__ 初期化, _merged_outputs に自己参照ガード追加,
+           env opt-in が学習器を seed する点を comment で honest 化（段階的ロールアウト）。
+           （※ parallel マージの自己参照バグを自作テストが検出→修正済み）
+  Act    : merged ✅。固定化: 既存 executor 改修は pin テストの assert 値を壊さない形で（who==main 等を保持）。
+  Next   : C4a 観測ダッシュ(Atelier /lab)＋Eval ハーネス（spans を読む read-only UI＋golden tasks）。
