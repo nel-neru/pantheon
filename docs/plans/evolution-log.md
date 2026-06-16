@@ -1441,3 +1441,26 @@ Cycle 2 — ブランチ衛生（done ローカル掃除）  (2026-06-17)
            破壊操作(push --delete)に近いので resume 自動では行わず手動判断に委ねる。
   Next   : C6 候補 — (a) 意味リコールを analyze 経路へ配線、(c) eval golden tasks 拡充、
            (d) remote-only done ブランチの掃除を別途レビュー。
+
+Cycle 3 — レビュー経路へ意味リコールを配線（C6-a）  (2026-06-17)
+  Plan   : C5 のセマンティックリコール（BM25＋任意埋め込み, PANTHEON_SEMANTIC_RECALL）は
+           generic_skill_agent / agent_factory には配線済みだが、製品の中核 improvement-proposal-flow
+           の analyze 経路（code_review_agent:295）だけが query 未配線＝休眠していた。これを配線。
+           受け入れ基準 = repo_name+code_context 由来の bounded query を apply_skills_to_prompt へ /
+           kill-switch off・エントリ無し・signal 皆無では byte 一致（既存挙動不変）/ 新規テスト緑・
+           既知2のみ・回帰0 / 敵対レビュー通過 / merged。落とした候補: (c)eval golden 拡充(低レバレッジ),
+           (d)remote-only done 掃除(push --delete=破壊操作で自動保留), robustness バグ狩り(高分散)。
+  Did    : work/semantic-recall-code-review-20260617。code_review_agent に静的ヘルパ
+           _build_recall_query(repo_name, code_context, max_chars=2000)（code_context は上流で
+           MAX_TOTAL_CHARS=40k 既キャップ）を追加し _generate_suggestions が query= で配線。
+           byte 一致保証は callee(MemoryBank.recall) 側が担保（off/空/signal無しは usefulness 順維持）。
+  Check  : 新規 5/5 緑 / backend 1509 passed・既知2のみ・回帰0 / ruff 緑 /
+           code-reviewer = APPROVE（Critical/Warning/Nit 無し。query が recall まで届く配線・
+           byte 一致の 3 ケース・2000字バウンドの妥当性[上流40kキャップ]・"\n"退化が strip で
+           無効化される点・テスト非空虚性・empty-MemoryBank の get_platform_home 隔離パッチ正当性 を検証）。
+  Act    : merged ✅（main c81bdf8）。固定化: C5 リコールは消費経路ごとに query 配線が要る
+           ＝1 経路ずつ配線して休眠を解く。これで agent 層（generic / factory / code_review）の
+           recall 配線は完了。recall の「無 signal なら従来順を維持」設計が、配線追加を常に安全側にする。
+  Next   : C6 候補 — (c) eval golden tasks 拡充（コードレビュー/分析の golden 追加）、
+           (e) robustness: 並行/エラー処理のバグ狩りで多様性回復、(f) trend-watcher で
+           Claude Code 最新動向→.claude/ 更新提案。
