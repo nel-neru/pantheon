@@ -27,6 +27,7 @@
 | 提案順序の決定性 | ✅ 解決済 | Cycle 31: `get_all/get_pending_improvement_proposals` は created_at 降順。Pydantic ISO の文字列ソート＝時系列 |
 | atelier GUI ページの派生ロジック | ✅ 回帰テスト追加 | Cycle 32: Observatory（degradation/daemon ラベル）+ Pantheon（filter）。スモーク→意味あるテストへ |
 | atelier オンボーディング: claude 認証状態の可視化 | ✅ 実装済 | Cycle 34: `ClaudeStatusBanner`（`/api/platform/status` の `has_llm===false` 時のみ全ページ警告＋Handbook 誘導・fail-safe） |
+| publishing 投稿前バリデーション（preview 経路） | ✅ 実装済 | Cycle 35: `base._preview` が空コンテンツを ok=False で弾き `_preview_warnings` 拡張点を追加・X は280字超を警告（live と同境界）。**残**: live note の空検証は未対応（preview≥live を一様化する follow-up） |
 | .claude/ の CC ベストプラクティス整合 | ✅ 整合 | Cycle 31: trend-watcher 照合（Fable 5 heavy・Opus 4.8 trailer・選択的 MCP・秘密なし） |
 
 > ⚠️ 台帳の前提が崩れる変更（対象ファイルの編集・リファクタ）が入ったら、その行だけ再検証する。
@@ -39,10 +40,12 @@
 小スライスの正確性/堅牢性候補は §A のとおり枯渇。以下は**より大きい・要設計・一部は有人**の高価値候補。
 それぞれ「なぜ価値があるか / 1サイクルで切れる最初のスライス / リスク・前提」を付す。
 
-### B-1. Publishing 実機 E2E ハードニング（収益化の最終1マイル）
+### B-1. Publishing 実機 E2E ハードニング（収益化の最終1マイル）  🟡 一部出荷（Cycle 35）
 - **価値**: note/X/WordPress の `_publish_live(assisted)` は実装済だが**実機 E2E 未検証**。公開製品の核。
-- **最初のスライス（無人で安全）**: dry-run/プレビュー経路・投稿前バリデーション・失敗時のエラー面の
-  ハードニングと回帰テスト。**実投稿は有人時のみ**（承認ゲートを越える実 POST は無人運転で行わない）。
+- ~~**最初のスライス（無人で安全）**: dry-run/プレビュー経路・投稿前バリデーション・失敗時のエラー面の
+  ハードニング~~ → **Cycle 35 で出荷済**（preview の空コンテンツ拒否＋X 文字数警告＋回帰テスト6本）。
+- **次のスライス（残り）**: ①**live note の空コンテンツ検証**（現在 preview のみ弾く・preview≥live の
+  honesty を一様化）②実機 E2E（**実投稿は有人時のみ**・承認ゲートを越える実 POST は無人運転で行わない）。
 - **リスク**: 実投稿は不可逆・外部公開。資格情報に触れない。Playwright MCP で UI 駆動は可。
 
 ### B-2. 初回起動 / オンボーディング UX（"誰もが欲しがる"の入口）  🟡 一部出荷（Cycle 34）
