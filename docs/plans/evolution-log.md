@@ -19,6 +19,39 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 40 — LangGraph checkpoint DB を ~/.pantheon 配下へ＋接続リーク根治  (2026-06-16 自動再開)
+  Plan   : 多様性ピボット（37–38 堅牢化 / 39 ツール → 40 は正確性・state 規約準拠）。flows.json の
+           非 solid フロー（fragile 3 / partial 10）から、境界が明確で高確信・低リスクな
+           self-improvement-loop の既知 issue「LangGraph checkpoint DB が cwd 相対で接続リーク」を選定。
+           `build_self_improvement_graph` の既定 checkpointer_path が **cwd 相対**で実行 dir 次第で DB が
+           散乱し**非交渉事項「状態は ~/.pantheon」違反**＋`run_improvement_for_organization` が sqlite
+           接続を閉じずリーク。受け入れ基準 = 既定 DB が platform home 配下／conn を実行後 close／回帰
+           テスト／後方互換（明示パス不変）／レビュー通過／基線維持。なぜ今: 文書化済み非交渉事項違反の
+           是正は確実な価値・小スライス・可逆。落とした候補: multi-agent-sessions の「DONE 捏造で失敗
+           隠蔽」（high だが exit code のクロスプロセス伝播＝姉妹 issue の大リワークで単一スライス不適）／
+           orchestration の DynamicAgentSpawner dead code（配線は中規模）／残る write_text 監査。
+  Did    : work/langgraph-checkpoint-home-20260616（core/quality/self_improvement_graph.py +
+           tests/test_langgraph_workflow.py + core/atlas/data/flows.json）。①既定を Optional[str]=None に
+           し未指定時 `get_platform_home()/...db`（親 mkdir）。明示パスも親 mkdir 担保（":memory:" 除外）。
+           ②`run_improvement_for_organization` に try/finally で `_pantheon_checkpoint_conn` を close
+           （checkpoint は DB に永続化→resume は新 conn で開き直せる）。③回帰テスト（既定で home 配下・
+           cwd には作らない）。④flows.json: 修正済み issue を resolved へ移動、reviewer 発見の潜在
+           「async 実行経路 × 同期 SqliteSaver 非互換」を known_issues に honest 追加（status は medium
+           残存で partial 維持）。
+  Check  : 対象テスト 4/4・atlas 系 18/18・check_flows green。ruff クリーン。merge_to_main 全件ゲート
+           GREEN（新規回帰 0・基線 chmod 2件のみ）。code-reviewer 敵対レビュー = APPROVE-WITH-NITS
+           （resume-after-close の耐久性を実 sqlite で再現実証／後方互換・monkeypatch 対象・finally 後の
+           final_state 利用を確認）。nit①デッドな `if str(parent)` ガード → `!= ":memory:"` の実効ガードへ
+           修正。nit②async/SqliteSaver 非互換（既存・潜在）→ flows.json と commit に follow-up 記録。
+  Act    : merged ✅（42d0cf3..1d1011a, flows.json/log は後続コミット）。固定化（学び）: (1) flows.json の
+           非 solid フローは「境界明確な単一スライス候補」の良い供給源＝high 重大度でも単一スライスに
+           収まらないもの（クロスプロセス exit code 伝播）は見送り、境界の明確な low/medium を確実に出荷
+           する。(2) issue を直したら flows.json の known_issues→resolved を同サイクルで更新し、レビューで
+           見つけた新たな潜在不具合は honest に known_issues へ足す＝Atlas を stale にしない。
+  Next   : multi-agent-sessions「DONE 捏造で失敗隠蔽」を exit-code sidecar で正直化（中規模・要設計）／
+           orchestration DynamicAgentSpawner / work-board MultiOrgExecutor の dead-code 配線／残る
+           write_text 監査（durable state の atomic 化）。
+
 Cycle 39 — branch_status の done 判定を patch 等価（再適用/squash マージ）まで拡張  (2026-06-16 自動再開)
   Plan   : 自動再開で git 状態を精査 → 未マージ work ブランチ4本のうち r4-backend-robustness は
            ahead 1 だが全7ファイルが main と byte 一致（`git cherry origin/main` が `-`＝patch 等価）。
