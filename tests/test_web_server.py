@@ -19,7 +19,7 @@ client = TestClient(server.app)
 
 
 def _reset_provider_model_state(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(server, "SETTINGS_FILE", tmp_path / "settings.json")
+    monkeypatch.setattr(server, "_settings_file", lambda: tmp_path / "settings.json")
     server._model_cache.clear()
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -45,7 +45,7 @@ def _set_knowledge_dir(tmp_path, monkeypatch) -> Path:
 def _set_chat_sessions_dir(tmp_path, monkeypatch) -> Path:
     sessions_dir = tmp_path / "chat_sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(server, "CHAT_SESSIONS_DIR", sessions_dir)
+    monkeypatch.setattr(server, "_chat_sessions_dir", lambda: sessions_dir)
     return sessions_dir
 
 
@@ -58,7 +58,7 @@ def _set_task_queue_home(tmp_path, monkeypatch) -> None:
 def test_get_storage_info(tmp_path, monkeypatch):
     settings_file = tmp_path / "gui_settings.json"
     settings_file.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(server, "_settings_file", lambda: settings_file)
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
 
     organizations_dir = tmp_path / "organizations"
@@ -624,7 +624,7 @@ def test_revenue_collect_api(tmp_path, monkeypatch):
 
 def test_settings_exposes_and_updates_quota_and_notifications(tmp_path, monkeypatch):
     """SET-EXPOSE: /api/settings がトークンクォータ・通知設定を露出し、PUT で更新できる。"""
-    monkeypatch.setattr(server, "SETTINGS_FILE", tmp_path / "settings.json")
+    monkeypatch.setattr(server, "_settings_file", lambda: tmp_path / "settings.json")
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     # クォータ設定は実 repo の token_quota.yaml を汚さないよう tmp へ向ける
@@ -1469,7 +1469,7 @@ def test_welcome_creates_no_sample_org(tmp_path, monkeypatch):
 
 def test_get_settings_returns_defaults(tmp_path, monkeypatch):
     """設定ファイルがない場合はデフォルト値を返すこと"""
-    monkeypatch.setattr(server, "SETTINGS_FILE", tmp_path / "settings.json")
+    monkeypatch.setattr(server, "_settings_file", lambda: tmp_path / "settings.json")
     monkeypatch.delenv("PANTHEON_DEFAULT_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("PANTHEON_DEFAULT_MODEL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -1516,7 +1516,7 @@ def test_get_settings_masks_api_key(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(server, "_settings_file", lambda: settings_file)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
@@ -1593,7 +1593,7 @@ def test_get_settings_warns_on_open_permissions(tmp_path, monkeypatch, caplog):
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}", encoding="utf-8")
     settings_file.chmod(0o644)
-    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(server, "_settings_file", lambda: settings_file)
 
     with caplog.at_level(logging.WARNING):
         response = client.get("/api/settings")
@@ -1605,7 +1605,7 @@ def test_get_settings_warns_on_open_permissions(tmp_path, monkeypatch, caplog):
 def test_update_settings_saves_to_file(tmp_path, monkeypatch):
     """設定更新がファイルに保存されること"""
     settings_file = tmp_path / "settings.json"
-    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(server, "_settings_file", lambda: settings_file)
     monkeypatch.delenv("PANTHEON_DEFAULT_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("PANTHEON_DEFAULT_MODEL", raising=False)
 
@@ -1635,7 +1635,7 @@ def test_update_settings_saves_to_file(tmp_path, monkeypatch):
 def test_update_settings_persists_model(tmp_path, monkeypatch):
     """設定更新（モデル）が保存されること。Pantheon は Claude Code 前提で API キーは扱わない。"""
     settings_file = tmp_path / "settings.json"
-    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(server, "_settings_file", lambda: settings_file)
 
     response = client.put(
         "/api/settings",
@@ -1651,7 +1651,7 @@ def test_update_settings_persists_model(tmp_path, monkeypatch):
 
 def test_update_settings_sets_restrictive_permissions(tmp_path, monkeypatch):
     settings_file = tmp_path / "settings.json"
-    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(server, "_settings_file", lambda: settings_file)
 
     response = client.put(
         "/api/settings",
@@ -1665,7 +1665,7 @@ def test_update_settings_sets_restrictive_permissions(tmp_path, monkeypatch):
 def test_settings_roundtrip_is_claude_code_only(tmp_path, monkeypatch):
     """設定は Claude Code 前提（マルチプロバイダ / API キー UI は廃止）。"""
     settings_file = tmp_path / "settings.json"
-    monkeypatch.setattr(server, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(server, "_settings_file", lambda: settings_file)
 
     response = client.put("/api/settings", json={"llm_model": "claude-sonnet-4-6"})
     assert response.status_code == 200

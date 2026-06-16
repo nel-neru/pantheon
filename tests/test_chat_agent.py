@@ -19,7 +19,7 @@ def test_load_llm_config_reports_claude_code_backend(tmp_path, monkeypatch):
         json.dumps({"llm_model": "claude-opus-4-8"}),
         encoding="utf-8",
     )
-    monkeypatch.setattr(chat_agent, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(chat_agent, "_settings_file", lambda: settings_file)
     monkeypatch.delenv("PANTHEON_DEFAULT_MODEL", raising=False)
 
     config = chat_agent._load_llm_config()
@@ -32,7 +32,7 @@ def test_load_llm_config_reports_claude_code_backend(tmp_path, monkeypatch):
 
 
 def test_load_llm_config_model_env_fallback(tmp_path, monkeypatch):
-    monkeypatch.setattr(chat_agent, "SETTINGS_FILE", tmp_path / "absent.json")
+    monkeypatch.setattr(chat_agent, "_settings_file", lambda: tmp_path / "absent.json")
     monkeypatch.setenv("PANTHEON_DEFAULT_MODEL", "claude-sonnet-4-6")
 
     config = chat_agent._load_llm_config()
