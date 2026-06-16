@@ -198,6 +198,41 @@ def _log_call_timing(
         logger.debug("failed to write claude timing log: %s", exc)
 
 
+def _emit_llm_span(
+    *,
+    elapsed_ms: int,
+    model: Optional[str],
+    task_type: Optional[str],
+    returncode: Optional[int],
+    timed_out: bool,
+    usage: Optional[dict],
+    total_cost_usd: Optional[float],
+) -> None:
+    """Emit an observability ``llm_call`` span for this call (parents to the active
+    trace, e.g. a PreTaskOrchestrator execute). Best-effort: never breaks the call."""
+    try:
+        from core.observability.span import record_llm_call
+
+        usage = usage or {}
+        if timed_out or (returncode not in (0, None)):
+            status = "error"
+        else:
+            status = "ok"
+        record_llm_call(
+            name=task_type or "llm",
+            model=model,
+            elapsed_ms=elapsed_ms,
+            task_type=task_type,
+            status=status,
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            cache_read_tokens=usage.get("cache_read_input_tokens"),
+            total_cost_usd=total_cost_usd,
+        )
+    except Exception:  # pragma: no cover - observability must not break generation
+        pass
+
+
 def _is_disabled() -> bool:
     return os.getenv(DISABLE_ENV, "").strip().lower() in _TRUTHY
 
@@ -525,15 +560,26 @@ def run_claude_sync(
             parsed = _parse_result(proc.stdout)
     finally:
         meta = (parsed[2] if parsed else None) or {}
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        returncode = proc.returncode if proc is not None else None
         _log_call_timing(
-            elapsed_ms=int((time.monotonic() - started) * 1000),
+            elapsed_ms=elapsed_ms,
             model=chosen_model,
             prompt_chars=prompt_chars,
             system_chars=system_chars,
-            returncode=(proc.returncode if proc is not None else None),
+            returncode=returncode,
             timed_out=timed_out,
             fast=fast,
             task_type=task_type,
+            usage=meta.get("usage"),
+            total_cost_usd=meta.get("total_cost_usd"),
+        )
+        _emit_llm_span(
+            elapsed_ms=elapsed_ms,
+            model=chosen_model,
+            task_type=task_type,
+            returncode=returncode,
+            timed_out=timed_out,
             usage=meta.get("usage"),
             total_cost_usd=meta.get("total_cost_usd"),
         )

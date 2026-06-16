@@ -77,6 +77,7 @@ from commands.plugin import cmd_plugin_add_division as _cmd_plugin_add_division_
 from commands.plugin import cmd_plugin_install_company as _cmd_plugin_install_company_impl
 from commands.plugin import cmd_plugin_list as _cmd_plugin_list_impl
 from commands.plugin import cmd_plugin_scaffold_division as _cmd_plugin_scaffold_division_impl
+from commands.traces import cmd_traces as _cmd_traces_impl
 from commands.up import cmd_up as _cmd_up_impl
 from commands.version import cmd_version as _cmd_version_impl
 from core.paths import resource_root
@@ -414,6 +415,10 @@ def cmd_atlas(args) -> None:
     _cmd_atlas_impl(args)
 
 
+def cmd_traces(args) -> None:
+    _cmd_traces_impl(args)
+
+
 async def cmd_orchestration_analyze(args) -> None:
     await _cmd_orchestration_analyze_impl(args, get_orchestrator=_get_orchestrator)
 
@@ -656,6 +661,7 @@ HANDLERS = {
     "cmd_daemon_status": cmd_daemon_status,
     "cmd_chat": cmd_chat,
     "cmd_atlas": cmd_atlas,
+    "cmd_traces": cmd_traces,
     "cmd_version": cmd_version,
     "cmd_doctor": cmd_doctor,
     "cmd_orchestration_analyze": cmd_orchestration_analyze,

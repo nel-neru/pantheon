@@ -51,6 +51,28 @@ def is_routing_active() -> bool:
     return _ROUTING_ACTIVE.get()
 
 
+def _observability_trace(analysis, pattern):
+    """``execute`` 全体を 1 トレースとして包む context manager を返す。
+
+    observability が未導入/失敗しても orchestration を壊さないよう、失敗時は
+    no-op の nullcontext を返す（best-effort）。トレース内で走る claude 呼び出しは
+    contextvar 経由で自動的に子 span（llm_call）として紐付く。
+    """
+    try:
+        from core.observability.span import start_trace
+
+        task_type = getattr(analysis, "task_type", None)
+        return start_trace(
+            name=task_type or "task",
+            task_type=task_type,
+            pattern=getattr(pattern, "value", str(pattern)) if pattern is not None else None,
+        )
+    except Exception:
+        from contextlib import nullcontext
+
+        return nullcontext()
+
+
 # ────────────────────────────────────────────────────────────────────────── #
 # オーケストレーションパターン定義                                             #
 # ────────────────────────────────────────────────────────────────────────── #
@@ -413,14 +435,15 @@ class PreTaskOrchestrator:
         # ルーティング中フラグを立て、選択エージェントの内部実行が再ルーティングしないようにする
         token = _ROUTING_ACTIVE.set(True)
         try:
-            if pattern == OrchestrationPattern.SEQUENTIAL_PIPELINE:
-                result = await self._execute_sequential(task, analysis, agent_factory)
-            elif pattern == OrchestrationPattern.REVIEW_LOOP:
-                result = await self._execute_review_loop(task, analysis, agent_factory)
-            elif pattern == OrchestrationPattern.PARALLEL_THEN_MERGE:
-                result = await self._execute_parallel(task, analysis, agent_factory)
-            else:
-                result = await self._execute_single(task, analysis, agent_factory)
+            with _observability_trace(analysis, pattern):
+                if pattern == OrchestrationPattern.SEQUENTIAL_PIPELINE:
+                    result = await self._execute_sequential(task, analysis, agent_factory)
+                elif pattern == OrchestrationPattern.REVIEW_LOOP:
+                    result = await self._execute_review_loop(task, analysis, agent_factory)
+                elif pattern == OrchestrationPattern.PARALLEL_THEN_MERGE:
+                    result = await self._execute_parallel(task, analysis, agent_factory)
+                else:
+                    result = await self._execute_single(task, analysis, agent_factory)
         finally:
             _ROUTING_ACTIVE.reset(token)
 
