@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/cn'
 import { ThemeProvider, useThemeCtx } from '@/hooks/useThemeContext'
 import { LiveProvider, useLive } from '@/hooks/useLiveContext'
+import { ClaudeStatusBanner } from './ClaudeStatusBanner'
 import {
   AtelierIcon,
   HandbookIcon,
@@ -92,6 +93,7 @@ export function Shell() {
           <Rail />
           <div className="stage">
             <Masthead />
+            <ClaudeStatusBanner />
             <main id="main" className="stage-inner">
               <Outlet />
             </main>
