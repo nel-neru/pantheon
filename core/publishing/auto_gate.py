@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Optional
+
+from core.persistence import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +61,7 @@ def set_auto_send_enabled(value: bool, *, platform_home: Optional[Path] = None) 
         pass
     data["auto_send_enabled"] = bool(value)
     try:
-        home.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
+        atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
     except OSError as exc:  # pragma: no cover
         logger.warning("failed to persist publish_config.json: %s", exc)
     return bool(value)

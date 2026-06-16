@@ -18,6 +18,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from uuid import NAMESPACE_URL, uuid5
 
+from core.persistence import atomic_write_text
 from core.trends.models import TrendItem
 from core.trends.store import TrendStore
 
@@ -50,14 +51,11 @@ def _load_processed(platform_home) -> set[str]:
 
 def _save_processed(platform_home, hashes: set[str]) -> None:
     import json
-    import os
 
     path = _processed_path(platform_home)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(sorted(hashes), ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, path)  # atomic: クラッシュで processed 集合が壊れない
+        # atomic_write_text: クラッシュ/並行書き込みで processed 集合が壊れない（torn write 防止）
+        atomic_write_text(path, json.dumps(sorted(hashes), ensure_ascii=False))
     except OSError as exc:  # pragma: no cover
         logger.debug("failed to persist processed trends: %s", exc)
 

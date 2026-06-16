@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.persistence import atomic_write_text
+
 logger = logging.getLogger(__name__)
 
 # 生成するコンテンツの種類（org_handoff の kind と対応）。
@@ -103,9 +105,7 @@ class ContentJobStore:
         return data if isinstance(data, list) else []
 
     def _save_raw(self, items: List[Dict[str, Any]]) -> None:
-        tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
+        atomic_write_text(self.path, json.dumps(items, ensure_ascii=False, indent=2))
 
     # ---- 公開 API ----
     def list_jobs(self) -> List[ContentJob]:

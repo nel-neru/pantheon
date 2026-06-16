@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.persistence import atomic_write_text
 from core.publishing.base import (
     PUBLISH_MODE_ASSISTED,
     SUPPORTED_PLATFORMS,
@@ -96,9 +97,7 @@ class PublishJobStore:
         return data if isinstance(data, list) else []
 
     def _save_raw(self, items: List[Dict[str, Any]]) -> None:
-        tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
+        atomic_write_text(self.path, json.dumps(items, ensure_ascii=False, indent=2))
 
     # ---- 公開 API ----
     def list_jobs(self) -> List[PublishJob]:
