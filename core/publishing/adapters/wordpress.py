@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from core.publishing.adapters.base import BrowserPublisher
+from core.publishing.adapters.base import EMPTY_CONTENT_ERROR, BrowserPublisher
 from core.publishing.adapters.handoff import keep_alive, prune_handoff_keepalive
 from core.publishing.base import (
     PLATFORM_WORDPRESS,
@@ -75,6 +75,16 @@ class WordPressPublisher(BrowserPublisher):
                 platform=self.platform,
                 mode=target.mode,
                 error="WordPress が未接続です。`pantheon publish connect wordpress` で一度ログインしてください",
+            )
+
+        # 投稿前バリデーション: 空の下書きでブラウザを起動して空エディタをハンドオフしない
+        # （X / note と同契約・preview≥live の honesty を一様化）。
+        if self._is_empty_content(content):
+            return PublishResult(
+                ok=False,
+                platform=self.platform,
+                mode=target.mode,
+                error=EMPTY_CONTENT_ERROR,
             )
 
         state_path = str(store.state_path(self.platform))
