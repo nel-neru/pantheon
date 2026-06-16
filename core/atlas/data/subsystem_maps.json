@@ -4730,12 +4730,6 @@
       },
       {
         "severity": "medium",
-        "title": "ActivityTracker uses timezone-naive datetime.now()",
-        "detail": "record_activity calls datetime.now() (no tz) violating the repo-wide 'always datetime.now(timezone.utc)' rule enforced by hooks/AGENTS.md. Hour/day-of-week buckets are therefore in server-local time and not comparable across environments; also inconsistent with every other persisted timestamp in the subsystem.",
-        "file": "core/profile/activity_tracker.py"
-      },
-      {
-        "severity": "medium",
         "title": "OrgSelfDiagnostics.format_report assumes emoji-capable encoding",
         "detail": "format_report and several reporters/notifiers emit raw emoji (Japanese CLI strings). On the documented Windows dev environment with cp932/legacy console encodings this can raise UnicodeEncodeError on print, and the module has no entrypoint/test that exercises actual stdout, so the failure mode is latent.",
         "file": "core/hierarchy/org_diagnostics.py"
@@ -4790,11 +4784,6 @@
         "title": "Expose EventDetector/ProactiveNotifier state over the web API",
         "kind": "feature",
         "rationale": "The daemon detects events and writes notifications.jsonl, but the web GUI has no /api/notifications or /api/events endpoint. Surfacing recent notifications and detected events would make the autonomous self-improvement loop observable in the UI (the documented HUMAN_REQUIRED review path)."
-      },
-      {
-        "title": "Replace timezone-naive datetime in ActivityTracker and add a lint hook",
-        "kind": "hook",
-        "rationale": "ActivityTracker.record_activity violates the repo's tz-aware rule. Fix it and extend the existing PreToolUse guard / ruff config to flag bare datetime.now() so this class of regression is caught automatically rather than relying on prose."
       },
       {
         "title": "Make detect_for_org a cheap, side-effect-free query",
