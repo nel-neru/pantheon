@@ -107,7 +107,7 @@ class BaseAgent(ABC):
             self._skill_engine = AgentSkillEngine()
         return self._skill_engine
 
-    def apply_skills_to_prompt(self, base_prompt: str) -> str:
+    def apply_skills_to_prompt(self, base_prompt: str, *, query: Optional[str] = None) -> str:
         """
         エージェントのスキルをシステムプロンプトに注入する。
         サブクラスは SYSTEM_PROMPT を apply_skills_to_prompt() で
@@ -115,6 +115,7 @@ class BaseAgent(ABC):
 
         さらに WIRE-MEM として、有用度上位の Playbook（過去の学び）を Layered Memory から
         読み出してプロンプト末尾に注入する（エントリが無ければ何も足さない＝既存挙動を保つ）。
+        ``query`` を渡すと C5 セマンティックリコールが関連度で再ランクする（既定 on / kill-switch）。
         """
         prompt = self._get_skill_engine().apply_skills_to_prompt(
             base_prompt, self.specialist.skills
@@ -122,7 +123,7 @@ class BaseAgent(ABC):
         try:
             from core.intelligence.memory_bank import MemoryBank
 
-            prompt += MemoryBank().recall_prompt_context()
+            prompt += MemoryBank().recall_prompt_context(query=query)
         except Exception:  # noqa: BLE001 — 記憶層の不調で生成を止めない
             pass
         return prompt

@@ -46,6 +46,59 @@ def test_recall_orders_by_usefulness(tmp_path, monkeypatch):
     assert top[0].title == "high"  # 有用度上位が先頭
 
 
+# ------------------------------------------------------------------ #
+# C5: セマンティックリコール（query 再ランク + kill-switch）
+# ------------------------------------------------------------------ #
+
+
+def _seed_three(bank: MemoryBank) -> None:
+    """異なる主題の 3 件。usefulness は意味と逆相関させ、再ランクの効果を可視化する。"""
+    a = bank.capture("X集客のコツ", "短文と画像で伸ばす", category="g", org_name="Co")
+    b = bank.capture(
+        "note有料記事の構成", "価値提示と価格設計を最適化", category="g", org_name="Co"
+    )
+    c = bank.capture("Shortsサムネ最適化", "クリック率を上げる構図", category="g", org_name="Co")
+    # 関連の薄い a を usefulness 最上位にして、query 再ランクが順位を入れ替えることを示す。
+    bank.record_applied(a.entry_id, success=True)
+    bank.record_applied(a.entry_id, success=True)
+    bank.record_applied(c.entry_id, success=True)
+    _ = b  # b は usefulness 最下位（query で初めて先頭に来るべき対象）
+
+
+def test_recall_query_reranks_by_relevance(tmp_path, monkeypatch):
+    """query を与えると usefulness ではなく意味的関連で先頭が決まる（既定 on）。"""
+    monkeypatch.delenv("PANTHEON_SEMANTIC_RECALL", raising=False)
+    bank = _bank(tmp_path, monkeypatch)
+    _seed_three(bank)
+
+    top = bank.recall(limit=1, query="note 有料記事 価格設計")
+    assert top[0].title == "note有料記事の構成"  # usefulness 最下位でも関連で先頭へ
+
+
+def test_recall_without_query_keeps_usefulness_order(tmp_path, monkeypatch):
+    """query 無しは従来どおり usefulness 上位（既存挙動と一致）。"""
+    monkeypatch.delenv("PANTHEON_SEMANTIC_RECALL", raising=False)
+    bank = _bank(tmp_path, monkeypatch)
+    _seed_three(bank)
+    assert bank.recall(limit=1)[0].title == "X集客のコツ"  # usefulness 最上位
+
+
+def test_recall_kill_switch_restores_usefulness(tmp_path, monkeypatch):
+    """PANTHEON_SEMANTIC_RECALL=0 なら query を渡しても usefulness 順（kill-switch）。"""
+    monkeypatch.setenv("PANTHEON_SEMANTIC_RECALL", "0")
+    bank = _bank(tmp_path, monkeypatch)
+    _seed_three(bank)
+    assert bank.recall(limit=1, query="note 有料記事 価格設計")[0].title == "X集客のコツ"
+
+
+def test_recall_query_no_overlap_falls_back(tmp_path, monkeypatch):
+    """query が候補と一切重ならなければ usefulness 順を維持（関連シグナル皆無のフォールバック）。"""
+    monkeypatch.delenv("PANTHEON_SEMANTIC_RECALL", raising=False)
+    bank = _bank(tmp_path, monkeypatch)
+    _seed_three(bank)
+    assert bank.recall(limit=1, query="xyzzy 量子 フーバー")[0].title == "X集客のコツ"
+
+
 def test_recall_prompt_context_empty_when_no_entries(tmp_path, monkeypatch):
     bank = _bank(tmp_path, monkeypatch)
     assert bank.recall_prompt_context() == ""  # 空なら何も足さない（既存挙動を壊さない）

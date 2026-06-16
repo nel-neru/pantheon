@@ -151,7 +151,7 @@ class GenericSkillAgent(BaseAgent):
 
     async def run(self, task: AgentTask) -> AgentResult:
         """スキルを活かしてタスクを実行する。"""
-        system_prompt = self.apply_skills_to_prompt(GENERIC_BASE_PROMPT)
+        system_prompt = self.apply_skills_to_prompt(GENERIC_BASE_PROMPT, query=task.description)
 
         if self._llm is None:
             return self._fallback_result(task)

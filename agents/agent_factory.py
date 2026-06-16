@@ -164,11 +164,15 @@ class AgentFactory:
                 self._yaml_defn = defn
                 self._yaml_skill_loader = skill_loader
 
-            def apply_skills_to_prompt(self, base_prompt: str) -> str:
+            def apply_skills_to_prompt(
+                self, base_prompt: str, *, query: Optional[str] = None
+            ) -> str:
                 yaml_prompt = self._yaml_defn.build_system_prompt(self._yaml_skill_loader)
                 if yaml_prompt and base_prompt.strip():
                     return f"{base_prompt.rstrip()}\n\n---\n\n{yaml_prompt}"
-                return yaml_prompt if yaml_prompt else super().apply_skills_to_prompt(base_prompt)
+                if yaml_prompt:
+                    return yaml_prompt
+                return super().apply_skills_to_prompt(base_prompt, query=query)
 
             def get_skill_tags(self) -> List[str]:
                 if self._yaml_defn.skills:
