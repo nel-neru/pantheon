@@ -1388,3 +1388,20 @@ Upgrade Program C4 — 敵対的マルチ検証パターン  (2026-06-17)
            （※ parallel マージの自己参照バグを自作テストが検出→修正済み）
   Act    : merged ✅。固定化: 既存 executor 改修は pin テストの assert 値を壊さない形で（who==main 等を保持）。
   Next   : C4a 観測ダッシュ(Atelier /lab)＋Eval ハーネス（spans を読む read-only UI＋golden tasks）。
+
+Upgrade Program C4a — 観測ダッシュ + Eval ハーネス  (2026-06-17)
+  Plan   : C1 spans を可視化する read-only ダッシュ（Atelier /lab）＋ golden task の Eval ハーネス。
+           受け入れ基準 = read-only API・明示404維持・offline 決定的 Eval・回帰0・atelier build/test 緑。
+  Did    : work/observability-dashboard-eval-20260617。web/server.py に read-only
+           GET /api/observability/{summary,traces}（TraceStore を読むだけ・limit クランプ）。
+           core/eval/（harness.py: load_golden/run_suite/eval span 出力, golden/*.yaml 2件）＋
+           commands/eval.py（pantheon eval, LLM-judge＋heuristic fallback）＋main.py 配線。
+           Atelier /lab ページ（frontend-dev 委譲: Lab.tsx＋types＋Shell nav＋App route＋vitest,
+           Observatory 流儀踏襲）。
+  Check  : eval/API 新規 7/7 緑 / backend 1492 passed・既知2のみ・回帰0 / atelier vitest 42 緑・build クリーン /
+           ruff 緑 / pantheon eval は実 claude で end-to-end 動作確認 /
+           code-reviewer(backend) = APPROVE（read-only・明示404維持・limit クランプ・offline 決定的・
+           span best-effort・CLI 配線を検証, Critical/Warning 無し）。
+  Act    : merged ✅。固定化: 観測は read-only API＋best-effort span で本処理を汚さない／Eval は
+           injectable runner/evaluator で offline 決定的。
+  Next   : C5 セマンティック記憶（任意 fastembed + vendored BM25, PANTHEON_SEMANTIC_RECALL kill-switch）。

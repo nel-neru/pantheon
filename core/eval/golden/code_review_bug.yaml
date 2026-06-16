@@ -1,0 +1,12 @@
+id: code_review_bug
+suite: agents
+task_type: code_review
+prompt: |
+  次の Python 関数をレビューしてください。バグがあれば指摘し、具体的な修正案を file:line 付きで示してください。
+
+  def add(a, b):
+      return a - b  # add.py:2
+rubric: |
+  減算（a - b）になっているバグを指摘し、a + b への修正を提案していれば良い。
+  具体的な箇所（add.py:2 等）に言及していれば加点。
+expected_contains: []

@@ -6,6 +6,7 @@ import { Pantheon } from '@/pages/Pantheon'
 import { Atelier } from '@/pages/Atelier'
 import { Signals } from '@/pages/Signals'
 import { Inbox } from '@/pages/Inbox'
+import { Lab } from '@/pages/Lab'
 import { Handbook } from '@/pages/Handbook'
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/atelier" element={<Atelier />} />
         <Route path="/signals" element={<Signals />} />
         <Route path="/inbox" element={<Inbox />} />
+        <Route path="/lab" element={<Lab />} />
         <Route path="/handbook" element={<Handbook />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

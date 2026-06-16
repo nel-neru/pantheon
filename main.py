@@ -28,6 +28,7 @@ from commands.business import cmd_business_outcomes as _cmd_business_outcomes_im
 from commands.business import cmd_business_show as _cmd_business_show_impl
 from commands.chat import cmd_chat as _cmd_chat_impl
 from commands.doctor import cmd_doctor as _cmd_doctor_impl
+from commands.eval import cmd_eval as _cmd_eval_impl
 from commands.goal import cmd_goal_plan as _cmd_goal_plan_impl
 from commands.goal import cmd_goal_run as _cmd_goal_run_impl
 from commands.goal import cmd_goal_status as _cmd_goal_status_impl
@@ -419,6 +420,10 @@ def cmd_traces(args) -> None:
     _cmd_traces_impl(args)
 
 
+def cmd_eval(args) -> None:
+    _cmd_eval_impl(args)
+
+
 async def cmd_orchestration_analyze(args) -> None:
     await _cmd_orchestration_analyze_impl(args, get_orchestrator=_get_orchestrator)
 
@@ -662,6 +667,7 @@ HANDLERS = {
     "cmd_chat": cmd_chat,
     "cmd_atlas": cmd_atlas,
     "cmd_traces": cmd_traces,
+    "cmd_eval": cmd_eval,
     "cmd_version": cmd_version,
     "cmd_doctor": cmd_doctor,
     "cmd_orchestration_analyze": cmd_orchestration_analyze,

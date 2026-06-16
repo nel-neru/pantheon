@@ -1,0 +1,9 @@
+id: deep_research_summary
+suite: skills
+task_type: deep_research
+prompt: |
+  次の要件を 5 行以内で要約し、リスクと次アクションを箇条書きで示してください。
+  「24時間自律でトレンドを収集し、高スコア案件をコンテンツ案へ承認ゲート付きで変換する」
+rubric: |
+  目的・リスク・次アクションが構造化された箇条書きで簡潔にまとまっていれば良い。
+expected_contains: []

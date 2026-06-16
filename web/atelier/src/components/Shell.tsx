@@ -8,6 +8,7 @@ import {
   AtelierIcon,
   HandbookIcon,
   InboxIcon,
+  LabIcon,
   MoonIcon,
   ObservatoryIcon,
   PantheonIcon,
@@ -24,6 +25,7 @@ const NAV: Nav[] = [
   { to: '/atelier', label: 'Atelier', Icon: AtelierIcon },
   { to: '/signals', label: 'Signals', Icon: SignalsIcon },
   { to: '/inbox', label: 'Inbox', Icon: InboxIcon },
+  { to: '/lab', label: 'Lab', Icon: LabIcon },
   { to: '/handbook', label: 'Handbook', Icon: HandbookIcon },
 ]
 

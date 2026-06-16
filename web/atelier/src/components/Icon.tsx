@@ -104,6 +104,18 @@ export function HandbookIcon(p: IconProps) {
   )
 }
 
+export function LabIcon(p: IconProps) {
+  // フラスコ：観測ラボ（Lab）を表す実験器具の輪郭。
+  return (
+    <svg {...base(p)}>
+      <path d="M9 3h6M10 3v6l-4 9a1 1 0 0 0 .9 1.5h10.2A1 1 0 0 0 18 18l-4-9V3" />
+      <circle cx="8.5" cy="16" r="0.6" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="17.2" r="0.6" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="15.5" r="0.6" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function PantheonMark(p: IconProps) {
   // ブランドマーク：万神殿のペディメント＋柱（星座にも見える幾何）
   return (
