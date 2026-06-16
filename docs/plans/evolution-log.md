@@ -1464,3 +1464,32 @@ Cycle 3 — レビュー経路へ意味リコールを配線（C6-a）  (2026-06
   Next   : C6 候補 — (c) eval golden tasks 拡充（コードレビュー/分析の golden 追加）、
            (e) robustness: 並行/エラー処理のバグ狩りで多様性回復、(f) trend-watcher で
            Claude Code 最新動向→.claude/ 更新提案。
+
+Cycle 4 — tz-aware ルールを ruff DTZ で機械強制（Atlas 推奨の固定化）  (2026-06-17)
+  Plan   : 「datetime.utcnow() 禁止／naive datetime.now() 禁止＝常に tz-aware」ルールは
+           CLAUDE.md/AGENTS.md の散文＋code-review のみで未強制だった。production は既に DTZ クリーン
+           （utcnow ゼロ・naive now ゼロ。activity_tracker:38 は .astimezone() で local-aware・意図的）
+           なので、ruff に DTZ(flake8-datetimez) を追加して「将来の回帰」を機械検出。これは Atlas 自身が
+           improvement_idea(kind=hook) で推奨していた固定化そのもの。多様性: C3 intelligence → DX/correctness。
+           落とした候補: naive-tz バグ狩り（高リスク site=scoring/health_calculator は R4 で既にガード済＝低残価値）、
+           eval golden 拡充（後続）。
+  Did    : work/ruff-dtz-tz-guard-20260617。pyproject.toml: select += "DTZ"、
+           [tool.ruff.lint.per-file-ignores] "tests/**"=["DTZ"]（テストは fixture で naive datetime を
+           作るため waive＝唯一の違反は test_theme_de_remaining.py の 11件 DTZ001）。
+           tests/test_ruff_dtz_guard.py（tomllib で pyproject を読み DTZ 選択＋tests waive を pin＝
+           guard を黙って外せない）。subsystem_maps.json から解消済みの ActivityTracker tz issue と
+           done な "add a lint hook" improvement_idea を除去（コードは 2026-06-07 修正済・本サイクルで
+           lint guard 追加＝Atlas が求めたループを閉じた）。
+  Check  : 新規 pin 2/2 緑 / backend 1511 passed・既知2のみ・回帰0 / ruff check . 緑（production クリーン・
+           tests waive）/ JSON 健全 / code-reviewer = APPROVE（6点検証: production DTZ クリーン[実行確認]・
+           ruff check . 通過・tests waive は production を隠さない[11違反は全て tests/]・activity_tracker は
+           真に local-aware で意図的・pin 非空虚[tomllib]・JSON 隣接エントリ無傷/末尾カンマ無し。Critical/Warning/Nit 無し）。
+           注: .claude/rules/python.md の散文同期は sensitive ファイル権限ゲートに当たり無人運転では見送り
+           （固定化は config コメント＋pin テストで自己文書化済）。
+  Act    : merged ✅（main 17d1d3e）。固定化: 散文ルールは「既存コードがクリーンなら lint select 追加で
+           ゼロ違反のまま機械強制へ昇格」できる＝低コストで回帰を恒久封鎖。Atlas の stale issue は
+           実コード再検証→解消済みなら除去（[[atlas-flows-drift]] 準拠）。.claude/ 配下の編集は権限ゲート
+           があるため、無人サイクルでは .claude 外の自己文書化（config コメント/pin テスト）を優先する。
+  Next   : C6 候補 — (c) eval golden tasks 拡充（code_review/analyze の golden 追加で C4a ハーネスを実効化）、
+           (g) bare datetime.now() の PreToolUse guard も追加（ruff の半分だけ done＝もう半分）、
+           (h) trend-watcher で Claude Code 最新動向→.claude/ 更新提案。
