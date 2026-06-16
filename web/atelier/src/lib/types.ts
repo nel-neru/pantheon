@@ -177,3 +177,11 @@ export type InboxPayload = {
   items: InboxItem[]
   counts: Record<string, number>
 }
+
+// /api/platform/status — claude CLI の可用性とプラットフォーム初期化状態。
+export type PlatformStatus = {
+  has_llm: boolean
+  initialized?: boolean
+  total_organizations?: number
+  environment?: string
+}
