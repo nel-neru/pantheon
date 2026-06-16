@@ -19,6 +19,47 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 44 — デーモン pid 生存判定を Windows 対応化（reaped pid の偽陽性根絶）  (2026-06-16 自動再開)
+  Plan   : 多様性ピボット（43 Atlas/frontend → 44 は runtime/Windows 堅牢化）。Cycle 43 の教訓
+           「flows.json issue は着手前に実コードで再検証」に従い platform-ops（partial）の
+           「デーモン制御が POSIX 前提で Windows 劣化」を選定し teeth で実証。当初想定（os.kill が
+           Windows で常に False）は外れ、実態は **os.kill(pid,0) が終了済み（reaped）pid を「稼働中」と
+           誤報告する偽陽性**＝クラッシュしたデーモンを watchdog が復活させず UI も誤表示（24h 自律基盤の
+           実害）。受け入れ基準 = Windows-safe な生存判定／散在する同コピーを single source へ集約／
+           teeth 付き回帰テスト／POSIX 等価維持／レビュー／基線維持。なぜ今: Windows がこの本番環境・
+           ビジョン基盤の堅牢化・高確信（実証済み）・低リスク・可逆。落とした候補: env_separation の
+           SETTINGS_FILE import 凍結（敏感ファイル＋13 monkeypatch で確信中）／フル flow-audit 再ベース
+           ライン（43 直後で多様性低）／capability-gap auto-implemented（low）。
+  Did    : work/daemon-pid-liveness-win-20260616。①新 core/runtime/process_utils.py を single source に:
+           pid_alive=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)+GetExitCodeProcess（STILL_ACTIVE=259
+           のみ alive）/POSIX os.kill(pid,0)、terminate_pid=TerminateProcess/POSIX os.kill(SIGTERM)。
+           ②同じ os.kill(pid,0) 偽陽性が **4箇所**に散在 → 全て pid_alive へ集約: daemon_registry.
+           is_process_running / web/server.py:_is_process_running（/api/daemon/status・content daemon の
+           ライブ経路）/ commands/platform.py。③headless_driver._pid_alive/_kill_pid は薄いラッパへ
+           （Cycle 41 のサイドカー優先順位不変・monkeypatch 点保持）、未使用 import signal 除去。
+           ④stop 経路（os.kill SIGTERM→TerminateProcess）は Windows で動作するため不変（test が
+           registry.os.kill を patch する制約も尊重）。⑤Atlas 正直化: subsystem_maps.json の該当
+           known_issue を「liveness 修正済・stop は残 low」へ更新。⑥tests/test_process_utils.py 新設
+           （reaped 子の生存=False を実プロセスで teeth 検証）。
+  Check  : 全件 1437 passed（基線 chmod 2件のみ・新規回帰 0）。teeth: 旧 is_process_running は
+           terminate+wait 済み子 pid を True（偽陽性）、新 pid_alive は False を実測。ruff クリーン。
+           code-reviewer 敵対レビュー = **REQUEST-CHANGES**（core は正しいが web/server.py に **4つ目の
+           os.kill(pid,0) コピー**が Web UI ライブ経路に残存と検出）→ pid_alive へ集約して修正、これに
+           伴い test_daemon_status_reports_running（旧 server.os.kill monkeypatch 依存）を
+           pid_alive monkeypatch へ更新（一旦 1 回帰→修正→再 GREEN）。minor（ctypes restype 未宣言・
+           STILL_ACTIVE=259 曖昧）は既出荷の headless と同じ accepted tradeoff で非ブロッキング。
+  Act    : merged ✅（87b2d08..a392715）。固定化（学び）: (1) **Windows で POSIX のプロセス慣用句は
+           黙って誤動作する**＝os.kill(pid,0) は reaped pid を alive と偽陽性（OpenProcess+
+           GetExitCodeProcess を使う）、os.kill(SIGTERM) は TerminateProcess へマップ（動くが force）。
+           Cycle 42 の fcntl→Windows no-op と同じ「POSIX 慣用句の静かな破綻」クラス → core/runtime/
+           process_utils.py を single source に。(2) **同種バグは grep スコープを跨いで複数コピーに潜む**
+           ＝core/runtime/** だけ見て web/server.py の4つ目を見落とし、敵対レビューが捕捉。集約の主目的は
+           「single source で再ドリフトを防ぐ」＝候補は全 call site を grep で洗う。(3) 「偽陽性の running」も
+           「成功の捏造」の一種（Cycle 41 false DONE と同family・誤りは安全側へ）。
+  Next   : env_separation の SETTINGS_FILE import-時凍結フラジリティ根治（遅延評価＋monkeypatch 互換）／
+           フル flow-audit 再ベースライン（残る非 solid に stale 複数の可能性）／capability-gap-self-extension
+           の「充足済みギャップを自動 implemented 化」（backend・bounded）。
+
 Cycle 43 — Atlas（flows.json）を実態へ正直化＋ドリフト検出ガード  (2026-06-16 自動再開)
   Plan   : 自動再開で git/log 精査 → Cycle 42（TaskQueue xproc-lock）完了・main 統合後の中断と判定
            （main クリーン・未マージは auto×2/intro-video=別系統のみ・並行 worker/ロック無し）。多様性
