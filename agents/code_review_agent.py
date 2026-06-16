@@ -287,12 +287,24 @@ class CodeReviewAgent(BaseAgent):
             )
         return result
 
+    @staticmethod
+    def _build_recall_query(repo_name: str, code_context: str, *, max_chars: int = 2000) -> str:
+        """意味リコール（C5）用の query を、レビュー対象そのものから作る。
+
+        リポジトリ名＋コード本文の先頭 ``max_chars`` 文字を連結した代表サンプルを返す。
+        この query を ``apply_skills_to_prompt`` 経由で ``MemoryBank.recall`` に渡すと、
+        過去の Playbook が「いま見ているコードとの関連度」で再ランクされる。
+        コード本文は大きくなり得るので有界化し、BM25 のトークン化コストを抑える。
+        """
+        return f"{repo_name}\n{code_context[:max_chars]}"
+
     async def _generate_suggestions(
         self, code_context: str, repo_name: str, prior_knowledge: str = ""
     ) -> List[CodeImprovementSuggestion]:
         provider = get_llm_provider(self._provider_name)
 
-        system_prompt = self.apply_skills_to_prompt(REVIEW_SYSTEM_PROMPT)
+        recall_query = self._build_recall_query(repo_name, code_context)
+        system_prompt = self.apply_skills_to_prompt(REVIEW_SYSTEM_PROMPT, query=recall_query)
         knowledge_section = f"\n\n{prior_knowledge}\n" if prior_knowledge else ""
 
         user_prompt = (
