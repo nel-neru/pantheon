@@ -185,3 +185,51 @@ export type PlatformStatus = {
   total_organizations?: number
   environment?: string
 }
+
+// /api/observability/* — エージェント観測トレースとスパン。
+export type TraceSummary = {
+  trace_id: string
+  name: string
+  task_type: string | null
+  pattern: string | null
+  started_at: string | null
+  span_count: number
+  elapsed_ms: number | null
+  status: string
+  total_cost_usd: number | null
+  input_tokens: number | null
+  output_tokens: number | null
+  quality_score: number | null
+}
+
+export type Span = {
+  span_id: string
+  trace_id: string
+  parent_span_id: string | null
+  kind: string | null
+  name: string
+  task_type: string | null
+  pattern: string | null
+  elapsed_ms: number | null
+  status: string
+  model: string | null
+  total_cost_usd: number | null
+  quality_score: number | null
+}
+
+export type ObservabilitySummary = {
+  trace_count: number
+  total_cost_usd: number
+  avg_quality: number | null
+  error_traces: number
+  traces: TraceSummary[]
+}
+
+export type TracesPayload = {
+  traces: TraceSummary[]
+}
+
+export type TraceDetail = {
+  trace_id: string
+  spans: Span[]
+}
