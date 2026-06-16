@@ -52,7 +52,11 @@ class GrowthHistoryRecorder:
                 continue
             try:
                 record = GrowthRecord(**json.loads(line))
-            except Exception:
+            except Exception as exc:
+                # 破損/不完全な行は黙殺せず観測可能にする（成長指標の母数が静かに目減りするため）。
+                from core.platform.state import warn_skipped_state_file
+
+                warn_skipped_state_file(self.history_file, exc, kind="GrowthRecord")
                 continue
             if record.org_name == org_name:
                 records.append(record)

@@ -59,7 +59,11 @@ class CoevolutionGraph:
                 continue
             try:
                 obj = json.loads(line)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                # 破損行は黙殺せず観測可能にする（共進化グラフの母数が静かに目減りするため）。
+                from core.platform.state import warn_skipped_state_file
+
+                warn_skipped_state_file(self.graph_path, exc, kind="CoevolutionPoint")
                 continue
             if (
                 not isinstance(obj, dict)

@@ -47,7 +47,11 @@ class LearningCurveTracker:
                 continue
             try:
                 points.append(LearningDataPoint(**json.loads(line)))
-            except Exception:
+            except Exception as exc:
+                # 破損/不完全な行は黙殺せず観測可能にする（学習曲線の母数が静かに目減りするため）。
+                from core.platform.state import warn_skipped_state_file
+
+                warn_skipped_state_file(self.data_file, exc, kind="LearningDataPoint")
                 continue
         return points[-limit:]
 
