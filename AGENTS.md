@@ -110,7 +110,7 @@ python -m pytest tests/ --collect-only -q
 1. 追加先レイヤーを決める（`core/`, `agents/`, `web/`, `github_integration/` など）
 2. 必要なら `tests/test_<feature>.py` を追加し、`tmp_path` / `patch(get_platform_home, ...)` パターンに合わせる
 3. 新しいAgentを追加したら `agents/` に配置し、`BaseAgent` 契約に従う
-4. 新しいSkillを追加したら `AgentSkill` と `AgentSkillEngine.SKILL_DEFINITIONS` を更新する
+4. 新しいSkillを追加したら `AgentSkill` enum メンバーを追加し、`skills/<value>.yaml` を作成する（`SkillLoader` が読み込む。YAML の `id` は enum 値と一致させる。`SKILL_DEFINITIONS` という辞書は存在しない）
 5. 新CLI機能なら `main.py` に `cmd_*` 関数、parser定義、dispatch追加を行う
 6. Capabilityとして公開したい場合は `CapabilityRegistry.scan_and_register_all()` か `register()` で扱える形にする
 7. 既存テストが通ることを確認する

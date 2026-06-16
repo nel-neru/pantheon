@@ -3,20 +3,28 @@
   "permissions": {
     "deny": [
       "Read(./.env)",
+      "Read(./.env.*)",
       "Read(./.claude/.credentials.json)",
       "Read(./**/id_rsa)",
       "Read(./**/*.pem)",
-      "Read(./**/*.key)"
+      "Read(./**/*.key)",
+      "Read(./**/.npmrc)",
+      "Read(./**/.git-credentials)"
     ],
     "ask": [
       "Bash(rm -rf *)",
-      "Bash(rmdir *)"
+      "Bash(rm -fr *)",
+      "Bash(rm -r -f *)",
+      "Bash(rm --recursive *)",
+      "Bash(rmdir *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)"
     ]
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-bash.mjs\"" }
         ]
@@ -32,7 +40,7 @@
       {
         "matcher": "Write|Edit",
         "hooks": [
-          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format.mjs\"", "async": true, "timeout": 60 },
+          { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format.mjs\"", "timeout": 60 },
           { "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/post-edit-checks.mjs\"", "timeout": 45 }
         ]
       },

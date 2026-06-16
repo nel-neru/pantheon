@@ -2,11 +2,14 @@
 /**
  * Claude Code `PreToolUse` (Write|Edit) hook — protect secret/credential files.
  *
- * Denies edits to `.env` (and `.env.<env>`) and common credential/key files,
- * while explicitly ALLOWING templates (`.env.example` / `.sample` / `.template`).
+ * Denies edits to real secret/credential/key files using the shared denylist in
+ * `./sensitive-paths.mjs`. Templates (`.env.example`/`.sample`/`.template`/`.dist`) AND ordinary
+ * SOURCE files that merely contain "secret"/"credential" in their name (e.g. `secret_manager.py`,
+ * and this hook's own siblings) are ALLOWED — only credential-SHAPED files are blocked.
  * Returns a PreToolUse `permissionDecision: "deny"` as JSON.
  */
 import { readFileSync } from "node:fs";
+import { isSecretFile, baseName } from "./sensitive-paths.mjs";
 
 let file = "";
 try {
@@ -16,25 +19,14 @@ try {
   process.exit(0);
 }
 
-const norm = file.replace(/\\/g, "/").toLowerCase();
-const base = norm.split("/").pop() || "";
-
-const isTemplate = /\.(example|sample|template|dist)$/.test(base);
-const isEnv = !isTemplate && (base === ".env" || /^\.env\./.test(base));
-const isCredential =
-  /(^|\/)\.credentials\.json$/.test(norm) ||
-  /(^|[._-])(secret|secrets|credentials?)([._-]|\.)/.test(base) ||
-  /\.(pem|key|pfx|p12|keystore)$/.test(base) ||
-  /(^|\/)id_(rsa|ed25519|ecdsa)(\.|$)/.test(base);
-
-if (isEnv || isCredential) {
+if (isSecretFile(file)) {
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
         permissionDecisionReason:
-          `Blocked by Pantheon guardrail: '${base}' looks like a secret/credential file. ` +
+          `Blocked by Pantheon guardrail: '${baseName(file)}' looks like a secret/credential file. ` +
           `Edit it manually, or use the .example template.`,
       },
     }),

@@ -6,7 +6,10 @@
  * left alone (the frontend has no formatter configured; type-checking is `tsc -b`).
  * Runs `ruff format` only (idempotent, non-destructive) — NOT `--fix`, to avoid
  * import/lint rewrites mid-edit. Never blocks: any failure exits 0 silently.
- * Configured with `"async": true` so it never stalls the turn.
+ * Runs SYNCHRONOUSLY (not `async`): `ruff format` of one file is sub-second, and a
+ * deferred reformat could rewrite a file the model re-reads/re-edits later in the same
+ * turn (stale read, or an Edit whose `old_string` ruff already reflowed). The 60s hook
+ * timeout in settings.json bounds the rare slow case.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
