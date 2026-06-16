@@ -19,6 +19,36 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 39 — branch_status の done 判定を patch 等価（再適用/squash マージ）まで拡張  (2026-06-16 自動再開)
+  Plan   : 自動再開で git 状態を精査 → 未マージ work ブランチ4本のうち r4-backend-robustness は
+           ahead 1 だが全7ファイルが main と byte 一致（`git cherry origin/main` が `-`＝patch 等価）。
+           原因は `branch_status.mjs` が done を **ancestry のみ**（`rev-list MAIN..ref` が 0）で判定し、
+           squash/rebase/再適用マージ済みブランチを永久に false-active として残し --prune でも掃除
+           できないこと。受け入れ基準 = r4 が done に分類 / 真に未マージ（intro-video・auto×2）は active
+           維持 / --prune の安全性不変 / レビュー通過 / 基線維持。多様性のため backend 堅牢化（Cycle 37–38）
+           から**ツール/DX へピボット**。高確信・低リスク・再開文脈が必要性を実証。落とした候補: 残る素の
+           write_text 監査（堅牢化が3連続で単調・スコープ過大）/ B-4 並行性テスト / intro-video 統合
+           （マーケ動画・binary 重・別系統）。
+  Did    : work/branch-status-patch-equiv-20260616（scripts/branch_status.mjs 1ファイル）。
+           `genuinelyAhead(ref, ahead)` 新設＝`git cherry MAIN ref` の `+`（真に未統合）行数を返す
+           （ahead===0 は即 0／cherry 空は保守的に全件未統合）。`reapplied = ahead>0 && unmerged===0`
+           を done 扱いへ追加・表示に注記・--prune の -D 成功メッセージを reapplied/upstream-unsynced で
+           分岐・安全性論証コメントを 2 経路へ更新。
+  Check  : 実行確認 — r4 が done（「再適用/squash 済み, 未統合 0/1」注記）に再分類、intro-video/auto×2 は
+           active 維持、ancestry-done と current は従来どおり。merge_to_main のテストゲート GREEN
+           （exit 1／失敗は既知ベースライン2件のみ・新規回帰 0）。code-reviewer 敵対レビュー = APPROVE-
+           WITH-NITS（git cherry セマンティクス・+/- 判定・-D 安全性・forceOk=false 時の失敗報告・既存
+           回帰を 4 synthetic repo で実証検証。誤りの方向は常に安全側＝merge 経由 patch 等価は active の
+           まま）。nit（merge 除外で行数<ahead が正常・`!== ahead` への誤改修が false-active を生む旨）を
+           コメントへ反映。
+  Act    : merged ✅（c21836c..3bf76c3）。固定化（学び）: (1) 再開時に「未マージ work ブランチ」を見極める
+           正準シグナルは **`git cherry origin/main <branch>`（patch-id）**であって `git diff`（main の進展が
+           deletion に見え誤誘導する）ではない。(2) 破壊的ツールの判定は「誤りの方向」を安全側へ倒す＝
+           git cherry は merge 経由を保守的に未統合扱いし、true-done を稀に active に残すのみで、未統合を
+           done に誤分類しない。
+  Next   : 残る素の write_text 監査（atomic でない state 書き込み site の洗い出し）／B-4 state manager
+           並行 read/write 競合テスト／intro-video 系3ブランチの取捨（マーケ動画ツールの統合 or 破棄判断）。
+
 Cycle 38 — アトミック書き込みの共通化（固定 tmp 名コピペ7 site を共有ヘルパへ・並行 clobber 根絶）  (2026-06-16 自動再開)
   Plan   : 多様性のため meta（Claude Code ベストプラクティス採用）を先に試行→ trend-watcher の5提案は
            いずれも**未検証のバージョン固有機能主張**（2.1.175/2.1.178 の enforceAvailableModels・
