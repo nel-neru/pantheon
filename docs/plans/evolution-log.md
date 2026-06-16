@@ -19,6 +19,45 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 37 — 基盤 state JSON 書き込みの原子化（共有 atomic_write_text ヘルパ・torn write 防止）  (2026-06-16 自動再開)
+  Plan   : 多様性ピボット（Cycle 34–36 は publishing/onboarding の UX → 今回は backend 堅牢性/耐久性）。
+           台帳 §B-4 の「これまでの単体監査が拾えない層」を**並行性テストの前段にある実バグ**として実証:
+           新しいサブシステム（content/publishing/runtime/task_queue）は tmp+os.replace でアトミック書き込み
+           するのに、**基盤の state manager（`core/state/manager.py`・`core/platform/state.py`）は直接
+           `write_text`/`json.dump(open)`** ＝非アトミック。クラッシュや 24h 自律基盤の並行書き込みで JSON が
+           切り詰められ得て、直近サイクルで観測化した silent-drop（`warn_skipped_state_file`）が「組織/提案が
+           音もなく消失」というデータ消失として拾う＝**観測化していた症状の根本原因**。受け入れ基準 = 共有
+           ヘルパ新設＋全非アトミック site をアトミック化・成功パスはバイト等価・回帰テスト・基線維持・敵対
+           レビュー通過。なぜ今: 直近サイクルが観測化した破損の発生源を構造的に断つ（観測→根治）。可逆（成功
+           パス不変）・低リスク。落とした候補: B-2残/B-3（UX 連続を避け多様性）／既存 site の DRY 移行（scope
+           を絞り follow-up へ）／実機 E2E（不可逆・有人時のみ）。
+  Did    : work/atomic-state-writes-20260616（backend・自分で実装）。
+           ① 新 `core/persistence.py`: `atomic_write_text(path, text, *, encoding)` ＝ `usage_gate.py` の実証済み
+           パターン（同一 dir に mkstemp → 書き込み → `os.replace` で原子差し替え、失敗時は temp を unlink して
+           元 path 無傷）の共有版。stdlib のみ import で循環参照なし。② `core/state/manager.py`（8 site:
+           save_current_state/record_decision/save_quality_review/save_improvement_proposal/
+           update_proposal_fields/save_organization/save_session_context）・`core/platform/state.py`（3 site:
+           initialize/save_platform_config/save_organization）の非アトミック書き込みを全て helper 経由へ
+           変換（生成する JSON 文字列・encoding・indent は不変＝成功パスはバイト等価）。③ 回帰テスト
+           `tests/test_persistence.py` 8本（内容往復/孤児.tmp不残/親dir作成/上書き原子性/非ASCII/失敗時の
+           元ファイル無傷/RepoStateManager 統合/read-modify-write の update_proposal_fields 往復）。
+  Check  : test_persistence 8/8 緑。test-triage 全件 GREEN（1424 passed・基線 chmod 2件のみ・新規回帰 0）。
+           ruff check/format クリーン。code-reviewer 敵対レビュー（os.replace の cross-device/EXDEV・Windows
+           overwrite・mkstemp 0o600・循環 import・BaseException cleanup・8/8+3/3 site の網羅と誤変換有無を実証
+           検証）= **APPROVE-WITH-NITS**（critical/warning 0）。reviewer の最も実用的な nit「自身が読んだ
+           ファイルを replace する唯一の変換 site = update_proposal_fields の read-modify-write を明示テスト」を
+           採用し1本追加（7→8本）。他の suggestion（POSIX 0o600 化は harmless＝PR ノート／既存コピペ site の
+           DRY 移行は follow-up）は台帳へ記録。
+  Act    : merged ✅（…）。台帳 §A に「基盤 state JSON 書き込みの原子性」行を追加・§B-4 に follow-up
+           （既存コピペ・アトミック site の共有ヘルパ寄せ＋残る write_text site 監査）を記録。
+           固定化（学び）: (1)「観測化した症状（silent-drop）は次サイクルで発生源（torn write）まで遡って
+           根治する」— 観測→根治の連鎖。(2) 個別コピペされた防御パターン（アトミック書き込みが ≥5 ファイルで
+           再実装・基盤層では欠落）は共有ヘルパに集約し、最も堅牢な版（失敗時 cleanup 付き）へ寄せる。
+           (3) 成熟コードの安全な変換 = 成功パスのバイト等価を保証し失敗/原子性の次元だけ強化する。
+  Next   : B-4 follow-up（既存コピペ・アトミック site の DRY 移行＋残る非アトミック write_text 監査）／
+           B-4 本体（state manager の並行 read/write 競合テスト・決定的に書く）／B-2残（初回 Org 作成 CTA）／
+           B-3（atelier 運用ビュー・読み取り専用）。
+
 Cycle 36 — publishing live 経路(note/wordpress)に空コンテンツガード（B-1 残: preview≥live を一様化）  (2026-06-16 自動再開)
   Plan   : Cycle 35 で特定し reviewer も follow-up として明示した「検証の非対称の残り」を、ロード済みの
            publishing 文脈を活かして高確信・低リスクで完結（再調査コスト0）。前提を実コードで確認: X の

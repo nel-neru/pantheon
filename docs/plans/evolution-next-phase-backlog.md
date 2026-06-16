@@ -29,6 +29,7 @@
 | atelier オンボーディング: claude 認証状態の可視化 | ✅ 実装済 | Cycle 34: `ClaudeStatusBanner`（`/api/platform/status` の `has_llm===false` 時のみ全ページ警告＋Handbook 誘導・fail-safe） |
 | publishing 投稿前バリデーション（preview＋live 両経路） | ✅ 実装済 | Cycle 35: `base._preview` が空コンテンツを弾き X は280字超を警告。Cycle 36: 共有 `_is_empty_content`/`EMPTY_CONTENT_ERROR` で note/wordpress の `_publish_live` にも空ガード（ブラウザ未起動・preview≥live を一様化）。wp live の回帰テストも新設 |
 | .claude/ の CC ベストプラクティス整合 | ✅ 整合 | Cycle 31: trend-watcher 照合（Fable 5 heavy・Opus 4.8 trailer・選択的 MCP・秘密なし） |
+| 基盤 state JSON 書き込みの原子性 | ✅ 実装済 | Cycle 37: `core/persistence.atomic_write_text`（mkstemp+os.replace+失敗時 cleanup）を `core/state/manager.py`（8 site）・`core/platform/state.py`（3 site）の非アトミック書き込みへ適用。torn write（クラッシュ/並行書き込みでの切り詰め）を防止し silent-drop の元凶を構造的に断つ。回帰テスト `tests/test_persistence.py`（8本: 原子性/孤児.tmp不残/失敗時の元ファイル無傷/read-modify-write 往復） |
 
 > ⚠️ 台帳の前提が崩れる変更（対象ファイルの編集・リファクタ）が入ったら、その行だけ再検証する。
 > 台帳は「いつ・何を根拠に」確認したかを残すので、git log と突き合わせて陳腐化を判定できる。
@@ -71,6 +72,10 @@
   state 競合）など、これまでの単体監査が拾えない層へ網を細かくする。
 - **最初のスライス**: 1つのサブシステム（例: state manager の並行 read/write）に絞った競合テスト。
 - **リスク**: 中（並行テストはフレークになりやすい — 決定的に書く）。
+- **follow-up（Cycle 37 由来）**: 既存のコピペ・アトミック書き込み（`content_jobs.py`/`publish_jobs.py`/
+  `business_store.py` の簡易 `.json.tmp` パターンは**失敗時に孤児 .tmp を残す**）を共有
+  `core/persistence.atomic_write_text`（堅牢版・失敗時 cleanup）へ寄せて DRY 化。あわせて残る直接
+  `write_text`/`json.dump` の書き込み site（daemon が書く store 等）を監査し、torn write クラスを完全に閉じる。
 
 ---
 

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.models.organization import Organization
+from core.persistence import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -165,9 +166,7 @@ class PlatformStateManager:
             "meta_improvement_org_id": meta_improvement_org_id,
             "last_updated": datetime.now(timezone.utc).isoformat(),
         }
-        self.platform_file.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        atomic_write_text(self.platform_file, json.dumps(data, ensure_ascii=False, indent=2))
 
     def load_platform_config(self) -> Dict[str, Any]:
         if not self.platform_file.exists():
@@ -184,9 +183,7 @@ class PlatformStateManager:
 
     def save_platform_config(self, config: Dict[str, Any]) -> None:
         config["last_updated"] = datetime.now(timezone.utc).isoformat()
-        self.platform_file.write_text(
-            json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        atomic_write_text(self.platform_file, json.dumps(config, ensure_ascii=False, indent=2))
 
     def set_meta_improvement_org_id(self, org_id: str) -> None:
         config = self.load_platform_config()
@@ -212,7 +209,7 @@ class PlatformStateManager:
     def save_organization(self, org: Organization) -> None:
         """Organization をグローバルストアに保存する"""
         path = self.orgs_dir / f"{org.id}.json"
-        path.write_text(org.model_dump_json(indent=2), encoding="utf-8")
+        atomic_write_text(path, org.model_dump_json(indent=2))
 
     def load_organizations(self) -> List[Organization]:
         """全 Organization を読み込む。
