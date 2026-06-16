@@ -11,6 +11,8 @@ flows.json staleness / consistency checker.
   - verification の "tests/*.py" 参照が実在する
   - steps[].component の「明確に単一ファイルを指すパス」が実在する
     （空白・ワイルドカードを含む説明的コンポーネントは対象外）
+  - known_issues[].file / resolved[].file の「明確に単一ファイルを指すパス」が実在する
+    （削除済みファイルを指したまま stale 化した known_issue を検出＝Atlas のドリフト防止）
 """
 
 from __future__ import annotations
@@ -70,6 +72,16 @@ def check_flows() -> list[str]:
             file_part = component.split(":", 1)[0].strip()
             if _is_single_file_path(file_part) and not (REPO_ROOT / file_part).exists():
                 errors.append(f"[{label}] step component file missing: {file_part}")
+
+        # known_issues / resolved が削除済みファイルを指したまま stale 化していないか
+        # （Atlas ドリフト検出）。file キーが「単一ファイルを指すパス」のときだけ検証する。
+        for section in ("known_issues", "resolved"):
+            for entry in flow.get(section, []) or []:
+                if not isinstance(entry, dict):
+                    continue
+                file_ref = str(entry.get("file", "")).replace("\\", "/")
+                if _is_single_file_path(file_ref) and not (REPO_ROOT / file_ref).exists():
+                    errors.append(f"[{label}] {section} file missing: {file_ref}")
 
     return errors
 
