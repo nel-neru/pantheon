@@ -14,6 +14,9 @@ from core.publishing.base import (
     playwright_available,
 )
 
+# preview/live 共通の「投稿内容が空」エラー文言（検証の非対称を作らないため両経路で同一）。
+EMPTY_CONTENT_ERROR = "投稿内容が空です（title も body もありません）"
+
 
 class BrowserPublisher:
     """ブラウザ自動操作系アダプタの基底。サブクラスは ``platform`` と ``_publish_live`` を定義する。"""
@@ -52,24 +55,29 @@ class BrowserPublisher:
             f"{self.platform}: 実投稿は未実装（プラットフォーム接続と段階展開で実装予定）"
         )
 
+    @staticmethod
+    def _is_empty_content(content: PublishContent) -> bool:
+        """title も body も（strip 後）空なら True。preview/live 共通の空判定。"""
+        return not (content.title or "").strip() and not (content.body or "").strip()
+
     # ---- 共通の dry-run プレビュー ----
     def _preview(self, content: PublishContent, target: PublishTarget) -> PublishResult:
         # 投稿前バリデーション: プレビューは外部に作用しないが、実投稿（_publish_live）が
         # 弾く不正コンテンツはここでも正直に ok=False で返す。さもないと空/不正な下書きが
         # プレビューで「成功」に見え、人間が handed_off まで進めてから初めて失敗に気づく
         # （検証の非対称を解消＝投稿前に問題を可視化する）。
-        title = (content.title or "").strip()
-        body = (content.body or "").strip()
-        if not title and not body:
+        if self._is_empty_content(content):
             return PublishResult(
                 ok=False,
                 platform=self.platform,
                 url="",
                 dry_run=True,
                 mode=target.mode,
-                error="投稿内容が空です（title も body もありません）",
+                error=EMPTY_CONTENT_ERROR,
             )
 
+        body = (content.body or "").strip()
+        title = (content.title or "").strip()
         head = body.splitlines()[0][:80] if body else ""
         detail = f"dry-run: title='{title[:60]}' body_head='{head}'"
         warnings = self._preview_warnings(content, target)

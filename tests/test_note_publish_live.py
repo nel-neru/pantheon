@@ -95,6 +95,20 @@ async def test_not_connected_fails_with_connect_hint(tmp_path):
     assert factory_calls == []  # 未接続ならブラウザを起動しない
 
 
+async def test_empty_content_fails_without_launching_browser(tmp_path):
+    # 接続済みでも空の下書きはブラウザを起動せず ok=False で弾く
+    # （X と同契約・空エディタを人間にハンドオフしない）。
+    factory_calls: list[int] = []
+    publisher = NotePublisher(
+        session_store=_connected_store(tmp_path),
+        launcher_factory=lambda: factory_calls.append(1),
+    )
+    result = await publisher._publish_live(PublishContent(title="  ", body="\n  \n"), _target())
+    assert result.ok is False
+    assert "空" in result.error
+    assert factory_calls == []  # 空ならブラウザを起動しない
+
+
 async def test_assisted_fills_editor_and_hands_off_with_browser_open(tmp_path, monkeypatch):
     monkeypatch.setattr(handoff_mod, "_HANDOFF_KEEPALIVE", [])
     page = _FakePage()
