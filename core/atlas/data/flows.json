@@ -224,8 +224,10 @@
       "verification": ["tests/test_task_queue.py", "tests/test_multi_org_executor.py"],
       "status": "fragile",
       "known_issues": [
-        { "severity": "medium", "title": "MultiOrgExecutor がライブキュー/web API に未配線", "detail": "POST /api/tasks で積むが誰も process_pending を呼ばない。", "file": "core/orchestration/multi_org_executor.py" },
-        { "severity": "low", "title": "TaskQueue の fcntl ロックが Windows で no-op", "detail": "クロスプロセスロックが Windows で効かない。", "file": "core/orchestration/task_queue.py" }
+        { "severity": "medium", "title": "MultiOrgExecutor がライブキュー/web API に未配線", "detail": "POST /api/tasks で積むが誰も process_pending を呼ばない。", "file": "core/orchestration/multi_org_executor.py" }
+      ],
+      "resolved": [
+        { "title": "TaskQueue のクロスプロセスロックが Windows で no-op だった問題を msvcrt/fcntl の移植版ロック（_lock_fd/_unlock_fd）で根治。複数デーモンの並行 load→save による lost update を防止。_save も atomic_write_text（mkstemp 一意名）化し固定 .tmp 衝突を根絶。3子プロセス並行の回帰テスト付き。", "file": "core/orchestration/task_queue.py" }
       ]
     },
     {

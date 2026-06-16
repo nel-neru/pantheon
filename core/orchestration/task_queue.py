@@ -3,20 +3,89 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, TextIO
 
+from core.persistence import atomic_write_text
 from core.platform.state import get_platform_home
+
+logger = logging.getLogger(__name__)
 
 # 注: キューの保存先は TaskQueue.__init__ が get_platform_home()（PANTHEON_HOME を尊重）から
 # 解決する。旧 module 定数 QUEUE_FILE はハードコード ~/.pantheon で環境分離を破る dead code
 # だったため削除（2026-06-14 dev/prod 環境分離）。
+#
+# _FILE_LOCK はプロセス内（スレッド間）の排他。これだけでは複数プロセス（24h 自律基盤の
+# revenue/content/trend 等の各デーモン）が同じ JSON を load→modify→save で交互に触ると
+# **lost update**（先に読んだ側の追記が後勝ちで消える＝タスクの静かな消失）を防げない。
+# プロセス跨ぎの排他は _lock_fd/_unlock_fd（POSIX=fcntl / Windows=msvcrt）で別途行う。
 _FILE_LOCK = threading.RLock()
+
+# Windows msvcrt.locking はカレントファイルオフセットから nbytes をロックする。常に同じ
+# 1 バイト領域（オフセット 0）をロック/アンロックすることで両プロセスが同一領域で競合する。
+_LOCK_REGION_BYTES = 1
+_LOCK_ACQUIRE_TIMEOUT_S = 30.0  # 取得に失敗し続けた場合は best-effort で続行（下記参照）
+
+
+def _lock_fd(fh: TextIO) -> None:
+    """開いているロックファイルへ排他的なプロセス間ロックを取得する（best-effort）。
+
+    取得できなかった場合（非対応プラットフォーム・タイムアウト）はクラッシュさせず続行する:
+    プロセス内の ``_FILE_LOCK`` が単一プロセスの一般ケースを守るため、最悪でも従来どおりの
+    挙動に縮退するだけで、デーモンを巻き込んで落とさない。
+    """
+    if os.name == "nt":
+        import msvcrt
+
+        # LK_LOCK は ~10 秒で硬直 raise するため、LK_NBLCK を短間隔リトライして
+        # 「ブロッキング相当」かつタイムアウト超過時は縮退（続行）にする。
+        start = time.monotonic()
+        while True:
+            try:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, _LOCK_REGION_BYTES)
+                return
+            except OSError:
+                if time.monotonic() - start > _LOCK_ACQUIRE_TIMEOUT_S:
+                    logger.warning(
+                        "TaskQueue: cross-process lock acquire timed out; proceeding best-effort"
+                    )
+                    return
+                time.sleep(0.05)
+    else:
+        try:
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass
+
+
+def _unlock_fd(fh: TextIO) -> None:
+    """``_lock_fd`` が取得したプロセス間ロックを解放する（取得時と同一領域）。"""
+    if os.name == "nt":
+        import msvcrt
+
+        try:
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, _LOCK_REGION_BYTES)
+        except OSError:
+            pass
+    else:
+        try:
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        except (ImportError, OSError):
+            pass
 
 
 class TaskStatus(str, Enum):
@@ -48,23 +117,13 @@ class TaskQueue:
     @contextmanager
     def _locked(self) -> Iterator[None]:
         self.lock_file.parent.mkdir(parents=True, exist_ok=True)
-        with _FILE_LOCK:
+        with _FILE_LOCK:  # プロセス内（スレッド間）の排他
             with self.lock_file.open("a", encoding="utf-8") as lock_handle:
-                try:
-                    import fcntl
-
-                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
-                except (ImportError, OSError):
-                    pass
+                _lock_fd(lock_handle)  # プロセス跨ぎ（POSIX=fcntl / Windows=msvcrt）
                 try:
                     yield
                 finally:
-                    try:
-                        import fcntl
-
-                        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
-                    except (ImportError, OSError):
-                        pass
+                    _unlock_fd(lock_handle)
 
     def _load(self) -> dict[str, Any]:
         if self.queue_file.exists():
@@ -80,9 +139,10 @@ class TaskQueue:
 
     def _save(self, data: dict[str, Any]) -> None:
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        temp_file = self.queue_file.with_suffix(f"{self.queue_file.suffix}.tmp")
-        temp_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp_file.replace(self.queue_file)
+        # atomic_write_text は同一 dir に mkstemp（一意名）→os.replace→失敗時 unlink。
+        # 固定 .tmp 名だと best-effort 縮退中（ロック取得失敗）に複数プロセスが同じ
+        # .tmp を奪い合い PermissionError で落ちる。一意名はそれを根絶し orphan も残さない。
+        atomic_write_text(self.queue_file, json.dumps(data, ensure_ascii=False, indent=2))
 
     @staticmethod
     def _normalize_task_type(task_type: str | TaskType) -> str:
