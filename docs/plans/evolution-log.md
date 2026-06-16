@@ -19,6 +19,52 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 45 — SETTINGS_FILE/CHAT_SESSIONS_DIR の import時凍結フラジリティ根治  (2026-06-16 自動再開)
+  Plan   : 自動再開で git/log 精査 → Cycle 44（daemon pid liveness）完了・main 統合後の中断と判定
+           （main クリーン・未マージは auto×2/intro-video=別系統のみ・並行 worker/ロック無し）。多様性
+           ピボット（42 並行 / 43 Atlas / 44 runtime-Win → 45 はテスト品質＝gate 正直性）。Cycle 42〜44 で
+           3回連続 Next に挙げつつ先送りされてきた env_separation の **SETTINGS_FILE import時凍結
+           フラジリティ**を選定し、まず実コードで再検証（Cycle 43 の教訓「着手前に実コードで再検証」）。
+           実態を teeth で確定: web/server.py・agents/chat_agent.py の SETTINGS_FILE/CHAT_SESSIONS_DIR は
+           import 時に get_platform_home() で凍結される module 定数で、**他の state（PlatformStateManager/
+           OutcomeStore/TaskQueue は全て遅延呼び出し）と違う唯一の例外**。conftest が session 全体で安定
+           PANTHEON_HOME を setdefault するためフル suite では凍結値と get_platform_home() が偶然一致して緑、
+           だが test_platform_status_reports_environment（tmp の .pantheon-dev 下で web.server を初 import）が
+           先に走る単体/小グループ実行では凍結値だけズレて test_settings_and_chat_paths_derive_from_home が
+           落ちる＝「実行場所依存」ハザード（memory [[testing-and-subagent-hazards]]）でテスト gate の正直性を
+           損なう。受け入れ基準 = 遅延解決化／既存 monkeypatch 互換／回帰 teeth／基線維持／レビュー。なぜ今:
+           gate 正直性に直結・3回先送りの高優先・実証済み高確信・可逆。落とした候補: フル flow-audit 再ベース
+           ライン（44 直後で多様性低）／capability-gap auto-implemented（low）／done 15本の --prune 掃除（雑務）。
+  Did    : work/settings-file-lazy-resolve-20260616。①定数を純ヘルパ _settings_file()/_chat_sessions_dir()
+           へ置換（get_platform_home() を毎回呼ぶ遅延解決＝他 state に揃える）。②PEP 562 module __getattr__ を
+           両モジュールに追加し server.SETTINGS_FILE / chat_agent.SETTINGS_FILE 等の属性読み取り後方互換を維持
+           （from-import・hasattr も実証 OK・未知名は AttributeError）。③内部の bare 参照を全てヘルパ呼び出しへ
+           （load/save settings・session path 解決・診断エンドポイント・import 時 mkdir）。④テストの monkeypatch
+           ~13サイト（test_web_server×11・test_chat_agent×2）を**定数 patch から helper 関数 patch へ移行**＝
+           定数を setattr すると teardown で「捕捉した stale tmp パス」を module 辞書へ**再凍結**する landmine
+           （特に get_platform_home を tmp に patch 済みのテスト後）を生むため。関数 patch なら復元が遅延性を保つ。
+           ⑤回帰 teeth: test_settings_paths_track_home_changes_not_frozen（PANTHEON_HOME を A→B に切替え追随を
+           検証＝旧凍結コードでは初回 assert で落ちる）。
+  Check  : 全件 1440 passed（失敗は基線 chmod 2件のみ・新規回帰 0、test-triage GREEN）。対象群 17 passed
+           （以前落ちた derive_from_home 含む）。ruff クリーン（format no-op）。code-reviewer 敵対レビュー =
+           **APPROVE**（critical/warning 0）: PEP 562 の未知名 AttributeError・from-import 互換・monkeypatch の
+           クリーン復元（oldval=実関数→再凍結無）・残存 SETTINGS_FILE patch サイト 0・bare 参照漏れ 0・import 時
+           mkdir パリティ・診断/設定 load/save のパリティを全て実証。cosmetic nit 1件（コメントブロックの空行）は
+           immaterial として非対応。
+  Act    : merged ✅（273f760..e5e548b）。固定化（学び）: (1) **module レベルのパス/設定を import 時に
+           get_platform_home() で凍結すると実行順依存になる**＝import より後に env が変わると古い領域を指す。
+           周囲の state（PlatformStateManager/OutcomeStore/TaskQueue）が遅延呼び出しなら**それに揃えて遅延解決**
+           するのが正（唯一の凍結例外がフラジリティの巣）。(2) **遅延化した値をテストで差し替えるなら定数では
+           なくヘルパ関数を monkeypatch する**＝定数の再 setattr は teardown で stale 値を module 辞書へ再凍結し、
+           別テストを汚染する（特に get_platform_home を tmp に patch 済みの順序で危険）。関数 patch は復元が
+           遅延性を保つ。(3) 後方互換の属性公開は **PEP 562 module __getattr__** が定石（読み取りは遅延・内部は
+           ヘルパ直呼び・テストはヘルパ patch の三層で一貫）。(4) フル suite で偶然緑な「実行場所依存」テストは
+           gate の正直性を損なう＝単体/小グループでも緑になるまで根治する（memory [[testing-and-subagent-hazards]]
+           を補強）。
+  Next   : フル flow-audit 再ベースライン（残る非 solid フローに stale 複数の可能性・/flow-audit で網羅）／
+           capability-gap-self-extension の「充足済みギャップを自動 implemented 化」（backend・bounded・low）／
+           done 15本の `branch_status.mjs --prune` 掃除（雑務だが衛生）。
+
 Cycle 44 — デーモン pid 生存判定を Windows 対応化（reaped pid の偽陽性根絶）  (2026-06-16 自動再開)
   Plan   : 多様性ピボット（43 Atlas/frontend → 44 は runtime/Windows 堅牢化）。Cycle 43 の教訓
            「flows.json issue は着手前に実コードで再検証」に従い platform-ops（partial）の
