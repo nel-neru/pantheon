@@ -117,8 +117,10 @@
       "verification": ["tests/test_session_orchestrator.py", "tests/test_multiplexer_factory.py", "tests/test_wmux_rpc.py", "tests/test_rate_limit.py"],
       "status": "fragile",
       "known_issues": [
-        { "severity": "high", "title": "Headless プロセスがプロセス跨ぎで孤児化（web 起動セッションを停止できない）", "detail": "Popen ハンドルがメモリ内のみで永続化されない。", "file": "core/runtime/session_orchestrator.py" },
-        { "severity": "high", "title": "Headless poll が exit code 無しに DONE を捏造し失敗を隠す", "detail": "in-memory Popen が無い場合に DONE を返してしまう。", "file": "core/runtime/multiplexer/headless_driver.py" }
+        { "severity": "high", "title": "Headless プロセスがプロセス跨ぎで孤児化（web 起動セッションを停止できない）", "detail": "Popen ハンドルがメモリ内のみで永続化されない。", "file": "core/runtime/session_orchestrator.py" }
+      ],
+      "resolved": [
+        { "title": "Headless poll が exit code 無しに DONE を捏造し失敗を隠す問題を exit-code サイドカー（<log_path>.exit）で根治。所有プロセスが reaped exit code を atomic 記録し、クロスプロセス poll はそれを authoritative に読む。不在で pid 消滅時は DONE 捏造せず FAILED（誤りは安全側）。", "file": "core/runtime/multiplexer/headless_driver.py" }
       ]
     },
     {
