@@ -238,3 +238,103 @@ def test_headless_real_subprocess(tmp_path):
     assert surface.exit_code == 0
     log = Path(surface.log_path).read_text(encoding="utf-8")
     assert "pantheon-ok" in log
+
+
+def _run_headless_to_exit(driver, ws, tmp_path, agent_id, exit_code):
+    """Open a surface that exits with ``exit_code`` and wait for it (owning proc)."""
+    spec = AgentSpec(
+        agent_id=agent_id,
+        title=agent_id,
+        command=[sys.executable, "-c", f"import sys; sys.exit({exit_code})"],
+        cwd=str(tmp_path),
+        metadata={"log_dir": str(tmp_path)},
+    )
+    surface = driver.open_surface(ws, spec)
+    driver._procs[surface.id].wait(timeout=30)
+    return surface
+
+
+def _cross_process_view(surface) -> Surface:
+    """A RUNNING surface as a *fresh* process would reload it (no Popen handle)."""
+    return Surface(
+        id=surface.id,
+        title=surface.title,
+        workspace_id=surface.workspace_id,
+        pty_id=surface.pty_id,
+        agent_id=surface.agent_id,
+        cwd=surface.cwd,
+        status=SurfaceStatus.RUNNING,
+        log_path=surface.log_path,
+    )
+
+
+def test_headless_owning_poll_writes_exit_sidecar(tmp_path):
+    """When the owning process reaps the child, it records the real exit code."""
+    from core.runtime.multiplexer.headless_driver import HeadlessDriver
+
+    driver = HeadlessDriver(log_root=tmp_path)
+    ws = driver.create_workspace("hs")
+    surface = _run_headless_to_exit(driver, ws, tmp_path, "agent:ok", 0)
+    driver.poll_surface(surface)
+    assert surface.status == SurfaceStatus.DONE
+    sidecar = Path(surface.log_path + ".exit")
+    assert sidecar.exists() and sidecar.read_text(encoding="utf-8").strip() == "0"
+
+
+def test_headless_cross_process_poll_reads_sidecar(tmp_path):
+    """A fresh driver (no Popen handle) must read the true outcome from the
+    sidecar — DONE for exit 0, FAILED for a non-zero exit — never guess."""
+    from core.runtime.multiplexer.headless_driver import HeadlessDriver
+
+    owner = HeadlessDriver(log_root=tmp_path)
+    ws = owner.create_workspace("hs")
+
+    ok = _run_headless_to_exit(owner, ws, tmp_path, "agent:ok", 0)
+    bad = _run_headless_to_exit(owner, ws, tmp_path, "agent:bad", 7)
+    owner.poll_surface(ok)  # writes sidecar "0"
+    owner.poll_surface(bad)  # writes sidecar "7"
+
+    fresh = HeadlessDriver(log_root=tmp_path)  # empty _procs == another process
+    ok_view = fresh.poll_surface(_cross_process_view(ok))
+    bad_view = fresh.poll_surface(_cross_process_view(bad))
+    assert ok_view.status == SurfaceStatus.DONE and ok_view.exit_code == 0
+    assert bad_view.status == SurfaceStatus.FAILED and bad_view.exit_code == 7
+
+
+def test_headless_cross_process_poll_no_sidecar_reports_failed(tmp_path, monkeypatch):
+    """The honesty fix: a vanished process with NO recorded exit code must NOT
+    be fabricated as a successful DONE — its outcome is unknowable, so report
+    FAILED so callers surface it instead of trusting lost work as completed.
+
+    ``_pid_alive`` is forced False to model "process gone" deterministically on
+    every OS (Windows pid-reuse semantics differ from POSIX, so we don't rely on
+    them to prove the honesty behaviour)."""
+    from core.runtime.multiplexer import headless_driver as hd
+
+    owner = hd.HeadlessDriver(log_root=tmp_path)
+    ws = owner.create_workspace("hs")
+    # Reap the child in the owning driver but never call poll_surface, so no
+    # sidecar is ever written.
+    surface = _run_headless_to_exit(owner, ws, tmp_path, "agent:lost", 0)
+    assert not Path(surface.log_path + ".exit").exists()
+
+    monkeypatch.setattr(hd, "_pid_alive", lambda pid: False)
+    fresh = hd.HeadlessDriver(log_root=tmp_path)
+    view = fresh.poll_surface(_cross_process_view(surface))
+    assert view.status == SurfaceStatus.FAILED  # NOT fabricated as DONE
+    assert view.exit_code is None  # genuinely unknown
+
+
+def test_headless_cross_process_poll_pid_alive_stays_running(tmp_path, monkeypatch):
+    """A still-running cross-process surface (no sidecar, pid alive) must remain
+    RUNNING — the FAILED fallback only fires once the process is actually gone."""
+    from core.runtime.multiplexer import headless_driver as hd
+
+    owner = hd.HeadlessDriver(log_root=tmp_path)
+    ws = owner.create_workspace("hs")
+    surface = _run_headless_to_exit(owner, ws, tmp_path, "agent:live", 0)
+
+    monkeypatch.setattr(hd, "_pid_alive", lambda pid: True)
+    fresh = hd.HeadlessDriver(log_root=tmp_path)
+    view = fresh.poll_surface(_cross_process_view(surface))
+    assert view.status == SurfaceStatus.RUNNING
