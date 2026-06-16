@@ -1996,6 +1996,27 @@ async def api_usage_summary() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/observability/summary", tags=["platform"])
+async def api_observability_summary(limit: int = 20) -> Dict[str, Any]:
+    """直近トレースのコスト/品質/レイテンシ集計（C1 spans を読むだけ・read-only）。"""
+    from core.observability.span import TraceStore
+
+    return TraceStore().summary(limit=max(1, min(200, limit)))
+
+
+@app.get("/api/observability/traces", tags=["platform"])
+async def api_observability_traces(limit: int = 20, trace_id: str | None = None) -> Dict[str, Any]:
+    """直近トレース一覧、または trace_id 指定時はその span 詳細（read-only）。"""
+    from core.observability.span import TraceStore
+
+    store = TraceStore()
+    if trace_id:
+        return {"trace_id": trace_id, "spans": [s.to_dict() for s in store.get_trace(trace_id)]}
+    return {
+        "traces": [t.to_dict() for t in store.recent_traces(limit=max(1, min(200, limit)))],
+    }
+
+
 @app.get("/api/design-styles", tags=["org"])
 async def api_list_design_styles() -> List[Dict[str, Any]]:
     """利用可能なデザインスタイル（id/name/description/palette）の一覧。"""
