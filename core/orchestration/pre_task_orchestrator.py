@@ -104,6 +104,10 @@ class OrchestrationPattern:
     BEST_OF_N = "best_of_n"
     """複数エージェントが独立実行 → 最良結果を採用。高精度が必要なタスクに最適。"""
 
+    PARALLEL_FINDERS_VERIFY = "parallel_finders_verify"
+    """並列 finders → 敵対的 verify → synthesize。所見を相互に反証してから統合する、
+    高保証タスク（セキュリティ監査・コードレビュー）向けの検証強化パターン。"""
+
 
 @dataclass
 class TaskAnalysis:
@@ -254,6 +258,9 @@ class PreTaskOrchestrator:
         self._execution_log: List[Dict] = []
         self._exec_started_at: float | None = None  # execute() の計時開始（monotonic）
         self._last_execution_ms: int = 0  # 直近 execute() の所要ミリ秒
+        self._last_quality_score: float | None = (
+            None  # パターンが算出した実 quality（無ければ None）
+        )
         # TaskRouter を内部で使う（CapabilityRegistry と共有）
         from core.orchestration.task_router import TaskRouter
 
@@ -307,6 +314,20 @@ class PreTaskOrchestrator:
             learned_pattern = self._pattern_store.get_best_pattern(task_type)
             if learned_pattern:
                 profile = {**profile, "pattern": learned_pattern}
+
+        # Step 3c: 高保証タスクの敵対的検証 opt-in（env、既定 off）。明示意図なので学習結果より優先。
+        # 注意: ここで選んだ実行は PatternStore に実 quality と共に記録される。十分な良績が貯まると
+        # 以降は env を外しても Step 3b の get_best_pattern がこのパターンを選び得る（＝意図的な
+        # 段階的ロールアウト）。「env off では絶対に従来パターン」という不変ではない点に留意。
+        import os
+
+        if os.getenv("PANTHEON_ADVERSARIAL_VERIFY", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } and task_type in {"security_audit", "code_review"}:
+            profile = {**profile, "pattern": OrchestrationPattern.PARALLEL_FINDERS_VERIFY}
 
         # Step 4: 既存エージェントが要件を満たさない場合のスポーン判定
         spawn_new = routing.fallback_used and not recommended_ids
@@ -432,6 +453,8 @@ class PreTaskOrchestrator:
 
         pattern = analysis.recommended_pattern
         self._exec_started_at = time.monotonic()
+        # パターンが実 quality_score を算出した場合はここに入る（既定は None = 従来既定で記録）
+        self._last_quality_score = None
         # ルーティング中フラグを立て、選択エージェントの内部実行が再ルーティングしないようにする
         token = _ROUTING_ACTIVE.set(True)
         try:
@@ -440,6 +463,8 @@ class PreTaskOrchestrator:
                     result = await self._execute_sequential(task, analysis, agent_factory)
                 elif pattern == OrchestrationPattern.REVIEW_LOOP:
                     result = await self._execute_review_loop(task, analysis, agent_factory)
+                elif pattern == OrchestrationPattern.PARALLEL_FINDERS_VERIFY:
+                    result = await self._execute_adversarial_verify(task, analysis, agent_factory)
                 elif pattern == OrchestrationPattern.PARALLEL_THEN_MERGE:
                     result = await self._execute_parallel(task, analysis, agent_factory)
                 else:
@@ -450,7 +475,11 @@ class PreTaskOrchestrator:
         self._last_execution_ms = int((time.monotonic() - self._exec_started_at) * 1000)
         if record:
             self._record_execution(
-                task, analysis, result, execution_time_ms=self._last_execution_ms
+                task,
+                analysis,
+                result,
+                quality_score=self._last_quality_score,
+                execution_time_ms=self._last_execution_ms,
             )
         return result
 
@@ -527,7 +556,7 @@ class PreTaskOrchestrator:
         import copy
 
         review_task = copy.deepcopy(task)
-        main_result, _reviewer_result = await asyncio.gather(
+        main_result, reviewer_result = await asyncio.gather(
             agent.run(task),
             reviewer.run(review_task),
             return_exceptions=True,
@@ -536,6 +565,17 @@ class PreTaskOrchestrator:
             from agents.base import AgentResult
 
             return AgentResult(success=False, error=f"main agent failed: {main_result}")
+        # reviewer の所見は破棄せず main 結果に critic として添付する（出力が dict のときだけ）。
+        if (
+            not isinstance(reviewer_result, BaseException)
+            and getattr(reviewer_result, "success", False)
+            and isinstance(getattr(main_result, "output", None), dict)
+            and "review" not in main_result.output
+        ):
+            try:
+                main_result.output["review"] = reviewer_result.output
+            except Exception:
+                pass
         return main_result
 
     async def _execute_parallel(self, task, analysis, agent_factory):
@@ -555,9 +595,100 @@ class PreTaskOrchestrator:
             from agents.base import AgentResult
 
             return AgentResult(success=False, error="All parallel agents failed")
-        # 最初の成功結果を代表として返す（将来: マージロジック）
+        # 代表は最初の成功結果。残りの成功出力も破棄せず添付する（first-only TODO 解消）。
+        # 代表自身は除外（best.output への自己参照を避ける）— 残り = 他エージェントの所見。
         best = successful[0]
+        if (
+            len(successful) > 1
+            and isinstance(getattr(best, "output", None), dict)
+            and "_merged_outputs" not in best.output
+        ):
+            try:
+                best.output["_merged_outputs"] = [
+                    getattr(r, "output", None)
+                    for r in successful[1:]
+                    if getattr(r, "output", None) is not best.output  # never self-reference
+                ]
+            except Exception:
+                pass
         return best
+
+    async def _execute_adversarial_verify(self, task, analysis, agent_factory):
+        """並列 finders → 敵対的 verify → synthesize（高保証パターン）。
+
+        1) 推奨エージェントを finders として並列実行し、独立に所見を出す。
+        2) 1 体を verifier として再利用し、全 finder 出力を敵対的に検証
+           （反証を試み、根拠が弱い/誤り/重複を除外）。
+        3) 生き残った所見を 1 つの結果に統合し、自己評価で実 quality_score を記録する。
+        """
+        import json
+
+        from agents.base import AgentResult, AgentTask
+
+        finders = [
+            agent
+            for aid in analysis.recommended_agent_ids
+            if (agent := agent_factory(aid)) is not None
+        ]
+        if not finders:
+            return AgentResult(success=False, error="No agents found")
+
+        results = await asyncio.gather(*[a.run(task) for a in finders], return_exceptions=True)
+        successful = [r for r in results if hasattr(r, "success") and r.success]
+        if not successful:
+            return AgentResult(success=False, error="All finder agents failed")
+        findings = [getattr(r, "output", None) for r in successful]
+
+        # 2) adversarial verify: 最後の finder を verifier として再利用
+        verifier = finders[-1]
+        verify_task = AgentTask(
+            task_type="verify",
+            description=(
+                "次の複数の所見を敵対的に検証してください。各所見を反証しようと試み、"
+                "根拠が弱い・誤り・重複のものを除外し、確証できる所見だけを残してください。\n\n"
+                + (getattr(task, "description", "") or "")
+            ),
+            input={
+                "findings": findings,
+                "finder_count": len(successful),
+                "original_input": getattr(task, "input", {}),
+            },
+        )
+        try:
+            verify_result = await verifier.run(verify_task)
+        except Exception as exc:  # verify 失敗でも finders の所見は返す
+            verify_result = AgentResult(success=False, error=str(exc))
+
+        verified_ok = getattr(verify_result, "success", False)
+        synthesized = {
+            "result": getattr(verify_result, "output", None) if verified_ok else findings,
+            "verified": verified_ok,
+            "finder_count": len(successful),
+            "findings": findings,
+        }
+        result = AgentResult(
+            success=True,
+            output=synthesized,
+            thinking_process=(
+                f"adversarial-verify: {len(successful)} finders → verify → synthesize"
+            ),
+            execution_log=f"adversarial_verify({analysis.task_type}): verified={verified_ok}",
+        )
+
+        # 3) 実 quality_score を heuristic 自己評価で記録（決定的・LLM コスト無し）
+        try:
+            from core.intelligence.self_evaluator import AgentSelfEvaluator
+
+            payload = synthesized["result"]
+            text = (
+                payload
+                if isinstance(payload, str)
+                else json.dumps(payload, ensure_ascii=False, default=str)
+            )
+            self._last_quality_score = AgentSelfEvaluator().evaluate(text, analysis.task_type).score
+        except Exception:
+            self._last_quality_score = None
+        return result
 
     # ──────────────────────────────────────────────────────────── #
     # Step 5: LEARN                                                 #
