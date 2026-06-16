@@ -88,13 +88,34 @@ const done = [];
 const active = [];
 const stale = [];
 
+// 先行コミットが ancestry 上は未マージでも、squash / rebase / 再適用マージで
+// 同じ変更が main に入っているケースがある（patch-id 等価）。`git cherry MAIN ref`
+// は ref 固有の各コミットを、main に等価コミットが在れば "-"、無ければ "+" で示す。
+// "+"（=真に未統合）が 0 件なら、ancestry 上 ahead でも実質 done＝削除して良い。
+function genuinelyAhead(ref, ahead) {
+  if (ahead === 0) return 0;
+  const lines = git(["cherry", MAIN, ref])
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  // 注意: git cherry は merge コミットを除外するため、merge を含む範囲では
+  // 行数 < ahead が普通（行数 !== ahead を異常扱いにしてはならない＝true-done を
+  // false-active に落とす）。content コミットは merge 経由でも必ず行に出るので、
+  // 「+ が 0 件」判定は安全。空（cherry 異常）時のみ保守的に「全件未統合」とみなす。
+  if (lines.length === 0) return ahead;
+  return lines.filter((l) => l.startsWith("+")).length;
+}
+
 for (const entry of all.values()) {
   const ref = entry.local ? entry.name : entry.remoteRef;
   const ahead = Number(git(["rev-list", "--count", `${MAIN}..${ref}`]).trim() || "0");
+  const unmerged = genuinelyAhead(ref, ahead);
+  // ahead>0 だが未統合コミットが 0＝再適用/squash 済み（patch 等価）→ done 扱い。
+  const reapplied = ahead > 0 && unmerged === 0;
   const lastIso = git(["log", "-1", "--format=%cI", ref]).trim();
   const ageDays = lastIso ? Math.floor((nowMs - Date.parse(lastIso)) / 86400000) : 0;
-  const info = { ...entry, ahead, ageDays, lastIso };
-  if (ahead === 0) {
+  const info = { ...entry, ahead, unmerged, reapplied, ageDays, lastIso };
+  if (ahead === 0 || reapplied) {
     done.push(info);
   } else if (ageDays > STALE_DAYS) {
     stale.push(info);
@@ -107,7 +128,9 @@ function fmt(b) {
   const where = [b.local ? "local" : null, b.remote ? "remote" : null].filter(Boolean).join("+");
   const cur = b.name === currentBranch ? " (current)" : "";
   const age = b.lastIso ? `${b.ageDays}d ago` : "?";
-  return `  ${b.name}${cur}  [${where}]  ahead ${b.ahead}  ・最終 ${age}`;
+  // 再適用済み（patch 等価で main に在るが ancestry 上は ahead）は理由を明示する。
+  const reason = b.reapplied ? `  ・再適用/squash 済み（patch 等価, 未統合 0/${b.ahead}）` : "";
+  return `  ${b.name}${cur}  [${where}]  ahead ${b.ahead}  ・最終 ${age}${reason}`;
 }
 
 console.log(`\nブランチ状態（基準: ${MAIN}, stale 閾値: ${STALE_DAYS}日）\n`);
@@ -137,9 +160,11 @@ function deleteBranch(name, flag) {
 if (PRUNE) {
   const prunable = done.filter((b) => b.local && b.name.startsWith("work/") && b.name !== currentBranch);
   console.log(`\n--prune: done なローカル work/* を削除します（${prunable.length} 件）`);
-  // -D フォールバックの安全性根拠は「done = origin/main..branch が 0 件 → upstream
-  // 未同期の先行分も origin/main に含まれている」。この論証は MAIN が実際に
-  // origin/main で、かつ fetch が成功して最新であるときだけ成り立つ。
+  // -D フォールバックの安全性根拠は done の 2 経路いずれも「変更は origin/main に在る」:
+  //   (a) ancestry-done: origin/main..branch が 0 件 → 先行分も origin/main に含まれる。
+  //   (b) reapplied: `git cherry origin/main branch` の未統合(+)が 0 件 → 各コミットは
+  //       patch 等価で origin/main に在る（squash / rebase / 再適用マージ）。
+  // どちらの論証も MAIN が実際に origin/main で、かつ fetch 成功＝最新のときだけ成立する。
   // どちらかが欠けるなら -d のみ（git 自身の保護に任せ、拒否は正直に失敗報告）。
   const forceOk = MAIN === "origin/main" && FETCH_OK;
   if (!forceOk) {
@@ -169,7 +194,10 @@ if (PRUNE) {
       continue;
     }
     if (usedForce) {
-      console.log(`  削除: ${b.name}（upstream 未同期のため -D。コミットは origin/main 統合済み）`);
+      const why = b.reapplied
+        ? "再適用/squash 済み（patch 等価）のため -D。変更は origin/main に在り"
+        : "upstream 未同期のため -D。コミットは origin/main 統合済み";
+      console.log(`  削除: ${b.name}（${why}）`);
     } else {
       console.log(`  削除: ${b.name}`);
       // リモート削除のヒントは通常 -d で消せたものだけに出す。-D 経路はローカルと
