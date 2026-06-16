@@ -26,6 +26,7 @@
 | claude CLI 不在/失敗時の degradation | ✅ 堅牢 | Cycle 32: `ClaudeUnavailableError`/`ClaudeRateLimitedError`・Timeout/OSError ハンドリング・web で明示メッセージ・`/api` status |
 | 提案順序の決定性 | ✅ 解決済 | Cycle 31: `get_all/get_pending_improvement_proposals` は created_at 降順。Pydantic ISO の文字列ソート＝時系列 |
 | atelier GUI ページの派生ロジック | ✅ 回帰テスト追加 | Cycle 32: Observatory（degradation/daemon ラベル）+ Pantheon（filter）。スモーク→意味あるテストへ |
+| atelier オンボーディング: claude 認証状態の可視化 | ✅ 実装済 | Cycle 34: `ClaudeStatusBanner`（`/api/platform/status` の `has_llm===false` 時のみ全ページ警告＋Handbook 誘導・fail-safe） |
 | .claude/ の CC ベストプラクティス整合 | ✅ 整合 | Cycle 31: trend-watcher 照合（Fable 5 heavy・Opus 4.8 trailer・選択的 MCP・秘密なし） |
 
 > ⚠️ 台帳の前提が崩れる変更（対象ファイルの編集・リファクタ）が入ったら、その行だけ再検証する。
@@ -44,12 +45,15 @@
   ハードニングと回帰テスト。**実投稿は有人時のみ**（承認ゲートを越える実 POST は無人運転で行わない）。
 - **リスク**: 実投稿は不可逆・外部公開。資格情報に触れない。Playwright MCP で UI 駆動は可。
 
-### B-2. 初回起動 / オンボーディング UX（"誰もが欲しがる"の入口）
+### B-2. 初回起動 / オンボーディング UX（"誰もが欲しがる"の入口）  🟡 一部出荷（Cycle 34）
 - **価値**: 新規公開ユーザーが最初に触れる体験。`core/ui/setup_wizard.py` は存在するが、
-  atelier GUI 側の first-run 導線（claude 未認証時の案内・最初の Org 作成への誘導）が手薄な可能性。
-- **最初のスライス**: atelier で claude status（`/api` の available/binary）を読んで、未認証/不在時に
-  「`claude` で認証してください」の明示パネルを出す（既存の status エンドポイントを使うだけ＝低リスク）。
-- **リスク**: 低（読み取り表示の追加）。要 GUI スライスなので frontend-dev へ委譲。
+  atelier GUI 側の first-run 導線（claude 未認証時の案内・最初の Org 作成への誘導）が手薄。
+- ~~**最初のスライス**: atelier で claude status を読んで未認証/不在時に明示パネルを出す~~
+  → **Cycle 34 で出荷済**（`ClaudeStatusBanner`、`has_llm===false` 時のみ全ページ警告＋Handbook 誘導）。
+- **次のスライス（残り）**: 組織がゼロのときの「最初の Organization を作る」誘導（empty-state CTA →
+  `pantheon org create` 相当 or `/api` 経由の作成フロー）。初回ウィザード（`setup_wizard.py`）の GUI 露出。
+- **リスク**: 低〜中（作成フローは書き込み操作を含むので Confirm
+  や明示同意が要る）。GUI スライスは frontend-dev へ委譲。
 
 ### B-3. atelier の運用ビュー拡充（daemon/usage の専用面）
 - **価値**: Observatory は要約のみ。24h 自律基盤の運用者向けに daemon 制御・usage 履歴・rate-limit
