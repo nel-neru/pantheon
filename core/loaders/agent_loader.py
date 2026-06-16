@@ -58,6 +58,7 @@ class AgentDefinition:
     description: str = ""
     skills: List[str] = field(default_factory=list)
     tools: List[str] = field(default_factory=list)
+    mcp: Dict[str, Any] = field(default_factory=dict)  # optional MCP server declarations
     behavior: str = ""
     response_format: Dict[str, Any] = field(default_factory=dict)
     implementation: str = ""  # "module.path.ClassName" — Python実装を使う場合に指定
@@ -190,6 +191,7 @@ class AgentLoader:
                     description=data.get("description", ""),
                     skills=data.get("skills", []),
                     tools=data.get("tools", []),
+                    mcp=data.get("mcp", {}) or {},
                     behavior=data.get("behavior", ""),
                     response_format=_normalize_response_format(data.get("response_format", {})),
                     implementation=data.get("implementation", ""),

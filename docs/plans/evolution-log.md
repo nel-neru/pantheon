@@ -1318,3 +1318,38 @@ Cycle 1 — atelier GUI を main へ landing  (2026-06-12 03:55)
   Act    : merged ✅（182aeac..267b2af を push）。memory atelier-gui を main 統合済みに更新。
            学び: auto-commit checkpoint にしか存在しない完成物は最優先で landing する。
   Next   : scripts git fail-fast（→ Cycle 2 実施）/ 基線縮小 / atelier serve 導線。
+
+Upgrade Program C1 — Observability spans 基盤  (2026-06-17)
+  Plan   : モダン機能アップグレード（4テーマ協調プログラム, docs/plans/purrfect-wibbling-mountain.md
+           相当）の土台。全テーマを「計測可能」にするため観測基盤を最初に出荷。受け入れ基準 =
+           全 claude 呼び出し/orchestration が構造化 span を出力・read-only TraceStore で集約・
+           pantheon traces で確認・回帰ゼロ。
+  Did    : work/observability-spans-20260617。core/observability/{span,span_writer,__init__}.py 新規
+           （Span+TraceStore+start_trace+record_llm_call、contextvar 相関、~/.pantheon/spans.jsonl）。
+           claude_code.py finally に _emit_llm_span 併設（legacy timing JSONL は不変）。
+           pre_task_orchestrator.execute() を観測トレースで包む（nullcontext fallback）。
+           commands/traces.py + main.py 配線。
+  Check  : 新規 8/8 緑 / backend 1448 passed・既知2のみ・回帰0 / ruff 緑 /
+           code-reviewer = APPROVE（best-effort 隔離・contextvar/async 安全・TokenLedger 不変を検証。
+           提案②=recent_traces を started_at ソートに修正済み）。
+  Act    : merged ✅（4a745ae..abef39a を push）。
+  Next   : C2 tool-use/MCP（最深・最高リスク: claude_code の extra_args 未転送が注入点）。
+
+Upgrade Program C2 — Agent tool-use / MCP  (2026-06-17)
+  Plan   : エージェントを「テキスト生成」から「ツール使用」へ。claude CLI のネイティブ tool/MCP を
+           有効化（fast-path が MCP 無効化していた）。受け入れ基準 = ツール宣言エージェントが
+           --allowedTools/--mcp-config 付きで起動・書込/外部ツールは autonomous で gate・
+           ツール無しは完全に従来通り・回帰ゼロ。
+  Did    : work/agent-tooluse-mcp-20260617。core/runtime/tool_config.py 新規（ToolSpec: read-only/
+           gated 分類, to_argv, read_only_servers_of 共有ヘルパ）。core/intelligence/tool_registry.py
+           新規（宣言ツールを mcp_tool capability 登録）。claude_code.py: generate/invoke/ainvoke/
+           run_claude(_sync) に tool_spec/extra_args 配線、ツール時 fast=False で実 --mcp-config 注入
+           （未転送バグ修正）。agent_loader に mcp フィールド。GenericSkillAgent が定義の tools から
+           tool_spec を構築（allow_gated=False）。agents/definitions/tool_demo.yaml 追加。
+  Check  : 新規 15/15 緑 / backend 1461 passed・既知2のみ・回帰0 / ruff 緑 /
+           code-reviewer 1巡目 REQUEST-CHANGES（Critical: read-only ツールのみ宣言時に
+           --strict-mcp-config が落ち ambient .mcp.json[context7/playwright] が露出）→
+           to_argv で strict-mcp を常時 pin・gated MCP サーバは非起動に修正→2巡目 APPROVE。
+  Act    : merged ✅。固定化: ツール時は strict-MCP を必ず pin（ambient 露出防止）/ gated は
+           --disallowedTools かつサーバ非起動で Human-gate を保つ。
+  Next   : C3 Reflexion 自己批評（self_evaluator のヒューリスティックを LLM-judge 化, max_iters 予算）。

@@ -1,0 +1,31 @@
+# tool_demo.yaml
+# tool-use / MCP 配線(C2)のデモ用エージェント。
+# read-only CLI ツール(Read/Grep/Glob)を宣言し、実際に claude へ --allowedTools として
+# 渡される。Write は gated 扱いで autonomous 実行では --disallowedTools 側に置かれる
+# （Human-in-the-Loop ゲートを保つ）。Python 実装を持たないため GenericSkillAgent で動く。
+
+schema_version: "1.0"
+name: ToolDemo
+capability_id: agent:tool_demo
+description: tool-use/MCP 配線のデモ。read-only ツール(Read/Grep/Glob)を宣言する。
+
+skills:
+  - codebase_exploration
+  - deep_research
+
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Write # gated: autonomous 実行では許可されない（--disallowedTools）
+
+behavior: |
+  宣言した read-only ツール(Read/Grep/Glob)で対象を調査し、要点を返してください。
+  Write は人間承認の無い autonomous 実行では使えません（安全ゲート）。
+
+response_format:
+  type: json
+  fields:
+    - summary
+    - key_findings
+    - recommendations
