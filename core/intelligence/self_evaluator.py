@@ -60,6 +60,68 @@ class AgentSelfEvaluator:
             should_retry=should_retry,
         )
 
+    # LLM-judge を使う評価。利用不可/解析失敗時は上の heuristic evaluate() に必ずフォールバック
+    # するので、PANTHEON_NO_CLAUDE=1 のテスト/CI でも決定的に動く。
+    _LLM_RETRY_THRESHOLD = 6.0  # heuristic(4.0) より高い品質バー
+    _RUBRIC = (
+        "You are a strict reviewer scoring an AI agent's task output. Score 0-10 on: "
+        "correctness, specificity (concrete files/steps), completeness vs the task, and "
+        "absence of unresolved errors. Reply with ONLY a JSON object: "
+        '{"score": <0-10 number>, "feedback": "<one or two sentences, actionable>"}.'
+    )
+
+    def evaluate_llm(self, output: str, task_type: str, *, llm=None) -> EvaluationResult:
+        """LLM-judge scoring (0–10). Falls back to the heuristic :meth:`evaluate` when the
+        ``claude`` CLI is unavailable or the judge output can't be parsed (so callers get the
+        same ``EvaluationResult`` shape on every path)."""
+        try:
+            from core.runtime.claude_code import claude_available
+
+            if llm is None or not claude_available():
+                return self.evaluate(output, task_type)
+            from core.llm import LLMMessage
+
+            messages = [
+                LLMMessage(role="system", content=self._RUBRIC),
+                LLMMessage(
+                    role="user",
+                    content=f"Task type: {task_type}\n\n--- OUTPUT TO SCORE ---\n{output or ''}",
+                ),
+            ]
+            raw = llm.complete(messages, task_type="scoring")
+            data = self._parse_judge(raw)
+            if data is None:
+                return self.evaluate(output, task_type)
+            score = max(0.0, min(10.0, float(data.get("score", 0.0))))
+            feedback = str(data.get("feedback", "")).strip() or "（フィードバックなし）"
+            return EvaluationResult(
+                score=score,
+                feedback=feedback,
+                should_retry=score < self._LLM_RETRY_THRESHOLD,
+            )
+        except Exception:
+            # judge は best-effort: いかなる失敗も heuristic に倒す
+            return self.evaluate(output, task_type)
+
+    @staticmethod
+    def _parse_judge(raw: str):
+        import json
+
+        text = (raw or "").strip()
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+        # prose に埋もれた最初の {...} を拾う
+        start = text.find("{")
+        end = text.rfind("}")
+        if 0 <= start < end:
+            try:
+                return json.loads(text[start : end + 1])
+            except Exception:
+                return None
+        return None
+
     def evaluate_with_retry(
         self,
         generate_fn: Callable[[], str],
