@@ -255,15 +255,16 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
     pid_file.write_text("2222", encoding="utf-8")
     killed: dict[str, int] = {}
 
-    def fake_kill(pid, sig):
+    def fake_terminate(pid):
         killed["pid"] = pid
-        killed["sig"] = sig
+        return True
 
     import core.runtime.daemon_registry as registry
 
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
-    monkeypatch.setattr(registry.os, "kill", fake_kill)
+    # stop_daemon は単一ソース terminate_pid（Windows-safe）経由で kill する。
+    monkeypatch.setattr(registry, "terminate_pid", fake_terminate)
 
     response = client.post("/api/daemon/stop")
 
@@ -276,7 +277,7 @@ def test_daemon_stop_terminates_pid_and_clears_pid_file(tmp_path, monkeypatch):
         "log_path": str(tmp_path / "daemon.log"),
         "rate_limited": False,
     }
-    assert killed == {"pid": 2222, "sig": registry.signal.SIGTERM}
+    assert killed == {"pid": 2222}
     assert not pid_file.exists()
 
 
@@ -2801,7 +2802,7 @@ def test_daemons_start_and_stop_roundtrip(tmp_path, monkeypatch):
     assert registry.load_enabled(platform_home=tmp_path)["content"]["enabled"] is True
 
     killed: dict[str, int] = {}
-    monkeypatch.setattr(registry.os, "kill", lambda pid, sig: killed.update(pid=pid, sig=sig))
+    monkeypatch.setattr(registry, "terminate_pid", lambda pid: killed.update(pid=pid) or True)
     resp = client.post("/api/daemons/content/stop")
     assert resp.status_code == 200
     assert resp.json()["status"] == "stopped"

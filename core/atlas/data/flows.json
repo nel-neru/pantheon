@@ -116,12 +116,13 @@
       "surfaces": ["pantheon session start/list/show/stop/resume/doctor", "GET/POST /api/sessions", "POST /api/sessions/{id}/stop|resume", "WS /ws/updates", "SessionsPage"],
       "state": ["~/.pantheon/sessions/"],
       "verification": ["tests/test_session_orchestrator.py", "tests/test_multiplexer_factory.py", "tests/test_wmux_rpc.py", "tests/test_rate_limit.py"],
-      "status": "fragile",
+      "status": "partial",
       "known_issues": [
-        { "severity": "high", "title": "Headless プロセスがプロセス跨ぎで孤児化（web 起動セッションを停止できない）", "detail": "Popen ハンドルがメモリ内のみで永続化されない。", "file": "core/runtime/session_orchestrator.py" }
+        { "severity": "low", "title": "クロスプロセス stop の専用回帰テストが未整備", "detail": "停止経路はコード実装済（headless_driver.close_surface の proc is None 分岐）だが、別プロセスから web 起動セッションを停止する統合テストが無い（poll 経路は被覆済）。test_stop_session_closes_surfaces は FakeDriver 経由。", "file": "tests/test_session_orchestrator.py" }
       ],
       "resolved": [
-        { "title": "Headless poll が exit code 無しに DONE を捏造し失敗を隠す問題を exit-code サイドカー（<log_path>.exit）で根治。所有プロセスが reaped exit code を atomic 記録し、クロスプロセス poll はそれを authoritative に読む。不在で pid 消滅時は DONE 捏造せず FAILED（誤りは安全側）。", "file": "core/runtime/multiplexer/headless_driver.py" }
+        { "title": "Headless poll が exit code 無しに DONE を捏造し失敗を隠す問題を exit-code サイドカー（<log_path>.exit）で根治。所有プロセスが reaped exit code を atomic 記録し、クロスプロセス poll はそれを authoritative に読む。不在で pid 消滅時は DONE 捏造せず FAILED（誤りは安全側）。", "file": "core/runtime/multiplexer/headless_driver.py" },
+        { "title": "Headless プロセスのプロセス跨ぎ孤児化（web 起動セッションを停止できない）を解消。open_surface が pid を surface.pty_id に保存し session.json へ永続化、別プロセスで再構築した HeadlessDriver の close_surface（proc is None 分岐）が永続化 pid を pid_alive で確認し terminate_pid で停止する。", "file": "core/runtime/multiplexer/headless_driver.py" }
       ]
     },
     {
@@ -186,7 +187,10 @@
       "verification": ["tests/test_platform_state.py", "tests/test_platform_run_all.py", "tests/test_web_server.py"],
       "status": "partial",
       "known_issues": [
-        { "severity": "low", "title": "デーモン制御が POSIX 前提で Windows で劣化", "detail": "start_new_session / os.kill(SIGTERM) は Windows で非対応。", "file": "commands/platform.py" }
+        { "severity": "low", "title": "デーモン spawn の start_new_session が Windows で no-op", "detail": "subprocess.Popen(start_new_session=True) は Windows では無視され、プロセスグループ分離されない。実害は軽微（デーモンは起動し、生存判定・停止は Windows-safe）。", "file": "core/runtime/daemon_registry.py" }
+      ],
+      "resolved": [
+        { "title": "デーモン制御の POSIX 前提を Windows-safe 化。pid 生存判定を pid_alive（OpenProcess+GetExitCodeProcess・reaped pid 偽陽性を解消）、停止を terminate_pid（TerminateProcess）へ集約し os.kill(0)/os.kill(SIGTERM) 依存を排除（core/runtime/process_utils.py が single source）。", "file": "core/runtime/daemon_registry.py" }
       ]
     },
     {
@@ -222,7 +226,7 @@
       "surfaces": ["GET/POST/DELETE /api/tasks", "BoardPage"],
       "state": ["~/.pantheon/task_queue/"],
       "verification": ["tests/test_task_queue.py", "tests/test_multi_org_executor.py"],
-      "status": "fragile",
+      "status": "partial",
       "known_issues": [
         { "severity": "medium", "title": "MultiOrgExecutor がライブキュー/web API に未配線", "detail": "POST /api/tasks で積むが誰も process_pending を呼ばない。", "file": "core/orchestration/multi_org_executor.py" }
       ],
