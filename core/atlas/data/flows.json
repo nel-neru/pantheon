@@ -90,14 +90,15 @@
         { "component": "core/runtime/claude_code.py:ClaudeCodeProvider", "action": "ローカル claude CLI で応答を生成" },
         { "component": "web/server.py:/api/chat /ws/chat", "action": "Web からのチャットセッション CRUD とストリーミング" }
       ],
-      "surfaces": ["pantheon chat", "POST /api/chat", "GET/POST /api/chat/sessions", "WS /ws/chat", "ChatPage"],
+      "surfaces": ["pantheon chat", "POST /api/chat", "GET/POST /api/chat/sessions", "WS /ws/chat"],
       "state": ["~/.pantheon/chat_sessions/"],
-      "verification": ["tests/test_chat_agent.py"],
+      "verification": ["tests/test_chat_agent.py", "tests/test_web_server.py"],
       "status": "partial",
       "known_issues": [
-        { "severity": "medium", "title": "useWebSocket フックと /ws/chat が dead code", "detail": "どのコンポーネントも useWebSocket を import していない。", "file": "web/frontend/src/hooks/useWebSocket.ts" }
+        { "severity": "low", "title": "Web チャット GUI が未実装（/api/chat・/ws/chat はバックエンド専用）", "detail": "ChatPage と useWebSocket フックはフロントに存在せず、対話は CLI（pantheon chat）と wmux に集約。/api/chat・/api/chat/sessions・/ws/chat エンドポイントは稼働・テスト済みだが現行 GUI に consumer が無い（orphaned backend surface）。", "file": "web/server.py" }
       ],
       "resolved": [
+        { "title": "Web チャット UI（ChatPage/useWebSocket フック）を撤去し対話を CLI/wmux へ集約（dead な frontend フックを削除）" },
         { "title": "run_chat() の PROVIDER_LABEL_MAP NameError を修正（C1）", "file": "agents/chat_agent.py" },
         { "title": "chat の PreTaskOrchestrator に registry + pattern_store を配線し学習を蓄積（Phase 3）", "file": "agents/chat_agent.py" }
       ]
@@ -198,14 +199,13 @@
         { "component": "web/frontend/src/App.tsx", "action": "ルーティング・全体検索・通知・テーマを管理" },
         { "component": "web/frontend/src/hooks/usePlatformUpdates.ts", "action": "WS /ws/updates でライブイベントを受信" }
       ],
-      "surfaces": ["pantheon serve", "GET /", "GET /api/search", "WS /ws/updates", "全 13 ページ"],
+      "surfaces": ["pantheon serve", "GET /", "GET /api/search", "WS /ws/updates", "全 20 ページ"],
       "state": ["web/dist"],
-      "verification": ["tests/test_web_server.py", "web/frontend (vitest 12 files / 79 tests)"],
-      "status": "partial",
-      "known_issues": [
-        { "severity": "medium", "title": "HelpPage/DashboardPage に claude CLI リブランド前のドキュメントドリフト", "detail": "API キー入力やプロバイダ表が残存。", "file": "web/frontend/src/pages/HelpPage.tsx" }
-      ],
+      "verification": ["tests/test_web_server.py", "web/frontend (vitest 31 files / 384 tests)"],
+      "status": "solid",
+      "known_issues": [],
       "resolved": [
+        { "title": "HelpPage/DashboardPage を claude CLI 前提へリブランド（API キー入力/プロバイダ表を撤去）。HelpPage.test.tsx/DashboardPage.test.tsx/SettingsPage.test.tsx でドリフトをテストガード", "file": "web/frontend/src/pages/HelpPage.tsx" },
         { "title": "SPA キャッチオールに /api・/ws の明示的 JSON 404 ガードを追加（C1）", "file": "web/server.py" }
       ]
     },

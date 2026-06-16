@@ -51,6 +51,46 @@ def test_check_flows_detects_missing_verification(tmp_path, monkeypatch):
     assert any("step component file missing" in e for e in errors)
 
 
+def test_check_flows_detects_missing_known_issue_file(tmp_path, monkeypatch):
+    """削除済みファイルを指したまま stale 化した known_issue / resolved を検出する。
+
+    Atlas ドリフト回帰防止: chat フローの known_issue が削除済みの
+    web/frontend/src/hooks/useWebSocket.ts を指したまま残っていた件（Cycle 43）。
+    """
+    module = _load_check_flows()
+    bad = {
+        "flows": [
+            {
+                "id": "z",
+                "name": "Z",
+                "summary": "s",
+                "trigger": {"kind": "cli", "name": "z"},
+                "steps": [],
+                "surfaces": [],
+                "status": "partial",
+                "known_issues": [
+                    {"severity": "medium", "title": "stale", "file": "web/does_not_exist_zzz.ts"}
+                ],
+                "resolved": [
+                    {"title": "gone", "file": "core/also_missing_zzz.py"},
+                    # 説明的な file（空白入り）や file 無しは検証対象外（誤検知を避ける）
+                    {"title": "descriptive", "file": "several modules under core/"},
+                    {"title": "no-file-key"},
+                ],
+            }
+        ]
+    }
+    bad_path = tmp_path / "flows.json"
+    bad_path.write_text(json.dumps(bad), encoding="utf-8")
+    monkeypatch.setattr(module, "FLOWS_PATH", bad_path)
+
+    errors = module.check_flows()
+    assert any("known_issues file missing: web/does_not_exist_zzz.ts" in e for e in errors)
+    assert any("resolved file missing: core/also_missing_zzz.py" in e for e in errors)
+    # 説明的 file / file 無しは誤検知しない
+    assert not any("several modules" in e for e in errors)
+
+
 def test_check_flows_detects_invalid_status(tmp_path, monkeypatch):
     module = _load_check_flows()
     bad = {
