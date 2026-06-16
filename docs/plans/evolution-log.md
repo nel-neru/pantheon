@@ -19,6 +19,49 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 46 — stop_daemon を terminate_pid 単一ソース化＋Atlas 3フロー honest 再格付け  (2026-06-16 自動再開)
+  Plan   : 多様性ピボット（44 runtime / 45 test-quality → 46 は Atlas honesty＋runtime consolidation 完遂）。
+           Cycle 45 完了・main 統合後、最有力の先送り Next＝flow-audit 再ベースラインを軽量実施（フル
+           /flow-audit は Workflow＝opt-in 必要なので避け、flow-auditor agent で対象を絞る）。Cycle 41/42/44 で
+           主要 issue を修正した 3フロー（work-board-tasks/platform-ops/multi-agent-sessions）の flows.json
+           status が実態を過小評価（stale）している疑いを flow-auditor で実コード再検証（Cycle 43 教訓「着手前に
+           実コードで再検証」）。判明: (a) 3フローとも実態は partial（fragile×2 は過小評価）(b) platform-ops の
+           known_issue は file も内容も stale＝Cycle 44 の Atlas 正直化は subsystem_maps.json を更新し flows.json は
+           別ファイルで未同期 (c) **実コード残渣**: daemon_registry.stop_daemon が単一ソース terminate_pid ではなく
+           生 os.kill(SIGTERM) のまま（Cycle 44 が「stop は残 low」とした箇所）。受け入れ基準 = stop の terminate_pid
+           集約（パリティ維持）／3フロー honest 再格付け（実コード検証済のみ resolved 化）／check_flows green／
+           基線維持／レビュー。なぜ今: gate/Atlas 正直性＋Cycle 44 consolidation の積み残し完遂・高確信・可逆・diverse。
+           落とした候補: MultiOrgExecutor 配線（中規模・別サイクル）／capability-gap auto-implemented（low）／
+           done ブランチ --prune（雑務）。
+  Did    : work/flow-regrade-stop-fix-20260616。①core/runtime/daemon_registry.py: stop_daemon の
+           os.kill(pid, SIGTERM)（try/except OSError）を `if terminate_pid(pid)` へ（Windows-safe・kill 成功=
+           "stopped"/失敗=「already_stopped」のパリティ維持）。未使用化した import signal を除去・process_utils
+           import に terminate_pid 追加。②registry.os.kill を patch していたテスト3箇所（test_daemon_registry×1・
+           test_web_server×2）を terminate_pid patch へ更新（最初 test_daemon_registry のみ grep して
+           test_web_server×2 を見落とし→test-triage が 2 回帰検出→修正＝grep スコープを全 test に広げる教訓の再来）。
+           ③core/atlas/data/flows.json: work-board-tasks fragile→partial（ロック修正は resolved 済・残は
+           MultiOrgExecutor 未配線 medium）／multi-agent-sessions fragile→partial（orphan cross-process stop は
+           headless_driver の proc is None 分岐で実装済＝resolved へ・残は専用統合テスト不在 low）／platform-ops は
+           liveness(44)+stop(46) を新 resolved へ集約・stale file（commands/platform.py→daemon_registry.py）修正・
+           残は benign な start_new_session no-op。
+  Check  : 全件 1440 passed（失敗は基線 chmod 2件のみ・新規回帰 0、test-triage GREEN）。daemon_registry 11/
+           check_flows green/Atlas 系含め緑。ruff クリーン。中間で 2 回帰（test_web_server の os.kill patch 漏れ）を
+           test-triage が検出→patch 対象を terminate_pid へ修正→再 GREEN。code-reviewer 敵対レビュー = **APPROVE**
+           （critical/warning 0）: terminate_pid のパリティ（成功/ProcessLookupError/EPERM）・os/signal 残渣無・
+           テスト非空虚・multi-agent-sessions の cross-process stop 実装を headless_driver で実確認・flows.json schema/
+           file 実在・known_issues↔resolved 矛盾無を全実証。suggestion 1件（EPERM-on-live を already_stopped に縮退）は
+           旧コードと同一の既存挙動でスコープ外＝非対応。
+  Act    : merged ✅（7e402b5..1645238）。固定化（学び）: (1) **Cycle 44 の process_utils consolidation を完遂**＝
+           liveness(pid_alive)+termination(terminate_pid) の両方を single source に。生 os.kill は repo から排除
+           （[[windows-process-portability]] 更新）。(2) **Atlas は複数ファイルに分散**＝flows.json と
+           subsystem_maps.json は別物で、片方だけ正直化すると他方が stale 化する（platform-ops が実例）。再格付け時は
+           両方を確認。(3) **同型バグ（call site 散在）の grep は最初から全 test/全 repo スコープで**＝Cycle 44 と同じ
+           「core だけ見て web を見落とす」を test 側でも踏んだ（test_daemon_registry だけ見て test_web_server×2 漏れ）。
+           幸い test-triage が捕捉＝チェック層が効いた。([[atlas-flows-drift]] 更新)
+  Next   : MultiOrgExecutor を web API/daemon に配線（POST /api/tasks→process_pending・work-board partial→solid 化）／
+           multi-agent-sessions の cross-process stop 統合テスト追加（partial→solid）／abstract-goal-pipeline
+           （唯一残る fragile）の実態調査。
+
 Cycle 45 — SETTINGS_FILE/CHAT_SESSIONS_DIR の import時凍結フラジリティ根治  (2026-06-16 自動再開)
   Plan   : 自動再開で git/log 精査 → Cycle 44（daemon pid liveness）完了・main 統合後の中断と判定
            （main クリーン・未マージは auto×2/intro-video=別系統のみ・並行 worker/ロック無し）。多様性
