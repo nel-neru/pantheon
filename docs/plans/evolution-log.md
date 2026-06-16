@@ -19,6 +19,41 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 38 — アトミック書き込みの共通化（固定 tmp 名コピペ7 site を共有ヘルパへ・並行 clobber 根絶）  (2026-06-16 自動再開)
+  Plan   : 多様性のため meta（Claude Code ベストプラクティス採用）を先に試行→ trend-watcher の5提案は
+           いずれも**未検証のバージョン固有機能主張**（2.1.175/2.1.178 の enforceAvailableModels・
+           Agent(model:fable) 構文・nested skills 等。私の cutoff Jan 2026 で真偽不能）に依存し、
+           load-bearing な `.claude/settings.json` へ未確認キーを投入する=解析を壊すリスク。/evolve の
+           「確定所見だけ直す」「無人運転は最も安全で可逆な選択」に従い**meta-config 変更は適用せず**棚上げ。
+           代わりに Cycle 37 で reviewer が指摘し台帳 §B-4 follow-up に積んだ高確信・低リスクの DRY 完結へ。
+           受け入れ基準 = 固定名 `.json.tmp` パターン全 site を `atomic_write_text` へ・成功パス byte 等価・
+           best-effort ラッパ保持・基線維持・敵対レビュー通過。なぜ今: torn-write クラスを部分でなく完全に
+           閉じる（Cycle 37 の自然な完結・文脈が温かい）。落とした候補: meta-config（未確認で安全に出荷不能）／
+           B-2残/B-3（UX 連続回避）／並行性テスト本体（次サイクルへ）。
+  Did    : work/atomic-write-dry-20260616（backend・自分で実装）。固定名 `path.with_suffix(".json.tmp")`＋
+           write_text＋`os.replace`/`tmp.replace` のコピペを共有 `atomic_write_text` へ移行: ① 単純3 site
+           （`content_jobs._save_raw`/`publish_jobs._save_raw`/`business_store._save_raw`）② best-effort
+           try/except OSError ラッパ付き4 site（`trend_to_jobs._save_processed`/`auto_gate.set_auto_send`/
+           `notifications/center._save_read_ids`・`update_settings`）はラッパを保持したまま内側だけ置換
+           （atomic_write_text は失敗時 OSError を raise→既存 except が捕捉＝best-effort 不変）。不要になった
+           `import os`（auto_gate/center モジュール・trend_to_jobs ローカル）を除去。冗長な事前 mkdir は
+           helper 内 `path.parent.mkdir` が代替（parent 一致を全 site で確認）。
+  Check  : 移行 site 関連テスト 68+10+6 緑。test-triage 全件 GREEN（1425 passed・基線 chmod 2件のみ・新規
+           回帰 0）。ruff（I001 の import 順のみ --fix で整理）クリーン。code-reviewer 敵対レビューを2回:
+           (1) 単純3 site=**APPROVE**（成功パス byte 等価・固定名→mkstemp 一意名で並行 clobber 解消＝厳密に
+           安全側・循環なし。残4 site の存在を指摘）→ その場で4 site も取り込み (2) ラッパ付き4 site=
+           **APPROVE**（best-effort 例外等価・mkdir/parent 等価を3 file 個別実証・os 未使用を grep 確認・
+           indent 有無まで byte 等価。critical/warning/suggestion ゼロ）。
+  Act    : merged ✅（…）。台帳 §A に「アトミック書き込みの共通化」行を追加・§B-4 の follow-up を完了化し
+           「次=state manager 並行 read/write 競合テスト」を残タスクに更新。固定化（学び）: (1) 防御パターンの
+           コピペは「最も堅牢な1実装」へ集約する＝固定 tmp 名は並行で clobber する隠れた弱点があり、共有
+           mkstemp 版へ寄せると DRY と並行安全の両方が同時に解決（単なる重複排除以上の利得）。(2) trend-watcher
+           等が返す**バージョン固有の機能主張は未検証なら適用しない**（load-bearing config は特に）。
+           「確定所見だけ直す」を meta カテゴリにも厳格適用。(3) reviewer が見つけた漏れ site は同サイクルで
+           取り込み「部分でなく完全に閉じる」。
+  Next   : B-4 本体（state manager の並行 read/write 競合テスト・決定的に書く）／残る素の `write_text` 監査
+           （atomic でない書き込み site の洗い出し）／B-2残（初回 Org 作成 CTA）／B-3（atelier 運用ビュー）。
+
 Cycle 37 — 基盤 state JSON 書き込みの原子化（共有 atomic_write_text ヘルパ・torn write 防止）  (2026-06-16 自動再開)
   Plan   : 多様性ピボット（Cycle 34–36 は publishing/onboarding の UX → 今回は backend 堅牢性/耐久性）。
            台帳 §B-4 の「これまでの単体監査が拾えない層」を**並行性テストの前段にある実バグ**として実証:

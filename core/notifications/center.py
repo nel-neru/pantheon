@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+from core.persistence import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -97,10 +98,8 @@ class NotificationCenter:
 
     def _save_read_ids(self, ids: set[str]) -> None:
         try:
-            self.platform_home.mkdir(parents=True, exist_ok=True)
-            tmp = self._read_path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(sorted(ids), ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, self._read_path)  # atomic: クラッシュで既読集合が壊れない
+            # atomic: クラッシュ/並行書き込みで既読集合が壊れない（torn write 防止）
+            atomic_write_text(self._read_path, json.dumps(sorted(ids), ensure_ascii=False))
         except OSError as exc:  # pragma: no cover
             logger.warning("failed to persist read state: %s", exc)
 
@@ -189,10 +188,9 @@ class NotificationCenter:
         if "quiet_hours_end" in patch:
             current["quiet_hours_end"] = _clamp_hour(patch["quiet_hours_end"])
         try:
-            self.platform_home.mkdir(parents=True, exist_ok=True)
-            tmp = self._settings_path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
-            os.replace(tmp, self._settings_path)
+            atomic_write_text(
+                self._settings_path, json.dumps(current, ensure_ascii=False, indent=2)
+            )
         except OSError as exc:  # pragma: no cover
             logger.warning("failed to persist notification settings: %s", exc)
         return current

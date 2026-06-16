@@ -30,6 +30,7 @@
 | publishing 投稿前バリデーション（preview＋live 両経路） | ✅ 実装済 | Cycle 35: `base._preview` が空コンテンツを弾き X は280字超を警告。Cycle 36: 共有 `_is_empty_content`/`EMPTY_CONTENT_ERROR` で note/wordpress の `_publish_live` にも空ガード（ブラウザ未起動・preview≥live を一様化）。wp live の回帰テストも新設 |
 | .claude/ の CC ベストプラクティス整合 | ✅ 整合 | Cycle 31: trend-watcher 照合（Fable 5 heavy・Opus 4.8 trailer・選択的 MCP・秘密なし） |
 | 基盤 state JSON 書き込みの原子性 | ✅ 実装済 | Cycle 37: `core/persistence.atomic_write_text`（mkstemp+os.replace+失敗時 cleanup）を `core/state/manager.py`（8 site）・`core/platform/state.py`（3 site）の非アトミック書き込みへ適用。torn write（クラッシュ/並行書き込みでの切り詰め）を防止し silent-drop の元凶を構造的に断つ。回帰テスト `tests/test_persistence.py`（8本: 原子性/孤児.tmp不残/失敗時の元ファイル無傷/read-modify-write 往復） |
+| アトミック書き込みの共通化（固定 tmp 名パターン根絶） | ✅ 完了 | Cycle 38: 固定名 `.json.tmp`＋write_text＋replace のコピペ7 site（content_jobs/publish_jobs/business_store/trend_to_jobs/auto_gate/notifications.center×2）を共有 `atomic_write_text` へ移行。固定名→mkstemp 一意名で並行 clobber 解消・失敗時 cleanup で孤児 .tmp 解消。best-effort ラッパ保持・byte 等価（reviewer APPROVE）。残: lock 系 task_queue と既存 mkstemp 採用済み runtime 群は対象外 |
 
 > ⚠️ 台帳の前提が崩れる変更（対象ファイルの編集・リファクタ）が入ったら、その行だけ再検証する。
 > 台帳は「いつ・何を根拠に」確認したかを残すので、git log と突き合わせて陳腐化を判定できる。
@@ -72,10 +73,15 @@
   state 競合）など、これまでの単体監査が拾えない層へ網を細かくする。
 - **最初のスライス**: 1つのサブシステム（例: state manager の並行 read/write）に絞った競合テスト。
 - **リスク**: 中（並行テストはフレークになりやすい — 決定的に書く）。
-- **follow-up（Cycle 37 由来）**: 既存のコピペ・アトミック書き込み（`content_jobs.py`/`publish_jobs.py`/
-  `business_store.py` の簡易 `.json.tmp` パターンは**失敗時に孤児 .tmp を残す**）を共有
-  `core/persistence.atomic_write_text`（堅牢版・失敗時 cleanup）へ寄せて DRY 化。あわせて残る直接
-  `write_text`/`json.dump` の書き込み site（daemon が書く store 等）を監査し、torn write クラスを完全に閉じる。
+- ~~**follow-up（Cycle 37 由来）**: 既存のコピペ・アトミック書き込み（簡易 `.json.tmp` 固定名パターン）を
+  共有ヘルパへ寄せる~~ → **Cycle 38 で完了**。固定 tmp 名 `.json.tmp` を使う7 site
+  （`content_jobs`/`publish_jobs`/`business_store`/`trend_to_jobs`/`auto_gate`/`notifications/center` ×2）を
+  `atomic_write_text` へ移行（固定名→mkstemp 一意名で並行 clobber も解消・失敗時 cleanup で孤児 .tmp も解消）。
+  best-effort try/except OSError ラッパは保持。reviewer APPROVE（byte/例外/dir 等価）。
+- **次のスライス（残り）**: state manager の**並行 read/write 競合テスト**（決定的に書く）。アトミック書き込み層は
+  Cycle 37–38 で固めたので、次は「並行アクセスでも一貫した状態が読める」ことをテストで固定する。
+  （注: `task_queue.py` は lock + suffix 保持 tmp の別契約・`usage_gate`/`heartbeat`/`daemon_registry`/
+  `org_template_designer` は既に mkstemp 採用済みで移行対象外。残るは atomic でない素の `write_text` 監査）。
 
 ---
 
