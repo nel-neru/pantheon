@@ -47,12 +47,43 @@ UI_ENV = "PANTHEON_UI"  # "legacy"(既定) | "atelier" — serve/up の --ui か
 PROJECT_ROOT = resource_root()
 KNOWLEDGE_DIR = resource_path("knowledge")
 SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "Pantheon Core", "meta-improvement"}
-# PANTHEON_HOME を尊重して解決する（dev/prod 環境のデータ完全分離）。プロセス起動時の
-# PANTHEON_HOME で確定するため、dev サーバ（PANTHEON_HOME=...）と user サーバ（未設定）で別領域になる。
-SETTINGS_FILE = get_platform_home() / "gui_settings.json"
-CHAT_SESSIONS_DIR = get_platform_home() / "chat_sessions"
+
+
+# PANTHEON_HOME を尊重して解決する（dev/prod 環境のデータ完全分離）。
+# 重要: import 時にモジュール定数として凍結せず、get_platform_home() を毎回呼ぶ遅延解決にする。
+# 定数として凍結すると import より後に PANTHEON_HOME が変わる場合（テストの import 順・将来の
+# 動的切替）に古い領域を指し続ける（実行順依存フラジリティ）。PlatformStateManager /
+# OutcomeStore / TaskQueue は全て get_platform_home() を遅延呼び出ししており、それに揃える。
+# 後方互換のため module 属性 ``server.SETTINGS_FILE`` / ``server.CHAT_SESSIONS_DIR`` の読み取りは
+# 下の __getattr__ が遅延解決する。内部コードはヘルパ関数を直接呼ぶ。
+def _settings_file() -> Path:
+    """GUI 設定ファイルのパス（現在の get_platform_home() 由来・遅延解決）。"""
+    return get_platform_home() / "gui_settings.json"
+
+
+def _chat_sessions_dir() -> Path:
+    """チャットセッション保存先（現在の get_platform_home() 由来・遅延解決）。"""
+    return get_platform_home() / "chat_sessions"
+
+
 DEFAULT_CORS_ORIGINS = ("http://localhost:5173",)
-CHAT_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+_chat_sessions_dir().mkdir(parents=True, exist_ok=True)
+
+
+def __getattr__(name: str):
+    """PEP 562: ``SETTINGS_FILE`` / ``CHAT_SESSIONS_DIR`` を遅延解決の module 属性として公開する。
+
+    内部コードはヘルパ関数（``_settings_file`` / ``_chat_sessions_dir``）を直接呼ぶ。テストは
+    そのヘルパ関数を monkeypatch する（関数なら monkeypatch の復元が遅延性を保ち、定数の再 setattr で
+    stale な tmp パスを module 辞書へ再凍結する事故を避けられる）。
+    """
+    if name == "SETTINGS_FILE":
+        return _settings_file()
+    if name == "CHAT_SESSIONS_DIR":
+        return _chat_sessions_dir()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 # 注: ホスト型プロバイダのキー対応表/モデル一覧（旧 _PROVIDER_KEY_MAPPING / FALLBACK_MODELS）は
 # Claude Code CLI 専用化により完全な dead code だったため削除（2026-06-14 リポジトリ衛生監査）。
 # 生成は core/runtime/claude_code.ClaudeCodeProvider 経由のみ。モデル一覧は CLAUDE_MODELS を使う。
@@ -226,10 +257,11 @@ def _set_settings_file_permissions(path: Path) -> None:
 def _load_gui_settings() -> Dict[str, Any]:
     """GUI 設定ファイルを読み込む（存在しなければデフォルト値を返す）"""
     defaults = _default_gui_settings()
-    if SETTINGS_FILE.exists():
-        _warn_if_settings_permissions_too_open(SETTINGS_FILE)
+    settings_file = _settings_file()
+    if settings_file.exists():
+        _warn_if_settings_permissions_too_open(settings_file)
         try:
-            loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            loaded = json.loads(settings_file.read_text(encoding="utf-8"))
             if isinstance(loaded, dict):
                 merged = deepcopy(defaults)
                 merged.update(
@@ -250,20 +282,22 @@ def _load_gui_settings() -> Dict[str, Any]:
 
 
 def _save_gui_settings(data: Dict[str, Any]) -> None:
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    _set_settings_file_permissions(SETTINGS_FILE)
+    settings_file = _settings_file()
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _set_settings_file_permissions(settings_file)
 
 
 def _ensure_chat_sessions_dir() -> None:
-    CHAT_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    _chat_sessions_dir().mkdir(parents=True, exist_ok=True)
 
 
 def _get_session_path(session_id: str) -> Path:
     _ensure_chat_sessions_dir()
-    path = (CHAT_SESSIONS_DIR / f"{session_id}.json").resolve()
+    sessions_dir = _chat_sessions_dir()
+    path = (sessions_dir / f"{session_id}.json").resolve()
     try:
-        path.relative_to(CHAT_SESSIONS_DIR.resolve())
+        path.relative_to(sessions_dir.resolve())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="不正なセッションIDです") from exc
     return path
@@ -293,7 +327,7 @@ def _list_sessions() -> list[dict[str, Any]]:
     _ensure_chat_sessions_dir()
     sessions = []
     for path in sorted(
-        CHAT_SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+        _chat_sessions_dir().glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
     ):
         try:
             with path.open(encoding="utf-8") as f:
@@ -3230,7 +3264,7 @@ async def api_get_settings() -> Dict[str, Any]:
         "policy_rules": s.get("policy_rules", deepcopy(DEFAULT_POLICY)),
         "token_quota": _current_token_quota(),
         "notification_settings": _notification_center().get_settings(),
-        "settings_file": str(SETTINGS_FILE),
+        "settings_file": str(_settings_file()),
         "has_llm": _has_llm(s),
     }
 
@@ -3285,8 +3319,8 @@ async def get_storage_info() -> Dict[str, Any]:
         "storage": {
             "settings": {
                 "label": "GUI設定（LLMプロバイダー・APIキー等）",
-                "path": str(SETTINGS_FILE),
-                **dir_info(SETTINGS_FILE),
+                "path": str(_settings_file()),
+                **dir_info(_settings_file()),
             },
             "organizations": {
                 "label": "組織定義",
@@ -3295,8 +3329,8 @@ async def get_storage_info() -> Dict[str, Any]:
             },
             "chat_sessions": {
                 "label": "チャットセッション履歴",
-                "path": str(CHAT_SESSIONS_DIR),
-                **dir_info(CHAT_SESSIONS_DIR),
+                "path": str(_chat_sessions_dir()),
+                **dir_info(_chat_sessions_dir()),
             },
             "task_queue": {
                 "label": "タスクキュー",

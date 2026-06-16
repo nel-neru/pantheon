@@ -110,3 +110,28 @@ def test_settings_and_chat_paths_derive_from_home():
     assert server.SETTINGS_FILE == base / "gui_settings.json"
     assert server.CHAT_SESSIONS_DIR == base / "chat_sessions"
     assert chat_agent.SETTINGS_FILE == base / "gui_settings.json"
+
+
+def test_settings_paths_track_home_changes_not_frozen(tmp_path, monkeypatch):
+    """設定・チャット保存先は import 時に凍結されず、後続の PANTHEON_HOME 変更へ追随する。
+
+    旧実装は SETTINGS_FILE / CHAT_SESSIONS_DIR を module 定数として import 時に凍結していたため、
+    web.server を tmp の PANTHEON_HOME 下で初回 import する別テストが先に走ると、その後 home が
+    戻っても凍結値が古い領域を指し続け、単体/小グループ実行で test_settings_and_chat_paths_
+    derive_from_home が落ちた（実行順依存フラジリティ）。遅延解決へ移したことの回帰防止 teeth。
+    """
+    import agents.chat_agent as chat_agent
+    import web.server as server
+
+    home_a = tmp_path / "A"
+    monkeypatch.setenv("PANTHEON_HOME", str(home_a))
+    assert server.SETTINGS_FILE == home_a.resolve() / "gui_settings.json"
+    assert server.CHAT_SESSIONS_DIR == home_a.resolve() / "chat_sessions"
+    assert chat_agent.SETTINGS_FILE == home_a.resolve() / "gui_settings.json"
+
+    # 凍結していれば home_a を指し続けて落ちる。遅延解決なら home_b へ追随する。
+    home_b = tmp_path / "B"
+    monkeypatch.setenv("PANTHEON_HOME", str(home_b))
+    assert server.SETTINGS_FILE == home_b.resolve() / "gui_settings.json"
+    assert server.CHAT_SESSIONS_DIR == home_b.resolve() / "chat_sessions"
+    assert chat_agent.SETTINGS_FILE == home_b.resolve() / "gui_settings.json"

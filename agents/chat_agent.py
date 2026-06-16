@@ -36,8 +36,23 @@ from core.platform.state import get_platform_home
 logger = logging.getLogger(__name__)
 
 # PANTHEON_HOME を尊重（dev/prod のデータ完全分離）。ハードコード ~/.pantheon は分離を破るため不可。
-SETTINGS_FILE = get_platform_home() / "gui_settings.json"
+# web.server と同方針で import 時に凍結せず get_platform_home() を毎回呼ぶ遅延解決にする
+# （import 順依存フラジリティの回帰防止）。``chat_agent.SETTINGS_FILE`` の属性読み取りは
+# 下の __getattr__ が遅延解決し、内部コードはヘルパ ``_settings_file()`` を直接呼ぶ。
 DEFAULT_MODEL = ""  # empty => let the `claude` CLI pick its own default model
+
+
+def _settings_file() -> Path:
+    """GUI 設定ファイルのパス（現在の get_platform_home() 由来・遅延解決）。"""
+    return get_platform_home() / "gui_settings.json"
+
+
+def __getattr__(name: str):
+    """PEP 562: ``SETTINGS_FILE`` を遅延解決の module 属性として公開する（テストはヘルパを monkeypatch）。"""
+    if name == "SETTINGS_FILE":
+        return _settings_file()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # run_chat() の LLM 接続表示ラベル。F1 以降、生成経路はローカル ``claude`` CLI のみ。
 # 不明な provider 値はそのまま表示する（.get(provider, provider)）。
@@ -59,12 +74,13 @@ def _load_llm_config() -> dict[str, Any]:
     from core.runtime.claude_code import claude_available
 
     model = os.environ.get("PANTHEON_DEFAULT_MODEL", DEFAULT_MODEL)
-    if SETTINGS_FILE.exists():
+    settings_file = _settings_file()
+    if settings_file.exists():
         try:
-            settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            settings = json.loads(settings_file.read_text(encoding="utf-8"))
             model = settings.get("llm_model", model) or model
         except Exception:
-            logger.warning("Failed to load GUI settings from %s", SETTINGS_FILE, exc_info=True)
+            logger.warning("Failed to load GUI settings from %s", settings_file, exc_info=True)
 
     return {
         "provider": "claude_code",
