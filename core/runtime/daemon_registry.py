@@ -37,6 +37,7 @@ from core.runtime.heartbeat import (
     read_heartbeat,
     stale_threshold_seconds,
 )
+from core.runtime.process_utils import pid_alive
 
 logger = logging.getLogger(__name__)
 
@@ -144,11 +145,10 @@ def read_pid(name: str, *, platform_home: Optional[Path] = None) -> Optional[int
 
 
 def is_process_running(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+    # Windows-safe liveness: raw os.kill(pid, 0) reports a recently-exited pid as
+    # still alive on Windows (false positive). pid_alive() queries the real exit
+    # code there. See core.runtime.process_utils.
+    return pid_alive(pid)
 
 
 def build_command(spec: DaemonSpec, extra_args: Sequence[str] = ()) -> List[str]:

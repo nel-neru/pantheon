@@ -333,12 +333,11 @@ def cmd_daemon_status(args: argparse.Namespace, *, get_platform_home: Any) -> No
             print("デーモン停止中（PID ファイルが壊れています）。")
             pid = None
         if pid is not None:
-            try:
-                import os as _os
+            from core.runtime.process_utils import pid_alive
 
-                _os.kill(pid, 0)
+            if pid_alive(pid):
                 print(f"[OK] デーモン稼働中 (PID: {pid})")
-            except OSError:
+            else:
                 print(f"デーモン停止中（PID ファイルが残存: {pid}）")
     else:
         print("デーモンは起動していません。")

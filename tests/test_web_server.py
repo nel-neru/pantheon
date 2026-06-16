@@ -166,7 +166,9 @@ def test_daemon_status_reports_running(tmp_path, monkeypatch):
 
     monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
-    monkeypatch.setattr(server.os, "kill", lambda pid, sig: None)
+    # _is_process_running は Windows-safe な process_utils.pid_alive に委譲する
+    # （旧来の os.kill(pid,0) 依存ではない）。稼働中を模すため liveness を True に固定。
+    monkeypatch.setattr("core.runtime.process_utils.pid_alive", lambda pid: True)
 
     response = client.get("/api/daemon/status")
 

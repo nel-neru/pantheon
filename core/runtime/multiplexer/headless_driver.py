@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import signal
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -27,6 +26,7 @@ from core.runtime.multiplexer.base import (
     SurfaceStatus,
     Workspace,
 )
+from core.runtime.process_utils import pid_alive, terminate_pid
 
 logger = logging.getLogger(__name__)
 
@@ -81,53 +81,17 @@ def _read_exit_sidecar(surface: Surface) -> Optional[int]:
 
 
 def _pid_alive(pid: int) -> bool:
-    """Best-effort liveness check for a pid (used for cross-process polling)."""
-    if pid <= 0:
-        return False
-    if os.name == "nt":
-        import ctypes
+    """Best-effort liveness check for a pid (used for cross-process polling).
 
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not handle:
-            return False
-        try:
-            code = ctypes.c_ulong()
-            if kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return code.value == STILL_ACTIVE
-            return False
-        finally:
-            kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
+    Thin wrapper over the shared, Windows-safe implementation. Kept as a
+    module-level name so tests can monkeypatch it deterministically.
+    """
+    return pid_alive(pid)
 
 
 def _kill_pid(pid: int) -> bool:
     """Best-effort terminate a pid (used for cross-process ``stop_session``)."""
-    if pid <= 0:
-        return False
-    if os.name == "nt":
-        import ctypes
-
-        PROCESS_TERMINATE = 0x0001
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
-        if not handle:
-            return False
-        try:
-            return bool(kernel32.TerminateProcess(handle, 1))
-        finally:
-            kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, signal.SIGTERM)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
+    return terminate_pid(pid)
 
 
 class HeadlessDriver(MultiplexerDriver):
