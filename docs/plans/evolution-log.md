@@ -19,6 +19,46 @@ Cycle N — <一言タイトル>  (YYYY-MM-DD HH:MM)
 
 <!-- 以降、新しいサイクルを上から追記していく -->
 
+Cycle 42 — TaskQueue のクロスプロセスロックを Windows 対応化（lost update 根絶）  (2026-06-16 自動再開)
+  Plan   : 多様性ピボット（40 state / 41 multi-agent-sessions honesty → 42 は別フロー work-board-tasks・
+           並行性堅牢化）。flows.json の work-board-tasks（fragile）の issue「TaskQueue の fcntl ロックが
+           Windows で no-op」を選定。`_locked()` は fcntl.flock 専用で Windows は ImportError を握りつぶし
+           **クロスプロセスロックが no-op**＝複数デーモン（24h 基盤の revenue/content/trend が別プロセス）が
+           同一 JSON を load→modify→save で交互に触ると **lost update（タスクの静かな消失）**＝silent-drop 系の
+           実害。受け入れ基準 = 移植版ロックで Windows でも排他／best-effort 縮退でデーモンを落とさない／
+           マルチプロセス回帰テスト（teeth 検証）／後方互換（バイト出力等価）／レビュー通過／基線維持。
+           なぜ今: 文書化済み issue・境界明確（task_queue.py 1ファイル）・別サブシステムで多様性・可逆。
+           落とした候補: DynamicAgentSpawner dead-code 配線（SpecialistAgent→runnable BaseAgent ブリッジ
+           設計が必要で中規模・リスク）／MultiOrgExecutor 未配線（process_pending 駆動は中規模）／
+           multi-agent-sessions 残 high（同フロー連投で多様性低）。
+  Did    : work/task-queue-xproc-lock-20260616（core/orchestration/task_queue.py +
+           tests/test_task_queue.py + core/atlas/data/flows.json + 本ログ）。①移植版 `_lock_fd/_unlock_fd`
+           新設: POSIX=`fcntl.flock(LOCK_EX)`／Windows=`msvcrt.locking` のオフセット0・1バイト領域を
+           `LK_NBLCK` で 50ms 間隔リトライ（`LK_LOCK` の硬直 ~10s raise を回避）、30s 超で best-effort 縮退
+           （続行＋WARNING＝デーモンをロック競合で落とさない）。`_locked()` を in-process RLock + これらの
+           try/finally に簡素化。②`_save` を固定 `.tmp` 名から `core.persistence.atomic_write_text`
+           （mkstemp 一意名）へ＝縮退中の固定 .tmp 衝突（PermissionError）と orphan を根絶（バイト出力等価）。
+           ③回帰テスト: 3子プロセス＋親が各60で計240タスクを並行追加し全生存を assert。
+  Check  : 対象テスト 6/6（3回反復安定・各~0.55s）。teeth 検証: ロックを no-op に潰すと高競合で 240→120 の
+           lost update＋子クラッシュを実測（テストが確実に落ちることを確認）。ruff クリーン。test-triage 全件
+           GREEN（1431 passed・失敗は基線 chmod 2件のみ・新規回帰 0）。code-reviewer 敵対レビュー =
+           APPROVE-WITH-NITS（msvcrt 領域対称性・デッドロック無・30s 縮退の妥当性・atomic_write_text の
+           バイト等価・os.replace の完全直列化を実機検証）。nit①テストの `r{...!r}` 二重エスケープ → `r`
+           除去。nit②`_lock_fd/_unlock_fd` に `TextIO` 型ヒント。両対応。
+  Act    : merged ✅（bd3c4d4..42f6cbd, flows.json は同梱・本ログは後続）。固定化（学び）: (1) **Windows の
+           クロスプロセスファイルロックは `msvcrt.locking`**（固定オフセット・固定バイト数を lock/unlock で
+           対称に、LK_NBLCK リトライでブロッキング相当＋タイムアウト縮退）＝fcntl だけだと Windows で黙って
+           no-op。(2) **固定 tmp 名の temp+replace は複数プロセスで衝突する**＝必ず mkstemp 一意名
+           （atomic_write_text）を使う（Cycle 37 の原則の並行性版）。(3) 並行性の回帰テストは「修正を潰すと
+           確実に落ちる（teeth）」を実測で確認してから commit＝低競合だと race が顕在化せず無力なテストに
+           なる。副産物: **既存フラジリティ発見** — `test_env_separation.py::test_settings_and_chat_paths_
+           derive_from_home` は web.server.SETTINGS_FILE が初回 import で凍結されるため**単体/小グループ実行で
+           落ちる**（全件 suite では別テストが先に PANTHEON_HOME 無しで import するため緑）。要・将来サイクルで
+           import 時凍結 → 関数/プロパティ化の根治候補。
+  Next   : 上記 env_separation の import-時凍結フラジリティ根治（SETTINGS_FILE を遅延評価へ）／work-board の
+           MultiOrgExecutor 未配線（POST /api/tasks → process_pending 駆動）／orchestration-routing の
+           DynamicAgentSpawner dead-code 配線。
+
 Cycle 41 — Headless poll の DONE 捏造を exit-code サイドカーで正直化  (2026-06-16 自動再開)
   Plan   : 自動再開で git/log を精査 → Cycle 40 完了後の中断と判定（main クリーン・未完了作業なし）。
            多様性ピボット（37–38 堅牢化 / 39 ツール / 40 state 規約 → 41 は別フロー・正確性=honesty）。
