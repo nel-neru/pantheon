@@ -1575,8 +1575,8 @@
       },
       {
         "severity": "low",
-        "title": "daemon start/stop uses os.kill semantics that are unreliable on Windows",
-        "detail": "_is_process_running uses os.kill(pid,0) and api_daemon_stop uses os.kill(pid, SIGTERM); on Windows os.kill(pid,0) raises for foreign PIDs and SIGTERM maps to TerminateProcess, so PID reuse can mis-report 'running' and the stop path is fragile on the documented Windows dev environment.",
+        "title": "daemon stop path force-terminates on Windows (liveness check now Windows-safe)",
+        "detail": "FIXED (Cycle 44): _is_process_running now delegates to core.runtime.process_utils.pid_alive (OpenProcess+GetExitCodeProcess), so a reaped pid is no longer mis-reported as 'running' on Windows — the false-positive liveness bug is gone. Residual (low): api_daemon_stop still uses os.kill(pid, SIGTERM), which on Windows maps to TerminateProcess (works, but force-terminates rather than gracefully); cross-host PID reuse remains a theoretical edge for any pid-file scheme.",
         "file": "c:\\Users\\neoma\\NEL\\pantheon\\web\\server.py"
       },
       {

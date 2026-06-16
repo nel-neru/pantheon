@@ -1228,11 +1228,11 @@ def _read_daemon_pid(pid_file: Path) -> int | None:
 
 
 def _is_process_running(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+    # Windows-safe: raw os.kill(pid, 0) reports a recently-exited (reaped) pid as
+    # alive on Windows, mis-showing crashed daemons as "running" in the UI.
+    from core.runtime.process_utils import pid_alive
+
+    return pid_alive(pid)
 
 
 def _rate_gate_payload() -> dict[str, Any]:
