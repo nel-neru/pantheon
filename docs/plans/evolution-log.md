@@ -2177,3 +2177,42 @@ Cycle 24 — silent-drop 観測性を残ローダー3種へ横展開（黙殺→
   Next   : C25 候補 — (jj) capability_gap_analyzer:285 の LLM 配列パースを array 用正典ヘルパへ統合（JSON 系だが C24 を挟んだので
            多様性回復・object に続き array まで単一正典を拡張）、(ii) vision 機能スライス（収益化 _publish_live 実機 E2E / Org 量産）で
            プロダクト価値前進、(kk) Claude Code ベストプラクティス採用（trend-watcher で最新動向→.claude/ 更新）でメタ多様性。
+
+Cycle 25 — atelier Handbook の publishing 能力表記を正直化（note/X assisted は実装済を全6面で統一）  (2026-06-18)
+  Plan   : C20–C24 が内部 robustness/JSON/observability に5連続で偏り、JSON・silent-drop・tz の seam は掘り尽くし
+           （残るは latent な outlier のみ＝capability_registry:165 の無条件 replace(tzinfo=utc)・capability_gap:285 の array truncation、
+           どちらも本番未到達）。`/evolve` の「網を細かくして基準を上げる／product 価値前進」に従い多様性のある **ユーザー向け GUI
+           ＋収益 vision** へ転換。受け入れ基準= 実コードで検証した publishing 能力の実態を atelier Handbook と docs に正直に反映・
+           回帰0・敵対レビュー APPROVE・merged。なぜ今: Handbook.tsx が「_publish_live / 投稿 API クライアントは未実装」「公開は
+           手動のみ」と明言していたが、note/X の assisted `_publish_live` は実装済・end-to-end 到達可能＝**動く収益機能を「未実装」と
+           過小提示**（facade-zero-proof の逆方向違反）。落とした候補: (kk) trend-watcher メタ（3提案中 PostToolUseFailure/FileChanged は
+           実在しないフックイベント＝ハルシネーション、残る UserPromptSubmit も Stop フック auto-commit で毎ターン作業ツリーがクリーン
+           ゆえ git-diff 注入が無価値＝このリポジトリでは net 負）、(jj)/(ii-WordPress E2E) は latent/外部資格情報要で見送り。
+  Did    : work/publishing-handbook-stale-fix-20260618（コード）＋ work/evolve-log-c25（ログ）。実コード裏取りで実態を確定:
+           note/X=assisted 実装済・到達可能（connect→/inbox 投稿→ブラウザ prefill→人間が最終公開→status handed_off）/
+           **WordPress=`_publish_live` コードはあるが CONNECTABLE_PLATFORMS=("note","x")・LOGIN_URLS に wordpress 無し＝接続が
+           サイト URL 依存で Phase 2＝end-to-end 未開通**（memory「note/X/WordPress 実装済」は不正確だった＝コードで再検証して訂正）/
+           auto=全アダプタ Phase 2。Handbook.tsx の publishing を語る **全6 LIVE face**（ヘッダコメント/Callout「まず知るべき1点」/
+           Section5 見出し+本文/WebFlow Step8〔デフォルトタブ〕/CliFlow Step7/GOTCHA+FLOW）を統一フレームへ修正。
+           docs/publishing.md L44 の stale な「wordpress の _publish_live は未実装」も訂正。Handbook.test.tsx に4アサーション回帰ガード
+           （旧 stale 文不在＋3面の正確文＝load-bearing・getByText 多重マッチ非衝突を文言差で担保）。
+  Check  : atelier vitest 51/51 緑（回帰ガード含む・多重マッチ衝突なしを実測で確認）/ npm run build（tsc+vite）緑 /
+           check_planning_docs passed / merge_to_main 全件バックエンドゲート＝既知2失敗のみ・新規回帰0（Python 無変更）/
+           code-reviewer = **3 ラウンド**。R1: 事実性を全て実コードで裏取り APPROVE しつつ「同一ページに手動のみ表記が残る LIVE face
+           3つ」を REQUEST-CHANGES。R2: 3面修正後、**さらに2面**（Section5・WebFlow Step8〔デフォルトタブ〕）を検出し REQUEST-CHANGES。
+           R3: grep で全6面を洗い出し統一後、残存面ゼロ・Inbox.tsx とも相互整合・4アサーション load-bearing を確認し **APPROVE**。
+  Act    : merged ✅（main c9c4be3、ログ別ブランチ）。固定化: (A) **「同じ事実の写しは全 LIVE face で一貫」（C21 教訓）は1回の grep では
+           取り切れない＝レビューが2回に分けて計5面を検出**。最初から「publishing を語る文」を `手動|貼って|公開|未実装|assisted` で
+           **網羅 grep してから**着手すべきだった。stale-fact sweep は冒頭で全 face を列挙してから直す（後追い修正は reviewer 往復を増やす）。
+           (B) **memory も「書かれた時点の事実」＝コードで再検証必須**（[[atlas-flows-drift]] 的中）＝memory「note/X/WordPress 実装済」を
+           鵜呑みにすると WordPress を到達可能と過大提示するところだった。接続フロー（CONNECTABLE_PLATFORMS/LOGIN_URLS）まで辿って
+           「コード存在 ≠ end-to-end 到達可能」を分離。(C) **trend-watcher のフック提案は実在イベント名を必ず照合**＝
+           PostToolUseFailure/FileChanged は実在しない（実在は PreToolUse/PostToolUse/UserPromptSubmit/Notification/Stop/SubagentStop/
+           PreCompact/SessionStart/SessionEnd）。メタ採用は「このリポジトリでの net 価値」も評価（auto-commit でクリーンな作業ツリー
+           ＝UserPromptSubmit の git 注入は無価値）。(D) **facade-zero は双方向**＝動かない物を動くと見せない だけでなく、
+           **動く物を動かないと見せない**（過小提示）も honesty 違反。→ [[gui-publishing-subsystem]] に「note/X assisted は到達可能・
+           WordPress は接続が Phase 2 で未開通／Handbook 全6面を C25 で正直化」を追記、[[atlas-flows-drift]] に「memory 鵜呑み禁止の実例」追記。
+  Next   : C26 候補 — (ll) **WordPress 接続フローの不整合バグ**（wordpress.py の error が `pantheon publish connect wordpress` を
+           案内するが CONNECTABLE_PLATFORMS に wordpress が無く argparse が拒否＝到達不能な案内）を最小修正（本サイクルで発見・別焦点で見送り）、
+           (jj) capability_gap:285 array truncation を array 正典ヘルパへ（latent だが JSON 単一正典を array まで完遂）、
+           (mm) atelier 他ページの能力表記 honesty 監査（Handbook 以外に過小/過大提示が無いか横断確認）。
