@@ -82,6 +82,56 @@ def test_team_gap_auto_applies_when_policy_allows():
     assert agents and all(2 <= len(a.skills) <= 3 for a in agents)
 
 
+def test_auto_applied_structure_proposal_excluded_from_inbox_pending(tmp_path, monkeypatch):
+    # auto-apply（policy が org_structure を AUTO_APPROVE）で構造変更が即適用された場合、
+    # 永続化される提案は status="done"（非アクティブ）になり、/inbox の承認経路
+    # （get_pending_improvement_proposals = web の _pending_proposals_for が使う）に
+    # 出てこない＝既に適用済みの構造変更を人間が二重承認できない、を固定する。
+    # （human-required 経路の status="pending" は active で出る、の対称）。
+    from core.org_factory import create_default_organization
+    from core.platform.state import PlatformStateManager
+    from core.policy.engine import ApprovalDecision, PolicyVerdict
+
+    class _AutoPolicy:
+        def evaluate(self, proposal, *, org_context=None):
+            return PolicyVerdict(
+                decision=ApprovalDecision.AUTO_APPROVE, reason="test", rule_name="test.auto"
+            )
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    psm = PlatformStateManager(platform_home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    org = create_default_organization("Org", "p", repo_path=str(repo))
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    before = len(org.divisions)
+
+    resolver = CapabilityGapResolver(policy=_AutoPolicy(), state_manager=sm)
+    results = resolver.resolve([_gap("division", "GameEngineDiv")], org)
+
+    # 構造は実際に in-memory 適用される
+    assert results[0].auto_applied is True
+    assert len(org.divisions) == before + 1
+
+    # 監査証跡として永続化はされるが status="done"（非アクティブ）
+    all_props = sm.get_all_improvement_proposals()
+    structure = [p for p in all_props if p.get("category") == "org_structure"]
+    assert structure, "auto-applied 構造提案は監査証跡として永続化されるべき"
+    assert structure[0]["status"] == "done"
+
+    # /inbox の pending 経路には出ない（既適用を人間が再承認できない）。
+    # status 文字列ではなく永続化された提案の id を直接照合し、pending フィルタが
+    # 壊れた場合（status 判定とは独立に）にも回帰を捕まえる。
+    applied_id = structure[0]["id"]
+    pending = sm.get_pending_improvement_proposals()
+    pending_ids = {p.get("id") for p in pending}
+    assert applied_id not in pending_ids, (
+        "auto-applied 済みの構造提案が /inbox の承認待ちに出てはならない（二重承認防止）"
+    )
+    assert not any(p.get("category") == "org_structure" for p in pending)
+
+
 def test_already_implemented_gap_skipped():
     org = Organization(name="X", purpose="p")
     gap = _gap("agent", "deep_research")
