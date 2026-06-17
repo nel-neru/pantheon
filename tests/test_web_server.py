@@ -1124,7 +1124,7 @@ def test_goals_stream_emits_sse_events(monkeypatch):
         "created_at": "2025-01-01T00:00:00+00:00",
     }
 
-    async def fake_perform_goal_run(req):
+    async def fake_perform_goal_run(req, progress_callback=None):
         assert req.goal_text == "Ship SSE support"
         return goal_result
 
@@ -1136,18 +1136,11 @@ def test_goals_stream_emits_sse_events(monkeypatch):
     assert response.headers["cache-control"] == "no-cache"
     assert response.headers["x-accel-buffering"] == "no"
     assert response.headers["content-type"].startswith("text/event-stream")
+    # No real per-task progress is emitted by this fake (it never calls the
+    # callback), so the stream carries the real start/result/done frames only —
+    # the old fixed-text "Planning..."/"Saving..." placeholder frames are gone.
     assert _read_sse_events(response.text) == [
         {"type": "start", "goal": "Ship SSE support", "org_name": None},
-        {
-            "type": "progress",
-            "message": "Planning goal execution...",
-            "content": "Planning goal execution...",
-        },
-        {
-            "type": "progress",
-            "message": "Saving goal history...",
-            "content": "Saving goal history...",
-        },
         {
             "type": "result",
             "goal": "Ship SSE support",
@@ -1165,6 +1158,66 @@ def test_goals_stream_emits_sse_events(monkeypatch):
             "content": "ゴール実行が完了しました",
         },
     ]
+
+
+def test_goals_stream_emits_real_per_task_progress(monkeypatch):
+    """The stream surfaces real ExecutionProgress (done/total) from the
+    coordinator callback, not fixed placeholder text."""
+
+    class _FakeProgress:
+        done_count = 1
+        total = 2
+        failed_count = 0
+        progress_pct = 50.0
+
+    async def fake_perform_goal_run(req, progress_callback=None):
+        # Simulate the ExecutionCoordinator notifying per-task progress.
+        assert progress_callback is not None
+        progress_callback(_FakeProgress())
+        return {"goal": req.goal_text, "summary": "ok", "organization": "Platform"}
+
+    monkeypatch.setattr(server, "_perform_goal_run", fake_perform_goal_run)
+
+    response = client.post("/api/goals/stream", json={"goal_text": "do work"})
+
+    assert response.status_code == 200
+    events = _read_sse_events(response.text)
+    progress = [e for e in events if e["type"] == "progress"]
+    assert progress == [
+        {
+            "type": "progress",
+            "done": 1,
+            "total": 2,
+            "failed": 0,
+            "progress_pct": 50.0,
+            "message": "1/2 タスク完了",
+            "content": "1/2 タスク完了",
+        }
+    ]
+    # The real frames still bracket the progress.
+    assert events[0]["type"] == "start"
+    assert events[-1]["type"] == "done"
+
+
+def test_goals_stream_emits_error_frame_and_terminates(monkeypatch):
+    """If the run raises before the sentinel, the finally-sentinel guarantee
+    must still terminate the drain loop and emit exactly one error frame
+    (no hang)."""
+
+    async def boom(req, progress_callback=None):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(server, "_perform_goal_run", boom)
+
+    response = client.post("/api/goals/stream", json={"goal_text": "explode"})
+
+    assert response.status_code == 200
+    events = _read_sse_events(response.text)
+    assert events[0]["type"] == "start"
+    error_frames = [e for e in events if e["type"] == "error"]
+    assert len(error_frames) == 1
+    # Stream terminated cleanly (no result/done after the error).
+    assert events[-1]["type"] == "error"
 
 
 def test_chat_session_crud(tmp_path, monkeypatch):

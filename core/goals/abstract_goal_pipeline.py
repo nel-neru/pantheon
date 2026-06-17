@@ -80,6 +80,7 @@ class AbstractGoalPipeline:
         coordinator: Optional[ExecutionCoordinator] = None,
         verifier: Optional[GoalVerifier] = None,
         pre_task_orchestrator: Optional[Any] = None,
+        progress_callback: Optional[Any] = None,
     ):
         self._parser = parser or GoalParser()
         self._decomposer = decomposer or GoalDecomposer()
@@ -104,8 +105,12 @@ class AbstractGoalPipeline:
                 )
             except Exception:  # noqa: BLE001 - 最小環境では従来どおり None で続行
                 pre_task_orchestrator = None
+        # progress_callback は ExecutionCoordinator が各タスクの状態遷移ごとに
+        # ExecutionProgress を渡して呼ぶ（SSE などへ実 per-task 進捗を流すために配線）。
+        # 明示注入の coordinator があればそれを優先（callback は注入側の責務）。
         self._coordinator = coordinator or ExecutionCoordinator(
-            pre_task_orchestrator=pre_task_orchestrator
+            pre_task_orchestrator=pre_task_orchestrator,
+            progress_callback=progress_callback,
         )
         self._verifier = verifier or GoalVerifier()
 
