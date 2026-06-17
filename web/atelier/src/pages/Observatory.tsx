@@ -40,6 +40,10 @@ export function Observatory() {
   const tokens5h = usage.data?.usage?.session_5h?.total_tokens ?? 0
   const govLevel = usage.data?.governor?.level ?? 'ok'
   const usageDown = Boolean(usage.error && !usage.data)
+  // orchestra フィードが落ちている（エラーかつ一度もデータが無い）ときは counts が undefined で
+  // sessions/agents/handoffs が 0 に潰れる。usageDown と同じく、これを「真に 0」ではなく
+  // 「フィード未取得」として開示し、idle と down を区別する（error-as-normal を出さない）。
+  const orchestraDown = Boolean(orchestra.error && !orchestra.data)
   const rateLimited = Boolean(usage.data?.rate_limited ?? daemons.data?.rate_limited)
 
   if (orchestra.loading && orgs.loading) {
@@ -67,9 +71,13 @@ export function Observatory() {
       <Plate className="!p-0 overflow-hidden rise">
         <div className="relative">
           <div className="absolute left-5 top-5 z-10 flex items-center gap-3">
-            <Tag tone="ice" live>
-              Firmament · Live
-            </Tag>
+            {orchestraDown ? (
+              <Tag tone="rose">Firmament · feed down</Tag>
+            ) : (
+              <Tag tone="ice" live>
+                Firmament · Live
+              </Tag>
+            )}
             <span className="mono text-[10px] tracking-[0.2em] text-faint uppercase">
               組織 × 稼働セッションの星座図
             </span>
@@ -83,9 +91,9 @@ export function Observatory() {
           />
           <div className="grid grid-cols-2 gap-px sm:grid-cols-4 border-t border-[color:var(--line)]">
             <Caption k="星 / 組織" v={String(orgList.length)} />
-            <Caption k="稼働セッション" v={String(counts?.active_sessions ?? 0)} />
-            <Caption k="エージェント" v={String(counts?.agents ?? 0)} />
-            <Caption k="引き渡し" v={String(counts?.handoffs ?? 0)} />
+            <Caption k="稼働セッション" v={orchestraDown ? '—' : String(counts?.active_sessions ?? 0)} />
+            <Caption k="エージェント" v={orchestraDown ? '—' : String(counts?.agents ?? 0)} />
+            <Caption k="引き渡し" v={orchestraDown ? '—' : String(counts?.handoffs ?? 0)} />
           </div>
         </div>
       </Plate>
@@ -110,15 +118,18 @@ export function Observatory() {
         <Stat label="Organizations" value={orgList.length} tone="gold" sub="観測中の組織" />
         <Stat
           label="Live Agents"
-          value={counts?.agents ?? 0}
+          value={orchestraDown ? '—' : (counts?.agents ?? 0)}
           tone="ice"
-          sub={`${counts?.active_sessions ?? 0} sessions active`}
+          sub={orchestraDown ? 'フィード未取得' : `${counts?.active_sessions ?? 0} sessions active`}
         />
         <Stat
           label="Pending Review"
           value={pendingReview}
           tone="gold"
-          sub="提案 + 引き渡し"
+          // orchestra ダウン時は pending_handoffs 項が 0 に落ちる。値（提案数）は実データなので
+          // 残すが、sub が「提案 + 引き渡し」と含意し続けると過大主張になるため、down 時は
+          // 引き渡しがフィード未取得である旨を開示する（pendingReview の error-as-normal を防ぐ）。
+          sub={orchestraDown ? '提案のみ（引き渡しはフィード未取得）' : '提案 + 引き渡し'}
         />
         <Stat
           label="Tokens · 5h"
