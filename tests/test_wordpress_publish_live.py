@@ -88,7 +88,10 @@ async def test_missing_site_url_fails(tmp_path):
     assert "サイトURL" in result.error
 
 
-async def test_not_connected_fails_with_connect_hint(tmp_path):
+async def test_not_connected_fails_with_honest_phase2_message(tmp_path):
+    # WordPress は接続フロー未対応（LOGIN_URLS/CONNECTABLE_PLATFORMS に無く Phase 2）なので、
+    # 動かない `pantheon publish connect wordpress` を案内してはならない（壊れた指示の回帰防止）。
+    # 正直なメッセージ＝Phase 2 で未対応・接続できるのは note / X、を提示する。
     factory_calls: list[int] = []
     publisher = WordPressPublisher(
         session_store=SessionStore(platform_home=tmp_path),
@@ -96,7 +99,10 @@ async def test_not_connected_fails_with_connect_hint(tmp_path):
     )
     result = await publisher._publish_live(_content(), _target())
     assert result.ok is False
-    assert "pantheon publish connect wordpress" in result.error
+    # 拒否される CLI コマンドを案内していないこと（argparse choices=("note","x") が wordpress を弾く）。
+    assert "connect wordpress" not in result.error
+    # 正直な Phase 2 / note・X 案内であること。
+    assert "Phase 2" in result.error and "note / X" in result.error
     assert factory_calls == []  # 未接続ならブラウザを起動しない
 
 
