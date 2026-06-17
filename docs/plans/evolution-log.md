@@ -2143,3 +2143,37 @@ Cycle 23 — LLM 出力をオブジェクトとしてパースする bare json.l
            array 用正典ヘルパ（extract_json_array / extract_json_value 新設）へ統合し「単一正典」を array まで拡張、
            (ee) silent-drop 残ローダー（agent_knowledge/capability_history/org_snapshot）観測化（多様性: observability）、
            (ii) atelier 以外の vision 機能（収益化配線 _publish_live / Org 量産）で多様性確保。
+
+Cycle 24 — silent-drop 観測性を残ローダー3種へ横展開（黙殺→warn_skipped_state_file・母数目減りの観測化）  (2026-06-18)
+  Plan   : C23（JSON refactor）と別カテゴリで多様性を確保しつつ、C22 Next が識別済みの (ee) を回収。受け入れ基準=
+           破損レコードを黙殺していた残ローダーを正典ヘルパ core.platform.state.warn_skipped_state_file 経由で観測可能化し、
+           スキップ継続・ファイル温存の挙動は厳密保存・回帰0・敵対レビュー済・merged。なぜ今: 学習パターン/能力追加履歴/
+           組織スナップショットの母数が `except: continue` / `return {}` で静かに目減りする観測の穴は、メトリクスや
+           自己改善判断を歪める静かな指標バグ（[[silent-drop-observability]] の系譜）。落とした候補: (jj) capability_gap array
+           統合（JSON 系連発＝多様性に反する・latent で低レバレッジ）、(ii) vision 機能（より大きく次サイクルで計画）。
+  Did    : work/silent-drop-residual-loaders-20260618。4サイトを既存パターン（per-line/per-file catch に
+           warn_skipped_state_file(path, exc, kind=...) を挿入）へ統一＝ core/intelligence/agent_knowledge.py（_load_patterns・
+           SuccessPattern）・core/intelligence/capability_history.py（get_history・CapabilityAddition）・
+           core/hierarchy/org_snapshot.py（list_snapshots の per-file catch ＝OrgSnapshot ＋ restore_snapshot の
+           JSONDecodeError catch ＝例外型は据え置きで warn のみ追加）。tests/test_silent_drop_residual_loaders.py（4件＝
+           破損レコード注入時に正レコードは返り WARNING が kind ラベル付きで出ることを caplog で検証・ファイル温存も assert）。
+  Check  : 関連8件緑（新規4＋既存 metrics 4）/ 全件 test-triage GREEN（1567 passed・既知2失敗のみ・新規回帰0・新規4/4）/
+           ruff・format クリーン / code-reviewer = APPROVE（critical/warning ゼロ）。5点の懐疑検証を実証: 制御フロー不変
+           （continue/return {} 保存・file 削除なし）・例外型保存（restore は JSONDecodeError のみ維持＝伝播挙動不変・他は
+           Exception 維持で `as exc` 束縛のみ追加）・循環 import なし（state.py は3モジュールを import しない・既に top-level で
+           get_platform_home を import 済＝循環不在の証左）・path 粒度正（per-line=ファイル全体 path / snapshot=個別 path）・
+           洪水抑制（path+mtime デデュープで破損が直るまで1 WARNING）・テスト load-bearing（warn 除去で caplog 空→fail・
+           tmp_path 一意で _warned_state_files のクロステスト DEBUG 降格なし）。nit 2件（遅延 import の top-level 化／多破損行で
+           N warn だが同 mtime で2行目以降 DEBUG）は正典パターン準拠ゆえ据え置き。
+  Act    : merged ✅（main 79a2199、ログ別ブランチ）。固定化: (A) **観測化の横展開は「既存の正典ヘルパ＋既存テストパターン」を
+           そのまま踏襲する**＝新設計不要で confidence 最大・diff 最小（warn 呼び出し1行＋遅延 import の挿入のみ）。kind ラベルは
+           ローダーが返す型名にして観測ログから発生源が即特定できるようにする。(B) **挙動保存の観測化は「制御フロー（continue/
+           return）を1行も動かさず warn を前置するだけ」が鉄則**＝レビューの第一論点が「フローが変わっていないか」なので、catch
+           本体は warn 追加と `as exc` 束縛だけに留める（例外型も広げない＝伝播挙動を温存）。(C) **caplog テストは logger 名を
+           `core.platform.state`（warn を emit する実モジュール）に合わせ、正レコード返却＋kind 付き WARNING の両方を assert**して
+           load-bearing にする（warn を消すと fail する）。tmp_path で mtime デデュープのクロステスト汚染を避ける。
+           → [[silent-drop-observability]] に「Cycle 24: agent_knowledge/capability_history/org_snapshot(list+restore) を観測化＝
+           C22 Next 回収・state層の warn_skipped_state_file が intelligence/hierarchy 層へ到達」を追記。
+  Next   : C25 候補 — (jj) capability_gap_analyzer:285 の LLM 配列パースを array 用正典ヘルパへ統合（JSON 系だが C24 を挟んだので
+           多様性回復・object に続き array まで単一正典を拡張）、(ii) vision 機能スライス（収益化 _publish_live 実機 E2E / Org 量産）で
+           プロダクト価値前進、(kk) Claude Code ベストプラクティス採用（trend-watcher で最新動向→.claude/ 更新）でメタ多様性。
