@@ -2,28 +2,29 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Bell,
   Bot,
+  Boxes,
+  ArrowRightLeft,
+  Blocks,
   Building2,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
+  Coins,
   Database,
   HelpCircle,
+  Inbox,
+  KanbanSquare,
   LayoutDashboard,
   Map as MapIcon,
   Menu,
   Moon,
+  PenSquare,
+  Plug,
   Search,
   Settings,
   Sparkles,
   Sun,
-  Boxes,
-  KanbanSquare,
-  ArrowRightLeft,
-  CalendarClock,
-  Inbox,
-  Coins,
-  PenSquare,
-  Plug,
-  Blocks,
+  Target,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -35,9 +36,12 @@ import { levelBadge, levelLabel } from '@/lib/labels'
 import { cn } from '@/lib/utils'
 import { AgentsPage } from '@/pages/AgentsPage'
 import { AtlasPage } from '@/pages/AtlasPage'
+import { BoardPage } from '@/pages/BoardPage'
 import { ConnectionsPage } from '@/pages/ConnectionsPage'
-import { DataPage } from '@/pages/DataPage'
+import { ContentSchedulePage } from '@/pages/ContentSchedulePage'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { DataPage } from '@/pages/DataPage'
+import { GoalsPage } from '@/pages/GoalsPage'
 import { HandoffsPage } from '@/pages/HandoffsPage'
 import { HelpPage } from '@/pages/HelpPage'
 import { HumanTasksPage } from '@/pages/HumanTasksPage'
@@ -45,14 +49,12 @@ import { InboxPage } from '@/pages/InboxPage'
 import { MarketplacePage } from '@/pages/MarketplacePage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
-import { RevenuePage } from '@/pages/RevenuePage'
-import { StudioPage } from '@/pages/StudioPage'
-import { BoardPage } from '@/pages/BoardPage'
-import { ContentSchedulePage } from '@/pages/ContentSchedulePage'
 import { OrgsPage } from '@/pages/OrgsPage'
 import { ProposalsPage } from '@/pages/ProposalsPage'
+import { RevenuePage } from '@/pages/RevenuePage'
 import { SessionsPage } from '@/pages/SessionsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { StudioPage } from '@/pages/StudioPage'
 
 type NavItem = {
   to: string
@@ -108,6 +110,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/orgs', label: '組織', icon: Building2 },
       { to: '/agents', label: 'エージェント', icon: Bot },
+      { to: '/goals', label: 'ゴール実行', icon: Target },
     ],
   },
   {
@@ -744,6 +747,7 @@ export default function App() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/human-tasks" element={<HumanTasksPage />} />
         <Route path="/connections" element={<ConnectionsPage />} />
+        <Route path="/goals" element={<GoalsPage />} />
         <Route path="/orgs" element={<OrgsPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/proposals" element={<ProposalsPage />} />

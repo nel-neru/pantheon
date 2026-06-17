@@ -67,7 +67,7 @@
         { "component": "core/goals/goal_parser.py", "action": "ゴールを分類・構造化" },
         { "component": "core/goals/org_instantiator.py", "action": "ゴールに適した Organization を設計/生成" },
         { "component": "core/goals/goal_decomposer.py", "action": "計画タスクに分解" },
-        { "component": "core/goals/execution_coordinator.py", "action": "PreTaskOrchestrator 経由でタスクを実行（※現状スタブ）" },
+        { "component": "core/goals/execution_coordinator.py", "action": "PreTaskOrchestrator 経由で依存トポロジカル順にタスクを実行（リトライ付き）" },
         { "component": "core/goals/goal_verifier.py", "action": "成功条件を検証し GoalLibrary に記録" }
       ],
       "surfaces": ["pantheon goal run", "pantheon goal status", "POST /api/goals/run", "POST /api/goals/stream", "GoalsPage"],
