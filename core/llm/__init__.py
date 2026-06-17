@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from .base import LLMConfig, LLMMessage, LLMProvider, LLMResponse
+from .json_extract import extract_json_object
 
 __all__ = [
     "LLMProvider",
@@ -32,6 +33,7 @@ __all__ = [
     "claude_binary",
     "run_claude",
     "run_claude_sync",
+    "extract_json_object",
 ]
 
 

@@ -10,12 +10,13 @@ GoalParser — 自然言語目標パーサー (M-01)
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from core.llm.json_extract import extract_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -385,12 +386,10 @@ class GoalParser:
         response = self._llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
 
-        json_match = re.search(r"\{.*?\}", content, re.DOTALL)
-        if not json_match:
-            logger.warning("LLM returned no JSON, falling back to heuristic")
+        data = extract_json_object(content)
+        if not isinstance(data, dict):
+            logger.warning("LLM returned no JSON object, falling back to heuristic")
             return self._parse_heuristic(raw_text)
-
-        data = json.loads(json_match.group())
         ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         return StructuredGoal(
             goal_id=f"goal:{data.get('goal_type', 'general')}:{ts}",

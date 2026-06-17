@@ -1171,12 +1171,6 @@
       },
       {
         "severity": "low",
-        "title": "LLM JSON extraction regex is non-greedy and breaks on nested objects",
-        "detail": "Both GoalParser._parse_with_llm and GoalDecomposer._decompose_with_llm use re.search(r'\\{.*?\\}', content, re.DOTALL) to grab the JSON. The non-greedy `.*?` stops at the first closing brace, so any nested object (e.g. the decomposer's epics/stories/tasks structure) is truncated and json.loads fails, silently falling back to heuristics/templates. The LLM path is effectively unreachable for decomposition.",
-        "file": "core/goals/goal_decomposer.py"
-      },
-      {
-        "severity": "low",
         "title": "use_llm plumbed through but parser/decomposer/verifier have no llm_client",
         "detail": "AbstractGoalPipeline.run(use_llm=...) forwards the flag, but the default GoalParser()/GoalDecomposer()/GoalVerifier() are constructed with llm_client=None, so `use_llm=True` is a silent no-op everywhere. There is also no integration with the project's actual generation backend (core/runtime/claude_code.ClaudeCodeProvider) — the llm_client interface expects a hosted-LLM `.invoke()`, which contradicts the no-API-key architecture.",
         "file": "core/goals/abstract_goal_pipeline.py"
@@ -1225,9 +1219,9 @@
         "rationale": "Mirror the existing /add-cli-command pattern with a helper that scaffolds new goal-type templates in GoalDecomposer._TEMPLATES + GOAL_TYPE_TO_TEMPLATE + org_designer template, keeping the three parallel maps in sync (they are easy to desync today)."
       },
       {
-        "title": "Robust JSON parsing for LLM paths and real use_llm wiring",
+        "title": "Wire a real ClaudeCodeProvider-backed llm_client so use_llm actually works",
         "kind": "refactor",
-        "rationale": "Swap the non-greedy brace regex for a balanced-brace/json-decoder scan and inject a real llm_client (ClaudeCodeProvider-backed) so use_llm=True actually improves parsing/decomposition instead of silently falling back."
+        "rationale": "DONE (Cycle 20): the brace regex is now a json-decoder scan via the shared core.llm.extract_json_object (raw_decode, fence-aware) — robust to nested objects, braces in strings, and trailing prose. REMAINING: inject a real llm_client (ClaudeCodeProvider-backed; note the interface mismatch — provider.generate() is async while parser/decomposer call self._llm.invoke()) so use_llm=True actually improves parsing/decomposition instead of silently falling back. use_llm=True is currently never set in production, so the LLM path stays dormant until this wiring lands."
       },
       {
         "title": "Centralize goal lifecycle state under <repo>/.pantheon",

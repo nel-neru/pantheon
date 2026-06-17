@@ -12,12 +12,12 @@ one validated departments template → a ready Organization.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.llm.json_extract import extract_json_object
 from core.models.organization import AgentSkill, DivisionType
 
 logger = logging.getLogger(__name__)
@@ -146,24 +146,13 @@ def _deterministic_template(genre: str) -> List[Dict[str, Any]]:
 
 
 def _extract_json(text: str) -> Optional[Any]:
-    """LLM 出力から JSON オブジェクトを抽出する（コードフェンス等を除去）。
+    """LLM 出力から JSON オブジェクトを抽出する（共有ヘルパーへ委譲）。
 
-    fence の除去は `\\s*`+lazy の重複（ReDoS）を避けるため改行アンカーにする。
-    まず最初の '{' から JSONDecoder.raw_decode で正しく閉じた範囲だけを取り、
-    末尾に余計なプロンプトが続いても安全にパースする。
+    実装は :func:`core.llm.extract_json_object` に一本化（コードフェンス除去 +
+    最初の '{' から JSONDecoder.raw_decode で正しく閉じた範囲のみ取得）。この
+    薄いラッパは後方互換のために残す。
     """
-    if not text:
-        return None
-    fenced = re.search(r"```(?:json)?\n(.*?)```", text, re.DOTALL)
-    candidate = fenced.group(1) if fenced else text
-    start = candidate.find("{")
-    if start == -1:
-        return None
-    try:
-        obj, _end = json.JSONDecoder().raw_decode(candidate[start:])
-        return obj
-    except ValueError:
-        return None
+    return extract_json_object(text)
 
 
 async def design_departments(genre: str) -> List[Dict[str, Any]]:
