@@ -8,12 +8,11 @@ Internal Consultant - Strict Quality Reviewer
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from config.settings import load_config
-from core.llm import LLMMessage, get_llm_provider
+from core.llm import LLMMessage, extract_json_object, get_llm_provider
 from core.models.organization import (
     ImprovementProposal,
     OrganizationMetrics,
@@ -136,8 +135,14 @@ async def run_strict_quality_review(
 
 
 async def _generate_and_parse_json(provider, messages: list, max_retries: int = 2) -> dict:
-    """LLM を呼んで JSON をパースする。失敗時は max_retries 回リトライし、それでも失敗なら例外を送出。"""
-    last_error: Exception | None = None
+    """LLM を呼んで JSON をパースする。失敗時は max_retries 回リトライし、それでも失敗なら例外を送出。
+
+    JSON 抽出は core.llm.extract_json_object に一本化（```json フェンス除去・全 `{` 走査・
+    プローズ耐性・never-raise で dict-or-None を保証）。dict が得られなかった試行を
+    リトライ対象とし、全試行が dict を返さなかった場合のみ RuntimeError を送出する。
+    `{` アンカーにより戻り値は dict に保証されるため、呼び出し側の ``data.get(...)`` が
+    JSON 配列等で AttributeError になることはない。
+    """
     for attempt in range(max_retries):
         response = await provider.generate(
             messages=messages,
@@ -145,26 +150,19 @@ async def _generate_and_parse_json(provider, messages: list, max_retries: int = 
             max_tokens=4000,
             task_type="quality_review",
         )
-        try:
-            # コードブロック等のラッパーを除去してからパース
-            content = response.content.strip()
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            return json.loads(content)
-        except json.JSONDecodeError as e:
-            last_error = e
-            logger.warning(
-                "Internal Consultant: JSON parse failed (attempt %d/%d): %s",
-                attempt + 1,
-                max_retries,
-                e,
-            )
+        data = extract_json_object(response.content)
+        if isinstance(data, dict):
+            return data
+        logger.warning(
+            "Internal Consultant: JSON parse failed (attempt %d/%d): no JSON object in response",
+            attempt + 1,
+            max_retries,
+        )
 
     raise RuntimeError(
-        f"Internal Consultant: JSON parse failed after {max_retries} attempts. Last error: {last_error}"
-    ) from last_error
+        f"Internal Consultant: JSON parse failed after {max_retries} attempts "
+        "(no JSON object found in LLM response)"
+    )
 
 
 def generate_improvement_proposals_from_review(review: QualityReview) -> List[ImprovementProposal]:
