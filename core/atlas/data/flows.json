@@ -73,11 +73,13 @@
       "surfaces": ["pantheon goal run", "pantheon goal status", "POST /api/goals/run", "POST /api/goals/stream", "GoalsPage"],
       "state": ["~/.pantheon/goals/", "<repo>/.pantheon/"],
       "verification": ["tests/test_abstract_goal_pipeline.py"],
-      "status": "fragile",
+      "status": "partial",
       "known_issues": [
-        { "severity": "high", "title": "ExecutionCoordinator が no-op スタブ — 実作業を実行しない", "detail": "本番呼び出しは実行バックエンドに接続されていない。", "file": "core/goals/execution_coordinator.py" },
-        { "severity": "high", "title": "生成された Organization が永続化されない", "detail": "OrgInstantiator.instantiate() の結果を保存する呼び出し元が無い。", "file": "core/goals/org_instantiator.py" },
-        { "severity": "medium", "title": "SSE 進捗が実 ExecutionProgress でなく固定文言", "detail": "/api/goals/stream は固定メッセージのみ送出。", "file": "web/server.py" }
+        { "severity": "medium", "title": "SSE 中間進捗が実 ExecutionProgress でなく固定文言", "detail": "/api/goals/stream は start/result/done に実データを載せるが、途中の progress イベントは固定文言。ExecutionCoordinator は progress_callback（実 per-task 進捗）を持つのに API がそれを配線していない。", "file": "web/server.py" }
+      ],
+      "resolved": [
+        { "title": "ExecutionCoordinator は no-op スタブではない — 依存トポロジカルソート/リトライ/orchestrator.execute 経由の実エージェント実行を実装。本番呼び出し元(AbstractGoalPipeline)は PreTaskOrchestrator(execute()+自動 agent_factory)を配線済み。未配線の最小環境のみ後方互換で plan-only。テスト: tests/test_abstract_goal_pipeline.py の execution/full_pipeline 系。", "file": "core/goals/execution_coordinator.py" },
+        { "title": "生成された Organization は永続化される — AbstractGoalPipeline.run() が is_new 時に PlatformStateManager.save_organization() を呼ぶ。テスト: tests/test_abstract_goal_pipeline.py::test_persists_to_instantiator_platform_home（organizations/*.json が1件できることを assert）。", "file": "core/goals/abstract_goal_pipeline.py" }
       ]
     },
     {
