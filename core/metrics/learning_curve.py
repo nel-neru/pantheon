@@ -64,7 +64,8 @@ class LearningCurveTracker:
         ys = [float(point.avg_proposal_quality) for point in points]
         mean_x = sum(xs) / len(xs)
         mean_y = sum(ys) / len(ys)
-        numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+        # xs/ys はともに points 由来で同数。ずれたら相関係数が静かに歪むため strict=True。
+        numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
         sum_sq_x = sum((x - mean_x) ** 2 for x in xs)
         sum_sq_y = sum((y - mean_y) ** 2 for y in ys)
         denominator = (sum_sq_x * sum_sq_y) ** 0.5

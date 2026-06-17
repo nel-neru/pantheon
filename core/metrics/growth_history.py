@@ -89,7 +89,9 @@ class GrowthHistoryRecorder:
             denominator = sum((x - mean_x) ** 2 for x in xs)
             if denominator == 0:
                 return max(0.0, min(100.0, ys[-1]))
-        slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denominator
+        # xs と ys はともに records 由来で同数。長さがずれたら回帰係数が静かに歪むので
+        # strict=True で不変条件をラウド化する（silent metric distortion を防ぐ）。
+        slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True)) / denominator
         intercept = mean_y - slope * mean_x
         predicted_x = xs[-1] + float(days_ahead)
         predicted = intercept + slope * predicted_x
