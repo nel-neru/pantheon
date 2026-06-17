@@ -164,7 +164,7 @@
       "status": "partial",
       "known_issues": [
         { "severity": "medium", "title": "H 系自己チューニング層が未配線", "detail": "PolicyOptimizer/ConfigAutoTuner/TemplatePromoter 等が実行スケジュールに繋がっていない。", "file": "core/quality/config_autotuner.py" },
-        { "severity": "medium", "title": "async 実行経路が同期 SqliteSaver と非互換（潜在）", "detail": "run_improvement_for_organization は async で ainvoke/astream を呼ぶが SqliteSaver は同期専用で NotImplementedError を投げる。現状この async 経路を駆動する呼び出し元が無いため潜在。駆動するなら AsyncSqliteSaver へ置換が必要。", "file": "core/quality/self_improvement_graph.py" }
+        { "severity": "medium", "title": "async 自己改善経路は二重に壊れている（潜在・CLI 未露出）", "detail": "run_improvement_for_organization の ainvoke/astream は二段で失敗する（2026-06-17 に実コードで両方実証）: (1) グラフを同期 SqliteSaver でコンパイルしたまま ainvoke するため langgraph が NotImplementedError を投げる。(2) それを AsyncSqliteSaver(langgraph.checkpoint.sqlite.aio)へ替えても、checkpoint シリアライズが state 内の RepoStateManager/Organization を msgpack 化しようとして 'TypeError: Object of type RepoStateManager is not serializable' を投げる。driver chain は core/orchestrator.py:run_meta_evolution_cycle → group_orchestrator.run_smart_improvement_cycle → run_improvement_for_organization と配線済みだが run_meta_evolution_cycle が CLI/web に未露出のため潜在（=実際に駆動されると即クラッシュ）。根治には saver の async 化に加え、非シリアライズ可能オブジェクト(state_manager/organization)を checkpoint state から外して config/context 経由で渡すアーキテクチャ変更が要る（saver 交換のみの partial fix は不可）。", "file": "core/quality/self_improvement_graph.py" }
       ],
       "resolved": [
         { "title": "LangGraph チェックポイント DB を cwd 相対から ~/.pantheon 配下へ＋接続リーク（conn を try/finally で close）を根治", "file": "core/quality/self_improvement_graph.py" },
