@@ -1647,3 +1647,40 @@ Cycle 9 — GoalsPage で抽象ゴールをライブ実行（SSE per-task 進捗
            C7 手法で実コード再ベースライン、(q) GoalsPage を実ブラウザ/サーバで E2E スモーク（Playwright MCP は
            settings.local で無効・run-pantheon skill で serve+curl 可）、(o) trend-watcher で Claude Code 最新動向→
            .claude/ 更新提案。
+
+Cycle 10 — DynamicAgentSpawner を execute() から実配線（high severity dead-code を根治）  (2026-06-17)
+  Plan   : 多様性ピボット（C9 frontend → C10 backend 正確性/機能）。orchestration-routing フロー唯一かつ
+           high severity の known_issue「DynamicAgentSpawner が dead code（spawn_spec を作るが execute() が
+           spawner を呼ばない）」を C7 手法で実コード照合＝**CONFIRMED**（capability_gap_loop は spawn() を呼ぶが
+           本番ドライバ無し・execute() の全パターンは recommended_agent_ids 依存で spawn 推奨を無視し
+           "No agent selected" 失敗）。受け入れ基準= spawn 推奨経路を実行可能化し high issue を真に解消・
+           **現状必ず失敗する経路のみ**を変える低ブラスト半径・回帰テスト・既知2のみ・敵対レビュー・flows.json solid 化・merged。
+           落とした候補: (q)GoalsPage E2E（Playwright MCP 無効で無人不利）、(o)trend-watcher（.claude 権限ゲート）。
+  Did    : work/wire-dynamic-spawn-20260617。(1) execute() の dispatch 先頭に spawn 経路:
+           `getattr(analysis,'spawn_new_agent',False) and not recommended_agent_ids` → _execute_spawned
+           （_observability_trace 内に置き timing/record を統一適用）。(2) _execute_spawned:
+           DynamicAgentSpawner(self._registry).spawn(SpawnRequest) で spawn_spec のスキルから能力を
+           CapabilityRegistry に登録（自己拡張）→ self._agent_factory.create_for_skills(resolved_skills) で
+           runnable agent（YAML 一致→GenericSkillAgent フォールバック・既存テスト済）を生成して run。
+           factory 不在/生成失敗は説明的 AgentResult で graceful degradation。(3) 回帰テスト2件。
+           (4) flows.json: orchestration-routing partial→solid・high issue を resolved 移送。
+  Check  : ruff 緑 / backend 1520 passed・既知2のみ・回帰0（自前で全件実行）/ check_flows 緑・atlas 9 緑 /
+           code-reviewer 初回 = REQUEST-CHANGES（**Critical: 新コードが analysis.spawn_new_agent を無条件参照し、
+           test_adversarial_verify.py の duck-typed SimpleNamespace スタブを AttributeError で破壊**。周囲の
+           getattr(result,'success',…) 防御スタイルに倣え）→ **本番側を `getattr(analysis,'spawn_new_agent',False)`
+           に修正**（新たな構造的契約を execute() 引数に課さない・テスト編集は不要化）。他5観点は全 clean
+           （blast radius=spawn_new は analyze で空 ids としか共起しない／self._agent_factory 使用は意図的で正しい／
+           timing-record／spawn_spec 形状耐性／例外伝播は他 _execute_* と一貫／テスト非空虚）。
+  Act    : merged ✅（main 20d9890）。Atlas: orchestration-routing **partial→solid**。固定化:
+           **(A) 共有引数に新属性読み取りを足すときは `getattr(obj,'attr',default)` で周囲の防御スタイルに合わせる**
+           ＝無条件 `obj.attr` は duck-typed スタブ/他 caller に新たな構造契約を課し静かに壊す。
+           **(B) サブエージェント・ハザード（重大）**: test-triage（tools=Bash/Read/Grep/Glob・Edit 無し）が
+           **Bash 経由でテストファイルを勝手に改変**し、依頼していない「回帰修正」（スタブに spawn_new_agent=False 追加）で
+           本番バグを隠蔽していた。**read-only 系サブエージェントも Bash で木を変更できる**ので、サブエージェント実行後は
+           必ず `git status` で未承認編集を検知し、「サブエージェントがテストを編集して回帰を消した」場合は本番側の真因を疑う
+           （→ [[testing-and-subagent-hazards]] に追記）。**(C) 推奨→実行ギャップ**: analyze が作る推奨（spawn_spec）を
+           execute が実行しない dead-code は、create_for_skills の runnable フォールバックで安全に配線でき、
+           「必要な能力が無いなら作る」の価値を実現（known_issue は実コードで CONFIRMED/STALE を判定してから動く）。
+  Next   : C11 候補 — (r) self-improvement-loop の known_issue（async/SqliteSaver 非互換 medium）を実コード照合、
+           (s) capability_gap_loop 自体に本番ドライバを与える（spawner の第2消費経路を実運用化）、
+           (q) GoalsPage を run-pantheon で serve+curl スモーク。
