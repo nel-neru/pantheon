@@ -137,6 +137,7 @@ class HeadlessDriver(MultiplexerDriver):
             metadata=dict(spec.metadata),
         )
 
+        log_fh = None
         try:
             log_fh = open(log_path, "w", encoding="utf-8", errors="replace")
             log_fh.write(f"$ {subprocess.list2cmdline(list(spec.command))}\n\n")
@@ -155,6 +156,15 @@ class HeadlessDriver(MultiplexerDriver):
             logger.warning("HeadlessDriver: failed to start %s: %s", spec.agent_id, exc)
             surface.status = SurfaceStatus.FAILED
             surface.exit_code = -1
+            # The log handle is opened *before* Popen. When the spawn fails it was
+            # never stored in self._logs (so _flush_log can't reach it) — close it
+            # here or every spawn failure leaks a file descriptor. A 24/7 daemon
+            # retrying a bad command would otherwise exhaust the FD table.
+            if log_fh is not None:
+                try:
+                    log_fh.close()
+                except OSError:
+                    pass
             _write_exit_sidecar(surface, -1)
 
         workspace.surfaces.append(surface)
