@@ -51,8 +51,8 @@ Model-tiered by cognitive load — heavy reasoning on Opus, implementation on So
 mechanical/monitoring on Haiku — so routine work doesn't burn the expensive tier:
 - **Opus** (deep reasoning): `code-reviewer` (read-only diff review), `debugger` (root-cause + minimal fix).
 - **Sonnet** (implementation / judgment): `frontend-dev` (React/Vite/TS), `flow-auditor` (per-flow health).
-- **Haiku** (mechanical / monitoring, low-cost): `test-triage` (run suites, match against the 6 known
-  failures), `trend-watcher` (surface Claude Code/Anthropic trends → `.claude/` config suggestions,
+- **Haiku** (mechanical / monitoring, low-cost): `test-triage` (run suites, match against the 2 known
+  Windows failures — chmod 0o600), `trend-watcher` (surface Claude Code/Anthropic trends → `.claude/` config suggestions,
   read-only), `doc-writer` (keep docs in sync; honors the planning-doc hygiene rule).
 
 Pick the tier by the task's hardest sub-step, not its length: a long-but-mechanical task (run tests,

@@ -4733,7 +4733,7 @@
       {
         "severity": "medium",
         "title": "SafeChangeExecutor runs the FULL pytest suite for every single change",
-        "detail": "_run_tests invokes 'pytest tests/ -q' over the entire suite with a 120s timeout per applied change. For the self-extension pipeline this is O(suite) per file and, given the documented 6 pre-existing Windows failures, returncode!=0 / failed>0 will make EVERY change look failed-and-rolled-back on Windows even when the change is fine. There is no way to scope tests to the impacted files.",
+        "detail": "_run_tests invokes 'pytest tests/ -q' over the entire suite with a 120s timeout per applied change. For the self-extension pipeline this is O(suite) per file and, given the documented 2 pre-existing Windows failures (chmod 0o600), returncode!=0 / failed>0 will make EVERY change look failed-and-rolled-back on Windows even when the change is fine. There is no way to scope tests to the impacted files.",
         "file": "core/execution/safe_executor.py"
       },
       {
@@ -4769,7 +4769,7 @@
       {
         "title": "Scope SafeChangeExecutor tests to impacted files via ImpactAnalyzer",
         "kind": "refactor",
-        "rationale": "SafeChangeExecutor and ImpactAnalyzer live in the same package but don't cooperate. Use the import graph to run only dependent test modules (or a targeted node-id set) instead of the whole suite, making the self-extension verify loop fast and immune to the 6 known unrelated Windows failures."
+        "rationale": "SafeChangeExecutor and ImpactAnalyzer live in the same package but don't cooperate. Use the import graph to run only dependent test modules (or a targeted node-id set) instead of the whole suite, making the self-extension verify loop fast and immune to the 2 known unrelated Windows failures."
       },
       {
         "title": "Add a feature that composes the execution/* gates into one ChangeGate",
