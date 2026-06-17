@@ -57,7 +57,12 @@ class CapabilityHistoryTracker:
         for line in lines[-limit:]:
             try:
                 out.append(CapabilityAddition.from_dict(json.loads(line)))
-            except Exception:  # 破損行/スキーマ進化レコードはスキップ
+            except Exception as exc:
+                # 破損行/スキーマ進化レコードはスキップするが黙殺せず観測可能にする
+                # （能力追加履歴の母数が静かに目減りするため）。
+                from core.platform.state import warn_skipped_state_file
+
+                warn_skipped_state_file(self.file_path, exc, kind="CapabilityAddition")
                 continue
         return out
 

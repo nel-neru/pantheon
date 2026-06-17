@@ -53,7 +53,12 @@ class OrgSnapshotManager:
         for path in sorted(self.snapshots_dir.glob(f"{prefix}*.json")):
             try:
                 snapshots.append(OrgSnapshot(**json.loads(path.read_text(encoding="utf-8"))))
-            except Exception:
+            except Exception as exc:
+                # 破損/スキーマ不整合のスナップショットは黙殺せず観測可能にする
+                # （組織スナップショット一覧が静かに目減りするため）。
+                from core.platform.state import warn_skipped_state_file
+
+                warn_skipped_state_file(path, exc, kind="OrgSnapshot")
                 continue
         return snapshots
 
@@ -63,7 +68,11 @@ class OrgSnapshotManager:
             return {}
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            # 破損スナップショットの復元失敗は黙殺せず観測可能にする（復元が静かに空を返すため）。
+            from core.platform.state import warn_skipped_state_file
+
+            warn_skipped_state_file(path, exc, kind="OrgSnapshot")
             return {}
         return dict(payload.get("org_data", {}))
 
