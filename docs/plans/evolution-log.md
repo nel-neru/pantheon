@@ -1684,3 +1684,36 @@ Cycle 10 — DynamicAgentSpawner を execute() から実配線（high severity d
   Next   : C11 候補 — (r) self-improvement-loop の known_issue（async/SqliteSaver 非互換 medium）を実コード照合、
            (s) capability_gap_loop 自体に本番ドライバを与える（spawner の第2消費経路を実運用化）、
            (q) GoalsPage を run-pantheon で serve+curl スモーク。
+
+Cycle 11 — self-improvement async 非互換 issue を実証検証→「二重に壊れている」と判明し正直に Atlas 是正（コード fix は escalate）  (2026-06-17)
+  Plan   : C7 手法で self-improvement-loop の medium issue#2（async 経路が同期 SqliteSaver と非互換・「潜在」）を
+           実コード照合。受け入れ基準= CONFIRMED/STALE 判定し、修正可能なら最小スライスで根治、無理なら honest に
+           記録して escalate。落とした候補: (s)capability_gap_loop ドライバ（spawner 第2経路・C10 の自然な続きだが
+           より大きい）、(q)GoalsPage E2E（Playwright 無効で無人不利）。
+  Did    : work/atlas-selfimprove-async-drift-20260617。**実測で2段の壊れを実証**: (1) trivial graph を
+           同期 SqliteSaver で `ainvoke` → `NotImplementedError: SqliteSaver does not support async methods`
+           （issue は CONFIRMED）。(2) `AsyncSqliteSaver`(langgraph.checkpoint.sqlite.aio, aiosqlite 0.20 同梱) へ
+           置換する fix を実装（トポロジ共有ヘルパ抽出＋run_improvement_for_organization を `async with
+           AsyncSqliteSaver.from_conn_string` 化）し回帰テスト2件を追加→**実 Organization+RepoStateManager で**
+           `TypeError: Object of type RepoStateManager is not serializable`（checkpoint msgpack 化が state 内の
+           非シリアライズ可能オブジェクトで失敗）。driver chain（core/orchestrator.py:run_meta_evolution_cycle→
+           group_orchestrator.run_smart_improvement_cycle→run_improvement_for_organization）は存在するが
+           run_meta_evolution_cycle が CLI/web 未露出＝潜在。**saver 交換のみでは動かない**＝heavy オブジェクトを
+           checkpoint state から外す（config/context 経由）アーキテクチャ変更が必要と判明。→ **コード/テストを
+           revert**し、flows.json の issue#2 を実証ベースの正確な内容（二重ブロッカー＋driver chain＋未露出＋
+           partial fix 不可）に是正（status partial 維持）。
+  Check  : 実測スクリプト2本（同期 saver→NotImplementedError / async saver+実オブジェクト→TypeError）/
+           revert 後ツリー clean / check_flows 緑・atlas 9 緑 / merge_to_main テストゲート緑（既知2のみ・回帰0）。
+           コード変更ゼロ（メタのみ）ゆえ挙動不変。
+  Act    : merged ✅（main 0c1442a）。固定化: **(A) async-saver 交換のような「明白そうな fix」も、経路全体を
+           実測で end-to-end 検証してから fix と呼ぶ**。NotImplementedError の裏に第2の壊れ（checkpoint
+           シリアライズ不可）が隠れていた＝1つ直すと別エラーが出る型。**緑を捏造せず partial fix は出荷しない**
+           （saver だけ入れても TypeError で動かないので「resolved」は嘘になる）。**(B) langgraph の checkpointer は
+           state チャンネルを全て serde（msgpack/jsonplus）するので、state に RepoStateManager 等の非シリアライズ
+           可能オブジェクトを置くと checkpoint 駆動時にクラッシュ**（MagicMock は __dict__ 無限再帰で RecursionError、
+           実クラスは TypeError）。重い依存はチェックポイント state でなく config/context で渡す。**(C) 詰まったら
+           honest に escalate**＝実証で得た「二重に壊れている」知識を Atlas に固定し、次サイクルが saver-only の
+           naive fix を踏まないようにする（→ memory [[testing-and-subagent-hazards]] 系の検証規律）。
+  Next   : C12 候補 — (s) capability_gap_loop に本番ドライバを与え spawner 第2経路を実運用化（C10 の続き・
+           serialize 問題と無関係で安全）、(q) GoalsPage を run-pantheon で serve+curl スモーク、
+           (o) trend-watcher で Claude Code 最新動向→.claude/ 更新提案。
