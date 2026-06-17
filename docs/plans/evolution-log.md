@@ -1798,3 +1798,37 @@ Upgrade Program C6 — 組織横断プレイブック伝播  (2026-06-17)
   Act    : merged ✅（merge_to_main で衝突安全に統合）。
            → モダン化アップグレードプログラム（C1–C6）完了。全 6 サイクルが main 統合済み。
   Next   : プログラム完了。以降は /evolve の通常サイクルへ回帰（C14 候補群）。
+
+Cycle 14 — Inbox 提案セクションの無限ローディング不具合を修正（多様性ピボット: frontend/正確性）  (2026-06-17)
+  Plan   : C10/C12 と続いた「検出→実行ギャップ」backend 配線を3連続で選びそうになったが、/evolve の
+           「毎サイクル多様性」指示に従い frontend/正確性へピボット。最有力だった候補 (t)（capability_gap 構造
+           提案を state_manager 経由で /inbox 永続化）は L×C×R は高いが C10/C12 と同アーキタイプの3連続＝多様性最低
+           のため次サイクルへ温存（永続パス resolver 側に実装済・API/GUI 読取経路も検証済で低リスク）。
+           診断中に web/atelier の中核 HITL サーフェス Inbox.tsx で実バグを発見＝これを採用。受け入れ基準=
+           /api/organizations 失敗時に無限ローディングせず ErrorNote を出す・健全系（loading/empty）は不変・
+           回帰テスト・atelier build/test 緑・敵対レビュー済・merged。落とした候補: (t) 上記理由で温存、
+           ruff バグスキャン（ASYNC240/B905/RUF012 を三分類したが全て「真の非バグ/意図的」で実害ゼロ→churn 回避）。
+  Did    : work/inbox-proposals-error-state-20260617。web/atelier/src/pages/Inbox.tsx: Proposals セクションに
+           `{orgs.error && !orgs.data ? <ErrorNote/> : null}` を追加し、Loading/EmptyState 分岐を `!orgs.error` で
+           ガード。根因= useApi はエラー時 data を null のまま保持→orgsSig が永久 null→effect 早期 return→
+           loadingProps が初期 true で固定→「提案を集約」が無限表示・エラー非表示（Handoffs/Publishing は
+           ErrorNote を出すのに Proposals だけ欠落）。`!orgs.data` ガードで poll 中の一時エラーでは取得済み提案を
+           消さない（既存パターン踏襲）。__tests__/Inbox.test.tsx: 回帰2件（orgs エラー時 ErrorNote 表示＋誤誘導の
+           空状態を出さない／健全系の対照で空状態に落ち着きエラー非表示）。
+  Check  : atelier vitest 44/44 緑・build（tsc -b && vite build）緑・dist は gitignore 済（差分は src 2ファイルのみ）/
+           backend は frontend 変更ゆえ非影響（merge_to_main の backend ゲートで既知2のみ・新規回帰0 を再確認）/
+           code-reviewer = APPROVE-WITH-NITS（correctness/consistency/regression を旧コードで実証＝バグ test は旧コードで
+           fail・control は非空虚と確認）。確定 Warning 1件を修正: `queryByText('提案を集約')` は Loading が `{label}…`
+           で描画するため exact-match では常に null＝空虚→regex `queryByText(/提案を集約/)` に変更し「回帰の核心」を
+           実テスト化。サブエージェント後 git status で未承認編集なし確認。
+  Act    : merged ✅（main df74a1b）。固定化: (A) frontend のリスト系セクションは loading/empty/error の3状態を
+           必ず網羅し、同一ページ内の姉妹セクション（Handoffs/Publishing）のエラーパターン（`x.error && !x.data` で
+           ErrorNote・`!x.data` で良好データ保持）に揃える＝1つだけ抜けると無限ローディング等の静かな UX 破綻。
+           (B) Testing Library の負アサーションは描画実体と一致させる: 装飾付き（`{label}…` の省略記号等）テキストは
+           exact-match の queryByText で常に空振り＝空虚アサーション。regex/substring matcher を使う（→ memory
+           [[testing-and-subagent-hazards]] の「負アサーションは load-bearing な値に」の frontend 版）。
+           (C) 多様性は L×C×R の最大化に優先しうる制約: 同アーキタイプ3連続を避け、最有力候補でも温存して別次元へ
+           ピボットしてよい（温存先が低リスクで腐らないなら）。
+  Next   : C15 候補 — (t) capability_gap 構造提案を state_manager 経由で /inbox 永続化（今回温存・backend・最有力）、
+           (v) Inbox の per-org proposal フェッチ失敗の黙殺（catch→[]）を観測化し部分エラーを面に出す（今回の自然な続き・
+           silent-drop-observability の frontend 版）、(w) 別 atelier ページ（Observatory/Signals 等）の同型3状態網羅監査。
