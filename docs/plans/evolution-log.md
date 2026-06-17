@@ -1962,3 +1962,42 @@ Cycle 18 — Observatory の orchestra フィードダウンを開示し「0 偽
   Next   : C19 候補 — (z) Claude Code ベストプラクティス採用サイクル（trend-watcher で .claude/ 更新提案＝メタ/多様性、
            3連続 frontend を避けるピボット先として最有力）、(aa) silent-drop 残ローダーの観測化（backend）、
            (bb) 残る atelier ページ（Signals/Lab/Handbook）の loading/empty/(partial-)error 状態網羅監査（C14/C16/C18 の完遂）。
+
+Cycle 19 — zip の長さ不変条件を strict= で明示し silent truncation を防ぐ（B905 一掃・backend correctness へ多様性ピボット）  (2026-06-18)
+  Plan   : C16/C18 と frontend が続いたため多様性ルールで非 frontend へピボット。候補 (z) を先に検証＝trend-watcher で
+           Claude Code 動向と .claude/ 更新提案を収集したが、(1) trend store は空・(2) 提案はほぼ LOW（コメント追記のみ）で
+           .claude/ 設定はテストゲートで検証できず低 ROI と判断し **(z) は深追いせず skip**（2-strikes 精神）。次に
+           [[ruff-bug-scan-triage]] の実証済みアーキタイプで本番コードをバグ親和ルール（B/ASYNC/RUF006/SIM/PERF…）でスキャン。
+           ASYNC 系は実害＋安全な最小修正の組が無い（chat_agent の input() は対話 REPL の意図的ブロックで to_thread 化は
+           Ctrl+C/EOFError のスレッド跨ぎ伝播を壊す回帰／claude_code.run_claude の timeout は to_thread→subprocess への
+           passthrough で ASYNC109 偽陽性／agent run() の同期 I/O はオーケストレーション中央経路の大改修でスコープ外）と確定。
+           採用したのは B905（zip-without-strict）の三分法一掃。受け入れ基準= 等長が構造的に保証される zip を strict=True で
+           不変条件化し、意図的切り捨て（隣接ペア）は strict=False を明示、回帰0・敵対レビュー済・merged。なぜ今: metrics 層は
+           Cycle 5/29/30/37 で load 経路・torn write を硬化済だが、計算側の zip 長さ不一致（=静かに誤った相関/回帰係数、
+           Atlas 依存グラフからのファイル欠落）という silent metric distortion の最後の隙が未対応だった。落とした候補: (aa) silent-drop
+           残ローダー（同テーマ連発で多様性に反する）、(bb) atelier 状態監査（3連続 frontend）。
+  Did    : work/zip-strict-length-invariants-20260618。B905 全5サイトを三分法で分類し処理: strict=True（等長不変条件）=
+           core/metrics/growth_history.py（回帰 slope: xs=_build_x_values(records)/ys は records 由来で常に len(records)）・
+           core/metrics/learning_curve.py（相関: xs/ys とも points 由来）・core/atlas/introspect.py（依存グラフ: rels は
+           py_files から 1:1 append 構築）・core/intelligence/embeddings.py（cosine: 同一モデルの埋め込みは同次元・try/except
+           包みで benign）。strict=False（意図的切り捨て）= core/metrics/revenue_intelligence.py の zip(series, series[1:])（隣接
+           〔前月,当月〕ペアで series[1:] は1要素短いのが正・strict=True は誤り）。各サイトに意図コメントを付与。
+           tests/test_revenue_intelligence.py に test_mom_change_is_adjacent_pairs_n_minus_1 を追加（3ヶ月→MoM 2個=N-1、
+           値 [50.0,50.0] を固定＝strict=True へ誤修正すると ValueError で落ちる load-bearing 回帰）。
+  Check  : 関連 backend テスト緑（test_revenue_intelligence 8/8〔7→8〕・test_theme_bc_remaining+silent_drop 33/33・
+           test_atlas/embeddings/revenue 24/24）/ ruff B905=0（一掃確認）・default lint(E,F,I) 緑・format 緑 / backend は
+           merge_to_main の全件ゲートで既知2(chmod)のみ・新規回帰0・collection 1541 健全 / code-reviewer = APPROVE。
+           最重要の correctness 確認（strict=True が正当入力で発火＝silent truncation を crash に変える回帰）を全サイトで
+           ブランチ毎にトレースし「決して発火しない」を確定（_build_x_values は ValueError 時 parsed=[] 全リセット+break→
+           range(len(records)) フォールバックで常に等長、empty/<3 は zip 到達前に早期 return）。
+  Act    : merged ✅（main fad95de、ログ別ブランチ）。固定化: (A) **「silent metric distortion」は load 経路だけでなく
+           計算側の zip 長さ不一致でも起きる**＝observability テーマを load→torn write→計算 invariant まで一巡。等長が構造的に
+           保証される zip は strict=True で「将来のリファクタが invariant を壊したら静かに誤算せずクラッシュで気づく」ようにする。
+           (B) **B905 は一律 fix 禁物**（[[ruff-bug-scan-triage]] の SIM115 と同型）＝隣接ペア zip(xs, xs[1:]) のような意図的
+           切り捨ては strict=False を明示し、意図をコメント＋回帰テストで保護する（次の scan が誤って strict=True に「修正」
+           しないように）。(C) **strict=True 追加時の必須 correctness ゲート＝「正当な本番入力で発火しないか」を全分岐トレース**
+           （発火すれば silent truncation を crash に変える回帰）。(D) メタ: **検証できない候補（.claude/ 設定変更）は深追いせず
+           早期 skip し、検証可能な net（ruff バグスキャン）へ素早く乗り換える**のが長尺ループの効率。
+  Next   : C20 候補 — (aa) silent-drop 残ローダー（agent_knowledge/capability_history/proactive_notifier/org_snapshot）の観測化、
+           (bb) 残る atelier ページ（Signals/Lab/Handbook）の状態網羅監査（C14/C16/C18 完遂・ただし frontend）、
+           (cc) ASYNC240（agent run() の同期 I/O がイベントループをブロック）を to_thread 境界で安全に切り出す設計スライス。
