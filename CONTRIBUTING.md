@@ -36,7 +36,7 @@ cd web/frontend && npm test                  # フロントエンド (vitest)
 
 - 新機能・修正には必ず `tests/` にテストを追加してください
   （`tmp_path` + `get_platform_home` monkeypatch パターン推奨）。
-- **Windows では 6 件の既知失敗**（パス区切り・chmod 由来）があります。
+- **Windows では 2 件の既知失敗**（chmod 0o600 由来）があります。
   これらはベースラインであり、回帰ではありません（詳細は CLAUDE.md）。
 
 ## コーディング規約
