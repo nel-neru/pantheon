@@ -1548,3 +1548,33 @@ Cycle 6 — headless ドライバの spawn 失敗時ログ FD リーク根治  (
   Next   : C7 候補 — (k) 同型リーク監査（open→Popen/格納の間に例外があり得る他の call site を grep）、
            (j) flow-audit で未監査フローの健全性確認（[[atlas-flows-drift]] の Next）、
            (l) B905 zip strict（metrics の長さ不一致サイレント切り詰めの是非を精査）。
+
+Cycle 7 — abstract-goal-pipeline フローの stale issue を flow-audit で根絶（fragile→partial）  (2026-06-17)
+  Plan   : 静的スキャン（RUF012/SIM115/B905）が C6 の FD リーク1点以外は全て非バグ（真の定数/意図的/
+           pairwise）と判明＝実バグ井戸はほぼ枯れた。リーク archetype 監査(k)も daemon_registry は
+           `with log_file.open()` で安全・他は良性で**C6 が唯一**と裏取り（クリーンな負の結果）。基準を上げて
+           検証(j)へ。Atlas 19 フロー中唯一 fragile な abstract-goal-pipeline（未解決 high/high/medium 3件）を
+           実コード照合（[[atlas-flows-drift]]: stale 化＝/evolve 候補化前に実コード再検証必須）。受け入れ基準=
+           各 known_issue を CONFIRMED/STALE 判定し解消済みは resolved[] へ移送・status を実態へ更新・
+           check_flows 緑・敵対(独立 flow-auditor)検証・merged。落とした候補: (l)B905=三分で非バグ確定済、
+           (k)リーク監査=dry。
+  Did    : work/atlas-goal-flow-drift-20260617。core/atlas/data/flows.json の abstract-goal-pipeline:
+           issue#1(no-op スタブ)→**stale**: ExecutionCoordinator は topo-sort/retry/orchestrator.execute で
+           実行し、本番 AbstractGoalPipeline は PreTaskOrchestrator(execute()＋自動 agent_factory)を配線
+           （未配線最小環境のみ後方互換 plan-only）。issue#2(org 永続化されない)→**stale**: run() が is_new 時
+           save_organization()（guard=test_persists_to_instantiator_platform_home）。両者を resolved[]
+           （{title,file}・検証テストを明記）へ移送。issue#3(SSE 固定文言)→**valid・精緻化**: start/result/done は
+           実データだが中間 progress が固定文言で coordinator.progress_callback 未配線、と実態に合わせ medium で残置。
+           status fragile→partial。
+  Check  : check_flows 緑（resolved[].file 実在検証込み）/ test_atlas+test_abstract_goal_pipeline 49 緑 /
+           merge_to_main テストゲート緑（既知2のみ）/ 独立 flow-auditor = 3 claim 全 CONFIRMED
+           （resolved 2件は実コード＋テストで真に解消・残 medium は web/server.py:4786-4801 に実在・
+           partial が誠実、refute ゼロ・40/40）。コード変更ゼロ（メタのみ）で挙動不変。
+  Act    : merged ✅（main）。固定化: fragile フローは「known_issue を1件ずつ実コード照合→解消済みは削除でなく
+           resolved[] へ（検証テストを併記）」が誠実な drift 是正。check_flows が resolved[].file 実在も検証する
+           ので、嘘の resolved を置けない。Atlas は製品の対人ヘルスマップ＝偽の high-severity「壊れてる」表示は
+           評価者を誤誘導するため、メタ修正でも実価値。静的スキャンが枯れたら検証(flow-audit)へ基準を上げる。
+  Next   : C8 候補 — (m) issue#3 を実装で解消: /api/goals/stream に progress_callback を配線し
+           実 per-task ExecutionProgress を SSE 配信（asyncio.Queue で callback→generator）＝partial を solid へ、
+           (n) 他の partial フロー（chat/orchestration-routing 等）の known_issue を同手法で実コード再検証、
+           (o) trend-watcher で Claude Code 最新動向→.claude/ 更新提案。
