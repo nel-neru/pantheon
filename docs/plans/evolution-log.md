@@ -2216,3 +2216,33 @@ Cycle 25 — atelier Handbook の publishing 能力表記を正直化（note/X a
            案内するが CONNECTABLE_PLATFORMS に wordpress が無く argparse が拒否＝到達不能な案内）を最小修正（本サイクルで発見・別焦点で見送り）、
            (jj) capability_gap:285 array truncation を array 正典ヘルパへ（latent だが JSON 単一正典を array まで完遂）、
            (mm) atelier 他ページの能力表記 honesty 監査（Handbook 以外に過小/過大提示が無いか横断確認）。
+
+Cycle 26 — WordPress 未接続エラーの「壊れたユーザー指示」を正直化（connect wordpress は argparse 拒否）  (2026-06-18)
+  Plan   : C25 で発見した具体バグ (ll) を回収。受け入れ基準= wordpress.py の未接続/起動失敗エラーが、実際には拒否される
+           `pantheon publish connect wordpress` を案内している壊れた指示を正直なメッセージへ修正・挙動（制御フロー/例外）保存・
+           回帰0・敵対レビュー済・merged。なぜ今: C25 が GUI/docs を正直化したのに CLI/アダプタのエラーが「動かないコマンドを実行せよ」と
+           案内し続けるのは publishing honesty の穴（ユーザーは指示に従うと argparse SystemExit に当たる）。C25 とは別レイヤ（CLI/adapter
+           の error string）・別種（壊れた指示 vs stale 記述）で多様性も確保。落とした候補: (jj) array truncation（latent・JSON 連続回避）、
+           (mm) atelier honesty 監査（より広い・次サイクル）。
+  Did    : work/wordpress-connect-honest-error-20260618（コード）＋ work/evolve-log-c26（ログ）。バグ実証: argparse choices=
+           CONNECTABLE_PLATFORMS=("note","x") が `connect wordpress` を SystemExit 2 で拒否／`interactive_login` も
+           `platform not in LOGIN_URLS`(={note,x}) で「接続フロー未対応」を返す／Web の login API も LOGIN_URLS 非掲載で `unsupported`
+           ＝CLI・Web 双方で wordpress は接続不能（reviewer が web/server.py:2439 の別ゲートを追加確認）。修正: wordpress.py の
+           未接続エラー（旧「connect wordpress でログインしてください」）→「WordPress は接続フロー未対応です（…Phase 2）。現状 assisted で
+           接続できるのは note / X」、起動失敗 hint の `connect wordpress` 参照も除去、docstring に「接続フロー Phase 2＝end-to-end 未開通・
+           両ゲートとも LOGIN_URLS 由来」を明記（既存正典語彙「接続フロー未対応」に整合）。test_wordpress_publish_live.py の
+           `test_not_connected_fails_with_connect_hint`（壊れた指示をピン留めしていた）→ `_honest_phase2_message`（`connect wordpress`
+           非案内＋`Phase 2`/`note / X` 案内を assert＝load-bearing）。
+  Check  : ruff check/format クリーン / publishing 関連44件緑（wordpress/publishing/note/x の各 live テスト）/ merge_to_main 全件
+           バックエンドゲート＝既知2失敗のみ・新規回帰0 / code-reviewer = APPROVE（6 claim 全て実コードで裏取り・文字列のみ変更で制御
+           フロー/例外不変・負アサーション load-bearing・他に壊れた指示の LIVE 面なし＝note.py/x.py の connect note/x は正当で温存）。
+  Act    : merged ✅（main b04407f、ログ別ブランチ）。固定化: (A) **エラーメッセージ内のコマンド案内も「実際に動くか」を検証する**＝
+           「未接続なら connect X」式の hint は、その X が connect 可能か（choices/LOGIN_URLS）を確認してから書く。壊れた指示は
+           sad-path でしか踏まれず気付きにくい（テストが旧指示をピン留めしていた＝バグの固定化）。(B) **同型の「接続不能」を持つ
+           プラットフォームが他に無いか**＝note/x は connectable で正当、wordpress のみ Phase 2。capability の有無は単一定数
+           （LOGIN_URLS/CONNECTABLE_PLATFORMS）に集約されており、メッセージはそれを参照して書くと drift しない。(C) C25→C26 で
+           「同じ honesty 欠陥が複数レイヤ（GUI/docs/CLI-error）に散る」を再確認＝honesty 監査は1レイヤで終えず関連レイヤを辿る。
+           → [[gui-publishing-subsystem]] の「既知の小バグ（C26 候補）」を「Cycle 26 で resolved」へ更新。
+  Next   : C27 候補 — (jj) capability_gap:285 array truncation を array 正典ヘルパへ（JSON 単一正典を array まで完遂・latent）、
+           (mm) atelier 他ページ（Observatory/Signals/Lab/Pantheon 等）の能力表記 honesty 横断監査（過小/過大提示の検出）、
+           (nn) robustness の latent outlier 回収（capability_registry:165 の無条件 replace(tzinfo=utc) を条件付きへ＝コードベース規約に統一）。
