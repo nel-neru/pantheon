@@ -1439,10 +1439,10 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
     }
 
 
-async def _perform_goal_run(req: GoalRunRequest) -> dict[str, Any]:
+async def _perform_goal_run(req: GoalRunRequest, progress_callback: Any = None) -> dict[str, Any]:
     from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
 
-    pipeline = AbstractGoalPipeline()
+    pipeline = AbstractGoalPipeline(progress_callback=progress_callback)
     result = await pipeline.run(req.goal_text)
     record = _goal_record(req, result)
     _save_goal_history(record)
@@ -4774,6 +4774,38 @@ async def api_run_goal(req: GoalRunRequest) -> Dict[str, Any]:
 @app.post("/api/goals/stream", tags=["goals"])
 async def api_goals_stream(req: GoalRunRequest) -> StreamingResponse:
     async def event_generator():
+        # 実 per-task 進捗を流すための橋渡し。ExecutionCoordinator は各タスクの
+        # 状態遷移ごとに on_progress(ExecutionProgress) を**同じイベントループ上で**
+        # 同期呼び出しするので、queue.put_nowait で安全にバッファし generator が drain する。
+        queue: asyncio.Queue = asyncio.Queue()
+        done_sentinel = object()
+
+        def on_progress(progress: Any) -> None:
+            try:
+                done = int(getattr(progress, "done_count", 0))
+                total = int(getattr(progress, "total", 0))
+                message = f"{done}/{total} タスク完了"
+                queue.put_nowait(
+                    {
+                        "type": "progress",
+                        "done": done,
+                        "total": total,
+                        "failed": int(getattr(progress, "failed_count", 0)),
+                        "progress_pct": round(float(getattr(progress, "progress_pct", 0.0)), 1),
+                        "message": message,
+                        "content": message,
+                    }
+                )
+            except Exception:  # noqa: BLE001 - 進捗通知の失敗で実行を止めない
+                pass
+
+        async def run_to_queue() -> dict[str, Any]:
+            try:
+                return await _perform_goal_run(req, progress_callback=on_progress)
+            finally:
+                queue.put_nowait(done_sentinel)
+
+        task: Optional[asyncio.Task] = None
         try:
             yield _format_sse(
                 {
@@ -4783,23 +4815,15 @@ async def api_goals_stream(req: GoalRunRequest) -> StreamingResponse:
                 }
             )
             await asyncio.sleep(0)
-            yield _format_sse(
-                {
-                    "type": "progress",
-                    "message": "Planning goal execution...",
-                    "content": "Planning goal execution...",
-                }
-            )
-            await asyncio.sleep(0)
-            result = await _perform_goal_run(req)
-            yield _format_sse(
-                {
-                    "type": "progress",
-                    "message": "Saving goal history...",
-                    "content": "Saving goal history...",
-                }
-            )
-            await asyncio.sleep(0)
+            task = asyncio.create_task(run_to_queue())
+            # 実行中に到着する実 per-task 進捗を順次配信（sentinel で終端）。
+            while True:
+                item = await queue.get()
+                if item is done_sentinel:
+                    break
+                yield _format_sse(item)
+                await asyncio.sleep(0)
+            result = await task
             result_text = str(result.get("result") or result.get("summary") or "")
             yield _format_sse(
                 {
@@ -4827,6 +4851,12 @@ async def api_goals_stream(req: GoalRunRequest) -> StreamingResponse:
             logger.exception("Goal stream failed", exc_info=exc)
             yield _format_sse({"type": "error", "message": _stream_error_message(exc)})
             await asyncio.sleep(0)
+        finally:
+            # クライアント切断（async generator が GeneratorExit でクローズ）時に、
+            # 切り離した実行タスクをそのまま走らせ続けると goal 実行（claude CLI）が
+            # 無駄に背景で完走する。旧 inline-await と同じく切断でキャンセルする。
+            if task is not None and not task.done():
+                task.cancel()
 
     return _stream_response(event_generator())
 
