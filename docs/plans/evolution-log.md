@@ -2040,3 +2040,35 @@ Cycle 20 — LLM 出力 JSON 抽出を堅牢な単一ヘルパーへ統合（goa
   Next   : C21 候補 — (dd) 残る ad-hoc JSON 抽出を extract_json_object へ統合（self_evaluator._parse_judge〔find/rfind 貪欲〕・
            agents/tool_design_agent・codebase_explorer_agent の独自 find+raw_decode）で「単一正典」を完遂（reviewer の範囲外指摘）、
            (ee) silent-drop 残ローダー（agent_knowledge/capability_history/org_snapshot）の観測化、(ff) atelier 残ページ状態監査。
+
+Cycle 21 — stale な「Windows 既知失敗6件」を実基線「2件(chmod)」へ一掃（docs/honesty・C20 から多様性ピボット）  (2026-06-18)
+  Plan   : C20（backend JSON）から多様性ルールでフロント/ドキュメントへピボット。候補 (ff) atelier 残ページ
+           （Signals/Lab/Handbook）の状態網羅監査を選び実コードを精査したら、Signals/Lab は loading/error/empty を
+           **既に網羅**・Handbook は静的ページ（データ取得なし）で**状態ギャップは無し**＝監査としては空振り。だが Handbook の
+           GOTCHAS に「Windows の既知テスト失敗**6件**は無視してよい（パス区切りと chmod 由来）」という **stale な事実誤り**を
+           発見。実基線は chmod 0o600 由来の**2件のみ**（パス区切り4件は 2026-06-12 根治済・test-triage 実測も2件）。受け入れ
+           基準= この誤記に従うと本物の回帰(旧4件分)を見逃す honesty バグを全ユーザー/開発者向け面で一掃し、件数ドリフトを
+           回帰テストで固定、回帰0・敵対レビュー済・merged。なぜ今: 過去サイクルで MEMORY.md の同じ stale は 6→2 修正済だが
+           他面が取りこぼされていた（公開リポジトリの正直性に直結）。落とした候補: (dd) self_evaluator 等の残 ad-hoc JSON 抽出統合
+           （C20 と同種＝多様性に反する／高優先 C22 候補へ）、(ee) silent-drop（observability 連発回避）。
+  Did    : work/fix-stale-test-baseline-docs-20260618。当初 grep 範囲（web/docs/README/CLAUDE/AGENTS）で 2面を修正したが、
+           code-reviewer が **.github/ と CONTRIBUTING.md を範囲外にした取りこぼし4件**を指摘→全て本コミットに取り込み計6面:
+           web/atelier/src/pages/Handbook.tsx（ユーザー向け GOTCHA 2件/chmod へ）・同 __tests__/Handbook.test.tsx（「6件」不在＋
+           「2件」存在の回帰ガード・旧テキストで fail する load-bearing）・docs/claude-code-setup.md（test-triage 説明）・
+           .github/pull_request_template.md＋.github/ISSUE_TEMPLATE/bug_report.md（PR/Issue チェックリスト＝最も実害大）・
+           CONTRIBUTING.md（コントリビュータ向け）・core/atlas/data/subsystem_maps.json（safe_executor issue 本文/rationale の
+           「6 pre-existing/unrelated」2箇所）。**evolution-log の履歴記録は当時の事実ゆえ不変＝対象外**として除外。
+  Check  : frontend-dev で atelier `npm run build` 緑・vitest 50/50（49→50、新ガード含む）/ check_flows OK（subsystem_maps.json
+           妥当）・check_planning_docs OK / 最終 grep で有害 stale 参照ゼロ（残る「6」は Handbook の「旧6件のうち…」履歴説明と
+           テストの不在アサーションのみ＝意図的）/ merge_to_main 全件ゲートで既知2失敗のみ・新規回帰0 / code-reviewer =
+           APPROVE-WITH-NITS（取りこぼし4件を確定所見として採用済・件数の事実性/テスト load-bearing/JSX を全確認）。
+  Act    : merged ✅（main 3abc2ef、ログ別ブランチ）。固定化: (A) **「N件の既知失敗」式のベースライン記述は単一面で直すと必ず
+           他面に stale が残る**＝公開リポジトリには PR テンプレ・Issue テンプレ・CONTRIBUTING・dev doc・GUI Handbook・Atlas と
+           **同じ事実の写しが6面**あった。基線の数値/原因を変えたら全面を grep で横ぐし掃除する（範囲は web/docs だけでなく
+           .github/CONTRIBUTING/コードコメントまで）。(B) **grep の範囲漏れは敵対レビューが拾う**＝当初 .github/ を外していたのを
+           reviewer が検出。レビューを「コード正しさ」だけでなく「sweep の網羅性」確認にも使う。(C) **監査候補が空振り（既に
+           健全）でも、その過程で別種の実バグ（stale 事実）に化けることがある**＝空振りでも観察を止めない。(D) 数値ドリフトは
+           回帰テストで固定する（DOM/文字列に現れる事実は assert 可能）。→ [[pantheon-test-baseline]] に「写しは6面・横ぐし必須」を追記。
+  Next   : C22 候補 — (dd) 残 ad-hoc JSON 抽出（self_evaluator._parse_judge〔find/rfind 貪欲・reviewer 確認の実バグ〕・
+           agents/tool_design_agent・codebase_explorer_agent）を extract_json_object へ統合し「単一正典」完遂、
+           (ee) silent-drop 残ローダー（agent_knowledge/capability_history/org_snapshot）の観測化、(gg) ASYNC240 設計スライス。
