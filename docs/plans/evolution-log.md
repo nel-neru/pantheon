@@ -2001,3 +2001,42 @@ Cycle 19 — zip の長さ不変条件を strict= で明示し silent truncation
   Next   : C20 候補 — (aa) silent-drop 残ローダー（agent_knowledge/capability_history/proactive_notifier/org_snapshot）の観測化、
            (bb) 残る atelier ページ（Signals/Lab/Handbook）の状態網羅監査（C14/C16/C18 完遂・ただし frontend）、
            (cc) ASYNC240（agent run() の同期 I/O がイベントループをブロック）を to_thread 境界で安全に切り出す設計スライス。
+
+Cycle 20 — LLM 出力 JSON 抽出を堅牢な単一ヘルパーへ統合（goals の脆弱正規表現を排除・Atlas stale ノート修正）  (2026-06-18)
+  Plan   : 多様性ルールで observability（C19 近傍）から離れる候補を探索。Atlas 既知 issue（subsystem_maps.json）に
+           「goal_parser/goal_decomposer の LLM JSON 抽出が非貪欲 re でネスト JSON を切り json.loads 失敗→静かに
+           heuristic/template フォールバック＝LLM 経路が事実上到達不能」という correctness バグの記録を発見。[[atlas-flows-drift]]
+           の教訓どおり実コードで再検証した結果ノートは stale: 実際は parser=非貪欲（フラットスキーマゆえ現状動く）・
+           decomposer=**貪欲** `\{.*\}`（ノートの非貪欲との記述自体が誤り／ネストは取れる）。さらに隣の issue で use_llm=True は
+           デフォルト llm_client=None ゆえ**本番未到達（休眠）**と判明。受け入れ基準= 4 箇所に重複する ad-hoc JSON 抽出
+           （parser=非貪欲・decomposer=貪欲・self_evaluator=find/rfind・org_template_designer=raw_decode）を 1 つの堅牢な
+           正典ヘルパーへ統合し、脆弱な goals 2 サイトを移行、Atlas を正直化、回帰 0・敵対レビュー済・merged。なぜ今: goals は
+           「抽象ゴール→自律実行」中核フローであり、その LLM 経路の JSON 抽出を堅牢化＋ライブな org_template_designer 抽出に
+           テストを付与するのは投機的大改修なしの安全スライス。深い llm_client 配線（issue 1180）は別サイクルへ明示的に残す。
+           落とした候補: (aa) silent-drop 残ローダー（observability 連発で多様性に反する）、(bb) atelier 状態監査（frontend 連発回避）。
+  Did    : work/goals-json-extract-robust-20260618。core/llm/json_extract.py に正典 `extract_json_object` を新設（実績ある
+           org_template_designer._extract_json を昇格: ```json フェンス除去〔`\n` アンカーで ReDoS 回避〕＋最初の `{` から
+           `JSONDecoder.raw_decode` で 1 つの正当 JSON 値のみ取得・末尾プローズ無視・失敗時 None で never raise）。core/llm から
+           re-export。goal_parser._parse_with_llm／goal_decomposer._decompose_with_llm を移行し `isinstance(data, dict)` ガードで
+           heuristic/template へ安全フォールバック（旧 unguarded json.loads の raise も解消）。org_template_designer._extract_json は
+           共有ヘルパーへの薄い委譲に（dedup・後方互換／test がシンボル参照）。不要化した import json/re を除去（parser/org は
+           re 継続）。Atlas: 解消した抽出 known-issue を削除し improvement_idea を「JSON 解析は DONE・残りは llm_client 配線
+           （provider.generate は async／.invoke と非整合・use_llm は本番未設定で休眠）」へ更新。tests/test_json_extract.py 11 件
+           （旧実装が落ちる nested／文字列内 `}`／末尾 `}` を単体＋goals 実経路の統合で load-bearing 固定）。
+  Check  : test-triage = GREEN（全件 1549 passed／既知 2 失敗〔chmod〕のみ／新規回帰 0）・関連 95 件緑・ruff/format クリーン・
+           check_flows OK（subsystem_maps.json は valid・孤立参照なし）。code-reviewer = APPROVE-WITH-NITS。確定所見 1 件採用:
+           decomposer 統合テストが末尾プローズに `}` を含まず旧貪欲 re でも通る（=非 load-bearing）→ 末尾に `}` を入れて旧実装が
+           over-capture で raise するケースに強化（単体側 trailing/brace-in-string は元から旧実装を落とすことを reviewer が実証）。
+           reviewer の正典化検証: org_template_designer ライブ経路で旧 _extract_json と新ヘルパーが 7 ケース全一致＝挙動保存を確認。
+  Act    : merged ✅（main e816986、ログは別ブランチ）。固定化: (A) **「LLM 出力からの JSON 抽出」は raw_decode が唯一正しい
+           ＝貪欲/非貪欲 re も find/rfind も全て fail mode を持つ**（非貪欲=ネスト/文字列内 `}` を切る・貪欲/rfind=末尾 `}` を
+           過剰捕捉して raise）。`JSONDecoder().raw_decode(text[first_brace:])` は「1 つの正当 JSON 値のみ・末尾無視・文字列内
+           `}` 安全」を一手で満たす唯一の手段で、core.llm.extract_json_object に一本化した（新規 LLM 抽出は必ずこれを使う）。
+           (B) **[[atlas-flows-drift]] は known_issues 本文の正規表現フレーバ等の細部まで stale 化する**＝/evolve 候補化前に実コードで
+           regex を実読し、解消済みなら known-issue を削除・improvement_idea を「DONE＋残スコープ」へ正直に更新（黙って放置＝
+           偽の課題が残る）。(C) **休眠経路の正直な右サイズ**＝use_llm が本番未設定でも、ライブな org_template_designer 経路の
+           dedup＋テスト付与という現実的便益で正当化し、効果を誇張しない（深い配線は別サイクルへ明示分離）。
+           → [[atlas-flows-drift]] と roadmap に追記。
+  Next   : C21 候補 — (dd) 残る ad-hoc JSON 抽出を extract_json_object へ統合（self_evaluator._parse_judge〔find/rfind 貪欲〕・
+           agents/tool_design_agent・codebase_explorer_agent の独自 find+raw_decode）で「単一正典」を完遂（reviewer の範囲外指摘）、
+           (ee) silent-drop 残ローダー（agent_knowledge/capability_history/org_snapshot）の観測化、(ff) atelier 残ページ状態監査。
