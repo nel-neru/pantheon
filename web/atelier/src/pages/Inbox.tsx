@@ -162,8 +162,14 @@ export function Inbox() {
 
       {/* Proposals */}
       <SectionLabel title="Improvement Proposals" note="approve / reject" />
-      {loadingProps && proposals.length === 0 ? <Loading label="提案を集約" /> : null}
-      {!loadingProps && proposals.length === 0 ? (
+      {/* 組織一覧の取得が失敗したら無限ローディングに陥らせず、Handoffs/Publishing と
+          同じく ErrorNote を出す。!orgs.data ガードで poll 中の一時エラーでは
+          取得済みの提案を消さない。 */}
+      {orgs.error && !orgs.data ? <ErrorNote message={orgs.error} /> : null}
+      {!orgs.error && loadingProps && proposals.length === 0 ? (
+        <Loading label="提案を集約" />
+      ) : null}
+      {!orgs.error && !loadingProps && proposals.length === 0 ? (
         <EmptyState title="承認待ちの提案はありません" hint="すべて捌けています" />
       ) : null}
 

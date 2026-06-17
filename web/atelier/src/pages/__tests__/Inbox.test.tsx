@@ -192,3 +192,53 @@ describe('Inbox Publishing section', () => {
     )
   })
 })
+
+describe('Inbox Proposals section error handling', () => {
+  it('shows an error note (not a perpetual loading spinner) when /api/organizations fails', async () => {
+    // /api/organizations だけ失敗させる。これが失敗すると orgsSig が永久に null になり、
+    // 以前は Proposals セクションが「提案を集約」で無限ローディングし、エラーも出なかった。
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/organizations')) {
+        return {
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error',
+          json: async () => ({ detail: '組織一覧の取得に失敗しました' }),
+        }
+      }
+      if (url.includes('/api/inbox')) {
+        return { ok: true, json: async () => ({ items: [], counts: {} }) }
+      }
+      // /api/handoffs などは成功（空）
+      return { ok: true, json: async () => [] }
+    }) as unknown as typeof fetch
+
+    render(<Inbox />)
+
+    // ErrorNote が出る（"接続エラー" は単一テキストノードで確実に拾える）
+    await waitFor(() => expect(screen.getByText('接続エラー')).toBeInTheDocument())
+    // バックエンドのエラーメッセージも面に出る
+    expect(
+      screen.getByText(
+        (_, el) => el?.tagName === 'P' && Boolean(el.textContent?.includes('組織一覧の取得に失敗しました')),
+      ),
+    ).toBeInTheDocument()
+    // 無限ローディングの「提案を集約」は出ない（回帰の核心）
+    expect(screen.queryByText(/提案を集約/)).not.toBeInTheDocument()
+    // 提案ゼロの誤誘導な空状態も出さない（エラーを空と取り違えない）
+    expect(screen.queryByText('承認待ちの提案はありません')).not.toBeInTheDocument()
+  })
+
+  it('still shows the empty state (not an error) when /api/organizations succeeds with no pending proposals', async () => {
+    // 健全系の対照: orgs 成功＝エラーを出さず、空状態に落ち着く（loadingProps が解ける）。
+    mockFetch({ items: [], counts: {} })
+    render(<Inbox />)
+
+    await waitFor(() =>
+      expect(screen.getByText('承認待ちの提案はありません')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('接続エラー')).not.toBeInTheDocument()
+    expect(screen.queryByText(/提案を集約/)).not.toBeInTheDocument()
+  })
+})
