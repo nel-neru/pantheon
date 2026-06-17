@@ -368,7 +368,9 @@ def build_module_graph() -> dict[str, Any]:
         return None
 
     file_graph: dict[str, list[str]] = {}
-    for path, rel in zip(py_files, rels):
+    # rels は py_files から 1:1 で構築（上の loop）。ずれたら依存グラフから
+    # ファイルが静かに欠落（Atlas の完全性が崩れる）ので strict=True で不変条件を守る。
+    for path, rel in zip(py_files, rels, strict=True):
         deps: set[str] = set()
         try:
             tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))

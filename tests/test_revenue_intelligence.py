@@ -13,6 +13,14 @@ def test_growing_trend_and_forecast():
     assert a["forecast_next"] > 225  # 上昇トレンドを外挿
 
 
+def test_mom_change_is_adjacent_pairs_n_minus_1():
+    # 隣接ペア（前月,当月）の MoM は N 要素から N-1 個出る＝series と series[1:] の
+    # 意図的な長さ差（zip の strict=False 切り捨て）の不変条件を固定する。
+    # ここを strict=True に「誤修正」すると ValueError で落ちて回帰が検出される。
+    a = analyze_revenue({"2026-01": 100, "2026-02": 150, "2026-03": 225})
+    assert a["mom_change_pct"] == [50.0, 50.0]  # 3 ヶ月 → 2 個（N-1）
+
+
 def test_declining_trend():
     a = analyze_revenue({"2026-01": 300, "2026-02": 200, "2026-03": 150})
     assert a["trend"] == "declining"

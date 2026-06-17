@@ -51,7 +51,9 @@ def analyze_revenue(by_month: Dict[str, float]) -> RevenueAnalysis:
 
     mom_pct: List[Optional[float]] = []
     mom_frac: List[float] = []  # 予測/トレンド用（割れた月のみ）
-    for prev, cur in zip(series, series[1:]):
+    # 隣接ペア（前月, 当月）を作る意図的な切り捨て：series[1:] は1要素短いのが正しいので
+    # strict=False を明示する（strict=True は誤り。B905 を意図どおりに黙らせる）。
+    for prev, cur in zip(series, series[1:], strict=False):
         if prev == 0:
             mom_pct.append(None)
             continue

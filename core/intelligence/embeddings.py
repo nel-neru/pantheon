@@ -91,7 +91,7 @@ def _embedding_scores(query: str, docs: List[str]) -> Optional[List[float]]:
         q, doc_vecs = vecs[0], vecs[1:]
 
         def _cos(a, b_) -> float:
-            dot = sum(x * y for x, y in zip(a, b_))
+            dot = sum(x * y for x, y in zip(a, b_, strict=True))
             na = math.sqrt(sum(x * x for x in a))
             nb = math.sqrt(sum(y * y for y in b_))
             return dot / ((na * nb) or 1.0)
