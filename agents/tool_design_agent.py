@@ -10,7 +10,6 @@ CapabilityGapAnalyzer が検出した能力ギャップに対して
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import asdict, dataclass
@@ -21,6 +20,7 @@ from uuid import uuid4
 
 from agents.base import AgentResult, AgentTask, BaseAgent
 from core.intelligence.capability_gap_analyzer import CapabilityGap
+from core.llm.json_extract import extract_json_object
 from core.models.organization import AgentSkill, SpecialistAgent
 
 logger = logging.getLogger(__name__)
@@ -271,18 +271,10 @@ Existing code patterns:
         return base + max(method_count - 1, 0) * 12
 
     def _extract_json_object(self, content: str) -> Optional[dict[str, Any]]:
-        decoder = json.JSONDecoder()
-        start = content.find("{")
-        while start != -1:
-            try:
-                payload, _ = decoder.raw_decode(content[start:])
-            except json.JSONDecodeError:
-                start = content.find("{", start + 1)
-                continue
-            if isinstance(payload, dict):
-                return payload
-            start = content.find("{", start + 1)
-        return None
+        # JSON 抽出は core.llm.extract_json_object に一本化（全 `{` 位置を走査し
+        # 最初に decode できる値を返す堅牢版）。dict のみ受け付ける契約を維持。
+        result = extract_json_object(content)
+        return result if isinstance(result, dict) else None
 
     def _to_snake_case(self, value: str) -> str:
         normalized = value.replace("-", "_")

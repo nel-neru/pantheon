@@ -131,3 +131,36 @@ def test_goal_decomposer_llm_path_parses_nested_plan():
     plan = decomposer.decompose(goal, use_llm=True)
     titles = [e.title for e in plan.epics]
     assert "Epic A" in titles
+
+
+# --------------------------------------------------------------------------- #
+# Cycle 22: all-brace scan + consolidation of the remaining ad-hoc extractors  #
+# --------------------------------------------------------------------------- #
+def test_recovers_from_broken_brace_before_real_json():
+    # A stray `{` in leading prose that doesn't parse must not defeat extraction:
+    # the scanner advances to the next `{` and returns the real object.
+    assert extract_json_object('prefix {not json} then {"a": 1}') == {"a": 1}
+
+
+def test_self_evaluator_parse_judge_ignores_trailing_brace():
+    # The old find/rfind extractor over-captured the trailing `}` in prose and
+    # json.loads raised → it returned None. Delegating to extract_json_object
+    # parses the leading object and ignores the trailing prose.
+    from core.intelligence.self_evaluator import AgentSelfEvaluator
+
+    parsed = AgentSelfEvaluator._parse_judge('{"score": 8} note: ignore this }')
+    assert parsed == {"score": 8}
+
+
+def test_agent_extractors_delegate_and_keep_dict_contract():
+    # Consolidation contract (not a regression guard — both agent extractors
+    # already used the all-brace scan, so this documents that the delegation to
+    # the canonical helper preserves their dict-or-None contract).
+    from agents.codebase_explorer_agent import _extract_json_object as explorer_extract
+    from agents.tool_design_agent import ToolDesignAgent
+
+    tool_extract = ToolDesignAgent()._extract_json_object
+
+    for extract in (explorer_extract, tool_extract):
+        assert extract('noise {"summary": "ok"} tail') == {"summary": "ok"}
+        assert extract("no json here") is None
