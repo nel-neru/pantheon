@@ -1928,3 +1928,37 @@ Cycle 17 — auto-apply 済み構造提案が /inbox 承認待ちに出ない不
   Next   : C18 候補 — (w) 他 atelier ページの状態網羅監査（C14/C16 の横展開・ただし3連続非 backend を避けるなら後回し）、
            (z) Claude Code ベストプラクティス採用サイクル（trend-watcher で .claude/ 更新提案＝メタ/多様性）、
            (aa) silent-drop 残ローダー（agent_knowledge/capability_history/proactive_notifier/org_snapshot 等）の観測化横展開。
+
+Cycle 18 — Observatory の orchestra フィードダウンを開示し「0 偽装（error-as-normal）」を防ぐ（C14/C16 横展開・候補 w）  (2026-06-18)
+  Plan   : 前回中断で用意されていた空ブランチ work/observatory-orchestra-down-parity の slug を実コードで検証し採用。
+           受け入れ基準= /api/dashboard/orchestra がエラーかつ未取得（orgs は健全）の partial-degradation で、Live Agents
+           その他 orchestra 由来の数値を「真の 0（idle）」として偽装せず、フィードダウンを開示する＝down と idle を
+           区別できる。なぜ今: usage は usageDown で開示済みなのに orchestra だけ未開示というパリティ欠落を実コードで確認
+           （counts=undefined → '0 sessions active' と 'Firmament · Live' を表示）。C14/C16/[[silent-drop-observability]] と
+           同型の error-as-normal で高確信・可逆（frontend のみ）。C16(frontend)→C17(backend/test)→C18(frontend) は
+           frontend-backend-frontend で多様性ルール（同種連発回避）に反しない。落とした候補: (z) trend-watcher メタ、
+           (aa) silent-drop 残ローダー（backend だが結論が分散しやすい）。
+  Did    : work/observatory-orchestra-down-parity-20260617。web/atelier/src/pages/Observatory.tsx: usageDown と同型の
+           orchestraDown = Boolean(orchestra.error && !orchestra.data) を追加し、(1) Live Agents の値を '—'・sub を
+           'フィード未取得'、(2) Firmament caption の 稼働セッション/エージェント/引き渡しを '—'（星/組織は orgs 由来で生存）、
+           (3) 'Firmament · Live'（ice/live）を rose 'Firmament · feed down' に切替（偽りの Live を消す）、(4) reviewer 所見採用で
+           Pending Review は値（提案数=実データ）は残しつつ sub を down 時に '提案のみ（引き渡しはフィード未取得）' へ変え、
+           pending_handoffs 項脱落の過大主張を防止。__tests__/Observatory.test.tsx: mockFetch に orchestraOkFlag を追加し
+           回帰テスト1件（down 開示／feed down タグ／Firmament·Live 非表示／'—'≥4／Pending Review sub の開示／全ページ
+           ErrorNote 非該当／orgs 健全系の生存）。
+  Check  : atelier vitest 49/49 緑（48→49）・build（tsc --noEmit && vite build）緑・dist は gitignore（差分 src 2ファイル）/
+           新テストは load-bearing（'フィード未取得'/'Firmament · feed down'/'提案のみ…' は新コードにしか無い文字列、
+           旧コードは '0 sessions active'/'Firmament · Live'/'0'/'提案 + 引き渡し' を出すため必ず fail。'—'≥4 も旧コードは
+           0 件で fail）/ backend は frontend 変更ゆえ非影響（merge_to_main の全件ゲートで既知2のみ・新規回帰0 を確認）/
+           code-reviewer = APPROVE-WITH-NITS。確定 Warning 1件（Pending Review の sub '提案 + 引き渡し' が down 時も handoffs
+           を含むと過大主張しつつ実際は 0 脱落＝error-as-normal の再発）を採用し、down 時に sub を開示へ変更＋テストで固定。
+  Act    : merged ✅（main 5942985、ログは別ブランチ）。固定化: (A) **「片方のフィードのダウンは開示するのに別フィードは
+           黙って 0 にする」はページ単位で再発する error-as-normal**＝1 つのダウン開示パターン（usageDown）を入れたら、
+           同じページの他フィード由来の数値も同型に開示しているか必ず横ぐしで確認する（partial-degradation のパリティ）。
+           (B) **合成指標（A + B）は一方の項が落ちたとき「値は残してラベルで開示」が最小で正直**＝総和を '—' にすると残る
+           実データ（提案数）まで隠れるので、value は保持し sub のラベル側で脱落を開示する（黙って項を 0 にしてラベルは
+           不変、が最悪）。(C) reviewer の所見は「値が実データだから OK」で止めず、**ラベル/sub の含意が現状と整合するか**まで
+           問う（'提案 + 引き渡し' という文言自体が嘘になっていた）。→ [[silent-drop-observability]] の frontend 双対に追記。
+  Next   : C19 候補 — (z) Claude Code ベストプラクティス採用サイクル（trend-watcher で .claude/ 更新提案＝メタ/多様性、
+           3連続 frontend を避けるピボット先として最有力）、(aa) silent-drop 残ローダーの観測化（backend）、
+           (bb) 残る atelier ページ（Signals/Lab/Handbook）の loading/empty/(partial-)error 状態網羅監査（C14/C16/C18 の完遂）。
