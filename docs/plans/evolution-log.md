@@ -1608,3 +1608,42 @@ Cycle 8 — /api/goals/stream に実 per-task 進捗を配線（abstract-goal-pi
   Next   : C9 候補 — (n) 他 partial フロー（chat/orchestration-routing/self-improvement-loop 等 11件）の
            known_issue を C7 手法（実コード照合→resolved/精緻化）で再ベースライン、(p) progress を frontend
            GoalsPage で実 done/total 表示に反映（バックエンド配線済の UX 仕上げ）、(o) trend-watcher 査定。
+
+Cycle 9 — GoalsPage で抽象ゴールをライブ実行（SSE per-task 進捗の frontend 消費者を新設）  (2026-06-17)
+  Plan   : C8 がバックエンド /api/goals/stream に実 per-task 進捗を配線したが、**フロントに消費者が
+           一切無い**（goal 投入 UI 自体が不在・DataPage が history を読むのみ）と判明＝機能が end-to-end で
+           見えない。多様性: 直近 C6(backend修正)→C7(meta/atlas)→C8(backend SSE) と続いたので frontend が
+           手薄→UX 完成へピボット。受け入れ基準= goal 投入 textarea＋実行/中止、SSE をライブ消費して
+           進捗バー（done/total/failed/progress_pct）と結果/エラーを描画、/goals ルート＋ナビ、co-located
+           vitest、strict TS build 緑・全テスト緑・敵対レビュー所見対応・merged。落とした候補: (n)他 partial
+           再ベースライン（C7 と同種で多様性低）、(o)trend-watcher（.claude 権限ゲートで無人不利）。
+  Did    : work/goals-page-live-stream-20260617（frontend-dev subagent に実装委譲）。
+           (1) lib/api.ts: streamSse(path,body,onEvent,signal?) を新設＝POST + ReadableStream.getReader で
+           SSE を消費し、\n\n 区切りフレームをチャンク境界跨ぎでバッファ、data: 行の JSON を onEvent へ。
+           api() と同等の 401 パリティ・res.body null ガード・不正 JSON 許容（EventSource は POST 不可・
+           既存 api() は .json() で stream 不可ゆえ別ヘルパが必須）。(2) GoalsPage.tsx: 型ガード toGoalEvent で
+           wire の unknown を discriminated union に絞り、RunState(idle/running/done/error) を遷移。
+           AbortController を ref 管理しアンマウントで中断、result→done は非クロバー。(3) App.tsx /goals ルート＋
+           「ゴール実行」ナビ（Target）。(4) index.css 進捗バー。(5) flows.json: step 注記の虚偽「※現状スタブ」を
+           除去（C7 で stale 判定済の resolved 内容と整合）。
+  Check  : frontend build 緑（tsc strict・no any）/ npm test 399 passed（32 files・+15 = GoalsPage 14＋W1 回帰1）/
+           backend 1518 passed・既知2のみ・回帰0（test-triage GREEN）/ check_flows 緑・atlas 9 緑 /
+           code-reviewer = APPROVE-WITH-NITS（Critical 0。確定 Warning W1: 中止/再実行時に**切り離した run の
+           遅延 onEvent が新/旧 state を汚染**しうる）→ レビュア案（abortRef!==controller）が取りこぼす
+           「中止→idle 後の同一 run 遅延」も閉じるため **onEvent 先頭 `if (controller.signal.aborted) return`** で
+           修正＋catch 節も `abortRef.current!==controller` で古い run の AbortError 上書きを防止。修正前なら
+           失敗する**非空虚な回帰テスト**（中止後の遅延 result を無視）を追加。N1（異常切断で running 固着）は
+           既存ブロック型テストに act 警告/中止フロー誤エラーを誘発するため意図的に見送り（中止ボタンで回復可）。
+  Act    : merged ✅（main 5c8d211）。Atlas: abstract-goal-pipeline の surfaces に先行列挙されていた
+           "GoalsPage" が**実在化**＝Atlas が正直に。固定化: **SSE-over-POST を frontend で消費する型**＝
+           EventSource は GET 専用なので fetch+ReadableStream で自前消費、`api()`（.json()）とは別の streamSse
+           ヘルパを置く（チャンク境界バッファ・401 パリティ・null body ガード）。**切り離した非同期 run の後始末**＝
+           onEvent を `controller.signal.aborted`（その run の controller を closure 捕捉）でガードし、中止/置換
+           された run の遅延コールバックを必ず破棄する。これは C8 backend の「クライアント切断で finally task.cancel()」
+           の frontend 姉妹型＝[[concurrent-evolve-worker-hazard]]「切り離した実行の後始末」系。`signal.aborted`
+           ガードは abortRef 比較より強い（中止→idle 後の同一 run 遅延も捕捉）。バックエンド配線(C8)→frontend 消費者(C9)で
+           機能を end-to-end 完成させたら Atlas surfaces の先行列挙が honest になり、ついでに step 注記のドリフトも掃く。
+  Next   : C10 候補 — (n) 他 partial フロー（orchestration-routing の DynamicAgentSpawner dead-code high 等）を
+           C7 手法で実コード再ベースライン、(q) GoalsPage を実ブラウザ/サーバで E2E スモーク（Playwright MCP は
+           settings.local で無効・run-pantheon skill で serve+curl 可）、(o) trend-watcher で Claude Code 最新動向→
+           .claude/ 更新提案。
