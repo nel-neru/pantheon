@@ -76,14 +76,19 @@ function mockFetch({
   usagePayload = usageOk as UsageSummary | null,
   daemonsPayload = daemonsOk,
   usageOkFlag = true,
+  orchestraOkFlag = true,
 }: {
   usagePayload?: UsageSummary | null
   daemonsPayload?: DaemonsPayload
   usageOkFlag?: boolean
+  orchestraOkFlag?: boolean
 } = {}) {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url.includes('/api/dashboard/orchestra')) {
+      if (!orchestraOkFlag) {
+        return { ok: false, status: 503, json: async () => ({ detail: 'down' }) }
+      }
       return { ok: true, json: async () => orchestra }
     }
     if (url.includes('/api/organizations')) {
@@ -145,6 +150,39 @@ describe('Observatory regression tests', () => {
 
     // Page hasn't crashed — header still present
     expect(screen.getByText('The Observatory')).toBeInTheDocument()
+  })
+
+  it('orchestraDown パリティ: /api/dashboard/orchestra が 503 でも orgs が健全なら、live 系を 0 と偽装せず "フィード未取得" を開示する', async () => {
+    // orchestra フィードだけダウン（orgs/usage/daemons は健全）。これは「両方エラー」ガードを
+    // 通過してページが描画される partial-degradation。counts が undefined で sessions/agents/
+    // handoffs は 0 に潰れるが、それを「真の 0（= idle）」として見せてはいけない。
+    mockFetch({ orchestraOkFlag: false })
+    renderObservatory()
+
+    // Live Agents の sub が "フィード未取得" になり、down を開示している
+    await waitFor(() => {
+      expect(screen.getByText('フィード未取得')).toBeInTheDocument()
+    })
+
+    // Firmament のタグが偽りの "Live" ではなく "feed down" を表示する
+    expect(screen.getByText('Firmament · feed down')).toBeInTheDocument()
+    expect(screen.queryByText('Firmament · Live')).not.toBeInTheDocument()
+
+    // orchestra 由来の数値（Live Agents 値・稼働セッション/エージェント/引き渡しの caption）が
+    // 0 ではなく "—"。usage は健全なので "—" は orchestra 由来のみ＝4 箇所以上。
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(4)
+
+    // Pending Review の sub は handoffs 項が落ちたことを開示する＝"提案 + 引き渡し" と
+    // 過大主張しない（値自体は提案数の実データなので残る）。
+    expect(screen.getByText('提案のみ（引き渡しはフィード未取得）')).toBeInTheDocument()
+    expect(screen.queryByText('提案 + 引き渡し')).not.toBeInTheDocument()
+
+    // 全ページ ErrorNote（"接続エラー"）には落ちていない＝partial 経路で描画されている
+    expect(screen.queryByText('接続エラー')).not.toBeInTheDocument()
+
+    // orgs は健全なので Observatory ヘッダと Organizations カードは生きている
+    expect(screen.getByText('The Observatory')).toBeInTheDocument()
+    expect(screen.getByText('Organizations')).toBeInTheDocument()
   })
 
   it('rate-limited 表示: daemons.rate_limited=true のとき Systems ヘッダに "rate-limited" タグが出る', async () => {
