@@ -133,7 +133,12 @@ def _resolve_capability_gaps(gaps: list, registry: Any, org_name: str | None) ->
             return
         org = orgs[0]
 
-    summary = resolve_gaps_for_org(gaps, org, capability_registry=registry)
+    # state_manager を渡すと team/division 構造ギャップが ImprovementProposal として
+    # org の .pantheon/improvements/ に永続化される（書込先 = API `_pending_proposals_for`
+    # の読取先）。既定 HITL では status="pending"（active）で /inbox 承認ハブに出る。
+    # これで「検出 → PolicyEngine → 永続化 → GUI → 人間承認」のループが閉じる。
+    sm = psm.get_org_state_manager(org)
+    summary = resolve_gaps_for_org(gaps, org, capability_registry=registry, state_manager=sm)
     # 構造ギャップが（policy.yaml の明示設定で）auto-apply された場合のみ org は
     # in-memory で変異する。その時だけ永続化して `auto-applied` の報告を正直にする
     # （既定の HITL 経路では構造は提案止まりで org は不変＝save 不要）。spawn は registry

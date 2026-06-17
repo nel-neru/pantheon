@@ -1766,10 +1766,11 @@
       {
         "kind": "cli",
         "name": "pantheon orchestration capabilities",
-        "summary": "Prints CapabilityRegistry agents/skills plus unimplemented gaps from CapabilityGapAnalyzer. With --resolve [--org-name], drives CapabilityGapResolver via resolve_gaps_for_org against a loaded Organization: agent/skill gaps spawn into the persisted registry, team/division gaps become PolicyEngine-evaluated proposals (HITL by default). Handler cmd_orchestration_capabilities in commands/orchestration.py (registered as 'orchestration capabilities' subparser, wired via main.HANDLERS).",
+        "summary": "Prints CapabilityRegistry agents/skills plus unimplemented gaps from CapabilityGapAnalyzer. With --resolve [--org-name], drives CapabilityGapResolver via resolve_gaps_for_org against a loaded Organization: agent/skill gaps spawn into the persisted registry, team/division gaps become PolicyEngine-evaluated proposals persisted to the org's .pantheon/improvements/ (HITL by default), surfacing in the /inbox approval hub via GET /api/organizations/{name}/proposals. Handler cmd_orchestration_capabilities in commands/orchestration.py (registered as 'orchestration capabilities' subparser, wired via main.HANDLERS).",
         "calls": [
           "CapabilityRegistry.list_all",
           "CapabilityGapAnalyzer.get_all_gaps",
+          "PlatformStateManager.get_org_state_manager",
           "resolve_gaps_for_org"
         ]
       },

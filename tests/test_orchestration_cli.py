@@ -145,6 +145,20 @@ class TestOrchestrationCapabilitiesCLI:
             priority="high",
         )
 
+    @staticmethod
+    def _team_gap():
+        from core.intelligence.capability_gap_analyzer import CapabilityGap
+
+        return CapabilityGap(
+            gap_id="gap:security_team",
+            pattern_key="p",
+            description="security team が必要",
+            suggested_type="team",
+            suggested_name="Security",
+            rationale="needed",
+            priority="high",
+        )
+
     def test_resolve_spawns_agent_for_gap(self, capsys, tmp_path):
         """--resolve は org をロードし、agent ギャップを実際に spawn してサマリーを出す。"""
         from core.models.organization import Organization
@@ -267,6 +281,98 @@ class TestOrchestrationCapabilitiesCLI:
             ):
                 _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
             assert mock_save.called is expect_saved
+
+    def test_resolve_persists_structure_proposal_to_inbox(self, capsys, tmp_path):
+        """team/division 構造ギャップは org の state manager に提案として永続化され、
+        /inbox（API `_pending_proposals_for` と同じ get_pending_improvement_proposals）
+        から取得できる＝承認ハブと接続する（C15: 検出→PolicyEngine→永続化→GUI の閉ループ）。
+
+        既定 HITL（policy.yaml 無し）では auto-apply されず status='pending'（active）で
+        残ることを実コードで検証する（resolver は mock しない＝真の永続経路を通す）。
+        """
+        from core.models.organization import Organization
+        from core.platform.state import PlatformStateManager
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                return_value=[self._team_gap()],
+            ),
+            patch(
+                "core.platform.state.PlatformStateManager.load_organizations",
+                return_value=[org],
+            ),
+        ):
+            _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
+            # API/Inbox が読むのと同一経路で永続化提案を取得できることを確認する。
+            sm = PlatformStateManager().get_org_state_manager(org)
+            pending = sm.get_pending_improvement_proposals(limit=10)
+
+        assert len(pending) == 1, "構造提案が /inbox 経路に永続化されていない（ループ未閉鎖）"
+        proposal = pending[0]
+        assert proposal["category"] == "org_structure"
+        assert proposal["status"] == "pending"  # 既定 HITL＝auto-apply されない
+        assert "Team" in proposal["title"]
+        # サマリーにも提案 1 件・auto-applied 0 と正直に出る
+        out = capsys.readouterr().out
+        assert "proposed teams : 1" in out
+        assert "auto-applied   : 0" in out
+
+    def test_resolve_structure_proposal_is_idempotent_on_rerun(self, capsys, tmp_path):
+        """同一ギャップで --resolve を 2 回実行しても、構造提案は 1 件に保たれる
+        （id を gap_id から決定論的に導出＝再生成で上書き）。重複が /inbox に積み上がらない。"""
+        from core.models.organization import Organization
+        from core.platform.state import PlatformStateManager
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                return_value=[self._team_gap()],
+            ),
+            patch(
+                "core.platform.state.PlatformStateManager.load_organizations",
+                return_value=[org],
+            ),
+        ):
+            _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
+            _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
+            sm = PlatformStateManager().get_org_state_manager(org)
+            pending = sm.get_pending_improvement_proposals(limit=10)
+
+        assert len(pending) == 1, "再 --resolve で構造提案が重複している（id 非決定論）"
+
+    def test_resolve_does_not_persist_for_agent_only_gap(self, capsys, tmp_path):
+        """agent/skill ギャップは registry へ spawn されるだけで、org の improvements
+        には提案が書かれない（構造提案だけが /inbox に出る＝面の正直さ）。"""
+        from core.models.organization import Organization
+        from core.platform.state import PlatformStateManager
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                return_value=[self._agent_gap()],
+            ),
+            patch(
+                "core.platform.state.PlatformStateManager.load_organizations",
+                return_value=[org],
+            ),
+        ):
+            _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
+            sm = PlatformStateManager().get_org_state_manager(org)
+            pending = sm.get_pending_improvement_proposals(limit=10)
+
+        # spawn ブランチが実際に走った上で（no-op ではなく）提案が書かれないことを確認
+        assert "spawned agents : 1" in capsys.readouterr().out
+        assert pending == []
 
 
 # ═══════════════════════════════════════════════════════════════
