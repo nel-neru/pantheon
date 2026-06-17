@@ -11,8 +11,10 @@ type Mode = 'web' | 'cli'
 // Pantheon Handbook — 収益化の実務マニュアル
 // Pantheon の内部を知らなくても、これ1枚で「お金を生む作業」が最後まで回せる。
 // 重要な前提: Pantheon は「下書き工場」。承認済みの Markdown 下書きをリポジトリに
-// 書き出すところまでが自動で、note / X / YouTube への公開は人間が手動で行う
-// （現行 main にライブ自動投稿は無い）。
+// 書き出すところまでが自動。公開は note / X が assisted（connect 後にブラウザを開いて
+// 本文をプリフィルし、最終の公開ボタンだけ人間が押す）、YouTube は手動。WordPress
+// アダプタはあるが接続がサイト URL 依存で Phase 2。完全自動（auto・無人）投稿も
+// Phase 2 で現行 main に無い。
 // ============================================================================
 
 export function Handbook() {
@@ -36,8 +38,9 @@ export function Handbook() {
         <p>
           Pantheon が自動で行うのは「ネタ集め → 下書き生成 → 承認待ちに並べる」まで。承認すると
           下書きが各組織の Git ワークスペースに <K>content/*.md</K> として書き出されます。
-          <b className="text-gold"> note / X / YouTube への公開は、あなたが手動で行います</b>
-          （現行版にライブ自動投稿はありません）。つまり「承認 = 出荷ゲート」、最後の貼り付けは人間の仕事です。
+          <b className="text-gold"> 公開の最終ボタンは必ず人間が押します</b>
+          （完全自動の無人投稿はありません）。note / X は assisted（ブラウザが本文をプリフィルし、
+          最後に人間が公開）、YouTube は手動。つまり「承認 = 出荷ゲート」、最後の一押しは人間の仕事です。
         </p>
       </Callout>
 
@@ -135,7 +138,7 @@ export function Handbook() {
       </Callout>
 
       {/* 成果物 */}
-      <SectionLabel n={5} title="成果物の正体と、手動公開" note="what you ship" />
+      <SectionLabel n={5} title="成果物の正体と、公開（note / X は assisted）" note="what you ship" />
       <Callout tone="gold" title="最終成果物 = Git 内の Markdown 下書き">
         <p>
           手に入るのは、各組織のワークスペースにコミットされた下書きです：
@@ -152,9 +155,10 @@ export function Handbook() {
           </li>
         </ul>
         <p className="mt-3">
-          これらを <b className="text-gold">あなたが note / X / YouTube に貼って公開</b>すると収益化が始まります。
+          これらを公開すると収益化が始まります — <b className="text-gold">note / X は assisted（/inbox の「投稿」で
+          ブラウザが開き本文がプリフィル、最後に人間が公開）、YouTube は手動で貼り付け</b>。
           <K>monetization_lead</K> 系の下書きには景表法（ステマ規制）対応の <K>#PR</K> と A8.net コンプラ文が
-          自動で入ります — 手動公開時に消さないでください。
+          自動で入ります — 公開時に消さないでください。
         </p>
       </Callout>
 
@@ -261,10 +265,11 @@ function WebFlow() {
         </p>
       </Step>
 
-      <Step n={8} title="公開する（手動）">
+      <Step n={8} title="公開する（note / X は assisted）">
         <p>
-          承認済みの <K>&lt;リポジトリ&gt;/content/*.md</K> を note / X / YouTube に
-          <b className="text-gold"> あなたが貼って公開</b>します。ここからが実収益。
+          note / X は <K>connect</K> 済みなら <K>/inbox</K> の「投稿」でブラウザが開き本文がプリフィルされ、
+          <b className="text-gold">最後の公開ボタンだけ人間が押します</b>（status は <K>handed_off</K>）。
+          YouTube や未接続の宛先は承認済みの <K>&lt;リポジトリ&gt;/content/*.md</K> を手動で貼り付け。ここからが実収益。
         </p>
       </Step>
     </div>
@@ -342,10 +347,11 @@ pantheon daemons status            # 健全性＋レート制限の確認`}</Cmd
         </p>
       </Step>
 
-      <Step n={7} title="公開する（手動）">
+      <Step n={7} title="公開する（note / X は assisted、最後は人間）">
         <p>
-          承認済みの <K>&lt;リポジトリ&gt;/content/*.md</K> を各プラットフォームに手動投稿。
-          ここで初めて収益が発生します。
+          note / X は <K>connect</K> 済みなら <K>/inbox</K> から「投稿」でブラウザが開き本文がプリフィルされ、
+          最後の公開ボタンだけ人間が押します（status は <K>handed_off</K>）。YouTube や未接続の宛先は
+          承認済みの <K>&lt;リポジトリ&gt;/content/*.md</K> を手動投稿。ここで初めて収益が発生します。
         </p>
       </Step>
     </div>
@@ -361,7 +367,7 @@ const FLOW: { t: string; d: string }[] = [
   { t: '下書きを生成', d: 'ContentJob が claude でペルソナ口調＋デザイントーンの Markdown を生成。' },
   { t: '引き渡しで連鎖', d: '集客→販売→収益化。ある組織の成果を次の組織の入力に渡す。' },
   { t: '承認ゲート', d: 'content/handoff/外部/構造は常に人間承認。承認＝リポジトリに書き出し。' },
-  { t: '手動で公開', d: '承認済み content/*.md を note/X/YouTube に自分で貼って収益化。' },
+  { t: '公開して収益化', d: 'note/X は assisted（ブラウザ起動→本文プリフィル→人間が公開）。YouTube は手動投稿。' },
 ]
 
 const TIPS: { tag: string; tone: 'gold' | 'ice' | 'green' | 'rose' | 'neutral'; t: string; body: ReactNode }[] = [
@@ -445,8 +451,10 @@ const TIPS: { tag: string; tone: 'gold' | 'ice' | 'green' | 'rose' | 'neutral'; 
 
 const GOTCHAS: ReactNode[] = [
   <>
-    <b>ライブ自動投稿は現行 main に無い。</b> 生成物は承認待ちの下書きとしてリポジトリに保存されるだけ。
-    最後の公開は人間が手動で行う（_publish_live / 投稿 API クライアントは未実装）。
+    <b>完全自動（無人）投稿は現行 main に無い。</b> 生成物は承認待ちの下書きとしてリポジトリに保存される。
+    ただし note / X には <K>assisted</K> 投稿が実装済みで、<K>connect</K> 後に承認済みジョブを「投稿」すると
+    ブラウザが開いて本文がプリフィルされ、最終の公開ボタンだけ人間が押す（status は <K>handed_off</K>）。
+    WordPress アダプタもあるが接続はサイト URL 依存で Phase 2。完全自動（auto）も Phase 2。
   </>,
   <>
     <b>

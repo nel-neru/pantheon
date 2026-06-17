@@ -41,9 +41,10 @@ pantheon publish disconnect note   # セッション state を削除
 3. ジョブ status は `handed_off` になる（`published` とは区別。未公開のものは
    成果指標 posts に数えない。`due_jobs` にも二度と乗らない）
 
-auto モード（完全自動公開）は note / X とも未実装（Phase 2）。assisted はどの自動実行経路
-（daemon / `process_due_publish_jobs`）からも発火しない。wordpress の `_publish_live` は
-未実装のまま（Phase 2 で REST API）。
+auto モード（完全自動公開）は note / X / WordPress とも未実装（Phase 2）。assisted はどの自動実行経路
+（daemon / `process_due_publish_jobs`）からも発火しない。wordpress は assisted の `_publish_live`
+（wp-admin エディタを開く）コードはあるが、接続フローがサイト URL 依存で Phase 2 のため end-to-end では
+未開通（REST API 連携も Phase 2）。
 
 ## 実機 E2E チェックリスト（ユーザー同席時に1回）
 

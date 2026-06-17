@@ -25,4 +25,22 @@ describe('Handbook WEB/CLI toggle', () => {
     expect(screen.queryByText(/既知テスト失敗6件/)).not.toBeInTheDocument()
     expect(screen.getByText(/Windows の既知テスト失敗2件は無視してよい/)).toBeInTheDocument()
   })
+
+  // 回帰ガード: 公開能力の状態を正直に提示する（facade-zero の逆方向＝動く機能を
+  // 「未実装」と過小提示しない）。note / X の assisted `_publish_live` は実装済みで
+  // 到達可能なので、旧 stale 表記「_publish_live / 投稿 API クライアントは未実装」へ
+  // 戻ると、ユーザーは動く収益機能を見落とす。実態（assisted=実装済 / auto=Phase 2）を固定する。
+  it('honestly states that note/X assisted publishing is implemented (not the stale "未実装")', () => {
+    render(<Handbook />)
+    // 旧 stale 表記が復活していないこと。
+    expect(screen.queryByText(/投稿 API クライアントは未実装/)).not.toBeInTheDocument()
+    // 完全自動だけが Phase 2 という見出しと、assisted の動作説明が出ていること。
+    expect(screen.getByText(/完全自動（無人）投稿は現行 main に無い/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/ブラウザが開いて本文がプリフィルされ、最終の公開ボタンだけ人間が押す/),
+    ).toBeInTheDocument()
+    // 最重要 Callout（「まず知るべき1点」）も同じ事実を提示し、ページ内で矛盾しないこと
+    // （C21: 同じ事実の全 LIVE face を一貫させる）。旧「公開は手動で行います」へ戻ると fail。
+    expect(screen.getByText(/公開の最終ボタンは必ず人間が押します/)).toBeInTheDocument()
+  })
 })
