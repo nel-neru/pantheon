@@ -139,11 +139,10 @@
       "surfaces": ["pantheon orchestration analyze/history/capabilities/self-review", "pantheon agent status/list", "GET /api/orchestration/analyze/{task_type}", "GET /api/agents", "GET /api/skills", "AgentsPage"],
       "state": ["~/.pantheon/orchestration/patterns.json"],
       "verification": ["tests/test_pre_task_orchestration.py", "tests/test_orchestration_cli.py", "tests/test_agent_factory.py"],
-      "status": "partial",
-      "known_issues": [
-        { "severity": "high", "title": "DynamicAgentSpawner が一度も呼ばれない（dead code）", "detail": "spawn_spec を作るが execute() が spawner を呼ばない。", "file": "core/orchestration/dynamic_agent_spawner.py" }
-      ],
+      "status": "solid",
+      "known_issues": [],
       "resolved": [
+        { "title": "DynamicAgentSpawner が execute() から実行される — spawn_new_agent かつ recommended_agent_ids が空のとき _execute_spawned が DynamicAgentSpawner.spawn() で能力を CapabilityRegistry に登録し、AgentFactory.create_for_skills で runnable なエージェント（YAML 一致→GenericSkillAgent フォールバック）を生成して実行する（従来の 'spawn_spec を作るだけで呼ばない'＝'No agent selected' 失敗の dead-code を置換）。テスト: tests/test_pre_task_orchestration.py::test_execute_spawns_runs_and_registers_when_no_agent_fits・test_execute_spawn_without_factory_returns_informative_error。", "file": "core/orchestration/pre_task_orchestrator.py" },
         { "title": "batch_execute の asyncio NameError を修正（top-level import asyncio）（C1）", "file": "core/orchestration/pre_task_orchestrator.py" },
         { "title": "実 quality_score / execution_time_ms を PatternRecord に記録（Phase 2）", "file": "core/orchestration/pre_task_orchestrator.py" },
         { "title": "OrchestratorAgent に CapabilityRegistry を配線しルーティングを機能化（Phase 3）", "file": "agents/orchestrator_agent.py" }

@@ -332,6 +332,75 @@ class TestPreTaskOrchestrator:
         assert result.success is False
         assert result.error == "No agent selected"
 
+    def test_execute_spawns_runs_and_registers_when_no_agent_fits(self, tmp_path):
+        """spawn_new_agent のとき DynamicAgentSpawner が能力を registry に登録し、
+        create_for_skills で生成した runnable エージェントを実行する（従来の
+        'spawn_spec を作るだけで実行しない' dead-code 経路を置き換える）。"""
+        from core.intelligence.capability_registry import CapabilityRegistry
+
+        mock_result = AgentResult(success=True, output="spawned-ran")
+
+        async def fake_run(task):
+            return mock_result
+
+        mock_agent = MagicMock()
+        mock_agent.run = fake_run
+
+        class FakeFactory:
+            def __init__(self):
+                self.spawned_skills = None
+
+            def create(self, agent_id):
+                return None
+
+            def create_for_skills(self, skills, name=None):
+                self.spawned_skills = list(skills)
+                return mock_agent
+
+        registry = CapabilityRegistry(platform_home=tmp_path)
+        factory = FakeFactory()
+        orchestrator = PreTaskOrchestrator(capability_registry=registry, agent_factory=factory)
+        analysis = TaskAnalysis(
+            task_type="code_review",
+            description="テスト",
+            recommended_pattern=OrchestrationPattern.SINGLE_AGENT,
+            recommended_agent_ids=[],
+            spawn_new_agent=True,
+            spawn_spec={"skills": ["strategic_planning", "deep_research"], "reason": "no fit"},
+        )
+        task = AgentTask(task_type="code_review", description="テスト")
+        result = asyncio.run(orchestrator.execute(task, analysis, record=False))
+
+        # runnable エージェントが生成・実行された（従来は "No agent selected" 失敗）
+        assert result.success
+        assert result.output == "spawned-ran"
+        assert factory.spawned_skills is not None and len(factory.spawned_skills) >= 2
+        # DynamicAgentSpawner が実際に呼ばれ、能力を registry に登録した（自己拡張）
+        dynamic = [e for e in registry.list_agents() if e.id.startswith("agent:dynamic:")]
+        assert len(dynamic) == 1
+
+    def test_execute_spawn_without_factory_returns_informative_error(self):
+        """spawn が推奨されても create_for_skills 可能な factory が無い場合、
+        クラッシュせず説明的なエラーを返す（graceful degradation）。"""
+        orchestrator = PreTaskOrchestrator()
+        orchestrator._agent_factory = None  # factory 不在を強制
+        analysis = TaskAnalysis(
+            task_type="code_review",
+            description="テスト",
+            recommended_pattern=OrchestrationPattern.SINGLE_AGENT,
+            recommended_agent_ids=[],
+            spawn_new_agent=True,
+            spawn_spec={"skills": ["deep_research", "codebase_exploration"], "reason": "no fit"},
+        )
+        task = AgentTask(task_type="code_review", description="テスト")
+        # execute が analysis-only に早期 return しないよう callable を渡す（spawn 経路は self._agent_factory を使う）
+        result = asyncio.run(
+            orchestrator.execute(task, analysis, agent_factory=lambda _: None, record=False)
+        )
+
+        assert result.success is False
+        assert "factory" in result.error.lower()
+
     def test_execute_parallel_returns_error_when_all_agents_fail(self):
         class FailingAgent:
             async def run(self, task):

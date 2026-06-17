@@ -459,7 +459,17 @@ class PreTaskOrchestrator:
         token = _ROUTING_ACTIVE.set(True)
         try:
             with _observability_trace(analysis, pattern):
-                if pattern == OrchestrationPattern.SEQUENTIAL_PIPELINE:
+                if (
+                    getattr(analysis, "spawn_new_agent", False)
+                    and not analysis.recommended_agent_ids
+                ):
+                    # 既存エージェントが要件を満たさず spawn が推奨された経路。
+                    # 従来は空 recommended_agent_ids により全パターンが "No agent selected"
+                    # で失敗していた（spawn_spec を作るだけで DynamicAgentSpawner を呼ばない
+                    # dead-code）。ここで能力を登録しつつ runnable なエージェントを生成して
+                    # 実行する＝「必要な能力が無いなら作る」自律的能力拡張の実配線。
+                    result = await self._execute_spawned(task, analysis)
+                elif pattern == OrchestrationPattern.SEQUENTIAL_PIPELINE:
                     result = await self._execute_sequential(task, analysis, agent_factory)
                 elif pattern == OrchestrationPattern.REVIEW_LOOP:
                     result = await self._execute_review_loop(task, analysis, agent_factory)
@@ -482,6 +492,54 @@ class PreTaskOrchestrator:
                 execution_time_ms=self._last_execution_ms,
             )
         return result
+
+    async def _execute_spawned(self, task, analysis):
+        """既存エージェントが要件を満たさない場合に、能力を動的に作成して実行する。
+
+        DynamicAgentSpawner で spawn_spec のスキルから SpecialistAgent を作り
+        CapabilityRegistry に登録（registry 自己拡張）した上で、AgentFactory の
+        ``create_for_skills`` で runnable なエージェント（YAML 一致 → GenericSkillAgent
+        フォールバック）を生成して実行する。spawn が推奨されたのに実行されない
+        従来の dead-code 経路（"No agent selected" 失敗）を置き換える。
+        """
+        from agents.base import AgentResult
+        from core.orchestration.dynamic_agent_spawner import DynamicAgentSpawner, SpawnRequest
+
+        spec = analysis.spawn_spec or {}
+        skill_names = list(spec.get("skills") or [])
+        purpose = spec.get("reason") or f"タスク {analysis.task_type} 用の動的エージェント"
+
+        spawner = DynamicAgentSpawner(capability_registry=self._registry)
+        spawn_result = spawner.spawn(
+            SpawnRequest(
+                required_skills=skill_names,
+                purpose=purpose,
+                task_type=analysis.task_type,
+            )
+        )
+        if not spawn_result.success or spawn_result.agent is None:
+            return AgentResult(success=False, error="Failed to spawn agent for unmet capability")
+
+        resolved_skills = list(spawn_result.agent.skills)
+
+        # runnable なエージェントを生成するには AgentFactory インスタンス（create_for_skills）が要る。
+        factory = self._agent_factory
+        if factory is None or not hasattr(factory, "create_for_skills"):
+            return AgentResult(
+                success=False,
+                error=f"Spawned agent '{spawn_result.agent.name}' but no factory to instantiate it",
+            )
+
+        agent = factory.create_for_skills(resolved_skills, name=spawn_result.agent.name)
+        if agent is None:
+            return AgentResult(success=False, error="Spawned agent could not be instantiated")
+
+        logger.info(
+            "PreTaskOrchestrator: spawned and running dynamic agent %s (skills=%s)",
+            spawn_result.agent.name,
+            [s.value for s in resolved_skills],
+        )
+        return await agent.run(task)
 
     async def _execute_single(self, task, analysis, agent_factory):
         if not analysis.recommended_agent_ids:
