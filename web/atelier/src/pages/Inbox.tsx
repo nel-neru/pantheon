@@ -19,23 +19,16 @@ export function Inbox() {
   const inbox = useApi<InboxPayload>('/api/inbox', 30000)
   const [proposals, setProposals] = useState<OrgProposal[]>([])
   const [loadingProps, setLoadingProps] = useState(true)
+  const [failedOrgs, setFailedOrgs] = useState<string[]>([])
   const [busy, setBusy] = useState<Set<string>>(new Set())
   const reqRef = useRef(0)
 
-  // 提案を持つ組織集合が「実際に変わったとき」だけ再フェッチする安定シグネチャ。
-  // useApi の 45s ポーリングは毎回新しい配列を返すため、配列参照ではなく内容で依存する。
-  const orgsSig = orgs.data
-    ? orgs.data
-        .filter((o) => (o.pending_proposals || 0) > 0)
-        .map((o) => `${o.name}:${o.pending_proposals}`)
-        .join('|')
-    : null
-
   useEffect(() => {
-    if (orgsSig === null) return // 組織一覧がまだ読み込まれていない（ローディング維持）
-    const targets = (orgs.data ?? []).filter((o) => (o.pending_proposals || 0) > 0)
+    if (!orgs.data) return // 組織一覧がまだ読み込まれていない（ローディング維持）
+    const targets = orgs.data.filter((o) => (o.pending_proposals || 0) > 0)
     if (targets.length === 0) {
       setProposals([])
+      setFailedOrgs([])
       setLoadingProps(false)
       return
     }
@@ -50,23 +43,30 @@ export function Inbox() {
               'GET',
               `/api/organizations/${encodeURIComponent(o.name)}/proposals`,
             )
-            return list.map((proposal) => ({ org: o.name, proposal }))
+            return { org: o.name, ok: true, items: list.map((proposal) => ({ org: o.name, proposal })) }
           } catch {
-            return [] as OrgProposal[]
+            // 個別 org のフェッチ失敗は黙殺せず観測化する。握り潰すと承認待ち件数が
+            // 実際より少なく表示され（silent metric distortion）、承認すべき提案が
+            // 面から消える。失敗した org を記録して下流で正直に開示する。
+            return { org: o.name, ok: false, items: [] as OrgProposal[] }
           }
         }),
       )
       // アンマウント済み or 後続リクエストが先行した場合は破棄（順序逆転による復活を防ぐ）。
       if (cancelled || reqId !== reqRef.current) return
-      setProposals(results.flat())
+      setProposals(results.flatMap((r) => r.items))
+      setFailedOrgs(results.filter((r) => !r.ok).map((r) => r.org))
       setLoadingProps(false)
     })()
     return () => {
       cancelled = true
     }
-    // orgsSig が変わったときだけ再フェッチ（orgs.data の参照変化では走らせない）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgsSig])
+    // orgs ポーリング毎（orgs.data が更新される度）に再評価する。useApi は成功 poll の
+    // たびに新しい配列を返し、無関係な再レンダーでは参照不変なので過剰フェッチにはならない。
+    // 毎サイクル提案リストと failedOrgs（失敗 org の開示）を作り直すことで、一度失敗した
+    // org が回復したのに pending_proposals 不変で誤警告が残り続ける「スティッキー誤警告」を
+    // 防ぐ。順序逆転による復活は reqRef ガードで吸収する。
+  }, [orgs.data])
 
   const mark = (key: string, on: boolean) =>
     setBusy((cur) => {
@@ -166,10 +166,19 @@ export function Inbox() {
           同じく ErrorNote を出す。!orgs.data ガードで poll 中の一時エラーでは
           取得済みの提案を消さない。 */}
       {orgs.error && !orgs.data ? <ErrorNote message={orgs.error} /> : null}
+      {/* 一部の組織だけ提案フェッチが失敗した場合、件数が実際より少なくなるため
+          黙殺せず開示する。backend 自体は到達しているので「接続できません」固定文の
+          ErrorNote ではなく、部分劣化を伝える軽量な注記にする。 */}
+      {!(orgs.error && !orgs.data) && failedOrgs.length > 0 ? (
+        <p className="mono text-[11px] tracking-wider mb-4" style={{ color: 'var(--rose)' }}>
+          {failedOrgs.length} 件の組織で提案を取得できませんでした（{failedOrgs.join('、')}）。
+          表示件数は実際より少ない可能性があります。
+        </p>
+      ) : null}
       {!orgs.error && loadingProps && proposals.length === 0 ? (
         <Loading label="提案を集約" />
       ) : null}
-      {!orgs.error && !loadingProps && proposals.length === 0 ? (
+      {!orgs.error && !loadingProps && proposals.length === 0 && failedOrgs.length === 0 ? (
         <EmptyState title="承認待ちの提案はありません" hint="すべて捌けています" />
       ) : null}
 
