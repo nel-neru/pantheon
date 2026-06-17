@@ -157,7 +157,7 @@ class GenericSkillAgent(BaseAgent):
             return self._fallback_result(task)
 
         try:
-            from core.llm import LLMMessage, get_llm_provider
+            from core.llm import LLMMessage, extract_json_object, get_llm_provider
 
             llm = self._llm or get_llm_provider()
             messages = [
@@ -174,9 +174,8 @@ class GenericSkillAgent(BaseAgent):
             tool_spec = self._build_tool_spec()
             response = llm.complete(messages, tool_spec=tool_spec)
             response = self._maybe_reflexion(response, task, messages, llm, tool_spec)
-            try:
-                data = json.loads(response)
-            except json.JSONDecodeError:
+            data = extract_json_object(response)
+            if not isinstance(data, dict):
                 data = {
                     "result": response,
                     "key_findings": [],

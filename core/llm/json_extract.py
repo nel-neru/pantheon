@@ -38,10 +38,11 @@ def extract_json_object(text: str | None) -> Any | None:
     next ``{`` is tried — so a malformed brace before the real object does not
     defeat extraction. Returns the parsed value (always a ``dict`` in practice,
     since scanning anchors on ``{``), or ``None`` if no JSON object can be found.
-    Never raises on malformed input — callers fall back deterministically on
-    ``None``.
+    Never raises on *any* input — a non-``str`` argument (a contract violation per
+    the type hint) and an empty/``None`` string both yield ``None``, so callers
+    fall back deterministically.
     """
-    if not text:
+    if not isinstance(text, str) or not text:
         return None
     fenced = _FENCE_RE.search(text)
     candidate = fenced.group(1) if fenced else text

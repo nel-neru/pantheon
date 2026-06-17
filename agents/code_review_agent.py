@@ -6,14 +6,13 @@ Code Review Agent
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
 
-from core.llm import LLMMessage, get_llm_provider
+from core.llm import LLMMessage, extract_json_object, get_llm_provider
 from core.models.organization import SpecialistAgent
 
 from .base import AgentResult, AgentTask, BaseAgent
@@ -321,7 +320,10 @@ class CodeReviewAgent(BaseAgent):
             response = await provider.generate(
                 messages=messages, temperature=0.3, max_tokens=3000, task_type="code_review"
             )
-            data = json.loads(response.content)
+            data = extract_json_object(response.content)
+            if not isinstance(data, dict):
+                logger.warning("CodeReviewAgent: JSON parse failed (no JSON object in response)")
+                return []
             suggestions: List[CodeImprovementSuggestion] = []
             for raw_suggestion in data.get("suggestions", []):
                 try:
@@ -329,9 +331,6 @@ class CodeReviewAgent(BaseAgent):
                 except (TypeError, ValueError) as exc:
                     logger.warning("CodeReviewAgent: skipping invalid suggestion: %s", exc)
             return suggestions
-        except json.JSONDecodeError as e:
-            logger.warning("CodeReviewAgent: JSON parse failed: %s", e)
-            return []
         except Exception as e:
             logger.error("CodeReviewAgent: LLM call failed: %s", e)
             raise

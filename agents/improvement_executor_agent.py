@@ -6,12 +6,11 @@ Improvement Executor Agent
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from core.llm import LLMMessage, get_llm_provider
+from core.llm import LLMMessage, extract_json_object, get_llm_provider
 from core.models.organization import SpecialistAgent
 
 from .base import AgentResult, AgentTask, BaseAgent
@@ -193,11 +192,13 @@ class ImprovementExecutorAgent(BaseAgent):
                 max_tokens=8000,
                 task_type="improvement_execution",
             )
-            data = json.loads(response.content)
+            data = extract_json_object(response.content)
+            if not isinstance(data, dict):
+                logger.warning(
+                    "ImprovementExecutorAgent: JSON parse failed (no JSON object in response)"
+                )
+                return "", ""
             return data.get("modified_content", ""), data.get("change_summary", "")
-        except json.JSONDecodeError as e:
-            logger.warning("ImprovementExecutorAgent: JSON parse failed: %s", e)
-            return "", ""
         except Exception as e:
             # run() は空 modified_content を success=False に写像する。例外を投げると
             # scheduler の一括適用ループ全体が中断するため、他の失敗経路と同様に倒す。

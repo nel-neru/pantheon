@@ -30,6 +30,14 @@ def test_none_and_empty_return_none():
     assert extract_json_object("no json at all") is None
 
 
+def test_non_str_input_returns_none_never_raises():
+    # Cycle 23: the helper is the single canonical extractor, so it must be truly
+    # never-raise even on a contract-violating non-``str`` argument (a truthy
+    # list/dict/int would otherwise reach the fence regex and raise ``TypeError``).
+    for bad in ([1, 2], {"a": 1}, 42, object()):
+        assert extract_json_object(bad) is None  # type: ignore[arg-type]
+
+
 def test_leading_prose_then_object():
     assert extract_json_object('Here is the result:\n{"ok": true}') == {"ok": True}
 
