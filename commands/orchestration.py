@@ -96,7 +96,62 @@ async def cmd_orchestration_capabilities(args: argparse.Namespace) -> None:
             print(f"      → {gap.description}")
     else:
         print("\n  能力ギャップなし")
+
+    # --resolve: 検出ギャップを CapabilityGapResolver で解消する（既定オフ）。
+    # agent/skill → registry へ永続 spawn、team/division → PolicyEngine 評価（HITL ゲート）。
+    if getattr(args, "resolve", False):
+        _resolve_capability_gaps(gaps, registry, getattr(args, "org_name", None))
     print(f"{'═' * 60}\n")
+
+
+def _resolve_capability_gaps(gaps: list, registry: Any, org_name: str | None) -> None:
+    """検出ギャップを解消し結果サマリーを表示する（capabilities --resolve の本番ドライバ）。
+
+    解消側 :class:`CapabilityGapResolver` は従来テストのみで本番から呼ばれていなかった。
+    agent/skill ギャップは registry へ永続 spawn（実効果あり）、team/division ギャップは
+    PolicyEngine 経由で既定 HITL ゲート（自動適用しない）に倒す。
+    """
+    from core.orchestration.capability_gap_loop import resolve_gaps_for_org
+    from core.platform.state import PlatformStateManager
+
+    if not gaps:
+        print("\n  解消すべき能力ギャップはありません。")
+        return
+
+    psm = PlatformStateManager()
+    if org_name:
+        org = psm.load_organization_by_name(org_name)
+        if org is None:
+            print(
+                f"\n  [WARN] Organization '{org_name}' が見つかりません。ギャップ解消をスキップします。"
+            )
+            return
+    else:
+        orgs = psm.load_organizations()
+        if not orgs:
+            print("\n  [WARN] Organization が未登録のため、ギャップ解消をスキップします。")
+            return
+        org = orgs[0]
+
+    summary = resolve_gaps_for_org(gaps, org, capability_registry=registry)
+    # 構造ギャップが（policy.yaml の明示設定で）auto-apply された場合のみ org は
+    # in-memory で変異する。その時だけ永続化して `auto-applied` の報告を正直にする
+    # （既定の HITL 経路では構造は提案止まりで org は不変＝save 不要）。spawn は registry
+    # 側で既に永続済みで org を変えないため、ここでの save 対象ではない。
+    structure_applied = any(
+        record["auto_applied"] and record["action"] in ("proposed_team", "proposed_division")
+        for record in summary["results"]
+    )
+    if structure_applied:
+        psm.save_organization(org)
+    print(f"\n  {'─' * 56}")
+    print(f"  能力ギャップ解消結果  (対象 org: {org.name})")
+    print(f"    spawned agents : {summary['spawned_agents']}")
+    print(f"    proposed teams : {summary['proposed_teams']}")
+    print(f"    proposed divs  : {summary['proposed_divisions']}")
+    print(f"    auto-applied   : {summary['auto_applied']}")
+    for record in summary["results"]:
+        print(f"      - {record['action']}: {record['detail']}")
 
 
 async def cmd_orchestration_self_review(args: argparse.Namespace) -> None:
@@ -242,6 +297,17 @@ def register(subparsers: Any) -> None:
 
     capabilities = orch_sub.add_parser(
         "capabilities", help="現在のエージェント能力一覧と未充足ギャップを表示"
+    )
+    capabilities.add_argument(
+        "--resolve",
+        action="store_true",
+        help="検出した能力ギャップを解消する（agent/skill は registry へ spawn、"
+        "team/division は HITL ゲート提案）",
+    )
+    capabilities.add_argument(
+        "--org-name",
+        default=None,
+        help="--resolve の対象 Organization 名（省略時は登録済みの先頭を使用）",
     )
     capabilities.set_defaults(handler_name="cmd_orchestration_capabilities")
 

@@ -130,6 +130,144 @@ class TestOrchestrationCapabilitiesCLI:
             _run(cmd_orchestration_capabilities(SimpleNamespace()))
         assert "ギャップなし" in capsys.readouterr().out
 
+    # ── --resolve: 検出ギャップを CapabilityGapResolver で解消する本番ドライバ ──
+    @staticmethod
+    def _agent_gap():
+        from core.intelligence.capability_gap_analyzer import CapabilityGap
+
+        return CapabilityGap(
+            gap_id="gap:deep_research",
+            pattern_key="p",
+            description="research が必要",
+            suggested_type="agent",
+            suggested_name="deep_research",
+            rationale="needed",
+            priority="high",
+        )
+
+    def test_resolve_spawns_agent_for_gap(self, capsys, tmp_path):
+        """--resolve は org をロードし、agent ギャップを実際に spawn してサマリーを出す。"""
+        from core.models.organization import Organization
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                return_value=[self._agent_gap()],
+            ),
+            patch(
+                "core.platform.state.PlatformStateManager.load_organizations",
+                return_value=[org],
+            ),
+        ):
+            _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
+        out = capsys.readouterr().out
+        assert "能力ギャップ解消結果" in out
+        assert "対象 org: TestOrg" in out
+        assert "spawned agents : 1" in out
+
+    def test_resolve_no_org_skips_gracefully(self, capsys, tmp_path):
+        """org が未登録なら --resolve はクラッシュせず WARN を出してスキップする。"""
+        from main import cmd_orchestration_capabilities
+
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                return_value=[self._agent_gap()],
+            ),
+        ):
+            _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
+        out = capsys.readouterr().out
+        assert "Organization が未登録" in out
+        assert "能力ギャップ解消結果" not in out
+
+    def test_resolve_org_not_found_warns(self, capsys, tmp_path):
+        """--org-name が見つからなければ WARN を出してスキップする。"""
+        from main import cmd_orchestration_capabilities
+
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                return_value=[self._agent_gap()],
+            ),
+        ):
+            _run(
+                cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name="NoSuchOrg"))
+            )
+        out = capsys.readouterr().out
+        assert "見つかりません" in out
+        assert "能力ギャップ解消結果" not in out
+
+    def test_no_resolve_flag_leaves_resolution_off(self, capsys, tmp_path):
+        """--resolve 不在なら org・gap があっても解消ブロックを一切出さない（既定オフ）。"""
+        from core.models.organization import Organization
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                return_value=[self._agent_gap()],
+            ),
+            patch(
+                "core.platform.state.PlatformStateManager.load_organizations",
+                return_value=[org],
+            ),
+        ):
+            _run(cmd_orchestration_capabilities(SimpleNamespace()))
+        out = capsys.readouterr().out
+        assert "能力ギャップ解消結果" not in out
+        assert "検出された能力ギャップ" in out  # 表示自体は従来どおり行う
+
+    def test_resolve_persists_org_only_on_structure_auto_apply(self, capsys, tmp_path):
+        """構造ギャップが auto-apply された時だけ org を save する（spawn では save しない）。
+
+        既定の HITL 経路では構造は提案止まりで org は不変なので save 不要。spawn は registry
+        側で永続するため org save 対象外。両ケースで save 呼び出しの有無を検証する。
+        """
+        from core.models.organization import Organization
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        spawn_summary = {
+            "spawned_agents": 1,
+            "proposed_teams": 0,
+            "proposed_divisions": 0,
+            "auto_applied": 1,
+            "results": [{"action": "spawned_agent", "detail": "spawned: X", "auto_applied": True}],
+        }
+        structure_summary = {
+            "spawned_agents": 0,
+            "proposed_teams": 1,
+            "proposed_divisions": 0,
+            "auto_applied": 1,
+            "results": [{"action": "proposed_team", "detail": "applied", "auto_applied": True}],
+        }
+        for summary, expect_saved in ((spawn_summary, False), (structure_summary, True)):
+            with (
+                patch("core.platform.state.get_platform_home", return_value=tmp_path),
+                patch(
+                    "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                    return_value=[self._agent_gap()],
+                ),
+                patch(
+                    "core.platform.state.PlatformStateManager.load_organizations",
+                    return_value=[org],
+                ),
+                patch(
+                    "core.orchestration.capability_gap_loop.resolve_gaps_for_org",
+                    return_value=summary,
+                ),
+                patch("core.platform.state.PlatformStateManager.save_organization") as mock_save,
+            ):
+                _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
+            assert mock_save.called is expect_saved
+
 
 # ═══════════════════════════════════════════════════════════════
 # cmd_orchestration_self_review (N-10)
