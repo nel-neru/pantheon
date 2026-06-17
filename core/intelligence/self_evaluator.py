@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
+from core.llm.json_extract import extract_json_object
+
 
 @dataclass
 class EvaluationResult:
@@ -105,22 +107,10 @@ class AgentSelfEvaluator:
 
     @staticmethod
     def _parse_judge(raw: str):
-        import json
-
-        text = (raw or "").strip()
-        try:
-            return json.loads(text)
-        except Exception:
-            pass
-        # prose に埋もれた最初の {...} を拾う
-        start = text.find("{")
-        end = text.rfind("}")
-        if 0 <= start < end:
-            try:
-                return json.loads(text[start : end + 1])
-            except Exception:
-                return None
-        return None
+        # LLM 出力からの JSON 抽出は core.llm.extract_json_object に一本化。
+        # 旧 find/rfind 方式は末尾プローズ内の `}` を過剰捕捉して json.loads が
+        # 失敗する fail mode を持っていた（raw_decode は1つの正当値のみ取る）。
+        return extract_json_object(raw)
 
     def evaluate_with_retry(
         self,
