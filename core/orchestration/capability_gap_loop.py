@@ -111,7 +111,10 @@ class CapabilityGapResolver:
         # 代わりにワークスペース相対の構造マーカー file_path を与え、external 組織は
         # 境界ガード（org_boundary.out_of_scope）で正しく人間確認に倒す。
         proposal = ImprovementProposal(
-            # dedupe_key から決定論的に導出（再生成で同一性を保つ）
+            # id/review_id を gap_id から決定論的に導出する。save_improvement_proposal は
+            # ファイル名 {id}.json で書くため、id を固定しないと再 --resolve のたびに別ファイルが
+            # 増え、同一ギャップの構造提案が /inbox に重複して積み上がる。id を固定して上書きにする。
+            id=uuid5(_GAP_NS, f"gap-structure-id:{gap.gap_id}"),
             review_id=uuid5(_GAP_NS, f"gap-structure:{gap.gap_id}"),
             priority=gap.priority or "medium",
             category="org_structure",
