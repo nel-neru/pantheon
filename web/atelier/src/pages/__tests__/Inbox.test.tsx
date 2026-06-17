@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { Inbox } from '../Inbox'
@@ -240,5 +240,184 @@ describe('Inbox Proposals section error handling', () => {
     )
     expect(screen.queryByText('接続エラー')).not.toBeInTheDocument()
     expect(screen.queryByText(/提案を集約/)).not.toBeInTheDocument()
+  })
+})
+
+// 最小限の OrgSummary を組み立てる（コンポーネントが使うのは name / pending_proposals のみ）。
+function orgSummary(name: string, pending: number) {
+  return {
+    id: name,
+    name,
+    purpose: '',
+    target_repo_path: null,
+    status: 'active',
+    health_score: 0,
+    autonomy_score: 0,
+    improvement_velocity: 0,
+    total_agents: 0,
+    pending_proposals: pending,
+    last_active: '2026-06-17T00:00:00Z',
+    is_system: false,
+    icon_data: null,
+  }
+}
+
+describe('Inbox Proposals section partial-failure observability', () => {
+  it('一部の組織だけ提案フェッチが失敗したら、取得できた提案は出しつつ部分失敗を開示する', async () => {
+    // OrgA は提案1件を返し、OrgB は 500。握り潰すと OrgB の提案が黙って消え、
+    // 承認待ち件数が実際より少なく表示される（silent metric distortion）。
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      // per-org 提案エンドポイントを /api/organizations 判定より先に評価する。
+      if (url.includes('/proposals')) {
+        if (url.includes('/OrgB/')) {
+          return {
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+            json: async () => ({ detail: 'OrgB proposals failed' }),
+          }
+        }
+        return { ok: true, json: async () => [{ proposal_id: 'pA1', title: 'OrgA の改善提案' }] }
+      }
+      if (url.includes('/api/organizations')) {
+        return { ok: true, json: async () => [orgSummary('OrgA', 1), orgSummary('OrgB', 1)] }
+      }
+      if (url.includes('/api/inbox')) {
+        return { ok: true, json: async () => ({ items: [], counts: {} }) }
+      }
+      return { ok: true, json: async () => [] }
+    }) as unknown as typeof fetch
+
+    render(<Inbox />)
+
+    // 取得できた OrgA の提案は表示される
+    await waitFor(() => expect(screen.getByText('OrgA の改善提案')).toBeInTheDocument())
+    // 部分失敗が面に出る（失敗 org 名を含む）
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === 'P' &&
+          Boolean(el.textContent?.includes('提案を取得できませんでした')) &&
+          Boolean(el.textContent?.includes('OrgB')),
+      ),
+    ).toBeInTheDocument()
+    // 提案が1件は出ているので空状態は出ない
+    expect(screen.queryByText('承認待ちの提案はありません')).not.toBeInTheDocument()
+  })
+
+  it('全組織で提案フェッチが失敗しても「すべて捌けています」を捏造せず、エラーを開示する', async () => {
+    // 全 org 失敗 → proposals は空。だが「空＝完了」ではないので EmptyState を出してはならない
+    // （error を done に偽装しない）。代わりに部分失敗の開示を出す。
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/proposals')) {
+        return {
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error',
+          json: async () => ({ detail: 'proposals failed' }),
+        }
+      }
+      if (url.includes('/api/organizations')) {
+        return { ok: true, json: async () => [orgSummary('OrgA', 1), orgSummary('OrgB', 1)] }
+      }
+      if (url.includes('/api/inbox')) {
+        return { ok: true, json: async () => ({ items: [], counts: {} }) }
+      }
+      return { ok: true, json: async () => [] }
+    }) as unknown as typeof fetch
+
+    render(<Inbox />)
+
+    // 部分失敗の開示が出る
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          (_, el) =>
+            el?.tagName === 'P' && Boolean(el.textContent?.includes('提案を取得できませんでした')),
+        ),
+      ).toBeInTheDocument(),
+    )
+    // 誤誘導の「承認待ちの提案はありません（すべて捌けています）」を出さない（回帰の核心）
+    expect(screen.queryByText('承認待ちの提案はありません')).not.toBeInTheDocument()
+    // 無限ローディングにも陥らない
+    expect(screen.queryByText(/提案を集約/)).not.toBeInTheDocument()
+  })
+
+  it('一度失敗した組織が次の poll で回復したら、部分失敗の開示は消える（スティッキー誤警告を防ぐ）', async () => {
+    // orgsSig 依存のままだと pending_proposals 不変＝effect 再発火せず、回復後も注記が
+    // 残り続ける。orgs.data 依存（poll 毎再評価）で failedOrgs を作り直すことを固定する。
+    vi.useFakeTimers()
+    try {
+      let orgBCalls = 0
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/proposals')) {
+          if (url.includes('/OrgB/')) {
+            orgBCalls += 1
+            if (orgBCalls === 1) {
+              return {
+                ok: false,
+                status: 500,
+                statusText: 'Internal Server Error',
+                json: async () => ({ detail: 'transient' }),
+              }
+            }
+          }
+          return { ok: true, json: async () => [{ proposal_id: 'pB1', title: 'OrgB の改善提案' }] }
+        }
+        if (url.includes('/api/organizations')) {
+          return { ok: true, json: async () => [orgSummary('OrgB', 1)] }
+        }
+        if (url.includes('/api/inbox')) {
+          return { ok: true, json: async () => ({ items: [], counts: {} }) }
+        }
+        return { ok: true, json: async () => [] }
+      }) as unknown as typeof fetch
+
+      render(<Inbox />)
+      // 初回マウントのフェッチ連鎖（orgs→per-org proposals）を flush
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10)
+      })
+      // 初回は OrgB 失敗 → 部分失敗の開示が出る
+      expect(
+        screen.getByText(
+          (_, el) =>
+            el?.tagName === 'P' && Boolean(el.textContent?.includes('提案を取得できませんでした')),
+        ),
+      ).toBeInTheDocument()
+
+      // 次の orgs poll（45s）で OrgB が回復 → failedOrgs が作り直され注記が消える
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45000)
+      })
+      expect(screen.queryByText(/提案を取得できませんでした/)).not.toBeInTheDocument()
+      expect(screen.getByText('OrgB の改善提案')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('全組織の提案フェッチが成功すれば部分失敗の開示は出ない（健全系の対照）', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/proposals')) {
+        return { ok: true, json: async () => [{ proposal_id: 'pA1', title: 'OrgA の改善提案' }] }
+      }
+      if (url.includes('/api/organizations')) {
+        return { ok: true, json: async () => [orgSummary('OrgA', 1)] }
+      }
+      if (url.includes('/api/inbox')) {
+        return { ok: true, json: async () => ({ items: [], counts: {} }) }
+      }
+      return { ok: true, json: async () => [] }
+    }) as unknown as typeof fetch
+
+    render(<Inbox />)
+
+    await waitFor(() => expect(screen.getByText('OrgA の改善提案')).toBeInTheDocument())
+    expect(screen.queryByText(/提案を取得できませんでした/)).not.toBeInTheDocument()
   })
 })
