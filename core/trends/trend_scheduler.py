@@ -147,7 +147,10 @@ class TrendScheduler:
             "added": collect.get("added", 0),
             "content_jobs": convert.get("content_jobs", 0),
             "proposals": convert.get("proposals", 0),
+            # 変換の部分/全失敗を母数として残す（"新規ゼロ" と "全件失敗" を区別する）。
+            "convert_failed": convert.get("failed", 0),
             "cc_proposals": cc.get("proposals", 0),
+            "cc_failed": cc.get("failed", 0),
             "business_proposals": biz.get("proposals", 0),
             "untapped_genres": untapped.get("proposals", 0),
         }

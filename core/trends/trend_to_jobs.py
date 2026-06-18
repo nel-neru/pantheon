@@ -127,7 +127,13 @@ def convert_trends(
     """未処理の高スコアトレンドを ContentJob ドラフト＋提案へ変換する（承認ゲート経由）。
 
     冪等: trend hash で処理済みを記録し、再実行で重複生成しない。
-    戻り値: {"converted": int, "content_jobs": int, "proposals": int, "skipped": int}
+    戻り値: {"converted": int, "content_jobs": int, "proposals": int,
+             "failed": int, "skipped": int}
+
+    ``failed`` は max_per_run 内で「両アーティファクトが揃わなかった」トレンド数
+    （job/proposal 生成例外などの部分・全失敗）。これを surface しないと呼び出し側
+    （trend daemon の summary）が「新規ゼロ」と「全件失敗」を区別できず、健全な無変換
+    サイクルと壊れたサイクルが同じ ``proposals:0`` に潰れる（メトリクス母数の黙殺）。
     """
     if platform_home is None:
         from core.platform.state import get_platform_home
@@ -141,7 +147,14 @@ def convert_trends(
     # 受け手 org: 明示指定 → 既存の content 系 org → Meta org → 先頭 org
     org = _resolve_target_org(psm, org_name)
     if org is None:
-        return {"converted": 0, "content_jobs": 0, "proposals": 0, "skipped": 0, "reason": "no_org"}
+        return {
+            "converted": 0,
+            "content_jobs": 0,
+            "proposals": 0,
+            "failed": 0,
+            "skipped": 0,
+            "reason": "no_org",
+        }
 
     processed = _load_processed(platform_home)
     store = TrendStore(platform_home)
@@ -164,6 +177,7 @@ def convert_trends(
 
     content_jobs = 0
     proposals = 0
+    failed = 0
     for trend in candidates[:max_per_run]:
         marker = f"trend:{trend.hash}"
         # ContentJob ドラフト（同 trend hash の job が既存なら成功扱いでスキップ）
@@ -187,15 +201,19 @@ def convert_trends(
             except Exception as exc:  # noqa: BLE001
                 logger.info("trend proposal creation failed for %s: %s", trend.hash, exc)
         # 両アーティファクトが揃ったトレンドだけ processed に記録する（部分失敗は次回
-        # 再試行され、hash/dedupe_key の冪等チェックが二重生成を防ぐ）。
+        # 再試行され、hash/dedupe_key の冪等チェックが二重生成を防ぐ）。揃わなかった
+        # トレンドは failed に計上し、無変換と失敗を区別可能にする（観測化）。
         if job_ok and proposal_ok:
             processed.add(trend.hash)
+        else:
+            failed += 1
 
     _save_processed(platform_home, processed)
     return {
         "converted": content_jobs,
         "content_jobs": content_jobs,
         "proposals": proposals,
+        "failed": failed,
         "skipped": max(0, len(candidates) - max_per_run),
     }
 
@@ -206,6 +224,7 @@ def propose_claude_code_updates(*, platform_home=None, max_per_run: int = 3) -> 
     Anthropic/Claude Code 自体の進化（新機能・新モデル・ベストプラクティス）を拾い、
     リポジトリの Claude Code 設定を見直す meta 提案を承認ゲート付きで起票する。
     トレンド監視 daemon の週次相当ステップ。冪等（trend hash で処理済み記録）。
+    戻り値: {"proposals": int, "failed": int}（``failed`` は提案生成で例外を出した件数）。
     """
     if platform_home is None:
         from core.platform.state import get_platform_home
@@ -229,6 +248,7 @@ def propose_claude_code_updates(*, platform_home=None, max_per_run: int = 3) -> 
     sm = psm.get_org_state_manager(org)
     existing_dedupe = _existing_dedupe_keys(sm)
     made = 0
+    failed = 0
     for trend in candidates[:max_per_run]:
         dedupe_key = f"cc-trend:{trend.hash}"
         if dedupe_key in existing_dedupe:  # 既存提案と重複しない（再生成耐性）
@@ -258,10 +278,11 @@ def propose_claude_code_updates(*, platform_home=None, max_per_run: int = 3) -> 
             processed.add(f"cc:{trend.hash}")
             made += 1
         except Exception as exc:  # noqa: BLE001
+            failed += 1
             logger.info("cc trend proposal failed for %s: %s", trend.hash, exc)
 
     _save_processed(platform_home, processed)
-    return {"proposals": made}
+    return {"proposals": made, "failed": failed}
 
 
 def _resolve_target_org(psm, org_name: Optional[str]):
