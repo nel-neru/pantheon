@@ -510,3 +510,96 @@ class TestOrchestrationCapabilitiesUnusedCLI:
         out = capsys.readouterr().out
         assert "最終アクティビティから 10 日以上" in out
         assert "DustyAgent" in out.split("非推奨候補")[1]
+
+    def test_unused_report_shows_id_for_deprecate(self, capsys, tmp_path):
+        """--unused レポートは id を併記し、そのまま --deprecate に渡せる。"""
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path, added_days_ago=200)
+            _run(cmd_orchestration_capabilities(SimpleNamespace(unused=90)))
+        section = capsys.readouterr().out.split("非推奨候補")[1]
+        assert "[id: dustyagent]" in section
+
+
+# ═══════════════════════════════════════════════════════════════
+# cmd_orchestration_capabilities --deprecate（非推奨化 HITL アクション）
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestOrchestrationCapabilitiesDeprecateCLI:
+    @staticmethod
+    def _seed(tmp_path, *, cap_id: str = "dustyagent", name: str = "DustyAgent"):
+        from datetime import datetime, timedelta, timezone
+
+        from core.intelligence.capability_registry import CapabilityEntry, CapabilityRegistry
+
+        registry = CapabilityRegistry()
+        registry.register(
+            CapabilityEntry(
+                id=cap_id,
+                name=name,
+                capability_type="agent",
+                added_at=(datetime.now(timezone.utc) - timedelta(days=200)).isoformat(),
+                usage_count=0,
+                last_used=None,
+            )
+        )
+
+    def test_deprecate_by_id_persists_and_excludes_from_unused(self, capsys, tmp_path):
+        """--deprecate <id> で is_active=False を永続化し、以後 --unused 候補から消える。"""
+        from core.intelligence.capability_registry import CapabilityRegistry
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path)
+            _run(cmd_orchestration_capabilities(SimpleNamespace(deprecate="dustyagent")))
+            out = capsys.readouterr().out
+            # 永続状態を実ファイルから読み直して非推奨が残ることを確認（出力文言任せにしない）。
+            reloaded = CapabilityRegistry()
+            assert reloaded.get("dustyagent").is_active is False
+            # 非推奨後の --unused レポートに当該 id が出ない。
+            _run(cmd_orchestration_capabilities(SimpleNamespace(unused=90)))
+            section = capsys.readouterr().out.split("非推奨候補")[1]
+
+        assert "非推奨にしました" in out
+        assert "dustyagent" not in section
+
+    def test_deprecate_by_name_resolves_to_entry(self, capsys, tmp_path):
+        """--deprecate <表示名> も find_by_name で解決して非推奨化できる。"""
+        from core.intelligence.capability_registry import CapabilityRegistry
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path)
+            _run(cmd_orchestration_capabilities(SimpleNamespace(deprecate="DustyAgent")))
+            reloaded = CapabilityRegistry()
+            active = reloaded.get("dustyagent").is_active
+
+        assert active is False
+        assert "非推奨にしました" in capsys.readouterr().out
+
+    def test_deprecate_unknown_warns_and_no_change(self, capsys, tmp_path):
+        """存在しない能力を --deprecate しても WARN を出すだけでクラッシュしない。"""
+        from core.intelligence.capability_registry import CapabilityRegistry
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path)
+            _run(cmd_orchestration_capabilities(SimpleNamespace(deprecate="no-such-cap")))
+            reloaded = CapabilityRegistry()
+            active = reloaded.get("dustyagent").is_active
+
+        out = capsys.readouterr().out
+        assert "見つかりません" in out
+        assert active is True  # 無関係な能力は不変
+
+    def test_without_deprecate_flag_no_action(self, capsys, tmp_path):
+        """--deprecate 不在（既定）では非推奨化ブロックを一切出さない＝従来挙動。"""
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path)
+            _run(cmd_orchestration_capabilities(SimpleNamespace()))
+        out = capsys.readouterr().out
+        assert "非推奨にしました" not in out

@@ -170,6 +170,10 @@ class CapabilityRegistry:
         now = datetime.now(timezone.utc)
         unused: List[dict] = []
         for cap in self._capabilities.values():
+            # 既に非推奨（is_active=False）にした能力は候補から除外する。さもないと
+            # deprecate 済みの能力が毎回レポートに再出現して人間を再ナグしてしまう。
+            if not cap.is_active:
+                continue
             last_activity = cap.last_used or cap.added_at
             try:
                 last_dt = datetime.fromisoformat(last_activity)
@@ -183,45 +187,29 @@ class CapabilityRegistry:
                 unused.append(cap.to_dict())
         return unused
 
-    def mark_for_deprecation(self, capability_id: str) -> None:
-        """Persist a deprecation marker in the registry file."""
-        path = self._registry_file
-        if capability_id in self._capabilities:
-            self._capabilities[capability_id].is_active = False
+    def mark_for_deprecation(self, capability_id: str) -> bool:
+        """能力を非推奨（``is_active=False``）にして永続化する。
 
-        payload = {
-            "version": "1.0.0",
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "capabilities": [],
-        }
-        if path.exists():
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-
-        found = False
-        for entry in payload.get("capabilities", []):
-            if entry.get("id") == capability_id:
-                entry["deprecated"] = True
-                entry["is_active"] = False
-                found = True
-                break
-
-        if not found and capability_id in self._capabilities:
-            entry = self._capabilities[capability_id].to_dict()
-            entry["deprecated"] = True
-            entry["is_active"] = False
-            payload.setdefault("capabilities", []).append(entry)
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        明示的な人間操作（``capabilities --deprecate <id>`` ＝ HITL）から呼ばれる。
+        マーカーは ``is_active`` 一本に正規化し、``_save`` で in-memory 状態を唯一の
+        真実として書き戻す（旧実装は ``_save`` を使わず on-disk payload を手動パッチし、
+        どの読取経路も参照しない ``deprecated`` キーを別途書いていた＝inert なノイズ）。
+        非推奨化された能力は :meth:`get_unused_capabilities`・:meth:`format_for_agent`
+        から除外される。存在しない id では何もせず ``False`` を返す。
+        """
+        cap = self._capabilities.get(capability_id)
+        if cap is None:
+            return False
+        cap.is_active = False
+        self._save()
+        return True
 
     def format_for_agent(self) -> str:
         """エージェントのプロンプトに埋め込める形式で全能力を返す。"""
         lines = ["【現在のシステム能力一覧】"]
         for cap_type in ("agent", "skill", "tool"):
-            entries = self.list_all(cap_type)
+            # 非推奨（is_active=False）能力はエージェントへ宣伝しない（使うべきでないため）。
+            entries = [e for e in self.list_all(cap_type) if e.is_active]
             if entries:
                 label = {"agent": "エージェント", "skill": "スキル", "tool": "ツール"}.get(
                     cap_type, cap_type
