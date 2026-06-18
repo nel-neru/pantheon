@@ -217,7 +217,12 @@ class CapabilityGapAnalyzer:
         new_gaps = []
         existing_cap_names: set = set()
         if self._registry:
-            existing_cap_names = {e.name for e in self._registry.list_all()}
+            # アクティブな能力だけを「既存」とみなす。非推奨化（is_active=False）した能力は
+            # format_for_agent（LLM 分析経路が読む）からも除外済みなので、ここで全件を見ると
+            # 2 つの分析経路が「その能力は在るか」で食い違う。さらに本当に必要が再燃した
+            # 能力の再提案を非推奨マーカーが恒久的に抑止してしまう（zombie 化）。再提案は
+            # HITL 承認ゲートを通るので、必要なら人間が判断できる。
+            existing_cap_names = {e.name for e in self._registry.list_all() if e.is_active}
 
         for pattern in patterns:
             for rule in self.HEURISTIC_RULES:
