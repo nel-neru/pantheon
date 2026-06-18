@@ -2409,3 +2409,40 @@ Cycle 30 — capability 非推奨機能を honest に完成（dead な execution
            可視化）で GUI/CLI 以外の多様性、(ss) capability_gap_analyzer の re-suggest 抑制が is_active を無視する点を意図確認の上
            「非推奨後は再提案を許す」に倒すか検討（reviewer の consistency note・要設計判断）、(tt) class 全体の非アトミック `_save` を
            atomic_write_text へ寄せる hygiene（C37 原則の registry 版・低リスク）。
+
+Cycle 31 — gap 分析の heuristic 経路を is_active で整合（C30 が露呈した2経路の食い違いを解消）  (2026-06-18)
+  Plan   : `CapabilityGapAnalyzer._analyze_heuristic` の `existing_cap_names = {e.name for e in list_all()}` を
+           `if e.is_active` で active 限定にし、`format_for_agent`（LLM 分析経路 `_analyze_with_llm` が cap_summary として読む）と
+           同一述語に揃える。受け入れ基準= deprecate 後に同名 gap の再提案が許され（heuristic 経路）、active は抑制維持／
+           非推奨能力ゼロの通常時は byte 等価／既存緑・新規回帰0／ruff・レビュー APPROVE／merged。なぜ今: **C30 で
+           format_for_agent が非推奨を除外したため、heuristic 経路が全件のままだと2つのギャップ分析経路が「その能力は在るか」で
+           食い違う**（LLM は不在扱いで再提案し得るのに heuristic は在る扱いで抑制）＝C30 が導入/露呈した整合性バグ。reviewer の
+           consistency note を「意図確認」でなく明確な defect と判定し、自分が入れた不整合を放置せず閉じる（diversity ヒューリスティック
+           より「known defect を残さない」を優先）。**落とした候補（重要）**: (tt) 非アトミック `_save` の atomic 化＝grep の結果
+           JSON state を書く非アトミック writer は複数行版含め **25+ 箇所**＝bounded な「単一バグ×N call site」ではなく大規模 hygiene
+           カテゴリ。全 sweep は投機的書き換えで禁止・部分 sweep は恣意的＝**単一サイクルに不適と判断し見送り**（C37 §B-4 の
+           content_jobs/publish_jobs は既に atomic 済みと確認）。(rr) product/vision スライスは次サイクルへ。
+  Did    : work/gap-analyzer-deprecated-consistency-20260618（コード）＋ work/evolve-log-c31（ログ）。capability_gap_analyzer.py:225 を
+           1行修正（`list_all()` → `[... if e.is_active]`）＋理由コメント。tests/test_capability_deprecation.py に
+           `test_deprecated_capability_does_not_suppress_gap_reproposal`＝SimpleNamespace の codebase_scan pattern と HEURISTIC_RULES
+           同名能力（CodebaseExplorerAgent）で、active 時は `_analyze_heuristic([pattern])==[]`（抑制維持）→ deprecate 後は
+           `[g.suggested_name ...]==["CodebaseExplorerAgent"]`（再提案許可）の両方向を pin。
+  Check  : ruff クリーン ／ test-triage = **GREEN**（1591 passed・既知2失敗のみ・新規回帰0）／ deprecation+gap_loop 14件緑 ／
+           merge_to_main 全件ゲート通過。code-reviewer = **APPROVE**（確定所見ゼロ・5精査点すべて成立）: (1) 述語が
+           format_for_agent と完全一致＝2経路が整合、修正前は heuristic 集合に非推奨名が残り gap を抑制（[] 返却）を実証、
+           (2) `existing_cap_names` は `_analyze_heuristic` ローカル＝他消費者なし（他の list_all 呼び出しは無関係で untouched）、
+           (3) load-bearing＝reverted code で第2アサート fail を実証・両方向 pin、(4) blast radius なし＝非推奨が gap を抑制する
+           前提のテスト/本番経路は皆無、(5) 後方互換＝非推奨ゼロなら集合は従来と同一。**churn 懸念は否定**＝再提案は self._gaps の
+           既出ガードで以降抑制＋matching operation_type 検出時のみ＝deprecate 後の再提案は最大1回・per-cycle ループにならない。
+  Act    : merged ✅（main 4c3b2bb）。固定化: (A) **read-path に honor を足したら同じシグナルを読む全経路を同時に揃える**＝
+           C30 で format_for_agent に is_active フィルタを入れた時、同じ「能力は在るか」を判定する heuristic 経路（list_all）を
+           見落とすと2経路が食い違う。マーカー honor は「1経路だけ」だと sibling 経路と不整合を生む（[[detection-execution-gap-wiring]] の
+           read 側完全性＝[[silent-drop-observability]] の「partial-degradation のパリティを横ぐしで確認」の非UI版）。(B) **自分が前
+           サイクルで導入/露呈した不整合は diversity より優先して閉じる**＝reviewer の consistency note を「conscious decision 待ち」で
+           放置せず、2経路が矛盾するなら correctness defect として即修正。(C) **atomic-write のような broad hygiene カテゴリは
+           「単一バグ×N call site」と違い1サイクルで sweep しない**＝25+ の非アトミック writer は ephemeral（prompt/code/pid）と
+           accumulative state が混在し、全件は投機的・部分は恣意的。bounded な「事前特定済みサブセット」（C37 §B-4 等）に限る。memory 更新。
+  Next   : C32 候補 — **意識的に capabilities 領域から離れる**（C28/C30/C31 で3サイクル）。(rr) product/vision スライス
+           （Org 量産 `pantheon org create` の E2E 硬化 or trends→提案の /inbox provenance 可視化＝GUI/CLI 以外の多様性）、
+           (uu) daemon/runtime か goals パイプラインの未触り subsystem で correctness/robustness の的を絞った1件、
+           (vv) Claude Code best-practice 採用（trend-watcher → .claude/ 更新・meta レバレッジ）。
