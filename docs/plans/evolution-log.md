@@ -2950,3 +2950,32 @@ Cycle 47 — (kkk) PublishJobStore.add_job に mode の安全側 coercion を追
   Next   : C48 候補 — (zz) 他 atelier ページの未提示 backend データ surfacing（C39 横展開・フロントで多様性）、(jjj) trends/daemons の robustness 監査（運用層・
            naive-tz/silent-drop 以外の archetype）、(lll) base に publish mode 正規化ヘルパを集約し content_runner と add_job が共有（C47 固定化(B)の実装）。
            **publishing 層が C46-47 で2連続なので次は必ず別サブシステム（frontend or trends/daemons）へ転換**。
+
+Cycle 48 — (zz) atelier Pantheon の OrgPlate に「改善速度」Meter を追加＝lede が約束する3指標のうち未描画だった improvement_velocity を surfacing（publishing 2連続を断ち frontend へ転換）  (2026-06-19)
+  Plan   : (zz) C46-47 が publishing 層2連続だったので多様性方針どおり frontend へ転換。atelier `Pantheon.tsx` の OrgPlate は lede で「健全度・自律度・
+           **改善速度**を一枚のプレートに刻んだ」と**約束している**のに、Meter は健全度（health_score）と自律度（autonomy_score）の2つしか描画せず
+           **改善速度（improvement_velocity）が抜けていた**＝ページの自己コピーが守れていない確証 UX defect。バックエンド `/api/organizations` は
+           `improvement_velocity` を返し（server.py:3477・live_metrics→VelocityCalculator）、値は velocity.py:13 の `min(100.0, velocity)` と
+           Organization モデル `Field(50.0, ge=0, le=100)` で **[0,100] にクランプ済み**＝health/autonomy と同一の 0-100 Meter 規約で描ける。
+           **なぜ今これか**: 確証済みの実欠陥（lede↔render 不一致）＋小さく可逆＋frontend で多様性転換（最後の frontend は C39/C42）。受け入れ基準=
+           OrgPlate が改善速度 Meter を improvement_velocity に束ねて描画／build+test 緑／回帰付き／merged。**落とした候補**: (iii)scoring.py の TypeError 硬化＝
+           from_dict が collected_at を常に str coerce 済みで live 露出低、(lll)publish mode helper 集約＝publishing 3連続になり多様性方針に反する。
+  Did    : work/atelier-velocity-meter-surfacing-20260619（main 7a19f89）。`Pantheon.tsx` に `const velocity = clamp(org.improvement_velocity || 0, 0, 100)`
+           （sibling の health/autonomy と同一 `|| 0` NaN セーフ規約）と 3つ目の `<Meter label="改善速度" value={velocity} tone="var(--gold)" />`
+           を追加（health=green・autonomy=ice・velocity=gold の三幅対）。回帰テスト1本を `Pantheon.test.tsx` に追加＝単一組織 fetch で
+           `getByRole('progressbar', { name: '改善速度' })` の `aria-valuenow` が improvement_velocity（42）に一致することを断言。純加算で layout/型契約は不変。
+  Check  : **atelier build 緑（tsc 型エラー0・vite bundle 成功）／npm test 緑（11 files・71 tests・新 "metric meters surfacing" 含む全通過）**。
+           frontend のみのため ruff/pytest 対象外。**敵対的レビュー code-reviewer = APPROVE（blocking 0）**＝① improvement_velocity は velocity.py:13＋モデル
+           Field で真に [0,100] クランプ済み＝Meter の `width:${value}%`/`aria-valuemax=100` は意味的に正しい（per-day rate 誤単位リスク無し）、
+           ② `|| 0` は sibling と同一で undefined/NaN/null→0＝`width:'NaN%'` 黙殺を回避（[[get-default-none-footgun]] frontend 版）、③ 新テストは
+           origin/main で **改善速度 assertion 行のみ fail**（stash 実証）＝load-bearing、④ 複数組織で同名 aria-label progressbar が並ぶのは既存2 Meter も同様の
+           既存パターンで、テストは単一組織 mock で一意化＝安全、⑤ blast radius は Pantheon.tsx(+2) と test(+40) のみ・Observatory/Inbox/Firmament は OrgPlate
+           非利用で契約不変。nit（clamp は backend 既クランプで belt-and-suspenders／health/autonomy 断言は stability anchor）は意図的で据え置き妥当。
+  Act    : merged ✅（merge_to_main ゲート通過・既知2失敗のみ・7a19f89）。固定化: (A) **ページ/コンポーネントの lede・見出し・コピーが「X を見せる」と
+           約束しているのに描画が欠けている箇所は確証 UX defect**＝コピーは仕様の一部。surfacing 候補は「backend が返すが未描画」だけでなく「UI が自分で
+           約束したのに未描画」を優先的に洗うと確信度が高い。(B) **surfacing 前にメトリクスの単位・レンジを算出元まで辿って確認**＝0-100 percent か per-day
+           rate かで描画形（Meter か numeral stat か）が変わる。Meter は 0-100 前提なので value のクランプ保証（calculator＋model Field の二重）を確認してから
+           Meter にする。(C) frontend の数値描画は `|| 0` で NaN セーフにし、回帰テストは aria-valuenow など**値に束ねた assertion** で origin/main 反転を確認。
+  Next   : C49 候補 — (mmm) Observatory ページの組織行が health_score のみ表示で autonomy/velocity 未提示＝同型 surfacing の横展開（ただし frontend 連投回避で
+           1サイクル空けるか検討）、(jjj) trends/daemons の robustness 監査（運用層・naive-tz/silent-drop 以外の archetype＝未掃討カテゴリ）、(iii) scoring.py:37 の
+           `except ValueError` を TypeError 含めて硬化（live 露出は低いが直接構築経路の保険）。**frontend が C48 単発なので次は運用層 or 正確性へ戻して多様性維持**。
