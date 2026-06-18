@@ -2747,3 +2747,33 @@ Cycle 40 — (ww) capability-gap の known issue を実コード根治＝resolve
            の archetype＝検出は稼働だが実行が dead-code・C10/C12 の続き。ただしコード生成系は可逆性に注意し dry-run/提案止まり既定）、(zz) 他 atelier
            ページの未提示 backend データ surfacing（C39 パターン横展開）、(ccc) capability_gaps の registry 照合 reconcile を get_all_gaps に入れ、
            resolver 経由でなく外部登録で能力が現れた場合もギャップを畳む（今回は resolver 経路のみ閉じた・名前照合の fragility を要検討）。
+
+Cycle 41 — (bbb) self_extension_pipeline を本番配線＝`capabilities --self-extend`（既定オフ）で検出ギャップから新コードを設計・生成し HITL 提案化（detection-execution-gap archetype・proposal-only で可逆）  (2026-06-18)
+  Plan   : (bbb) C40 で記録した known issue「自己拡張のコード生成段（ToolDesignAgent→SelfCodeWriter）に本番トリガ無し（test/ライブラリのみ）」を
+           [[detection-execution-gap-wiring]] archetype で解消。**なぜ今これか**: C40 で root を特定済み＋文脈が新鮮、vision の核（自己進化する AI 組織が
+           自前で新能力を設計）を最も安全な形で前進。受け入れ基準= 既定オフ CLI フラグで最小・可逆に配線し HITL 提案を生成、回帰テスト付き merged。
+           **着手前に可逆性を実コードで裏取り**: `SelfExtensionPipeline` は提案段階まで（design→write_code→syntax 検証→ImprovementProposal 保存）で
+           **生成コードを live repo に書かない**（`SelfCodeWriter.write_code` は CodeOutput を返すだけ・`status="proposed"` で `.pantheon/improvements/`
+           へ保存・承認まで本番統合しない）と確認＝配線は安全。**落とした候補**: (zz) atelier surfacing＝C39 と同種、(ccc) get_all_gaps の registry
+           reconcile＝名前照合 fragility で別スライス。
+  Did    : work/wire-self-extension-pipeline-20260618。`capabilities --self-extend`（store_true・既定オフ）を追加し、async ドライバ
+           `_self_extend_capability_gaps` が org をロード→`ClaudeCodeProvider() if claude_available() else None`（claude 不在でも各エージェントは
+           **テンプレートにフォールバック**＝LLM 非依存でクラッシュしない）で `SelfExtensionPipeline`(ToolDesignAgent/SelfCodeWriter/
+           SelfIntegrationTester) を構築→`run_all_gaps`→HITL 提案（status="proposed"・category="self_extension"・active で /inbox 到達）を生成。
+           **--resolve の spawn と違い mark_implemented は呼ばない**（提案止まり＝承認・統合まで gap 未充足）。回帰3本（提案の HITL 永続化・gap が
+           active のまま・org 未登録 skip・再実行冪等）。
+  Check  : ruff クリーン ／ **test-triage = GREEN（1618 passed・既知2失敗のみ・回帰0）** ／ CLI+pipeline 48 passed。**敵対的レビュー code-reviewer =
+           APPROVE-WITH-NITS**＝可逆性（no live writes をソースで確認）・HITL 到達（"proposed"∈ACTIVE_…STATUSES）・false-mark 回避・claude 不在堅牢性・
+           async 整合・後方互換・テスト load-bearing（**配線を pass に戻すと新テストが fail することを実証**）を全裏取り。**nit 2件を取り込み**:
+           (1) `--resolve`+`--self-extend` 併用時に spawn 済み（implemented）ギャップへ重複提案→ドライバで `not g.implemented` フィルタ（get_all_gaps が返す
+           gap は self._gaps 参照で --resolve の mark_implemented がその場で立てる）。(2) 再実行で提案重複（pipeline が `id=uuid4()` で毎回別ファイル）→
+           `id`/`review_id` を gap_id から `uuid5` 決定論導出＝上書き冪等化（capability_gap_loop の構造提案と同戦略）＋冪等テスト追加。再 ruff/test 緑。
+  Act    : merged ✅（merge_to_main ゲート通過）。固定化: (A) **コード生成系の配線は「可逆性を着手前に実コードで裏取り」してから**＝pipeline が
+           proposal-only（live repo 無改変・HITL ゲート）と確認できたから安全に配線できた。可逆性が不明なら配線しない。(B)
+           [[detection-execution-gap-wiring]] の archetype を3度目の適用（C10 spawner・C12 resolver・C41 self-extension）＝検出は稼働だが実行が
+           dead-code を既定オフ CLI フラグで最小・可逆に開通。mutating/生成系ほど HITL ゲートと既定オフを厳守。(C) **新規 CLI コマンドは再実行冪等を
+           既定で**＝uuid4 提案 id は再実行で /inbox を汚す。gap_id 等の安定キーから uuid5 導出で上書きにする（reviewer の fan-out nit を idempotency
+           根治へ昇格）。memory [[detection-execution-gap-wiring]] 更新。
+  Next   : C42 候補 — (ccc) get_all_gaps に registry reconcile を入れ外部登録経由で能力が現れた gap も畳む（名前照合 fragility を gap.suggested_name↔
+           registry .name の正規化で慎重に）、(zz) 他 atelier ページの未提示 backend データ surfacing（C39 横展開）、(ddd) self-extension 提案に
+           生成コード本文（code_content）を提案へ載せ /inbox で diff プレビューできるようにする（今は file_path のみ・承認者が中身を見られない）。

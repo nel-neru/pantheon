@@ -218,6 +218,94 @@ class TestOrchestrationCapabilitiesCLI:
         marked = [g for g in all_gaps if g.gap_id == "gap:deep_research"]
         assert marked and marked[0].implemented is True
 
+    def test_self_extend_creates_hitl_proposal(self, capsys, tmp_path):
+        """--self-extend は検出ギャップから新コードを設計・生成し、status='proposed' の
+        self_extension 提案を org の state manager（/inbox 経路）へ永続化する。生成コードは
+        live repo に書かず、--resolve の spawn と違い gap は implemented にしない（承認まで未充足）。
+        claude 不在でも各エージェントはテンプレートにフォールバックして提案を作る＝本番トリガが配線された。"""
+        from core.intelligence.capability_gap_analyzer import CapabilityGapAnalyzer
+        from core.models.organization import Organization
+        from core.platform.state import PlatformStateManager
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.platform.state.PlatformStateManager.load_organizations",
+                return_value=[org],
+            ),
+            # claude 不在を強制＝テンプレートフォールバックの決定論的経路を通す（LLM 非依存）。
+            patch("core.runtime.claude_code.claude_available", return_value=False),
+        ):
+            # get_all_gaps は patch せず、実ファイルに永続ギャップを仕込んで本物の読込経路を通す。
+            seed = CapabilityGapAnalyzer(platform_home=tmp_path)
+            seed._gaps.append(self._agent_gap())
+            seed._save_gaps()
+
+            _run(cmd_orchestration_capabilities(SimpleNamespace(self_extend=True, org_name=None)))
+
+            sm = PlatformStateManager().get_org_state_manager(org)
+            pending = sm.get_pending_improvement_proposals(limit=10)
+            reloaded = CapabilityGapAnalyzer(platform_home=tmp_path)
+            active_ids = {g.gap_id for g in reloaded.get_all_gaps()}
+
+        assert len(pending) == 1, "self_extension 提案が /inbox 経路に永続化されていない"
+        proposal = pending[0]
+        assert proposal["category"] == "self_extension"
+        assert proposal["status"] == "proposed"  # active（承認待ち）だが未統合
+        out = capsys.readouterr().out
+        assert "proposals created : 1" in out
+        # --resolve（spawn=satisfied）と違い、提案止まりなので gap は implemented にされず active のまま。
+        assert "gap:deep_research" in active_ids
+
+    def test_self_extend_is_idempotent_on_rerun(self, capsys, tmp_path):
+        """同一ギャップで --self-extend を 2 回実行しても、self_extension 提案は 1 件に保たれる
+        （id を gap_id から決定論的に導出＝再生成で上書き）。/inbox に重複が積み上がらない。"""
+        from core.intelligence.capability_gap_analyzer import CapabilityGapAnalyzer
+        from core.models.organization import Organization
+        from core.platform.state import PlatformStateManager
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.platform.state.PlatformStateManager.load_organizations",
+                return_value=[org],
+            ),
+            patch("core.runtime.claude_code.claude_available", return_value=False),
+        ):
+            seed = CapabilityGapAnalyzer(platform_home=tmp_path)
+            seed._gaps.append(self._agent_gap())
+            seed._save_gaps()
+
+            _run(cmd_orchestration_capabilities(SimpleNamespace(self_extend=True, org_name=None)))
+            _run(cmd_orchestration_capabilities(SimpleNamespace(self_extend=True, org_name=None)))
+
+            sm = PlatformStateManager().get_org_state_manager(org)
+            pending = sm.get_pending_improvement_proposals(limit=10)
+
+        self_ext = [p for p in pending if p["category"] == "self_extension"]
+        assert len(self_ext) == 1, "再実行で self_extension 提案が重複した（冪等でない）"
+
+    def test_self_extend_no_org_skips_gracefully(self, capsys, tmp_path):
+        """org 未登録なら --self-extend はクラッシュせず WARN を出してスキップする。"""
+        from main import cmd_orchestration_capabilities
+
+        with (
+            patch("core.platform.state.get_platform_home", return_value=tmp_path),
+            patch(
+                "core.intelligence.capability_gap_analyzer.CapabilityGapAnalyzer.get_all_gaps",
+                return_value=[self._agent_gap()],
+            ),
+            patch("core.runtime.claude_code.claude_available", return_value=False),
+        ):
+            _run(cmd_orchestration_capabilities(SimpleNamespace(self_extend=True, org_name=None)))
+        out = capsys.readouterr().out
+        assert "Organization が未登録" in out
+        assert "proposals created" not in out
+
     def test_resolve_no_org_skips_gracefully(self, capsys, tmp_path):
         """org が未登録なら --resolve はクラッシュせず WARN を出してスキップする。"""
         from main import cmd_orchestration_capabilities
