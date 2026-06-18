@@ -116,9 +116,13 @@ class RepoStateManager:
         def sort_key(decision: Dict[str, Any]) -> datetime:
             timestamp = str(decision.get("timestamp", ""))
             try:
-                return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             except ValueError:
                 return datetime.min.replace(tzinfo=timezone.utc)
+            # naive な legacy timestamp（utcnow 時代/外部編集/移行データ）は UTC とみなして
+            # aware に揃える。未 coerce だと aware フォールバックや Z 付き timestamp と混在した
+            # とき sorted() の naive<aware 比較が TypeError でクラッシュする。
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
         return sorted(decisions, key=sort_key, reverse=True)[:limit]
 

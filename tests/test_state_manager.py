@@ -323,3 +323,46 @@ class TestRepoStateManager:
         from core.state.manager import _safe_mtime
 
         assert _safe_mtime(tmp_path / "does-not-exist.json") == 0.0
+
+    def test_get_recent_decisions_sorts_mixed_naive_and_aware(self, state_manager):
+        # legacy/外部編集/移行データで naive な timestamp を持つ決定が、現行の aware な
+        # 決定や 空/不正 timestamp の aware フォールバックと混在しても、sorted() が
+        # naive<aware の TypeError でクラッシュせず時系列降順で返ることを保証する（回帰）。
+        state_manager.record_decision("d-aware", "Aware", "body", "tester")  # 現行=aware
+        (state_manager.decisions_dir / "d-naive.json").write_text(
+            json.dumps(
+                {
+                    "id": "d-naive",
+                    "timestamp": "2026-06-17T10:00:00",  # naive（tz 情報なし）
+                    "title": "Naive",
+                    "content": "body",
+                    "made_by": "legacy",
+                    "tags": [],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        (state_manager.decisions_dir / "d-empty.json").write_text(
+            json.dumps(
+                {
+                    "id": "d-empty",
+                    "timestamp": "",  # → aware フォールバック（datetime.min, UTC）
+                    "title": "Empty",
+                    "content": "body",
+                    "made_by": "legacy",
+                    "tags": [],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        # 旧コードでは naive<aware の比較で TypeError がここで送出された
+        decisions = state_manager.get_recent_decisions(limit=10)
+
+        ids = [d["id"] for d in decisions]
+        assert set(ids) == {"d-aware", "d-naive", "d-empty"}
+        # 降順: aware(現在) > naive(2026-06-17, UTC 解釈) > empty(datetime.min)
+        assert ids[0] == "d-aware"
+        assert ids[-1] == "d-empty"
