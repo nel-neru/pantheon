@@ -618,7 +618,10 @@ async def cmd_proposal_apply(
         sys.exit(1)
 
     # ここから先は LLM（claude CLI）でコードを書き換える経路なので API キー（claude 可用性）を要求する。
-    require_api_key("pantheon approve")
+    # ただし事前生成・レビュー済みの全文（generated_code）を verbatim 適用する self-extension 提案は
+    # LLM を一切呼ばないため要求しない（Web 承認経路にもこのゲートは無く、挙動を揃える）。
+    if not (proposal.get("generated_code") or ""):
+        require_api_key("pantheon approve")
 
     repo_path = Path(org.target_repo_path) if org.target_repo_path else Path(".")
     print(f"\n改善提案を適用します: {proposal.get('title')}")

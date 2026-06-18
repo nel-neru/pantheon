@@ -577,6 +577,83 @@ def test_cli_proposal_apply_dispatches_structural_intervention(tmp_path, monkeyp
     assert not any(str(p.get("id")) == str(proposal.id) for p in pending)
 
 
+def _apply_proposal_capturing_api_key(tmp_path, proposal):
+    """proposal を `pantheon proposal apply` に通し、require_api_key 呼び出しを記録して返す。"""
+    from types import SimpleNamespace
+
+    from agents.base import AgentResult
+    from commands.org import cmd_proposal_apply
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("SelfExtOrg", "se", status=OrganizationStatus.ACTIVE)
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    sm.save_improvement_proposal(proposal)
+
+    api_key_calls: list = []
+
+    class _StubExecutor:
+        async def run(self, task):
+            return AgentResult(
+                success=True,
+                output={"branch": "pantheon/improvement-x", "change_summary": "verbatim"},
+            )
+
+    asyncio.run(
+        cmd_proposal_apply(
+            SimpleNamespace(
+                org_name="SelfExtOrg",
+                proposal_id=str(proposal.id)[:8],
+                yes=True,
+                github_repo=None,
+                github_token=None,
+            ),
+            confirm_action=lambda *a, **k: True,
+            get_orchestrator=lambda: _StubExecutor(),
+            get_psm=lambda: psm,
+            require_api_key=lambda *a, **k: api_key_calls.append(a),
+        )
+    )
+    return psm, sm, api_key_calls
+
+
+def test_cli_proposal_apply_verbatim_skips_api_key_gate(tmp_path, monkeypatch):
+    """generated_code を verbatim 適用する self-extension 提案は LLM 不要なので api-key を要求しない。"""
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    proposal = ImprovementProposal(
+        review_id=uuid4(),
+        category="self_extension",
+        title="Self-extension: NewAgent",
+        description="verbatim apply",
+        file_path="agents/new_agent.py",
+        generated_code="from __future__ import annotations\n\nclass NewAgent: ...\n",
+        status="proposed",
+    )
+
+    _, sm, api_key_calls = _apply_proposal_capturing_api_key(tmp_path, proposal)
+
+    assert api_key_calls == []  # claude 可用性を要求しない（verbatim 経路）
+    done = sm.get_pending_improvement_proposals(limit=50)
+    assert not any(str(p.get("id")) == str(proposal.id) for p in done)  # done に遷移
+
+
+def test_cli_proposal_apply_without_generated_code_still_requires_api_key(tmp_path, monkeypatch):
+    """回帰: generated_code が無い通常の file 提案は従来どおり api-key（LLM 経路）を要求する。"""
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    proposal = ImprovementProposal(
+        review_id=uuid4(),
+        category="maintainability",
+        title="Refactor existing",
+        description="llm apply",
+        file_path="agents/existing.py",
+        status="proposed",
+    )
+
+    _, _, api_key_calls = _apply_proposal_capturing_api_key(tmp_path, proposal)
+
+    assert api_key_calls == [("pantheon approve",)]  # LLM 経路は従来どおり要求
+
+
 def test_cli_hq_apply_rejects_non_intervention(tmp_path, monkeypatch):
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     from types import SimpleNamespace
