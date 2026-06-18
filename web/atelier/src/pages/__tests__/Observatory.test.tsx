@@ -197,6 +197,122 @@ describe('Observatory regression tests', () => {
     expect(screen.getByText('Systems')).toBeInTheDocument()
   })
 
+  // ---- GovernorBudget tests ---------------------------------------------------
+
+  it('governor soft_limit: キャプション・バー fill・ソフトマーカーが描画される', async () => {
+    const usageSoftLimit: UsageSummary = {
+      ...usageOk,
+      governor: {
+        enabled: true,
+        level: 'soft_limit',
+        window_hours: 5,
+        window_tokens: 35000,
+        soft_limit_tokens: 30000,
+        hard_limit_tokens: 50000,
+      },
+    }
+    mockFetch({ usagePayload: usageSoftLimit })
+    renderObservatory()
+
+    // caption: compactNumber(35000)='35.0k', compactNumber(50000)='50.0k', compactNumber(30000)='30.0k'
+    await waitFor(() => {
+      expect(screen.getByText(/35\.0k/)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/50\.0k.*トークン/)).toBeInTheDocument()
+    expect(screen.getByText(/ソフト.*30\.0k/)).toBeInTheDocument()
+    expect(screen.getByText(/5h窓/)).toBeInTheDocument()
+
+    // bar fill element exists
+    expect(screen.getByTestId('gov-budget-fill')).toBeInTheDocument()
+    // soft marker exists (soft_limit_tokens=30000 < hard=50000)
+    expect(screen.getByTestId('gov-soft-marker')).toBeInTheDocument()
+  })
+
+  it('governor disabled: "ガバナー無効" テキストが出て、バー fill は存在しない', async () => {
+    const usageDisabled: UsageSummary = {
+      ...usageOk,
+      governor: {
+        enabled: false,
+        level: 'ok',
+        window_hours: 5,
+        window_tokens: 0,
+        soft_limit_tokens: 0,
+        hard_limit_tokens: 0,
+      },
+    }
+    mockFetch({ usagePayload: usageDisabled })
+    renderObservatory()
+
+    await waitFor(() => {
+      expect(screen.getByText('ガバナー無効（上限なし）')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('gov-budget-fill')).not.toBeInTheDocument()
+  })
+
+  it('usageDown: 予算 readout が描画されない（caption も "ガバナー無効" もなし）', async () => {
+    mockFetch({ usageOkFlag: false })
+    renderObservatory()
+
+    await waitFor(() => {
+      // The page still renders (header visible)
+      expect(screen.getByText('The Observatory')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('gov-budget-fill')).not.toBeInTheDocument()
+    expect(screen.queryByText(/ガバナー無効/)).not.toBeInTheDocument()
+    // no budget caption rendered (no "トークン" text in budget area)
+    expect(screen.queryByText(/トークン.*窓/)).not.toBeInTheDocument()
+  })
+
+  it('over-limit: window_tokens > hard_limit_tokens のとき fill width が 100%、caption は実数値', async () => {
+    const usageOverLimit: UsageSummary = {
+      ...usageOk,
+      governor: {
+        enabled: true,
+        level: 'hard_limit',
+        window_hours: 5,
+        window_tokens: 60000,
+        soft_limit_tokens: 30000,
+        hard_limit_tokens: 50000,
+      },
+    }
+    mockFetch({ usagePayload: usageOverLimit })
+    renderObservatory()
+
+    // caption shows real window_tokens (60.0k) not clamped
+    await waitFor(() => {
+      expect(screen.getByText(/60\.0k/)).toBeInTheDocument()
+    })
+    // hard_limit also in caption
+    expect(screen.getByText(/50\.0k.*トークン/)).toBeInTheDocument()
+
+    // bar fill is clamped to 100%
+    const fill = screen.getByTestId('gov-budget-fill')
+    expect(fill).toBeInTheDocument()
+    expect((fill as HTMLElement).style.width).toBe('100%')
+  })
+
+  it('部分 governor ペイロード: window_tokens 欠落でも fill width が NaN% にならず 0% へ寄る', async () => {
+    // governor は free-form JSON 由来でフィールド欠落がありうる（型は非 optional だが実体は別）。
+    // 欠落フィールドが算術に乗ると width:'NaN%' でバーが壊れるため、finite coercion を検証する。
+    const usagePartial = {
+      ...usageOk,
+      governor: {
+        enabled: true,
+        level: 'ok',
+        window_hours: 5,
+        // window_tokens を意図的に欠落させる
+        soft_limit_tokens: 30000,
+        hard_limit_tokens: 50000,
+      },
+    } as unknown as UsageSummary
+    mockFetch({ usagePayload: usagePartial })
+    renderObservatory()
+
+    const fill = await screen.findByTestId('gov-budget-fill')
+    expect((fill as HTMLElement).style.width).toBe('0%')
+    expect((fill as HTMLElement).style.width).not.toContain('NaN')
+  })
+
   it('デーモン状態ラベル: 稼働 / 停止 / stale / paused の4分岐が正しく出る', async () => {
     mockFetch({
       daemonsPayload: {
