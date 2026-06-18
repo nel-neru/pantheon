@@ -121,10 +121,13 @@ class ImprovementExecutorAgent(BaseAgent):
         except ImportError:
             raise ImportError("GitPython が必要です: pip install GitPython")
 
-        import re
         from datetime import datetime, timezone
 
-        slug = re.sub(r"[^a-z0-9]+", "-", suggestion.get("title", "improvement").lower())[:40]
+        # slug ロジックは PR 経路と共有（日本語タイトルの '-' 退化と title=None クラッシュを
+        # 両経路で同時に防ぐ。同一バグの二重実装を避ける single source）。
+        from github_integration.pr_creator import branch_slug
+
+        slug = branch_slug(suggestion.get("title") or "improvement")
         branch_name = (
             f"pantheon/improvement-{slug}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
         )
