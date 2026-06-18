@@ -71,9 +71,16 @@ class PublishJob:
             return True  # 予約なし = 即時投稿可
         now = now or _now()
         try:
-            return datetime.fromisoformat(self.scheduled_at) <= now
-        except (ValueError, TypeError):  # naive/不正な scheduled_at で全 due スキャンを落とさない
+            dt = datetime.fromisoformat(self.scheduled_at)
+        except (ValueError, TypeError):  # 不正な scheduled_at で全 due スキャンを落とさない
             return True
+        # naive（legacy/移行/外部編集）は UTC とみなす。coerce せず生で比較すると
+        # aware な now との `<=` が TypeError になり、それを catch して return True ＝
+        # 未来予約の naive ジョブが「即 due」扱いとなり予約時刻より早く公開される（外向き
+        # publish のフェイルオープン）。coerce すれば予約セマンティクスを保てる。
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt <= now
 
 
 class PublishJobStore:

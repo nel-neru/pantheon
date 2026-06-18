@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 from core.content.content_jobs import ContentJob, ContentJobStore
 from core.content.content_runner import run_content_job
@@ -55,6 +56,21 @@ def test_disabled_job_not_due(tmp_path):
     job = store.add_job(ContentJob(org_name="X", enabled=False))
     assert store.due_jobs() == []
     assert job.is_due() is False
+
+
+def test_is_due_coerces_naive_next_run_at():
+    # naive な next_run_at（legacy/外部編集）は UTC とみなして比較する。coerce せず
+    # TypeError を catch→return True していた頃は、未来予約でも「即 due」と誤判定された。
+    naive_future = (datetime.now(timezone.utc) + timedelta(hours=2)).replace(tzinfo=None)
+    job = ContentJob(org_name="X", next_run_at=naive_future.isoformat())
+    assert job.is_due() is False  # 未来予約 → まだ due でない
+
+    naive_past = (datetime.now(timezone.utc) - timedelta(hours=2)).replace(tzinfo=None)
+    job_past = ContentJob(org_name="X", next_run_at=naive_past.isoformat())
+    assert job_past.is_due() is True
+
+    # 解析不能な値は従来どおり fallback（cycle を落とさず due 扱い）。
+    assert ContentJob(org_name="X", next_run_at="not-a-timestamp").is_due() is True
 
 
 # ---- run_content_job ----
