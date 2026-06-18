@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from core.persistence import atomic_write_text
 from core.publishing.base import (
     PUBLISH_MODE_ASSISTED,
+    PUBLISH_MODES,
     SUPPORTED_PLATFORMS,
 )
 
@@ -128,6 +129,13 @@ class PublishJobStore:
             raise ValueError(f"未対応のプラットフォーム: {job.platform}")
         if job.status not in PUBLISH_JOB_STATUSES:
             job.status = "queued"
+        # 未知の mode（LLM free-form 提案由来など）は安全側で assisted へ正規化する。
+        # content_runner も同じ coercion を行う（base.PUBLISH_MODES = assisted/auto のみ）。
+        # store 境界で正規化しておけば、不正値が永続化されて UI/runner を惑わすのを防ぐ。
+        # 注: auto は正当な mode なので保持し、無人実送信の可否は runner の PUB-AUTO 境界が握る。
+        job.mode = (job.mode or PUBLISH_MODE_ASSISTED).strip().lower()
+        if job.mode not in PUBLISH_MODES:
+            job.mode = PUBLISH_MODE_ASSISTED
         items = self._load_raw()
         items.append(job.to_dict())
         self._save_raw(items)

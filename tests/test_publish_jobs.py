@@ -135,3 +135,31 @@ def test_enqueue_from_proposal_unsupported_platform_returns_none(tmp_path):
     job = enqueue_from_proposal(proposal, "Note Sales", store=store)
     assert job is None
     assert store.list_jobs() == []
+
+
+def test_add_job_coerces_unknown_mode_to_assisted(tmp_path):
+    # 未知/garbage な mode（LLM free-form 提案由来など）は安全側で assisted に正規化する。
+    # platform/status と対称な store 境界の防御（content_runner も同じ coercion を行う）。
+    store = PublishJobStore(platform_home=tmp_path)
+    job = store.add_job(PublishJob(org_name="o", platform="note", mode="rogue-mode"))
+    assert job.mode == "assisted"
+    assert store.get_job(job.job_id).mode == "assisted"
+
+
+def test_add_job_preserves_and_normalizes_valid_mode(tmp_path):
+    # auto は正当な mode なので保持（無人実送信の可否は runner の PUB-AUTO 境界が握る）。
+    # 大小/前後空白は正規化する。
+    store = PublishJobStore(platform_home=tmp_path)
+    job_auto = store.add_job(PublishJob(org_name="o", platform="note", mode="  Auto "))
+    assert job_auto.mode == "auto"
+    job_assisted = store.add_job(PublishJob(org_name="o", platform="x", mode="assisted"))
+    assert job_assisted.mode == "assisted"
+
+
+def test_enqueue_from_proposal_coerces_unknown_mode(tmp_path):
+    # 提案の publish ブロックが不正な mode を載せても、永続化時に assisted へ倒す。
+    store = PublishJobStore(platform_home=tmp_path)
+    proposal = _content_asset_proposal({"platform": "note", "mode": "publish-now-pls"})
+    job = enqueue_from_proposal(proposal, "Note Sales", store=store)
+    assert job is not None
+    assert job.mode == "assisted"
