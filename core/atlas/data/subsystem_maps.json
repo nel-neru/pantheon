@@ -1864,12 +1864,6 @@
         "file": "core/intelligence/capability_gap_analyzer.py"
       },
       {
-        "severity": "medium",
-        "title": "get_unused_capabilities threshold logic likely returns nearly everything",
-        "detail": "In CapabilityRegistry.get_unused_capabilities, last_used defaults to cap.added_at when never used, and is_unused starts True whenever usage_count==0. The date math only ever ORs in more True. So any capability with usage_count==0 (the normal state right after scan_and_register_all) is reported as unused regardless of days_threshold, making it noisy for any deprecation workflow. The days vs days_threshold dual-parameter also makes the API confusing.",
-        "file": "core/intelligence/capability_registry.py"
-      },
-      {
         "severity": "low",
         "title": "Stale documentation: registration source no longer AST/enum based",
         "detail": "capability_registry.py module docstring still says it scans agents/ Python classes and AgentSkill enum, but _scan_agents/_scan_skills now read AgentLoader (agents/definitions/*.yaml) and SkillLoader (skills/*.yaml). core/intelligence/__init__.py docstring and AGENTS.md likewise describe enum-based skills. agent_skill_engine.py still imports the AgentSkill enum yet pulls all content from YAML. This divergence misleads contributors about where to add capabilities.",
