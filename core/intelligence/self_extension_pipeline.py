@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from agents.self_code_writer import CodeOutput
 from agents.tool_design_agent import ImplementationSpec
@@ -22,6 +22,12 @@ from core.intelligence.capability_gap_analyzer import CapabilityGap
 from core.intelligence.self_integration_tester import SelfIntegrationTester, ValidationResult
 from core.models.organization import ImprovementProposal
 from core.state.manager import RepoStateManager
+
+# 提案 id/review_id を gap_id から決定論的に導出する名前空間。save_improvement_proposal は
+# ファイル名 {id}.json で書くため、id を固定しないと再実行のたびに別ファイルが増え、同一ギャップの
+# self-extension 提案が /inbox に重複して積み上がる。id を固定して上書き＝冪等にする
+# （capability_gap_loop.py の構造提案と同じ idempotency 戦略）。
+_SELF_EXT_NS = uuid5(NAMESPACE_URL, "pantheon.self_extension")
 
 
 @dataclass
@@ -72,7 +78,9 @@ class SelfExtensionPipeline:
             )
 
         proposal = ImprovementProposal(
-            review_id=uuid4(),
+            # gap_id から決定論的に導出＝再実行で同一ファイルを上書き（/inbox 重複防止・冪等）。
+            id=uuid5(_SELF_EXT_NS, f"self-extension-id:{gap.gap_id}"),
+            review_id=uuid5(_SELF_EXT_NS, f"self-extension:{gap.gap_id}"),
             priority="high",
             category="self_extension",
             title=f"Self-extension: {spec.class_name}",

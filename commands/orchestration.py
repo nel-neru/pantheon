@@ -134,6 +134,9 @@ async def cmd_orchestration_capabilities(args: argparse.Namespace) -> None:
     # agent/skill → registry へ永続 spawn、team/division → PolicyEngine 評価（HITL ゲート）。
     if getattr(args, "resolve", False):
         _resolve_capability_gaps(gaps, registry, getattr(args, "org_name", None), gap_analyzer)
+    # --self-extend: 検出ギャップから新コードを設計・生成し HITL 提案を作る（既定オフ・提案止まり）。
+    if getattr(args, "self_extend", False):
+        await _self_extend_capability_gaps(gaps, gap_analyzer, getattr(args, "org_name", None))
     print(f"{'═' * 60}\n")
 
 
@@ -202,6 +205,72 @@ def _resolve_capability_gaps(
     print(f"    marked done    : {marked}")
     for record in summary["results"]:
         print(f"      - {record['action']}: {record['detail']}")
+
+
+async def _self_extend_capability_gaps(gaps: list, gap_analyzer: Any, org_name: str | None) -> None:
+    """検出ギャップから新コードを設計・生成し HITL 提案を作る（capabilities --self-extend の本番ドライバ）。
+
+    自己拡張のコード生成段（ToolDesignAgent→SelfCodeWriter→SelfIntegrationTester→ImprovementProposal）は
+    従来テスト/ライブラリのみで本番から呼ばれていなかった。SelfExtensionPipeline は **提案段階まで** で、
+    生成コードを live repo に書かない＝`status="proposed"` の ImprovementProposal を org の
+    `.pantheon/improvements/` に保存し、人間が承認するまで本番統合しない（可逆・HITL）。spawn で済む
+    ギャップは --resolve、新コードが要るギャップは --self-extend、という棲み分け。claude 不在でも
+    各エージェントはテンプレートにフォールバックして提案を作る（生成は claude CLI のみ＝API キー不要）。
+    """
+    from agents.self_code_writer import SelfCodeWriter
+    from agents.tool_design_agent import ToolDesignAgent
+    from core.intelligence.self_extension_pipeline import SelfExtensionPipeline
+    from core.intelligence.self_integration_tester import SelfIntegrationTester
+    from core.platform.state import PlatformStateManager
+    from core.runtime.claude_code import ClaudeCodeProvider, claude_available
+
+    # --resolve が同一実行で先に spawn 済み（implemented）にしたギャップは再提案しない。
+    # get_all_gaps が返す gap オブジェクトは analyzer の self._gaps の参照で、--resolve の
+    # mark_implemented がその場で implemented=True にするため、ここで弾けば flags 併用時の
+    # 重複提案を防げる（spawn で済むものは --resolve、新コードが要るものだけ --self-extend）。
+    pending_gaps = [g for g in gaps if not getattr(g, "implemented", False)]
+    if not pending_gaps:
+        print("\n  自己拡張すべき能力ギャップはありません。")
+        return
+
+    psm = PlatformStateManager()
+    if org_name:
+        org = psm.load_organization_by_name(org_name)
+        if org is None:
+            print(
+                f"\n  [WARN] Organization '{org_name}' が見つかりません。自己拡張をスキップします。"
+            )
+            return
+    else:
+        orgs = psm.load_organizations()
+        if not orgs:
+            print("\n  [WARN] Organization が未登録のため、自己拡張をスキップします。")
+            return
+        org = orgs[0]
+
+    sm = psm.get_org_state_manager(org)
+    llm = ClaudeCodeProvider() if claude_available() else None
+    pipeline = SelfExtensionPipeline(
+        gap_analyzer=gap_analyzer,
+        design_agent=ToolDesignAgent(llm_client=llm),
+        code_writer=SelfCodeWriter(llm_client=llm),
+        integration_tester=SelfIntegrationTester(),
+        state_manager=sm,
+    )
+    results = await pipeline.run_all_gaps(pending_gaps)
+    created = [r for r in results if r.success]
+    print(f"\n  {'─' * 56}")
+    print(f"  自己拡張（設計→生成→syntax 検証→HITL 提案）  (対象 org: {org.name})")
+    print(f"    proposals created : {len(created)}")
+    for r in results:
+        label = "proposed" if r.success else "skipped"
+        print(f"      - [{label}] {r.gap_id}: {r.reason}")
+    if created:
+        # 提案は status='proposed'＝検出ループは閉じず gap は未充足のまま（承認・統合まで satisfied でない）。
+        # ゆえに mark_implemented は呼ばない（--resolve の spawn と違い、ここでは能力はまだ存在しない）。
+        print(
+            "    ※ 生成コードは未統合。`pantheon proposals` / GUI の /inbox で確認し承認してください（HITL）。"
+        )
 
 
 async def cmd_orchestration_self_review(args: argparse.Namespace) -> None:
@@ -355,9 +424,15 @@ def register(subparsers: Any) -> None:
         "team/division は HITL ゲート提案）",
     )
     capabilities.add_argument(
+        "--self-extend",
+        action="store_true",
+        help="検出した能力ギャップから新コードを設計・生成し、HITL 提案（status=proposed）を作る。"
+        "生成コードは承認まで本番統合しない（可逆・既定オフ）",
+    )
+    capabilities.add_argument(
         "--org-name",
         default=None,
-        help="--resolve の対象 Organization 名（省略時は登録済みの先頭を使用）",
+        help="--resolve / --self-extend の対象 Organization 名（省略時は登録済みの先頭を使用）",
     )
     capabilities.add_argument(
         "--unused",
