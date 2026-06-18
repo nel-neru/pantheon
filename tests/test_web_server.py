@@ -2036,6 +2036,33 @@ def test_list_knowledge_files(tmp_path, monkeypatch):
     assert [item["name"] for item in data["files"]] == ["alpha.md"]
 
 
+def test_list_knowledge_files_nested_paths_are_posix(tmp_path, monkeypatch):
+    """ネストした knowledge ファイルのパスは常に POSIX 区切り ('/') で返す（Windows 退行防止）。
+
+    str(rel) だと Windows ではバックスラッシュ区切りになり、フロントの encodeFilePath
+    （'/' で split して符号化）が誤エンコードして、ネストファイルの GET/PUT/DELETE が
+    round-trip 失敗する。as_posix() で常に '/' 区切りに正規化する。
+    """
+    knowledge_dir = _set_knowledge_dir(tmp_path, monkeypatch)
+    (knowledge_dir / "subdir").mkdir(parents=True)
+    (knowledge_dir / "subdir" / "nested.md").write_text("# Nested", encoding="utf-8")
+
+    response = client.get("/api/knowledge/files")
+
+    assert response.status_code == 200
+    paths = [item["path"] for item in response.json()["files"]]
+    assert "subdir/nested.md" in paths
+    # どのプラットフォームでもバックスラッシュ区切りを返さない
+    assert all("\\" not in p for p in paths)
+
+    # 返ってきた path をそのまま URL セグメントに使って round-trip 取得できる
+    # （ハードコードでなく返却値を使う＝返却値が URL として usable であることまで検証）。
+    nested_path = next(p for p in paths if p.endswith("nested.md"))
+    detail = client.get(f"/api/knowledge/files/{nested_path}")
+    assert detail.status_code == 200
+    assert detail.json()["content"] == "# Nested"
+
+
 def test_get_knowledge_file_not_found(tmp_path, monkeypatch):
     _set_knowledge_dir(tmp_path, monkeypatch)
 
