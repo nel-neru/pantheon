@@ -1366,6 +1366,39 @@ def test_list_proposals_surfaces_code_preview(tmp_path, monkeypatch):
     assert "class AsyncReviewAgent" in payload[0]["code_preview"]
 
 
+def test_list_proposals_excludes_full_generated_code(tmp_path, monkeypatch):
+    """一覧 payload は肥大化防止に generated_code（全文）を除外し、表示用 code_preview のみ残す。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    org = create_default_organization("Bloat Org", "Exclude full code from list")
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    full_code = "from __future__ import annotations\n" + "\n".join(
+        f"X{i} = {i}" for i in range(400)
+    )
+    sm.save_improvement_proposal(
+        ImprovementProposal(
+            review_id=uuid4(),
+            category="self_extension",
+            title="Self-extension: BigModule",
+            description="大きな生成モジュール",
+            file_path="core/intelligence/big_module.py",
+            code_preview="from __future__ import annotations\n… (省略)",
+            generated_code=full_code,
+            status="proposed",
+        )
+    )
+
+    response = client.get(f"/api/organizations/{org.name}/proposals")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert "generated_code" not in payload[0]
+    assert payload[0]["code_preview"]
+
+
 def test_list_organizations_counts_only_active_proposals(tmp_path, monkeypatch):
     psm = server.PlatformStateManager(platform_home=tmp_path)
     org = create_default_organization("Count Org", "Count active proposals")

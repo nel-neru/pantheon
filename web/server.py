@@ -3751,7 +3751,9 @@ async def api_list_proposals(org_name: str) -> List[Dict[str, Any]]:
     ]
     return [
         {
-            **proposal,
+            # generated_code（適用用の全文）は一覧 payload を肥大化させるので除外する。
+            # 表示には切り詰め版の code_preview を使う。全文は承認時に disk から読む。
+            **{k: v for k, v in proposal.items() if k != "generated_code"},
             "diff_text": _extract_proposal_diff_text(proposal),
             "approval_notes": str(proposal.get("approval_notes") or ""),
         }

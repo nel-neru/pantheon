@@ -60,18 +60,33 @@ class ImprovementExecutorAgent(BaseAgent):
         except ValueError as exc:
             return AgentResult(success=False, error=str(exc))
         normalized_file_path = target_file.relative_to(repo_path).as_posix()
-        if not target_file.exists():
-            return AgentResult(
-                success=False, error=f"Target file not found: {normalized_file_path}"
+
+        # 事前生成され人間がレビュー済みのコード全文（self-extension）があれば、LLM 再生成せず
+        # そのまま適用する。再生成すると「レビューしたコード ≠ 適用されるコード」になり HITL の
+        # 意味が失われるうえ、生成先は新規ファイルで存在しないため従来経路では必ず
+        # "Target file not found" で失敗していた（承認しても適用不能）。
+        verbatim_code = suggestion.get("generated_code") or ""
+        if verbatim_code:
+            modified_content = verbatim_code
+            change_summary = (
+                str(suggestion.get("change_summary") or "").strip()
+                or f"Apply reviewed generated code for {normalized_file_path}"
             )
+        else:
+            if not target_file.exists():
+                return AgentResult(
+                    success=False, error=f"Target file not found: {normalized_file_path}"
+                )
 
-        original_content = target_file.read_text(encoding="utf-8")
+            original_content = target_file.read_text(encoding="utf-8")
 
-        modified_content, change_summary = await self._generate_code_change(
-            original_content, normalized_file_path, suggestion
-        )
-        if not modified_content:
-            return AgentResult(success=False, error="LLM failed to generate a valid code change.")
+            modified_content, change_summary = await self._generate_code_change(
+                original_content, normalized_file_path, suggestion
+            )
+            if not modified_content:
+                return AgentResult(
+                    success=False, error="LLM failed to generate a valid code change."
+                )
 
         if github_token and github_repo:
             try:
@@ -142,6 +157,9 @@ class ImprovementExecutorAgent(BaseAgent):
         repo = git.Repo(repo_root)
         repo.git.checkout("-b", branch_name)
 
+        # 新規ファイル（self-extension の生成コード等）はサブディレクトリがまだ無い場合がある。
+        # 既存ファイルの書換では no-op（exist_ok）なので安全に親ディレクトリを用意する。
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(modified_content, encoding="utf-8")
         repo.index.add([relative_file_path])
         repo.index.commit(f"refactor: {suggestion_title(suggestion, 'Apply improvement')}")
