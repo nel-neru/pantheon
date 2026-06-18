@@ -2284,3 +2284,42 @@ Cycle 27 — get_unused_capabilities のしきい値ロジックバグ＋tz outl
   Next   : C28 候補 — (mm) atelier 他ページ（Observatory/Signals/Lab/Pantheon 等）の能力表記 honesty 横断監査（過小/過大提示検出・多様性=GUI）、
            (oo) Atlas subsystem_maps.json の残 known-issues を実コードで再検証し解消済みを掃除（atlas-flows-drift の machine 検証を subsystem 層へ拡張）、
            (jj) capability_gap:285 array truncation を array 正典ヘルパへ（真に latent・JSON 連続回避のため後回し）。
+
+Cycle 28 — capabilities CLI に --unused 非推奨候補レポートを配線（C27 で直した検出器に user surface を付与）  (2026-06-18)
+  Plan   : C28 候補を精査する中で carried-forward の (oo)/(mm) が両方とも低価値と判明したため pivot。受け入れ基準= C27 で正しくした
+           `get_unused_capabilities` を `pantheon orchestration capabilities --unused [DAYS]` として surface（opt-in・read-only・
+           DAYS 省略=90）／フラグ無しは従来挙動不変／テスト追加／全件グリーン・新規回帰0／レビュー APPROVE／merged。なぜ今: C27 で
+           検出器を正しくしたが production caller ゼロ＝[[detection-execution-gap-wiring]] の型（正しい検出に surface が無い）。
+           record_usage は pre_task_orchestrator が success 時に呼ぶ（実コード確認）ため last_used は本物のシグナルで、surface する
+           価値は real。C27（純ロジック）・C25/C26（honesty）とは別カテゴリ（CLI/DX）で多様性も確保。**落とした候補とその根拠（重要）**:
+           (oo) subsystem_maps.json 残バグ＝`invalidate_cache`(codebase_indexer) は **caller ゼロ＝latent**、gap_id collision は
+           `HEURISTIC_RULES` 4本が全て**異なる operation_type**＝1 pattern が最大1ルールしか一致せず現ルールでは衝突不能（across-run も
+           L226 の suggested_name dedup が吸収）＝latent → subsystem bug の vein は latent-dregs と確定。(mm) atelier 他ページ＝grep の結果
+           大半が**データダッシュボード**（lede/EmptyState のみ・stale な能力主張なし／Signals/Inbox の lede は実態と整合）＝honesty 監査の
+           余地も乏しい。両 vein が枯れたと実コードで確認した上で value-additive な wiring へ転換。
+  Did    : work/capabilities-unused-cli-report-20260618（コード）＋ work/evolve-log-c28（ログ）。commands/orchestration.py:
+           `capabilities` パーサに `--unused`（`nargs="?" / type=int / const=90 / default=None / metavar=DAYS`）を追加＝無=None で
+           非表示・`--unused`=90・`--unused 30`=30・`--resolve` と併用可（argparse スモークで実証）。handler は gaps セクションの後・
+           `--resolve` の前に「非推奨候補（最終アクティビティから N 日以上）」レポートを追加＝`getattr(args,"unused",None) is not None`
+           ガード（既存 `--resolve` と同じパターン）、`get_unused_capabilities(days_threshold=N)` の dict を最終アクティビティ昇順で
+           name/type/usage_count/最終timestamp を表示。tz ロジックは CLI 側で再実装せず（drift 回避）ヘッダに閾値・各行に実 timestamp を
+           出す方針。tests/test_orchestration_cli.py に TestOrchestrationCapabilitiesUnusedCLI 4件（古い/新しい/無フラグ/カスタム閾値）。
+  Check  : ruff check/format クリーン ／ test-triage = **GREEN**（1578 passed・既知2失敗のみ・新規回帰0・新規4/4）／ argparse スモークで
+           4 variant（無/--unused/--unused 30/--resolve 併用）を実証 ／ merge_to_main 全件ゲート通過。code-reviewer = **APPROVE**
+           （critical/warning ゼロ）: backwards-compat（既存 11 ハンドラ呼び出しは `SimpleNamespace()` ＝unused 属性なし→None→no-op を実証）・
+           correctness（sort key の or-fallback は to_dict が両キー必ず出すので crash 不能・`--unused 0` も `0 is not None`=True で正しく発火）・
+           tests load-bearing（`非推奨候補` で出力分割＝seeded 名が Agents 一覧にも出るため分割が必須・naive `in out` は偽陽性／`_seed` は
+           register→_save→fresh registry の `_load` で実 read 経路を行使）・argparse pitfall なし（capabilities は positional ゼロ＝
+           `nargs=?` が後続を食わない）・出力 honest（last_used=None→added_at fallback を実 capture で確認）。
+  Act    : merged ✅（main e55f269）。固定化: (A) **「候補を切る根拠」も実コードで取る**＝(oo)/(mm) を「latent/低価値」と判断する前に
+           caller 数・ルール構造・ページ実体を grep/実読で確認し、vein 枯渇を**証拠付きで**確定させた（憶測で skip せず・C25 の memory 鵜呑み禁止の
+           逆方向＝「やらない」判断も裏取りする）。(B) **検出器を直したら同じ/次サイクルで surface へ配線する**＝C27（fix）→C28（wire）で
+           [[detection-execution-gap-wiring]] を完結。正しいだけで誰も呼べない関数は価値ゼロ。wiring は opt-in フラグ・read-only・既存
+           getattr パターン踏襲で最小・可逆に。(C) **CLI で検出ロジックを再実装しない**＝tz/staleness は `get_unused_capabilities` に一元化し
+           CLI は dict を表示するだけ（二重実装=drift 源）。閾値はヘッダに、生 timestamp を各行に出して honest かつ drift-free。
+           (D) **出力セクションを跨ぐ名前衝突に注意**＝レポート対象名が別セクション（Agents 一覧）にも出る場合、テストはヘッダで split して
+           セクション単位で assert する（[[testing-and-subagent-hazards]] の「load-bearing は一意/負荷のある値に」の出力版）。
+  Next   : C29 候補 — (mm) atelier honesty 監査は余地薄と判明したので代わりに **product/vision スライス**（Org 量産 `pantheon org create` の
+           E2E 硬化 / trends→提案変換の承認ゲート可視化 等）で多様性＝GUI/CLI 以外の価値前進、(pp) capabilities 非推奨ワークフローの次段＝
+           `mark_for_deprecation` を `--unused` レポートから HITL で繋ぐ（read-only→mutating は PolicyEngine ゲート経由・別サイクルで慎重に）、
+           (jj) capability_gap:285 array truncation（真に latent・優先度低）。
