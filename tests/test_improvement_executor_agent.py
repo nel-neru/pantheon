@@ -73,6 +73,67 @@ def test_run_rejects_path_traversal(tmp_path, agent: ImprovementExecutorAgent):
     assert result.error == "Path traversal is not allowed in suggestion.file_path"
 
 
+def test_run_applies_verbatim_generated_code_for_new_file(
+    tmp_path, monkeypatch, agent: ImprovementExecutorAgent
+):
+    """self-extension: generated_code があれば新規ファイルを LLM 再生成せず verbatim 適用する。"""
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+    fake_git = DummyGitModule()
+    monkeypatch.setitem(sys.modules, "git", SimpleNamespace(Repo=fake_git.Repo))
+
+    # verbatim 経路では LLM を一切呼ばないことを保証する（呼ばれたら fail）。
+    async def _must_not_call(*args, **kwargs):
+        raise AssertionError("LLM should not be called when generated_code is present")
+
+    monkeypatch.setattr(agent, "_generate_code_change", _must_not_call)
+
+    code = "from __future__ import annotations\n\nclass AsyncReviewAgent:\n    pass\n"
+    task = AgentTask(
+        task_type="improvement_execution",
+        description="Apply self-extension generated code",
+        input={
+            "repo_path": str(repo_path),
+            # 生成先は新規ファイル（従来経路なら 'Target file not found' で失敗していた）。
+            "suggestion": {
+                "file_path": "agents/async_review_agent.py",
+                "title": "Self-extension: AsyncReviewAgent",
+                "category": "self_extension",
+                "generated_code": code,
+            },
+        },
+    )
+
+    result = asyncio.run(agent.run(task))
+
+    assert result.success is True
+    written = repo_path / "agents" / "async_review_agent.py"
+    assert written.read_text(encoding="utf-8") == code
+    assert result.output["file_path"] == "agents/async_review_agent.py"
+    assert result.output["branch"].startswith("pantheon/improvement-")
+
+
+def test_run_without_generated_code_still_requires_existing_file(
+    tmp_path, agent: ImprovementExecutorAgent
+):
+    """回帰: generated_code が無ければ従来どおり新規ファイルは 'Target file not found' で失敗する。"""
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+    task = AgentTask(
+        task_type="improvement_execution",
+        description="No generated_code, nonexistent file",
+        input={
+            "repo_path": str(repo_path),
+            "suggestion": {"file_path": "agents/missing.py", "title": "Improve"},
+        },
+    )
+
+    result = asyncio.run(agent.run(task))
+
+    assert result.success is False
+    assert "Target file not found" in (result.error or "")
+
+
 def test_apply_local_change_rejects_absolute_paths(
     tmp_path, monkeypatch, agent: ImprovementExecutorAgent
 ):

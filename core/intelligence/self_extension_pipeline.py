@@ -114,6 +114,9 @@ class SelfExtensionPipeline:
             expected_impact=gap.rationale,
             # 承認者が /inbox で生成コードの中身を読めるようにする（HITL レビューの実体化）。
             code_preview=_truncate_code_preview(code_output.code_content),
+            # 承認時に executor がそのまま書き込む全文。承認したコードと適用されるコードを
+            # バイト等価に保つ（無いと executor は LLM 再生成＝レビュー済みコードと別物になる）。
+            generated_code=code_output.code_content,
             implementation_difficulty=self._estimate_difficulty(spec.estimated_lines),
             status="proposed",
         )

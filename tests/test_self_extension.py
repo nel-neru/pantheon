@@ -305,6 +305,8 @@ class TestSelfExtensionPipeline:
         # 永続化→model_validate で読み戻しても保持される（HITL レビューの実体化）。
         assert pending[0].code_preview
         assert "from __future__ import annotations" in pending[0].code_preview
+        # generated_code は適用用の全文＝承認時に executor がそのまま書き込む（preview とは別物）。
+        assert pending[0].generated_code == result.code_output.code_content
 
     def test_run_for_gap_truncates_long_code_preview(
         self, agent_gap: CapabilityGap, tmp_path: Path
@@ -341,6 +343,9 @@ class TestSelfExtensionPipeline:
         assert len(preview.splitlines()) <= _MAX_PREVIEW_LINES + 1
         assert "省略" in preview
         assert "LINE_499" not in preview
+        # generated_code は切り詰めず全文を保持する（適用で full ファイルを書くため）。
+        assert pending[0].generated_code == long_body
+        assert "LINE_499" in pending[0].generated_code
 
     def test_run_for_gap_returns_failure_on_invalid_generated_code(self, agent_gap: CapabilityGap):
         class BadWriter:

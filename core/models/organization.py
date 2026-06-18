@@ -118,6 +118,15 @@ class ImprovementProposal(BaseModel):
             "承認者が /inbox で中身を読めるようにするため。空なら未提供。"
         ),
     )
+    generated_code: str = Field(
+        "",
+        description=(
+            "承認時にそのまま新規ファイルへ書き込む生成コード全文（self-extension）。"
+            "code_preview は表示用の切り詰め版、こちらは適用用のバイト等価な全文。"
+            "executor はこれがあれば LLM 再生成せず verbatim 適用する（review-approve-apply 整合性）。"
+            "/inbox の一覧 payload では肥大化を避けるため除外する。空なら未提供。"
+        ),
+    )
     implementation_difficulty: str = "medium"
     status: str = "proposed"  # "proposed" | "pending" | "in_progress" | "done" | "rejected" | "failed" | "cancelled"
     is_meta: bool = Field(
