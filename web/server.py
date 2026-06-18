@@ -4901,7 +4901,11 @@ async def list_knowledge_files() -> Dict[str, List[Dict[str, Any]]]:
             stat = path.stat()
             files.append(
                 {
-                    "path": str(rel),
+                    # POSIX 正規化（as_posix）: Windows の str(rel) はバックスラッシュ区切りになり、
+                    # フロントの encodeFilePath（'/' で split）が誤エンコード→ネストファイルの
+                    # GET/PUT/DELETE が round-trip 失敗する。相対パスは常に '/' 区切りで返す
+                    # （2026-06-12 に repo_reader/dependency_graph 等で確立した規約の取りこぼし修正）。
+                    "path": rel.as_posix(),
                     "name": path.name,
                     "size": stat.st_size,
                     "modified": stat.st_mtime,

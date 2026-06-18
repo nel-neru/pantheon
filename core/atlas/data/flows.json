@@ -247,8 +247,9 @@
       "state": ["knowledge/"],
       "verification": ["tests/test_web_server.py", "tests/test_knowledge_manager.py"],
       "status": "solid",
-      "known_issues": [
-        { "severity": "low", "title": "DataPage encodeFilePath が '/' のみ分割し Windows パスで破綻", "detail": "バックスラッシュパスが返るとセグメント符号化が誤る。", "file": "web/frontend/src/pages/DataPage.tsx" }
+      "known_issues": [],
+      "resolved": [
+        { "title": "ネスト knowledge ファイルのパスを POSIX 正規化 — list_knowledge_files が str(rel)（Windows でバックスラッシュ区切り）でなく rel.as_posix() を返すよう修正。フロントの encodeFilePath は '/' で split するため、'/' 区切りなら GET/PUT/DELETE が round-trip 成功する（2026-06-12 の repo_reader/dependency_graph 規約の取りこぼし修正）。テスト: tests/test_web_server.py::test_list_knowledge_files_nested_paths_are_posix。", "file": "web/server.py" }
       ]
     },
     {
