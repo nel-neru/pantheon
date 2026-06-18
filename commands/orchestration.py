@@ -133,11 +133,13 @@ async def cmd_orchestration_capabilities(args: argparse.Namespace) -> None:
     # --resolve: 検出ギャップを CapabilityGapResolver で解消する（既定オフ）。
     # agent/skill → registry へ永続 spawn、team/division → PolicyEngine 評価（HITL ゲート）。
     if getattr(args, "resolve", False):
-        _resolve_capability_gaps(gaps, registry, getattr(args, "org_name", None))
+        _resolve_capability_gaps(gaps, registry, getattr(args, "org_name", None), gap_analyzer)
     print(f"{'═' * 60}\n")
 
 
-def _resolve_capability_gaps(gaps: list, registry: Any, org_name: str | None) -> None:
+def _resolve_capability_gaps(
+    gaps: list, registry: Any, org_name: str | None, gap_analyzer: Any = None
+) -> None:
     """検出ギャップを解消し結果サマリーを表示する（capabilities --resolve の本番ドライバ）。
 
     解消側 :class:`CapabilityGapResolver` は従来テストのみで本番から呼ばれていなかった。
@@ -188,6 +190,16 @@ def _resolve_capability_gaps(gaps: list, registry: Any, org_name: str | None) ->
     print(f"    proposed teams : {summary['proposed_teams']}")
     print(f"    proposed divs  : {summary['proposed_divisions']}")
     print(f"    auto-applied   : {summary['auto_applied']}")
+    # 充足したギャップ（spawn 済み・auto-apply 済み構造）を implemented にマークし、検出ループを閉じる。
+    # これをしないと解消後も同じギャップが get_all_gaps()/format_for_agent()/get_summary() に active で
+    # 残り、次回 --resolve で再 spawn を試み、エージェントプロンプトにも「不足」と出続ける（over-report）。
+    # HITL 提案止まり・spawn 失敗は satisfied_gap_ids に含まれず active 据え置き（人間承認/再試行を待つ）。
+    marked = 0
+    if gap_analyzer is not None:
+        for gap_id in summary.get("satisfied_gap_ids", []):
+            if gap_analyzer.mark_implemented(gap_id):
+                marked += 1
+    print(f"    marked done    : {marked}")
     for record in summary["results"]:
         print(f"      - {record['action']}: {record['detail']}")
 

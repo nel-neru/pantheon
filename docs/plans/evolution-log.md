@@ -2713,3 +2713,37 @@ Cycle 39 — (vv) atelier Observatory にトークン予算ヘッドルームを
            発掘（usage の `weekly_7d` 窓・observability summary のコスト/品質など）、(ww) capability-gap-self-extension の known issue 実コード
            再検証（flow-audit 二刀流）、(aaa) Observatory の「Tokens · 5h」Stat（session_5h）と governor 窓の二窓を一画面でどう区別表示するかの
            小改善（今回は governor 窓のみ surface・session 窓は別ソースで未統合）。
+
+Cycle 40 — (ww) capability-gap の known issue を実コード根治＝resolver が満たしたギャップを mark_implemented で畳み over-report/再 spawn drift を解消＋flows.json 二刀流訂正  (2026-06-18)
+  Plan   : (ww) capability-gap-self-extension の known issue「充足済みギャップを自動 implemented にしない」を flow-audit 二刀流で再検証。
+           **なぜ今これか**: C39 が GUI surfacing だったので種別を変え（多様性）、ログが長く先送りした候補を消化。flow-audit 二刀流は
+           「known issue を実コードで再検証→stale なら flows.json 訂正／live なら根治」で必ず ship を生む（C37 実証）。受け入れ基準=
+           実バグなら最小修正＋load-bearing 回帰＋flows.json 更新、stale なら訂正。**落とした候補**: (zz) 他 atelier ページの surfacing＝
+           C39 と同パターンで多様性低、(aaa) 二窓表示＝小さいが今は不要。
+  Did    : work/capability-gap-mark-resolved-20260618。実コード調査で **known issue は live と確定**: `_analyze_heuristic` は新規検出時に
+           active 能力と照合し既存能力のギャップを作らない（健全）が、**永続化済みギャップは registry と一切照合されず**、`resolve()`/
+           `resolve_gaps_for_org()` が agent を spawn（registry 永続）しても誰も `mark_implemented(gap_id)` を呼ばないため、充足済みギャップが
+           `capability_gaps.json` に `implemented=False` で残り、次回 `--resolve` で再 spawn＋`format_for_agent`/`get_summary` が「不足」と
+           over-report し続ける state drift。**最小根治**: (1) `resolve_gaps_for_org` の summary に `satisfied_gap_ids` を追加＝**真に充足した**
+           id のみ（`spawned_agent`＝新規/再利用 spawn、または auto-apply 済み構造）。HITL 提案止まり・spawn 失敗は**除外**（過剰畳み込み防止）。
+           (2) CLI `_resolve_capability_gaps` に `gap_analyzer` を渡し satisfied を `mark_implemented` で畳み `marked done : N` を表示。
+           回帰3本（satisfied 判定の境界・CLI end-to-end の implemented 永続化）。flows.json: 該当 issue を `resolved` へ移動し、status の
+           "partial" の真因（self_extension_pipeline=ToolDesignAgent→SelfCodeWriter に本番トリガ無し・test/ライブラリのみ）を**実コードで裏取り**
+           して新 known_issue に正直に記録（status は partial 維持＝solid へ over-claim しない）。
+  Check  : ruff クリーン ／ **test-triage = GREEN（1616 passed・既知2失敗のみ・回帰0）** ／ check_flows.py passed（resolved/known_issues の
+           file 実在検証込み）。**敵対的レビュー code-reviewer = APPROVE（blocking 無し）**＝satisfied 判定を `capability_gap_loop.py` の
+           `GapResolution.action/auto_applied` 実装で裏取り（reuse=能力存在で正・HITL pending は auto_applied=False で確実に除外・spawn 失敗は
+           skipped で除外）、後方互換（`gap_analyzer=None` で従来挙動）、`mark_implemented` の冪等性と id 一致（get_all_gaps が返すのは self._gaps
+           参照）、テストが load-bearing（issue 復元で `satisfied_gap_ids` KeyError／`marked done:1`→0 で fail）を確認。nit（bulk save）は現スケール
+           無害で見送り。
+  Act    : merged ✅（merge_to_main ゲート通過）。固定化: (A) **flow-audit 二刀流は known issue の「症状の出る層 ≠ root cause」を実コードで
+           突き止める**＝issue は file=`capability_gap_analyzer.py` だったが、真因は analyzer が永続ギャップを registry 照合しないことと、
+           **resolver/CLI 経路が mark_implemented を呼び忘れている**配線漏れ（root は orchestration 経路）。C37 の「issue の filed file ≠ root」を再実践。
+           (B) **解消判定は resolver 側（単体テスト可能な場所）に置き、CLI は適用だけ**＝`satisfied_gap_ids` を summary に持たせ、HITL/失敗を
+           含めない境界を resolver レベルのテストで pin（CLI 重 setup 無しで境界を守れる）。(C) **flow の status は known issue を1つ直しても
+           安易に solid へ上げない**＝残る partial 理由（self-extension コード生成段の本番未配線）を実コードで裏取りしてから正直に記録（catalog の
+           honesty 維持・[[atlas-flows-drift]] 更新）。
+  Next   : C41 候補 — (bbb) self_extension_pipeline（gap→設計→コード生成→検証）に既定オフ CLI フラグで本番トリガを最小配線（[[detection-execution-gap-wiring]]
+           の archetype＝検出は稼働だが実行が dead-code・C10/C12 の続き。ただしコード生成系は可逆性に注意し dry-run/提案止まり既定）、(zz) 他 atelier
+           ページの未提示 backend データ surfacing（C39 パターン横展開）、(ccc) capability_gaps の registry 照合 reconcile を get_all_gaps に入れ、
+           resolver 経由でなく外部登録で能力が現れた場合もギャップを畳む（今回は resolver 経路のみ閉じた・名前照合の fragility を要検討）。

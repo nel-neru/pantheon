@@ -284,7 +284,10 @@
       "verification": ["tests/test_self_extension.py", "tests/test_agent_skill_engine.py"],
       "status": "partial",
       "known_issues": [
-        { "severity": "low", "title": "充足済みギャップを自動で implemented にしない", "detail": "能力が後から存在しても旧ギャップが残る。", "file": "core/intelligence/capability_gap_analyzer.py" }
+        { "severity": "low", "title": "自己拡張のコード生成段（ToolDesignAgent→SelfCodeWriter）に本番トリガが無い（test のみ）", "detail": "gap 検出→agent spawn の解消ループは capabilities --resolve で配線済みだが、self_extension_pipeline（gap→設計→コード生成→検証）を呼ぶ CLI/daemon/API の本番エントリが存在せず、ライブラリ＋テストのみ。これが summary の『一部未配線』の実体。", "file": "core/intelligence/self_extension_pipeline.py" }
+      ],
+      "resolved": [
+        { "title": "充足済みギャップを実装後に implemented へ畳む — capabilities --resolve が spawn/auto-apply したギャップを mark_implemented し、over-report/再 spawn の drift を根治（resolve_gaps_for_org が satisfied_gap_ids を返す）", "file": "commands/orchestration.py" }
       ]
     },
     {
