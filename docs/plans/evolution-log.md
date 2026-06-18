@@ -2246,3 +2246,41 @@ Cycle 26 — WordPress 未接続エラーの「壊れたユーザー指示」を
   Next   : C27 候補 — (jj) capability_gap:285 array truncation を array 正典ヘルパへ（JSON 単一正典を array まで完遂・latent）、
            (mm) atelier 他ページ（Observatory/Signals/Lab/Pantheon 等）の能力表記 honesty 横断監査（過小/過大提示の検出）、
            (nn) robustness の latent outlier 回収（capability_registry:165 の無条件 replace(tzinfo=utc) を条件付きへ＝コードベース規約に統一）。
+
+Cycle 27 — get_unused_capabilities のしきい値ロジックバグ＋tz outlier を修正（「ほぼ全件 unused」を解消・正典 naive-guard へ統一）  (2026-06-18)
+  Plan   : C26 候補 (nn) を回収。当初は「単独の tz 逸脱＝latent」と見ていたが、reachability/archetype を実コードで精査したところ
+           同じ関数に **Atlas 文書化済みのロジックバグが同居**＝想定より高レバレッジと判明。受け入れ基準= しきい値が実際に効く
+           （never-used でも added_at が threshold 内なら unused 報告しない＝「scan 直後に全件 unused」を解消）／tz をコードベース
+           8サイトの正典 naive-guard と一致／回帰テスト追加／全件グリーン・新規回帰0／敵対レビュー APPROVE／merged。なぜ今: C20–C24 の
+           robustness 連発で「残るは latent outlier のみ」と C25 が記録したが、その outlier が実は documented logic bug を隠していた＝
+           「latent に見える逸脱を実コードで精査すると高レバレッジが出る」典型。C25/C26（honesty）とは別カテゴリ（correctness）で多様性も確保。
+           落とした候補: (jj) array truncation（真に latent・JSON 連続回避）、(mm) atelier honesty 監査（より広い・次サイクル）。
+  Did    : work/unused-capabilities-threshold-logic-20260618（コード）＋ work/evolve-log-c27（ログ）。バグ実証: 旧
+           `is_unused = cap.usage_count == 0` が never-used を無条件 True にし、日付計算は `is_unused = is_unused or (…).days >= threshold`
+           で True を OR するだけ＝threshold が死んで scan 直後（全 cap usage_count==0）が全件 unused 報告（Atlas subsystem_maps.json の
+           known-issue と一致）。さらに同関数だけが `datetime.fromisoformat(last_used).replace(tzinfo=timezone.utc)` の**無条件 replace**で
+           aware 非UTC を黙って 9h ずらし、`except Exception: pass` で解析失敗も握り潰し（repo 全体 grep で他 8サイトは全て canonical
+           naive-guard `if dt.tzinfo is None: …` ＝**唯一の逸脱**を実証）。修正: staleness を `last_used or added_at` から測り
+           `(now - last_dt).days >= threshold` のみ unused（never-used も added_at から threshold 経過で初めて unused＝新規は grace）／
+           tz を正典 naive-guard へ統一／except を `(ValueError, TypeError)` に絞り解析不能は安全側で除外（continue）／docstring 刷新。
+           tests/test_capability_registry_unused.py（7件）。Atlas: 解消済み known-issue を subsystem_maps.json から削除（正直化）。
+  Check  : ruff check/format クリーン（whole-repo）／ test-triage = **GREEN**（1574 passed・既知2失敗のみ・新規回帰0・新規7/7）／
+           関連 capability テスト50件緑 ／ merge_to_main 全件ゲート＝既知2失敗のみ。code-reviewer = **APPROVE-WITH-NITS**: correctness
+           （`.days >= threshold` に off-by-one なし・clock skew の負 .days も安全側除外）・**production caller ゼロ**（呼び出しは新規テストのみ＝
+           semantics 変更の blast radius ゼロ）・docstring 正確・Atlas 削除 inert（subsystem_maps.json は proposal_generator 非消費＝
+           flows.json を読む／flows.json に当該 issue 不在）を実証。確定 nit 1件＝tz テストが 2日前値で日境界を跨がず旧コードでは
+           tz 剥がしでなく usage_count==0 ショートサーキット経由で fail＝tz バグを独立に守れていない → **修正**: usage_count=3＋
+           真値 90日3時間前の +09:00 値（offset 剥がしで 89日18時間→.days 89<90）に変更し、実測で NEW=.days90/unused・OLD=.days89/非unused を
+           裏取りして tz 破損を**バグ#1 非依存で単独検出**するガードに強化。
+  Act    : merged ✅（main e266507）。固定化: (A) **「latent な単独 outlier」は切り捨てる前に reachability＋同居バグを実コードで精査する**＝
+           tz 1行に見えた対象が、同じ関数の documented logic bug（threshold 無効化）を隠していた。C25 の「robustness は dregs のみ」を
+           鵜呑みにせず一段掘ると高レバレッジが出る。(B) **codebase-wide idiom からの「唯一の逸脱」は archetype grep で確定させてから直す**＝
+           `replace(tzinfo=utc)` を全 grep し 8サイト中 7 が canonical naive-guard、逸脱は1つだけ＝修正は「規約への収れん」で confidence 最大
+           （[[windows-process-portability]]「同種は全 call site を grep」の tz 版）。(C) **Atlas は2層データ**＝`flows.json`（proposal_generator が
+           消費＝ドリフトが提案に出る）と `subsystem_maps.json`（静的 curation・コード非消費）。解消は両方で正直化するが、提案ドリフト影響は
+           flows.json のみ。known-issue 解消時はどちらに在るか確認（[[atlas-flows-drift]]）。(D) **tz 破損の回帰テストは co-located な
+           short-circuit から tz 経路を分離する**＝usage_count>0 で別バグを無効化し、offset 剥がしが threshold 境界を跨ぐ値を選んで
+           「tz バグだけ」で fail させる。reviewer の「このテストは何を守るか」懐疑が冗長ガードを load-bearing 化（[[testing-and-subagent-hazards]]）。
+  Next   : C28 候補 — (mm) atelier 他ページ（Observatory/Signals/Lab/Pantheon 等）の能力表記 honesty 横断監査（過小/過大提示検出・多様性=GUI）、
+           (oo) Atlas subsystem_maps.json の残 known-issues を実コードで再検証し解消済みを掃除（atlas-flows-drift の machine 検証を subsystem 層へ拡張）、
+           (jj) capability_gap:285 array truncation を array 正典ヘルパへ（真に latent・JSON 連続回避のため後回し）。
