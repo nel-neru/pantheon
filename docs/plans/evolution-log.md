@@ -2364,3 +2364,48 @@ Cycle 29 — trend 変換の部分失敗を観測化（convert_trends/cc に fai
            本サイクルの archetype を残る変換ステップへ水平展開・多様性は別ファイル）、(pp) capabilities `mark_for_deprecation` HITL 配線
            （read-only→mutating・PolicyEngine ゲート経由で慎重に）、(rr) product/vision スライス（Org 量産 `pantheon org create` E2E 硬化 or
            trends→提案の /inbox provenance 可視化）で GUI/CLI 以外の前進。
+
+Cycle 30 — capability 非推奨機能を honest に完成（dead な execution を HITL CLI で配線＋read 経路を有効化）  (2026-06-18)
+  Plan   : `CapabilityRegistry.mark_for_deprecation`（呼び出し元ゼロの dead code）を
+           `capabilities --deprecate <id|name>`（明示コマンド＝HITL・既定オフ）で配線し、`is_active=False`
+           マーカーを `get_unused_capabilities`（再ナグ停止）と `format_for_agent`（エージェントへ非推奨を宣伝しない）で
+           honor させる。あわせて誰も読まない inert な `deprecated` JSON キーを廃し `_save()` 一元化で simplify。
+           受け入れ基準= deprecate 後に当該能力が --unused 候補と format_for_agent から消え（fresh registry で永続確認）、
+           CLI 一覧で unavailable／無効 id/name は WARN／既存緑・新規回帰0／ruff・レビュー APPROVE／merged。
+           なぜ今= C27（検出修正）→C28（--unused レポート）で検出側は配線済みだが、execution（mark_for_deprecation）が
+           完全 dead＋マーカーが read 経路でほぼ無効＝[[detection-execution-gap-wiring]] の facade（C28 Next の pp）。
+           mutation は明示 CLI＝inherently HITL・可逆な local metadata で安全。**落とした候補**: (qq) observability 水平展開
+           （C29 と同種連発＝多様性違反）、product/vision スライス（大きめ・別サイクル）。
+  Did    : work/capability-deprecate-wiring-20260618（コード）＋ work/evolve-log-c30（ログ）。
+           capability_registry.py: `mark_for_deprecation` を「in-memory に is_active=False→`_save()`」に書き換え
+           （register/record_usage と同じ単一真実パターン）、bool 返却（不在 id=False）。冗長な on-disk 手動パッチと
+           inert `deprecated` キー（python 消費者ゼロを grep 確認）を撤去。`get_unused_capabilities` 冒頭で
+           `if not cap.is_active: continue`、`format_for_agent` で `[e for e in list_all(t) if e.is_active]`。
+           orchestration.py: `--deprecate <ID_OR_NAME>` を capabilities パーサに追加＋ハンドラ（registry.get か
+           find_by_name で解決→mark_for_deprecation→成功/not-found 表示）、`--unused` レポート各行に `[id: ...]` を併記し
+           検出→非推奨化を actionable に。tests: test_capability_deprecation.py（永続化・再ロード残存・両 read 経路除外・
+           unknown=False）＋ test_orchestration_cli.py に Deprecate CLI 4件（id/name 解決・unknown WARN・既定オフ）。
+  Check  : ruff check/format クリーン ／ test-triage = **GREEN**（1590 passed・既知2失敗のみ・新規回帰0）／ capability 関連34件緑 ／
+           merge_to_main 全件ゲート通過。code-reviewer = **APPROVE**（critical/warning ゼロ・6精査点すべて健全）:
+           (1) `_save()` 書き換えは register/record_usage と同型＝新たな staleness クラスなし・唯一の本番 caller は直前に
+           fresh registry を構築するため clobber 不能、(2) `deprecated` キー消費者ゼロを grep 実証、(3) facade でない＝
+           is_active=False は from_dict 再ロード＋`_scan_agents` の `if cap_id in: continue` 再スキャンを生存（durable）、
+           (4) テスト load-bearing＝mutation A（mark を no-op 化＝facade 復帰）で5件・mutation B（filter 削除）で2件 fail を
+           実証、CLI テストは print 文言でなく fresh registry の永続 is_active を読む、(5) 後方互換＝getattr 既定＋`[id:]`
+           追記が既存 substring assert を壊さない、(6) HITL＝可逆 local metadata の明示フラグ操作は PolicyEngine ゲート不要
+           （sibling --resolve は構造 op にのみ gate を留保）。確定所見ゼロ＝無修正。suggestion 1件（class 全体に既存の
+           非アトミック `_save`）はスコープ外として別 follow-up。
+  Act    : merged ✅（main b53b488）。固定化: (A) **「dead な mutator を配線」する前に read 側がマーカーを honor するか必ず確認**＝
+           書き込みだけ生きていて誰も読まない marker を CLI に繋ぐと facade（dishonest）。本サイクルは write（mark）＋read
+           （get_unused/format_for_agent）＋surface（CLI）を1スライスで揃え機能を**実効化**した（[[detection-execution-gap-wiring]] の
+           「正しい検出に surface が無い」の双対＝「mutator はあるが effect が無い」）。(B) **inert なフラグ（誰も読まない永続キー）は
+           honesty 負債＝撤去する**＝`deprecated` キーは grep で消費者ゼロを確定し、`is_active` 一本へ正規化。半完成機能の
+           「もっともらしいが効かない」部分を残さない。(C) **mutating op の HITL は「明示・既定オフ・可逆」で満たせることが多い**＝
+           local metadata の状態反転（delete でなく flag）は明示 CLI フラグ自体が人間の承認。PolicyEngine ゲートは構造変更/
+           外部副作用など真に破壊的な op に留保（reviewer が sibling --resolve との対比で確認）。(D) **永続状態を変える機能のテストは
+           fresh インスタンスで読み直す**＝print の成功文言は facade でも出るので、別 registry をディスクから構築して is_active を
+           assert（mutation A が print を素通りしたのを永続 assert が捕捉）（[[testing-and-subagent-hazards]]）。memory 更新。
+  Next   : C31 候補 — (rr) product/vision スライス（Org 量産 `pantheon org create` E2E 硬化 or trends→提案の /inbox provenance
+           可視化）で GUI/CLI 以外の多様性、(ss) capability_gap_analyzer の re-suggest 抑制が is_active を無視する点を意図確認の上
+           「非推奨後は再提案を許す」に倒すか検討（reviewer の consistency note・要設計判断）、(tt) class 全体の非アトミック `_save` を
+           atomic_write_text へ寄せる hygiene（C37 原則の registry 版・低リスク）。
