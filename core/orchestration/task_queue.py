@@ -161,9 +161,12 @@ class TaskQueue:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(value)
+            dt = datetime.fromisoformat(value)
         except ValueError:
             return None
+        # naive な legacy/移行 timestamp は UTC とみなして aware に揃える。未 coerce だと
+        # cleanup_old_tasks の `completed_at > cutoff`（aware）比較が TypeError でクラッシュする。
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
     def add_task(
         self,

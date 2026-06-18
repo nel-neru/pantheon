@@ -120,3 +120,37 @@ def test_task_queue_concurrent_cross_process_no_lost_update(tmp_path):
     assert names.count("Parent") == n_each
     for k in range(n_children):
         assert names.count(f"Child{k}") == n_each
+
+
+def test_cleanup_old_tasks_handles_naive_completed_at(tmp_path):
+    # legacy/移行データで tz 情報のない completed_at を持つ完了タスクがあっても、
+    # cleanup_old_tasks が naive>aware の TypeError でクラッシュせず正しく掃除する（回帰）。
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    queue_file = tmp_path / "queue.json"
+    queue = TaskQueue(queue_file)
+    recent = queue.add_task("analyze", "OrgA", "recent")
+    old = queue.add_task("analyze", "OrgB", "old")
+    queue.update_status(recent["id"], TaskStatus.DONE)
+    queue.update_status(old["id"], TaskStatus.DONE)
+
+    # completed_at を tz 情報なし（naive）の文字列へ書き換え、legacy データを模す
+    data = json.loads(queue_file.read_text(encoding="utf-8"))
+    naive_recent = (datetime.now(timezone.utc) - timedelta(days=1)).replace(tzinfo=None).isoformat()
+    naive_old = (datetime.now(timezone.utc) - timedelta(days=30)).replace(tzinfo=None).isoformat()
+    assert "+" not in naive_recent and not naive_recent.endswith("Z")  # 確かに naive
+    for t in data["tasks"]:
+        if t["id"] == recent["id"]:
+            t["completed_at"] = naive_recent
+        elif t["id"] == old["id"]:
+            t["completed_at"] = naive_old
+    queue_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 旧コードでは naive>aware の比較で TypeError がここで送出された
+    removed = queue.cleanup_old_tasks(keep_days=7)
+
+    assert removed == 1  # old のみ削除、recent は keep_days(7日) 内なので残る
+    remaining_ids = {t["id"] for t in queue.list_tasks(limit=None)}
+    assert recent["id"] in remaining_ids
+    assert old["id"] not in remaining_ids

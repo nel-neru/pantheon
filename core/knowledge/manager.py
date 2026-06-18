@@ -158,6 +158,10 @@ class KnowledgeManager:
                 referenced_at = datetime.fromisoformat(last_referenced)
             except ValueError:
                 continue
+            # naive な legacy timestamp は UTC とみなして aware の cutoff と比較可能にする。
+            # 未 coerce だと naive<aware 比較が TypeError で archive sweep 全体を落とす。
+            if referenced_at.tzinfo is None:
+                referenced_at = referenced_at.replace(tzinfo=timezone.utc)
             if referenced_at < cutoff:
                 record["archived"] = True
                 self._write_record(record)

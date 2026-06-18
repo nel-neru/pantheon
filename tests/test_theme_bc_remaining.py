@@ -180,6 +180,31 @@ def test_knowledge_archive_stale(tmp_path):
     assert never_id in active_ids
 
 
+def test_knowledge_archive_handles_naive_last_referenced(tmp_path):
+    # legacy/外部編集で tz 情報のない last_referenced を持つエントリがあっても、
+    # archive sweep が naive<aware の TypeError でクラッシュせず正しく archive する（回帰）。
+    km = KnowledgeManager(tmp_path)
+    naive_id = km.save_insight("Legacy", "naive ts", tags=["ops"])
+    fresh_id = km.save_insight("Fresh", "aware ts", tags=["ops"])
+    # tz 情報を剥がした naive な 45 日前の timestamp（aware の cutoff と混在させる）
+    naive_ts = (datetime.now(timezone.utc) - timedelta(days=45)).replace(tzinfo=None).isoformat()
+    assert "+" not in naive_ts and not naive_ts.endswith("Z")  # 確かに naive
+    _write_entry(km, naive_id, last_referenced=naive_ts)
+    _write_entry(
+        km,
+        fresh_id,
+        last_referenced=(datetime.now(timezone.utc) - timedelta(days=5)).isoformat(),
+    )
+
+    # 旧コードでは naive<aware の比較で TypeError がここで送出された
+    archived = km.archive_stale_entries(days_inactive=30)
+    active_ids = {entry["id"] for entry in km.get_active_entries()}
+
+    assert archived == 1
+    assert naive_id not in active_ids
+    assert fresh_id in active_ids
+
+
 def test_knowledge_repo_specific_context(tmp_path):
     km = KnowledgeManager(tmp_path)
     km.save_with_repo_tag("Repo alpha", ["analysis"], "repo-a", title="A")
