@@ -106,12 +106,29 @@ async def cmd_orchestration_capabilities(args: argparse.Namespace) -> None:
         if unused:
             for cap in sorted(unused, key=lambda c: c.get("last_used") or c.get("added_at") or ""):
                 last_activity = cap.get("last_used") or cap.get("added_at") or "不明"
+                # id を併記して `--deprecate <id>` でそのまま非推奨化できるようにする。
                 print(
                     f"    {cap.get('name')} ({cap.get('capability_type')})"
                     f"  使用 {cap.get('usage_count', 0)} 回  最終 {last_activity}"
+                    f"  [id: {cap.get('id')}]"
                 )
         else:
             print("    なし（全能力が閾値内にアクティブ）")
+
+    # --deprecate: 指定能力を非推奨化（is_active=False を永続化）。明示コマンド＝HITL。
+    deprecate_target = getattr(args, "deprecate", None)
+    if deprecate_target:
+        entry = registry.get(deprecate_target) or registry.find_by_name(deprecate_target)
+        print(f"\n  {'─' * 56}")
+        if entry is None:
+            print(f"  [WARN] 能力 '{deprecate_target}' が見つかりません（id・表示名で指定）。")
+        elif registry.mark_for_deprecation(entry.id):
+            print(
+                f"  ✓ '{entry.name}' ({entry.id}) を非推奨にしました（is_active=False）。"
+                "\n    以後 --unused 候補・エージェント能力一覧から除外されます。"
+            )
+        else:  # pragma: no cover - get/find で解決済みなら通常到達しない
+            print(f"  [WARN] '{deprecate_target}' の非推奨化に失敗しました。")
 
     # --resolve: 検出ギャップを CapabilityGapResolver で解消する（既定オフ）。
     # agent/skill → registry へ永続 spawn、team/division → PolicyEngine 評価（HITL ゲート）。
@@ -339,6 +356,13 @@ def register(subparsers: Any) -> None:
         metavar="DAYS",
         help="最終利用（未使用なら追加日）から DAYS 日以上経過した能力を非推奨候補として"
         "一覧する（DAYS 省略時は 90）。既定オフ・読み取り専用",
+    )
+    capabilities.add_argument(
+        "--deprecate",
+        default=None,
+        metavar="ID_OR_NAME",
+        help="指定した能力（id または表示名）を非推奨にする（is_active=False を永続化）。"
+        "明示コマンド＝HITL。以後 --unused 候補とエージェント能力一覧から除外される",
     )
     capabilities.set_defaults(handler_name="cmd_orchestration_capabilities")
 
