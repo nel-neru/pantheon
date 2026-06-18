@@ -153,11 +153,31 @@ class CapabilityGapAnalyzer:
 
         return new_gaps
 
+    def _active_capability_names(self) -> set:
+        """registry 上の active な能力名集合（無ければ空）。
+
+        検出（_analyze_heuristic）と read 時 reconcile（get_all_gaps）で同一の
+        exact-name 照合を共有し、2 経路が「その能力は在るか」で食い違わないようにする。
+        非推奨化（is_active=False）した能力は除外（detection 側と同じ＝再提案は HITL で判断）。
+        """
+        if not self._registry:
+            return set()
+        return {e.name for e in self._registry.list_all() if e.is_active}
+
     def get_all_gaps(self, include_implemented: bool = False) -> List[CapabilityGap]:
-        """検出済みギャップを返す。"""
+        """検出済みギャップを返す。
+
+        永続済みギャップを registry と reconcile する: suggested_name が現在 active な能力に
+        一致するギャップは「充足済み」とみなし active ビューから除外する。これがないと、
+        resolver（--resolve の mark_implemented）以外の経路（外部登録 / scan_and_register_all /
+        手動 register）で能力が現れたギャップが `implemented=False` のまま残り、
+        format_for_agent（LLM プロンプト）/ get_summary（指標）/ --resolve（再 spawn）で
+        恒久的に over-report される（C40 は resolver 経路のみ閉じた）。
+        """
         if include_implemented:
             return list(self._gaps)
-        return [g for g in self._gaps if not g.implemented]
+        active_caps = self._active_capability_names()
+        return [g for g in self._gaps if not g.implemented and g.suggested_name not in active_caps]
 
     def mark_implemented(self, gap_id: str) -> bool:
         """ギャップを実装済みにマークする。"""
@@ -215,14 +235,9 @@ class CapabilityGapAnalyzer:
         """ルールベースのヒューリスティック分析。"""
         existing_names = {g.suggested_name for g in self._gaps}
         new_gaps = []
-        existing_cap_names: set = set()
-        if self._registry:
-            # アクティブな能力だけを「既存」とみなす。非推奨化（is_active=False）した能力は
-            # format_for_agent（LLM 分析経路が読む）からも除外済みなので、ここで全件を見ると
-            # 2 つの分析経路が「その能力は在るか」で食い違う。さらに本当に必要が再燃した
-            # 能力の再提案を非推奨マーカーが恒久的に抑止してしまう（zombie 化）。再提案は
-            # HITL 承認ゲートを通るので、必要なら人間が判断できる。
-            existing_cap_names = {e.name for e in self._registry.list_all() if e.is_active}
+        # アクティブな能力だけを「既存」とみなす（非推奨化した能力は除外＝再提案は HITL で判断）。
+        # read 時 reconcile（get_all_gaps）と同一集合を共有し、検出と read が食い違わないようにする。
+        existing_cap_names = self._active_capability_names()
 
         for pattern in patterns:
             for rule in self.HEURISTIC_RULES:
