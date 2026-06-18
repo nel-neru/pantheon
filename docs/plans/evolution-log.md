@@ -2869,3 +2869,27 @@ Cycle 44 — (ccc) get_all_gaps を registry と read 時 reconcile し、resolv
   Next   : C45 候補 — (zz) 他 atelier ページ（Pantheon/Signals/Lab）の未提示 backend データ surfacing（C39 横展開）、(fff) CLI approve の api-key ゲートを
            verbatim 提案で短絡、(ggg) trends/daemons など運用サブシステムの robustness 監査（archetype sweep）で更なる多様性。**surfacing/self-extension/
            cap-gap が続いたので次は運用層 or 別カテゴリへ**。
+
+Cycle 45 — (fff) CLI `proposal apply` の api-key ゲートを verbatim(generated_code)提案で短絡＝web と挙動を揃え、claude 不在でも自己拡張提案を承認可能に（C43 reviewer nit #1 の解消）  (2026-06-19)
+  Plan   : (fff) C43 reviewer nit #1 を消化。`commands/org.py` の `cmd_proposal_apply` は LLM file 適用の直前で `require_api_key("pantheon approve")` を
+           **無条件**に呼ぶが、generated_code を持つ self-extension 提案は executor が verbatim 適用＝LLM を一切呼ばない。claude 不在ユーザは web /inbox では
+           承認できるのに CLI では機能上不要なゲートで弾かれる（web 承認経路に同ゲートは無い）。**なぜ今これか**: 確証済みの実欠陥・小さく確実・別レイヤ
+           （CLI ゲート）で C44 と種別が違う。受け入れ基準=verbatim 提案でゲート短絡＋通常 file 提案は従来どおり要求の回帰、merged。**落とした候補**:
+           (zz)surfacing＝C39/C42 連発回避、(ggg)運用層 archetype sweep＝yield 不確実で別サイクル。
+  Did    : work/cli-approve-verbatim-no-apikey-20260619。`if not (proposal.get("generated_code") or ""): require_api_key("pantheon approve")` の1行ガード。
+           述語は executor の verbatim トリガ（`suggestion.get("generated_code") or ""`）と**同一フィールド・同一 dict・同一 truthiness**でバイト等価＝CLI が
+           短絡したのに executor は LLM を呼ぶ（逆も）窓が無い。ガードは構造介入/content_asset/empty-file_path 分岐の**後**＝executor 到達経路のみ支配。
+           回帰2本（verbatim→ゲート未呼出かつ done 遷移／generated_code 無し→従来どおり `("pantheon approve",)` 1回）。依存注入式 cmd_proposal_apply に
+           spy `require_api_key` を渡し stub executor で end-to-end。
+  Check  : ruff クリーン ／ **test-triage 全件 GREEN（1633 passed・既知2失敗のみ・回帰0）**。**敵対的レビュー code-reviewer = APPROVE（blocking 0）**＝
+           ① ガード述語が executor verbatim トリガと exact 一致（同 dict を `task.input["suggestion"]` でそのまま渡す・間に変異なし）、② `require_api_key` は
+           純粋に claude 可用性チェック（認可ではない・vestigial 名）で PolicyEngine(前)＋confirm_action(後)＋verbatim 書込の repo-scope/from_suggestion
+           allowlist は不変＝ガード除去で権限ガードは弱まらず web 経路との parity、③ テスト load-bearing（revert で両 assert 反転）を確認。nit（`or ""` は
+           `if not proposal.get(...)` で簡潔化可だが executor 行とミラーする意図で据え置き）は非採用で妥当。
+  Act    : merged ✅（merge_to_main ゲート通過・2fa2ad6）。固定化: (A) **「LLM を呼ぶ経路だから X を要求」型のゲートは、後から verbatim/決定論経路が
+           増えたら条件付きにする**＝前提（LLM 必須）が崩れた箇所を洗う。(B) **対になる2述語（CLI ゲート↔executor トリガ）はバイト等価に保ち、コメントで
+           lockstep を明示**＝片方だけ変えると矛盾窓が開く。(C) web/CLI で同一操作の前提条件は揃える（parity）＝片方だけにあるゲートは UX の不整合。
+  Next   : C46 候補 — (zz) 他 atelier ページの未提示 backend データ surfacing（C39 横展開）、(ggg) trends/daemons など運用サブシステムの robustness 監査
+           （naive-tz/get-default-none/silent-drop archetype の未掃討モジュール sweep）、(hhh) self-extension 提案の承認→適用を実 git リポジトリで通す
+           統合テスト（今は stub executor／verbatim 書込の git ブランチ作成を実 repo で end-to-end 検証）。**self-extension 隣接が C41-45 で5サイクル続いたので
+           次は必ず運用層 or 別カテゴリへ転換**。
