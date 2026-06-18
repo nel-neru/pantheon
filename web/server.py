@@ -1392,15 +1392,7 @@ async def _perform_analyze(req: AnalyzeRequest) -> dict[str, Any]:
     sm = psm.get_org_state_manager(org)
     generated_proposals: list[dict[str, Any]] = []
     for suggestion in result.output.get("suggestions", []):
-        proposal = ImprovementProposal(
-            review_id=uuid4(),
-            priority=suggestion.get("priority", "medium"),
-            category=suggestion.get("category", "general"),
-            title=suggestion.get("title", "改善提案"),
-            description=suggestion.get("description", ""),
-            file_path=suggestion.get("file_path", ""),
-            expected_impact=suggestion.get("expected_impact", ""),
-        )
+        proposal = ImprovementProposal.from_suggestion(suggestion, review_id=uuid4())
         sm.save_improvement_proposal(proposal)
         serialized = _serialize_generated_proposal(proposal)
         generated_proposals.append(serialized)

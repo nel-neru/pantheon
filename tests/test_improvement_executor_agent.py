@@ -160,3 +160,36 @@ def test_apply_local_change_none_title_does_not_crash(
     result = agent._apply_local_change(repo_path, "file.py", "after", "summary", {"title": None})
 
     assert re.fullmatch(r"pantheon/improvement-[a-z0-9][a-z0-9-]*-\d{14}", result["branch"])
+
+
+def _run_local_change(agent, tmp_path, monkeypatch, suggestion):
+    repo_path = tmp_path / "repo"
+    target = repo_path / "file.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("before", encoding="utf-8")
+    fake_git = DummyGitModule()
+    monkeypatch.setitem(sys.modules, "git", SimpleNamespace(Repo=fake_git.Repo))
+    agent._apply_local_change(repo_path, "file.py", "after", "summary", suggestion)
+    return fake_git.repos[0].index.commit_calls
+
+
+def test_apply_local_change_none_title_commit_message_is_honest(
+    tmp_path, monkeypatch, agent: ImprovementExecutorAgent
+):
+    """title=None のとき commit メッセージが literal 'refactor: None' にならない。
+
+    旧コード ``f"refactor: {suggestion.get('title', 'Apply improvement')}"`` は **title キーが
+    None 値で存在する**と default ではなく None を返し、``refactor: None`` という commit が
+    git 履歴に残っていた（``.get(k, default)`` は None 値をガードしない罠）。
+    """
+    commits = _run_local_change(agent, tmp_path, monkeypatch, {"title": None})
+    assert commits == ["refactor: Apply improvement"]
+    assert "None" not in commits[0]
+
+
+def test_apply_local_change_absent_title_commit_message_is_honest(
+    tmp_path, monkeypatch, agent: ImprovementExecutorAgent
+):
+    """title キー不在でも commit メッセージが default に落ちる（既存の後方互換）。"""
+    commits = _run_local_change(agent, tmp_path, monkeypatch, {})
+    assert commits == ["refactor: Apply improvement"]

@@ -269,15 +269,7 @@ class AutonomousScheduler:
         )
 
         for s in suggestions:
-            proposal = ImprovementProposal(
-                review_id=uuid4(),
-                priority=s.get("priority", "medium"),
-                category=s.get("category", "general"),
-                title=s.get("title", "改善提案"),
-                description=s.get("description", ""),
-                file_path=s.get("file_path", ""),
-                expected_impact=s.get("expected_impact", ""),
-            )
+            proposal = ImprovementProposal.from_suggestion(s, review_id=uuid4())
             prop_dict = json.loads(proposal.model_dump_json())
             verdict = self._policy.evaluate(prop_dict, org_context=org_context)
 
