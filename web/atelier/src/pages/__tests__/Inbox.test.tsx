@@ -243,6 +243,70 @@ describe('Inbox Proposals section error handling', () => {
   })
 })
 
+describe('Inbox Proposals section code preview', () => {
+  it('self-extension 提案の生成コードプレビューを承認者が読めるよう描画する', async () => {
+    const codeBody = 'from __future__ import annotations\n\nclass AsyncReviewAgent: ...'
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/proposals')) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              proposal_id: 'p-selfext',
+              title: 'Self-extension: AsyncReviewAgent',
+              category: 'self_extension',
+              code_preview: codeBody,
+            },
+          ],
+        }
+      }
+      if (url.includes('/api/organizations')) {
+        return { ok: true, json: async () => [orgSummary('MetaOrg', 1)] }
+      }
+      if (url.includes('/api/inbox')) {
+        return { ok: true, json: async () => ({ items: [], counts: {} }) }
+      }
+      return { ok: true, json: async () => [] }
+    }) as unknown as typeof fetch
+
+    render(<Inbox />)
+
+    await waitFor(() =>
+      expect(screen.getByText('Self-extension: AsyncReviewAgent')).toBeInTheDocument(),
+    )
+    // 「生成コード」ラベルとコード本文が DOM に出る（折り畳まれていても中身は存在する）。
+    expect(screen.getByText('生成コード')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === 'PRE' && Boolean(el.textContent?.includes('class AsyncReviewAgent')),
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('code_preview が無い提案では「生成コード」を出さない（対照）', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/proposals')) {
+        return { ok: true, json: async () => [{ proposal_id: 'p-plain', title: '通常の改善提案' }] }
+      }
+      if (url.includes('/api/organizations')) {
+        return { ok: true, json: async () => [orgSummary('OrgA', 1)] }
+      }
+      if (url.includes('/api/inbox')) {
+        return { ok: true, json: async () => ({ items: [], counts: {} }) }
+      }
+      return { ok: true, json: async () => [] }
+    }) as unknown as typeof fetch
+
+    render(<Inbox />)
+
+    await waitFor(() => expect(screen.getByText('通常の改善提案')).toBeInTheDocument())
+    expect(screen.queryByText('生成コード')).not.toBeInTheDocument()
+  })
+})
+
 // 最小限の OrgSummary を組み立てる（コンポーネントが使うのは name / pending_proposals のみ）。
 function orgSummary(name: string, pending: number) {
   return {

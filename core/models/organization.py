@@ -111,6 +111,13 @@ class ImprovementProposal(BaseModel):
     description: str
     file_path: str = ""  # 対象ファイルパス（空の場合は approve 不可）
     expected_impact: str = ""
+    code_preview: str = Field(
+        "",
+        description=(
+            "提案が生成したコード本文のプレビュー（self-extension 等）。"
+            "承認者が /inbox で中身を読めるようにするため。空なら未提供。"
+        ),
+    )
     implementation_difficulty: str = "medium"
     status: str = "proposed"  # "proposed" | "pending" | "in_progress" | "done" | "rejected" | "failed" | "cancelled"
     is_meta: bool = Field(

@@ -29,6 +29,26 @@ from core.state.manager import RepoStateManager
 # （capability_gap_loop.py の構造提案と同じ idempotency 戦略）。
 _SELF_EXT_NS = uuid5(NAMESPACE_URL, "pantheon.self_extension")
 
+# 生成コードプレビューの上限。提案 JSON（.pantheon/improvements/{id}.json）と /inbox の
+# ペイロードを肥大化させないため、本文は先頭のみを保存し、残りは省略マーカーで明示する。
+_MAX_PREVIEW_LINES = 120
+_MAX_PREVIEW_CHARS = 6000
+
+
+def _truncate_code_preview(code: str) -> str:
+    """生成コード本文を承認レビュー用プレビューに収める（行数・文字数で上限）。"""
+    if not code:
+        return ""
+    lines = code.splitlines()
+    if len(lines) > _MAX_PREVIEW_LINES:
+        omitted = len(lines) - _MAX_PREVIEW_LINES
+        lines = lines[:_MAX_PREVIEW_LINES]
+        lines.append(f"… ({omitted} 行省略)")
+    text = "\n".join(lines)
+    if len(text) > _MAX_PREVIEW_CHARS:
+        text = text[:_MAX_PREVIEW_CHARS].rstrip() + "\n… (省略)"
+    return text
+
 
 @dataclass
 class ExtensionResult:
@@ -92,6 +112,8 @@ class SelfExtensionPipeline:
             ),
             file_path=code_output.file_path,
             expected_impact=gap.rationale,
+            # 承認者が /inbox で生成コードの中身を読めるようにする（HITL レビューの実体化）。
+            code_preview=_truncate_code_preview(code_output.code_content),
             implementation_difficulty=self._estimate_difficulty(spec.estimated_lines),
             status="proposed",
         )

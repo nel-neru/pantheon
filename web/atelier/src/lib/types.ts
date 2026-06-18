@@ -154,6 +154,7 @@ export type Proposal = {
   category?: string
   priority?: string | number
   diff_text?: string
+  code_preview?: string
   approval_notes?: string
   created_at?: string
   [key: string]: unknown

@@ -207,6 +207,19 @@ export function Inbox() {
                   </span>
                 </div>
               ) : null}
+              {proposal.code_preview ? (
+                <details className="mt-3">
+                  <summary className="inline-flex cursor-pointer items-center gap-2">
+                    <Tag tone="ice">生成コード</Tag>
+                    <span className="mono text-faint text-[10px]">
+                      {proposal.code_preview.split('\n').length} 行 — クリックで表示
+                    </span>
+                  </summary>
+                  <pre className="mono text-faint mt-2 max-h-72 overflow-auto rounded bg-black/30 p-3 text-[11px] leading-relaxed">
+                    {proposal.code_preview}
+                  </pre>
+                </details>
+              ) : null}
               <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
                 <button
                   type="button"

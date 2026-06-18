@@ -1338,6 +1338,34 @@ def test_list_proposals_returns_only_active_statuses(monkeypatch):
     assert all("approval_notes" in item for item in payload)
 
 
+def test_list_proposals_surfaces_code_preview(tmp_path, monkeypatch):
+    """self-extension 提案の生成コードプレビューが永続化→API まで流れる（HITL レビュー実体化）。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    org = create_default_organization("Preview Org", "Self-extension preview")
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    sm.save_improvement_proposal(
+        ImprovementProposal(
+            review_id=uuid4(),
+            category="self_extension",
+            title="Self-extension: AsyncReviewAgent",
+            description="生成コードのレビュー",
+            file_path="agents/async_review_agent.py",
+            code_preview="from __future__ import annotations\n\nclass AsyncReviewAgent: ...",
+            status="proposed",
+        )
+    )
+
+    response = client.get(f"/api/organizations/{org.name}/proposals")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert "class AsyncReviewAgent" in payload[0]["code_preview"]
+
+
 def test_list_organizations_counts_only_active_proposals(tmp_path, monkeypatch):
     psm = server.PlatformStateManager(platform_home=tmp_path)
     org = create_default_organization("Count Org", "Count active proposals")

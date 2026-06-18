@@ -12,7 +12,11 @@ from agents.base import AgentTask
 from agents.self_code_writer import CodeOutput, SelfCodeWriter
 from agents.tool_design_agent import ImplementationSpec, ToolDesignAgent
 from core.intelligence.capability_gap_analyzer import CapabilityGap
-from core.intelligence.self_extension_pipeline import SelfExtensionPipeline
+from core.intelligence.self_extension_pipeline import (
+    _MAX_PREVIEW_LINES,
+    SelfExtensionPipeline,
+    _truncate_code_preview,
+)
 from core.intelligence.self_integration_tester import (
     FullValidationResult,
     ImportTestResult,
@@ -258,6 +262,25 @@ class TestSelfIntegrationTester:
         assert result.details["tests"]["test_count"] == 12
 
 
+class TestTruncateCodePreview:
+    def test_empty_returns_empty(self):
+        assert _truncate_code_preview("") == ""
+
+    def test_short_code_is_preserved_without_truncation(self):
+        code = "from __future__ import annotations\n\nVALUE = 1\n"
+        preview = _truncate_code_preview(code)
+        # splitlines/join で末尾改行は落ちるが、本文・行は欠落せず省略マーカーも付かない。
+        assert preview == "from __future__ import annotations\n\nVALUE = 1"
+        assert "省略" not in preview
+
+    def test_caps_on_char_count_even_for_few_lines(self):
+        # 行数は少ないが1行が巨大なケースでも文字数上限で切られる。
+        code = "X = '" + "a" * 20000 + "'"
+        preview = _truncate_code_preview(code)
+        assert len(preview) < len(code)
+        assert "省略" in preview
+
+
 class TestSelfExtensionPipeline:
     def test_run_for_gap_creates_proposal(self, agent_gap: CapabilityGap, tmp_path: Path):
         state_manager = RepoStateManager(tmp_path, "TestOrg")
@@ -278,6 +301,46 @@ class TestSelfExtensionPipeline:
         assert len(pending) == 1
         assert pending[0].category == "self_extension"
         assert pending[0].file_path == result.code_output.file_path
+        # 承認者が /inbox で生成コードを読めるよう、提案にコードプレビューが載り、
+        # 永続化→model_validate で読み戻しても保持される（HITL レビューの実体化）。
+        assert pending[0].code_preview
+        assert "from __future__ import annotations" in pending[0].code_preview
+
+    def test_run_for_gap_truncates_long_code_preview(
+        self, agent_gap: CapabilityGap, tmp_path: Path
+    ):
+        long_body = "from __future__ import annotations\n" + "\n".join(
+            f"LINE_{i} = {i}" for i in range(500)
+        )
+
+        class LongWriter:
+            def write_code(self, spec: ImplementationSpec) -> CodeOutput:
+                return CodeOutput(
+                    output_id="code:long",
+                    file_path=spec.file_path,
+                    code_content=long_body,
+                    is_new_file=True,
+                    spec_id=spec.spec_id,
+                )
+
+        state_manager = RepoStateManager(tmp_path, "TestOrg")
+        pipeline = SelfExtensionPipeline(
+            gap_analyzer=None,
+            design_agent=ToolDesignAgent(llm_client=None),
+            code_writer=LongWriter(),
+            integration_tester=SelfIntegrationTester(),
+            state_manager=state_manager,
+        )
+
+        result = asyncio.run(pipeline.run_for_gap(agent_gap))
+        pending = pipeline.get_pending_proposals()
+
+        assert result.success is True
+        preview = pending[0].code_preview
+        # 上限行数 + 省略マーカー1行に収まり、原文全文は含まれない。
+        assert len(preview.splitlines()) <= _MAX_PREVIEW_LINES + 1
+        assert "省略" in preview
+        assert "LINE_499" not in preview
 
     def test_run_for_gap_returns_failure_on_invalid_generated_code(self, agent_gap: CapabilityGap):
         class BadWriter:
