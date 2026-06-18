@@ -15,7 +15,12 @@ import re
 import sys
 from types import ModuleType, SimpleNamespace
 
-from github_integration.pr_creator import branch_slug, create_improvement_pr
+from github_integration.pr_creator import (
+    branch_slug,
+    create_improvement_pr,
+    suggestion_description,
+    suggestion_title,
+)
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
@@ -130,3 +135,82 @@ def test_japanese_title_yields_valid_branch_in_pr_flow(monkeypatch, tmp_path):
     # ブランチ名全体が git ref に使える形で、slug が '---' に退化していない。
     assert re.fullmatch(r"pantheon/improvement-[a-z0-9][a-z0-9-]*-\d{14}", branch), branch
     assert "improvement---" not in branch
+
+
+# ── title/description の表示用デフォルト（literal "None" 防止） ──
+
+
+def test_suggestion_title_falls_back_when_none_or_empty_or_absent():
+    """None/空/不在は default に落ちる（``.get(k, default)`` は None 値をガードしないため）。"""
+    assert suggestion_title({"title": None}) == "Improvement"
+    assert suggestion_title({"title": ""}) == "Improvement"
+    assert suggestion_title({}) == "Improvement"
+    assert suggestion_title({"title": None}, "Apply improvement") == "Apply improvement"
+
+
+def test_suggestion_title_returns_value_when_present():
+    assert suggestion_title({"title": "Improve cache"}) == "Improve cache"
+    assert suggestion_title({"title": "キャッシュ改善"}) == "キャッシュ改善"
+
+
+def test_suggestion_description_falls_back_when_none_or_absent():
+    assert suggestion_description({"description": None}) == "(説明なし)"
+    assert suggestion_description({}) == "(説明なし)"
+    assert suggestion_description({"description": "詳細"}) == "詳細"
+
+
+def test_pr_flow_emits_no_literal_none_when_title_and_description_missing(monkeypatch, tmp_path):
+    """title/description が None の提案でも、commit メッセージ・PR タイトル・PR 本文に
+    literal 'None' が混入しない（旧コードは ``refactor: None`` ``[Pantheon] None`` を生成）。"""
+
+    class FakeContent:
+        sha = "abc123"
+
+    class FakeRepo:
+        default_branch = "main"
+
+        def __init__(self):
+            self.updated = []
+            self.pulls = []
+
+        def get_branch(self, branch):
+            return SimpleNamespace(commit=SimpleNamespace(sha="deadbeef"))
+
+        def get_contents(self, path, ref=None):
+            return FakeContent()
+
+        def update_file(self, **kwargs):
+            self.updated.append(kwargs)
+
+        def create_file(self, **kwargs):  # pragma: no cover - 既存ファイル経路では未使用
+            raise AssertionError("update_file should be used")
+
+        def create_pull(self, **kwargs):
+            self.pulls.append(kwargs)
+            return SimpleNamespace(html_url="https://example.com/pr/9")
+
+    repo = FakeRepo()
+    fake_module, _ = _fake_github(repo)
+    monkeypatch.setitem(sys.modules, "github", fake_module)
+
+    asyncio.run(
+        create_improvement_pr(
+            repo_path=tmp_path,
+            github_token="token",
+            github_repo="owner/repo",
+            file_path="src/app.py",
+            modified_content="print('ok')",
+            suggestion={"title": None, "description": None},
+        )
+    )
+
+    commit_message = repo.updated[0]["message"]
+    assert commit_message == "refactor: Apply improvement"
+    assert "None" not in commit_message
+
+    pull = repo.pulls[0]
+    assert pull["title"] == "[Pantheon] Improvement"
+    assert "None" not in pull["title"]
+    # 本文の title/description 行も literal "None" を出さない。
+    assert "**改善提案**: None" not in pull["body"]
+    assert "**説明**: None" not in pull["body"]

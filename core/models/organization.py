@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -145,6 +145,30 @@ class ImprovementProposal(BaseModel):
         None, description="構造介入のペイロード（division/team/agent/skill/goal の仕様）"
     )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @classmethod
+    def from_suggestion(
+        cls, suggestion: Dict[str, Any], *, review_id: UUID
+    ) -> "ImprovementProposal":
+        """LLM 等が生成した自由形式の suggestion dict から提案を構築する。
+
+        ``suggestion`` は検証済みオブジェクトではないため ``title``/``description`` 等が
+        None・不在になり得る。``suggestion.get("title", "改善提案")`` は **キーが None 値で
+        存在する場合に default ではなく None を返す**ため、必須 str フィールド
+        （``title``/``description``）へ None が渡ると Pydantic ValidationError でクラッシュする
+        （提案は LLM 出力由来なので null タイトルは現実的）。truthy 判定（``x or default``）で
+        None/空をまとめて default に落とし、提案生成ループ（web/server・commands.org の両経路で
+        同一だったコピペ）を single source 化して両方の堅牢性を一度に担保する。
+        """
+        return cls(
+            review_id=review_id,
+            priority=suggestion.get("priority") or "medium",
+            category=suggestion.get("category") or "general",
+            title=suggestion.get("title") or "改善提案",
+            description=suggestion.get("description") or "",
+            file_path=suggestion.get("file_path") or "",
+            expected_impact=suggestion.get("expected_impact") or "",
+        )
 
     def is_structural_intervention(self) -> bool:
         """この提案が cross-org 構造介入かどうか（適用経路の分岐に使う）。"""

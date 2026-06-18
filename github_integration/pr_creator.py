@@ -33,6 +33,27 @@ def branch_slug(title: str | None) -> str:
     return "x" + hashlib.sha1((title or "").encode("utf-8")).hexdigest()[:8]
 
 
+def suggestion_title(suggestion: Dict[str, Any], default: str = "Improvement") -> str:
+    """suggestion の title を表示用に返す。None/空/不在なら ``default``。
+
+    ``suggestion`` は検証済み ImprovementProposal ではなく task 入力の自由形式 dict なので
+    title が None・不在になり得る。``suggestion.get("title", default)`` は **キーが None 値で
+    存在する場合に default ではなく None を返す**ため、commit メッセージや PR タイトルに literal
+    ``"None"`` が紛れ込む（例: ``refactor: None``・``[Pantheon] None``）。truthy 判定で
+    None/空文字をまとめて default に落とす（``branch_slug`` の ``title or ...`` と同じ防御）。
+    PR 経路（``pr_creator``）とローカル適用経路（``improvement_executor_agent``）の両方が
+    import して描画ロジックを一元化する（同一バグの二重実装を防ぐ）。
+    """
+    value = suggestion.get("title")
+    return str(value) if value else default
+
+
+def suggestion_description(suggestion: Dict[str, Any], default: str = "(説明なし)") -> str:
+    """suggestion の description を表示用に返す。None/空/不在なら ``default``（literal ``"None"`` 防止）。"""
+    value = suggestion.get("description")
+    return str(value) if value else default
+
+
 async def create_improvement_pr(
     repo_path: Path,
     github_token: str,
@@ -76,7 +97,7 @@ async def create_improvement_pr(
         file_obj = repo.get_contents(file_path, ref=repo.default_branch)
         repo.update_file(
             path=file_path,
-            message=f"refactor: {suggestion.get('title', 'Apply improvement')}",
+            message=f"refactor: {suggestion_title(suggestion, 'Apply improvement')}",
             content=modified_content,
             sha=file_obj.sha,
             branch=branch_name,
@@ -86,13 +107,13 @@ async def create_improvement_pr(
             raise  # 401/403/422/429/5xx は真因を握り潰さず表に出す
         repo.create_file(
             path=file_path,
-            message=f"feat: {suggestion.get('title', 'Apply improvement')}",
+            message=f"feat: {suggestion_title(suggestion, 'Apply improvement')}",
             content=modified_content,
             branch=branch_name,
         )
 
     pr = repo.create_pull(
-        title=f"[Pantheon] {suggestion.get('title', 'Improvement')}",
+        title=f"[Pantheon] {suggestion_title(suggestion)}",
         body=_build_pr_body(suggestion),
         head=branch_name,
         base=repo.default_branch,
@@ -103,11 +124,11 @@ async def create_improvement_pr(
 def _build_pr_body(suggestion: Dict[str, Any]) -> str:
     return (
         "## 🤖 Pantheon による自動改善\n\n"
-        f"**改善提案**: {suggestion.get('title')}\n\n"
-        f"**説明**: {suggestion.get('description')}\n\n"
-        f"**期待される効果**: {suggestion.get('expected_impact', '未定義')}\n\n"
-        f"**優先度**: {suggestion.get('priority', 'medium')}\n\n"
-        f"**カテゴリ**: {suggestion.get('category', 'general')}\n\n"
+        f"**改善提案**: {suggestion_title(suggestion)}\n\n"
+        f"**説明**: {suggestion_description(suggestion)}\n\n"
+        f"**期待される効果**: {suggestion.get('expected_impact') or '未定義'}\n\n"
+        f"**優先度**: {suggestion.get('priority') or 'medium'}\n\n"
+        f"**カテゴリ**: {suggestion.get('category') or 'general'}\n\n"
         "---\n"
         "*このPRは Pantheon によって自動生成されました。*"
     )

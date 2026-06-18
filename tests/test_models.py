@@ -135,6 +135,46 @@ class TestImprovementProposal:
             p = ImprovementProposal(review_id=uuid4(), title="T", description="D", status=status)
             assert p.status == status
 
+    def test_from_suggestion_none_title_does_not_crash(self):
+        """title/description が None の suggestion でも ValidationError でクラッシュしない。
+
+        旧コード ``title=suggestion.get("title", "改善提案")`` は **title キーが None 値で存在
+        する**と default ではなく None を返し、必須 str フィールドへの None で Pydantic
+        ValidationError を投げていた（提案は LLM 出力由来なので null は現実的）。
+        """
+        rid = uuid4()
+        p = ImprovementProposal.from_suggestion(
+            {"title": None, "description": None, "priority": None}, review_id=rid
+        )
+        assert p.title == "改善提案"
+        assert p.description == ""
+        assert p.priority == "medium"
+        assert p.review_id == rid
+
+    def test_from_suggestion_absent_keys_use_defaults(self):
+        p = ImprovementProposal.from_suggestion({}, review_id=uuid4())
+        assert p.title == "改善提案"
+        assert p.category == "general"
+        assert p.file_path == ""
+        assert p.expected_impact == ""
+
+    def test_from_suggestion_passes_through_present_values(self):
+        p = ImprovementProposal.from_suggestion(
+            {
+                "title": "キャッシュ層を改善する",
+                "description": "詳細",
+                "priority": "high",
+                "category": "performance",
+                "file_path": "core/cache.py",
+            },
+            review_id=uuid4(),
+        )
+        assert p.title == "キャッシュ層を改善する"
+        assert p.description == "詳細"
+        assert p.priority == "high"
+        assert p.category == "performance"
+        assert p.file_path == "core/cache.py"
+
 
 class TestGroupHQState:
     def test_recalculate_on_add(self):

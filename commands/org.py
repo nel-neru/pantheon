@@ -398,15 +398,7 @@ async def cmd_analyze(args: argparse.Namespace, *, get_orchestrator: Any, get_ps
     print(f"[OK] {files} ファイルを分析し、{len(suggestions)} 件の改善提案を生成しました。\n")
 
     for suggestion in suggestions:
-        proposal = ImprovementProposal(
-            review_id=uuid4(),
-            priority=suggestion.get("priority", "medium"),
-            category=suggestion.get("category", "general"),
-            title=suggestion.get("title", "改善提案"),
-            description=suggestion.get("description", ""),
-            file_path=suggestion.get("file_path", ""),
-            expected_impact=suggestion.get("expected_impact", ""),
-        )
+        proposal = ImprovementProposal.from_suggestion(suggestion, review_id=uuid4())
         state_manager.save_improvement_proposal(proposal)
         badge = (
             "[HIGH]"

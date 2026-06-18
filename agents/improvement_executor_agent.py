@@ -100,10 +100,12 @@ class ImprovementExecutorAgent(BaseAgent):
             except Exception as e:
                 return AgentResult(success=False, error=f"Local change failed: {e}")
 
+        from github_integration.pr_creator import suggestion_title
+
         return AgentResult(
             success=True,
             output=output,
-            thinking_process=f"改善提案「{suggestion.get('title')}」を {normalized_file_path} に適用",
+            thinking_process=f"改善提案「{suggestion_title(suggestion)}」を {normalized_file_path} に適用",
             execution_log=f"Modified {normalized_file_path}: {change_summary}",
         )
 
@@ -123,9 +125,10 @@ class ImprovementExecutorAgent(BaseAgent):
 
         from datetime import datetime, timezone
 
-        # slug ロジックは PR 経路と共有（日本語タイトルの '-' 退化と title=None クラッシュを
-        # 両経路で同時に防ぐ。同一バグの二重実装を避ける single source）。
-        from github_integration.pr_creator import branch_slug
+        # slug／タイトル描画ロジックは PR 経路と共有（日本語タイトルの '-' 退化・title=None
+        # クラッシュ・commit メッセージへの literal "None" 混入を両経路で同時に防ぐ。同一バグの
+        # 二重実装を避ける single source）。
+        from github_integration.pr_creator import branch_slug, suggestion_title
 
         slug = branch_slug(suggestion.get("title") or "improvement")
         branch_name = (
@@ -141,7 +144,7 @@ class ImprovementExecutorAgent(BaseAgent):
 
         target.write_text(modified_content, encoding="utf-8")
         repo.index.add([relative_file_path])
-        repo.index.commit(f"refactor: {suggestion.get('title', 'Apply improvement')}")
+        repo.index.commit(f"refactor: {suggestion_title(suggestion, 'Apply improvement')}")
 
         return {
             "branch": branch_name,
@@ -175,12 +178,14 @@ class ImprovementExecutorAgent(BaseAgent):
         file_path: str,
         suggestion: Dict[str, Any],
     ) -> Tuple[str, str]:
+        from github_integration.pr_creator import suggestion_description, suggestion_title
+
         provider = get_llm_provider(self._provider_name)
         user_prompt = (
             f"ファイル: {file_path}\n\n"
             f"【改善提案】\n"
-            f"タイトル: {suggestion.get('title')}\n"
-            f"説明: {suggestion.get('description')}\n\n"
+            f"タイトル: {suggestion_title(suggestion)}\n"
+            f"説明: {suggestion_description(suggestion)}\n\n"
             f"【元のコード】\n"
             f"{original_content}"
         )
