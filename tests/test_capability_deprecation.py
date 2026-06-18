@@ -82,3 +82,32 @@ def test_deprecated_capability_excluded_from_format_for_agent(tmp_path):
     after = registry.format_for_agent()
     assert "Live Agent" in after  # アクティブは残る
     assert "Dead Agent" not in after  # 非推奨は宣伝されない
+
+
+def test_deprecated_capability_does_not_suppress_gap_reproposal(tmp_path, monkeypatch):
+    """非推奨化した能力は gap 分析の再提案抑制から外れる（heuristic 経路が is_active を honor）。
+
+    C30 で format_for_agent（LLM 分析経路が読む）が is_active を honor したため、heuristic 経路の
+    `existing_cap_names` も active 限定にしないと 2 経路が「その能力は在るか」で食い違う。さらに
+    非推奨マーカーが必要再燃時の再提案を恒久抑止する zombie 化も防ぐ（再提案は HITL ゲートを通る）。
+    """
+    from types import SimpleNamespace
+
+    from core.intelligence.capability_gap_analyzer import CapabilityGapAnalyzer
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    registry = _fresh_registry(tmp_path)
+    # HEURISTIC_RULES の suggested_name と同名の能力を登録する。
+    registry.register(
+        CapabilityEntry(id="cea", name="CodebaseExplorerAgent", capability_type="agent")
+    )
+    analyzer = CapabilityGapAnalyzer(capability_registry=registry, platform_home=tmp_path)
+    pattern = SimpleNamespace(operation_type="codebase_scan", pattern_key="p1", total_tokens=1000)
+
+    # アクティブな間は「既存」とみなされ、同名 gap は抑制される（従来挙動を維持）。
+    assert analyzer._analyze_heuristic([pattern]) == []
+
+    # 非推奨化すると再提案が許される。
+    registry.mark_for_deprecation("cea")
+    gaps = analyzer._analyze_heuristic([pattern])
+    assert [g.suggested_name for g in gaps] == ["CodebaseExplorerAgent"]
