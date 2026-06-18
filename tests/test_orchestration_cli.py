@@ -182,6 +182,42 @@ class TestOrchestrationCapabilitiesCLI:
         assert "対象 org: TestOrg" in out
         assert "spawned agents : 1" in out
 
+    def test_resolve_marks_satisfied_gap_implemented(self, capsys, tmp_path):
+        """--resolve で実 spawn された agent ギャップは capability_gaps.json で implemented になり、
+        active ビュー（get_all_gaps）から畳まれる。さもないと解消後も同じギャップが残り、次回
+        --resolve で再 spawn され format_for_agent/get_summary が「不足」と over-report し続ける。"""
+        from core.intelligence.capability_gap_analyzer import CapabilityGapAnalyzer
+        from core.models.organization import Organization
+        from main import cmd_orchestration_capabilities
+
+        org = Organization(name="TestOrg", purpose="p")
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            # 能力が無かった頃に検出された永続ギャップを再現（実ファイルに書く＝get_all_gaps が読む）。
+            seed = CapabilityGapAnalyzer(platform_home=tmp_path)
+            seed._gaps.append(self._agent_gap())
+            seed._save_gaps()
+            # 前提: 解消前は active として読める。
+            assert any(
+                g.gap_id == "gap:deep_research"
+                for g in CapabilityGapAnalyzer(platform_home=tmp_path).get_all_gaps()
+            )
+            with patch(
+                "core.platform.state.PlatformStateManager.load_organizations",
+                return_value=[org],
+            ):
+                _run(cmd_orchestration_capabilities(SimpleNamespace(resolve=True, org_name=None)))
+
+        out = capsys.readouterr().out
+        assert "spawned agents : 1" in out
+        assert "marked done    : 1" in out  # 充足ギャップが1件 implemented にマークされた
+
+        # 永続化を確認: active ビューから消え、include_implemented で implemented=True で残る。
+        reloaded = CapabilityGapAnalyzer(platform_home=tmp_path)
+        assert not any(g.gap_id == "gap:deep_research" for g in reloaded.get_all_gaps())
+        all_gaps = reloaded.get_all_gaps(include_implemented=True)
+        marked = [g for g in all_gaps if g.gap_id == "gap:deep_research"]
+        assert marked and marked[0].implemented is True
+
     def test_resolve_no_org_skips_gracefully(self, capsys, tmp_path):
         """org が未登録なら --resolve はクラッシュせず WARN を出してスキップする。"""
         from main import cmd_orchestration_capabilities

@@ -216,5 +216,16 @@ def resolve_gaps_for_org(
         "proposed_teams": sum(1 for r in results if r.action == "proposed_team"),
         "proposed_divisions": sum(1 for r in results if r.action == "proposed_division"),
         "auto_applied": sum(1 for r in results if r.auto_applied),
+        # 実際に充足したギャップの id。能力が registry に存在するようになった spawn（新規/再利用）と、
+        # auto-apply された構造変更だけが「満たされた」。HITL 提案止まり（auto_applied=False）や spawn
+        # 失敗（skipped）は未充足なので含めない＝呼び出し側が implemented にマークすると過剰畳み込みになる。
+        # これを CapabilityGapAnalyzer.mark_implemented に渡すと、検出済みギャップが解消後も active のまま
+        # 残り over-report する drift（充足済みを自動 implemented にしない既知 issue）が閉じる。
+        "satisfied_gap_ids": [
+            r.gap_id
+            for r in results
+            if r.action == "spawned_agent"
+            or (r.auto_applied and r.action in ("proposed_team", "proposed_division"))
+        ],
         "results": [r.__dict__ for r in results],
     }

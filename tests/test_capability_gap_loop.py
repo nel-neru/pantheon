@@ -154,6 +154,36 @@ def test_resolve_gaps_for_org_summary():
     assert summary["proposed_divisions"] == 1
 
 
+def test_satisfied_gap_ids_only_includes_truly_satisfied():
+    # 充足したギャップ（spawn 済み agent / auto-apply 済み構造）だけが satisfied_gap_ids に入る。
+    # 既定 HITL で提案止まり（auto_applied=False）の構造ギャップや spawn 失敗は含めない
+    # ＝呼び出し側が implemented にマークしても未充足を畳まない（過剰畳み込み防止の境界）。
+    from core.policy.engine import ApprovalDecision, PolicyVerdict
+
+    class _AutoPolicy:
+        def evaluate(self, proposal, *, org_context=None):
+            return PolicyVerdict(
+                decision=ApprovalDecision.AUTO_APPROVE, reason="t", rule_name="t.auto"
+            )
+
+    org = Organization(name="X", purpose="p", isolation_level="standard")
+    # 既定 policy（HITL）: agent は spawn=satisfied、team は提案止まり=未充足。
+    summary = resolve_gaps_for_org(
+        [
+            _gap("agent", "deep_research", gap_id="gap:agent"),
+            _gap("team", "GrowthTeam", gap_id="gap:team"),
+        ],
+        org,
+    )
+    assert summary["satisfied_gap_ids"] == ["gap:agent"]
+
+    # policy が org_structure を AUTO_APPROVE する運用なら、auto-apply 構造も satisfied。
+    summary2 = resolve_gaps_for_org(
+        [_gap("division", "MonetizationDiv", gap_id="gap:div")], org, policy=_AutoPolicy()
+    )
+    assert summary2["satisfied_gap_ids"] == ["gap:div"]
+
+
 def test_structure_proposal_persisted_when_sm_given(tmp_path, monkeypatch):
     from core.org_factory import create_default_organization
     from core.platform.state import PlatformStateManager
