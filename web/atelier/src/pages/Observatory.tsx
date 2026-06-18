@@ -6,9 +6,10 @@ import { Exhibit, ErrorNote, Loading, Plate, Stat, Tag } from '@/components/ui'
 import { useApi } from '@/hooks/useApi'
 import { useLive } from '@/hooks/useLiveContext'
 import { useThemeCtx } from '@/hooks/useThemeContext'
-import { compactNumber, relativeTime } from '@/lib/format'
+import { clamp, compactNumber, relativeTime } from '@/lib/format'
 import type {
   DaemonsPayload,
+  Governor,
   OrchestraData,
   OrgSummary,
   UsageSummary,
@@ -19,6 +20,70 @@ const GOVERNOR_TONE: Record<string, 'green' | 'gold' | 'rose'> = {
   soft_limit: 'gold',
   hard_limit: 'rose',
   rate_limited: 'rose',
+}
+
+const TONE_VAR: Record<'green' | 'gold' | 'rose', string> = {
+  green: 'var(--green)',
+  gold: 'var(--gold)',
+  rose: 'var(--rose)',
+}
+
+function GovernorBudget({ governor }: { governor: Governor }) {
+  if (!governor.enabled) {
+    return (
+      <p className="mono text-[10px] tracking-wider text-faint mb-4">
+        ガバナー無効（上限なし）
+      </p>
+    )
+  }
+
+  // governor はフリーフォーム JSON 由来でフィールド欠落がありうる。算術前に finite へ
+  // 寄せ、欠落フィールドが NaN%（width: 'NaN%'）でバーを壊さないようにする。
+  const num = (x: number) => (Number.isFinite(x) ? x : 0)
+  const { level, window_hours } = governor
+  const window_tokens = num(governor.window_tokens)
+  const soft_limit_tokens = num(governor.soft_limit_tokens)
+  const hard = num(governor.hard_limit_tokens)
+  const tone = GOVERNOR_TONE[level] ?? 'green'
+  const fillColor = TONE_VAR[tone]
+
+  const caption = (
+    <p className="mono text-[10px] tracking-wider text-faint mb-4">
+      {compactNumber(window_tokens)} / {compactNumber(hard)} トークン · {window_hours}h窓 · ソフト {compactNumber(soft_limit_tokens)}
+    </p>
+  )
+
+  if (hard <= 0) {
+    return caption
+  }
+
+  const fillPct = clamp((window_tokens / hard) * 100, 0, 100)
+  const softPct = clamp((soft_limit_tokens / hard) * 100, 0, 100)
+  const showSoftMarker = soft_limit_tokens > 0 && soft_limit_tokens < hard
+
+  return (
+    <div className="mb-4">
+      {/* バーは純装飾。定量値は下の caption がテキスト等価として担う。 */}
+      <div
+        aria-hidden="true"
+        className="relative h-[3px] w-full rounded-full bg-[color:var(--line)] overflow-visible mb-2"
+      >
+        <div
+          data-testid="gov-budget-fill"
+          className="absolute left-0 top-0 h-full rounded-full"
+          style={{ width: `${fillPct}%`, backgroundColor: fillColor }}
+        />
+        {showSoftMarker && (
+          <div
+            data-testid="gov-soft-marker"
+            className="absolute top-[-3px] h-[9px] w-[1px]"
+            style={{ left: `${softPct}%`, backgroundColor: 'var(--text-faint)' }}
+          />
+        )}
+      </div>
+      {caption}
+    </div>
+  )
 }
 
 export function Observatory() {
@@ -194,6 +259,9 @@ export function Observatory() {
               <Tag tone={GOVERNOR_TONE[govLevel] ?? 'green'}>{govLevel}</Tag>
             )}
           </div>
+          {!usageDown && usage.data?.governor && (
+            <GovernorBudget governor={usage.data.governor} />
+          )}
           <ul className="flex flex-col">
             {(daemons.data?.daemons ?? []).map((d) => {
               const running = Boolean(d.running)

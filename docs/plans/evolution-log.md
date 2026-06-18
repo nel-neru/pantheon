@@ -2676,3 +2676,40 @@ Cycle 38 — (xx) as_posix 規約の repo 全体 sibling 監査 → 規約は健
            再検証（C12 の resolver 配線後に状態が変わった可能性＝flow-audit 二刀流の継続）、(vv) atelier 実機能スライス1本
            （GUI 多様性の定着・テストでなく機能）、(yy) asset_application の report file_path を as_posix 化するなら**消費先が
            manifest 比較/再オープンに変わった時**に格上げ（今は latent-cosmetic として保留）。
+
+Cycle 39 — (vv) atelier Observatory にトークン予算ヘッドルームを可視化（governor の window/soft/hard を surface・backend にあるが GUI 未提示のデータ）  (2026-06-18)
+  Plan   : (vv) atelier 実機能スライスを選択。**なぜ今これか**: C38 が honest-negative の非出荷監査で、二度続けて非出荷を避けたい＋
+           ログの Next が C35 以降くり返し「atelier 実機能スライス」を最優先で挙げつつ先送り（回避の臭い）。受け入れ基準= backend に
+           あるが GUI 未提示のデータを surface する小さく高確信・可逆な実機能を1件 merge。**候補スコアリングと落とした候補**: まず
+           atelier 全7ページ・publishing 層・ruff バグスキャン（ASYNC/B/SIM/RUF/PERF）を精査したが**いずれも健全 or 意図的 Phase
+           ゲート or cosmetic**: publishing は `_publish_live`/X 文字数近似が意図的 Phase 2 deferral、ruff ASYNC109(claude_code timeout)=
+           subprocess timeout の false positive、ASYNC240×3(agent run の Path.resolve/exists)=同 async 本体が `_collect_code_files` で
+           同期 repo 走査するため Path 3行だけ直しても見せかけ修正（[[ruff-bug-scan-triage]] の戒め）、RUF012×10=never-mutated な定数
+           テーブル（真の定数）。C38 同様「健全→cosmetic」に収束したため**実機能 BUILD へ決定的にピボット**。Observatory が
+           `/api/usage/summary` の `governor.level` だけ表示し **soft/hard 上限までの距離（ヘッドルーム）を一切出していない**ギャップを発見。
+  Did    : work/atelier-governor-budget-headroom-20260618（コード＋本ログ・1 cycle=1 branch）。`frontend-dev` に正確な spec で委譲し
+           `web/atelier/src/pages/Observatory.tsx` の「Systems」プレートにローカル小コンポーネント `GovernorBudget` を追加＝backend が
+           既に返す `governor.{enabled,level,window_hours,window_tokens,soft_limit_tokens,hard_limit_tokens}`（`QuotaGovernor.status()`・
+           型ドリフト無しを実コードで裏取り）から: 細い水平プログレスバー（fill幅 `clamp(window/hard*100,0,100)`・level→tone 色 ok=green/
+           soft=gold/hard|rate_limited=rose を既存 `GOVERNOR_TONE` 再利用）＋ソフト上限マーカー（`soft/hard*100`%・`0<soft<hard` のみ）＋
+           mono caption（`window / hard トークン · {window_hours}h窓 · ソフト soft`）。出し分けは `!usageDown && usage.data?.governor` のみ、
+           `enabled===false`→「ガバナー無効（上限なし）」、`hard<=0`→caption のみ（divide-by-zero ガード）。**backend は無改変**。回帰テスト
+           5件追加（soft_limit 描画/disabled/usageDown 非描画/over-limit 100%クランプ/部分ペイロード coercion）。
+  Check  : atelier `npm test`= **GREEN（68 passed＝+5 新テスト）**／`npm run build`（tsc -b + vite）= 型エラー無し。Python 未変更ゆえ
+           ruff/backend 無関係（merge ゲートは既知2失敗のみ）。**敵対的レビュー code-reviewer = APPROVE**＝level/TONE parity を backend
+           `quota_governor.py:181-188` の enum（ok/soft_limit/hard_limit/rate_limited）と突き合わせ一致確認、clamp が over-limit を 100%へ、
+           divide-by-zero ガード健全、テストが load-bearing（`compactNumber(35000)='35.0k'`・width==='100%' を `format.ts` 実装まで裏取り、
+           negative assert `/トークン.*窓/` は caption 専有で誤マッチ無し）。**non-blocking nit 2件を取り込み**: (1) free-form payload で
+           `window_tokens` 等欠落→`width:'NaN%'` を `Number.isFinite` coercion で 0 へ寄せ（[[get-default-none-footgun]] 族の防御的硬化）＋
+           それを実証する partial-payload 回帰テストを追加（width==='0%'・NaN 不含）、(2) 装飾バーに `aria-hidden`（caption がテキスト等価）。
+           再 test/build GREEN。
+  Act    : merged ✅（merge_to_main ゲート通過予定）。固定化: (A) **「健全→cosmetic に収束したら監査を続けず BUILD へピボット」**＝C38 と
+           今サイクル前半で publishing/ruff/atelier-pages を精査し全て健全/意図的と判明、二度目の非出荷を避け「backend にあるが GUI 未提示の
+           データを surface」という確実な実機能へ転換した（/evolve「価値が尽きたら基準を上げる」の別解＝監査でなく未提示データの発掘）。
+           (B) **reviewer 確定の安価な硬化は出荷スライスに既知欠陥を残さず取り込み、かつ load-bearing テストで実証**（C36/C37 の踏襲を
+           nit にも適用＝NaN-width coercion を test で固定）。(C) **型が非 optional でも実体が free-form JSON なら算術前に finite coercion**
+           ＝GUI が backend payload を信用しすぎない（[[get-default-none-footgun]] のフロント版）。
+  Next   : C40 候補 — (zz) 同パターンの横展開＝他 atelier ページ（Pantheon/Signals/Lab）で backend payload に未提示の運用データが無いか
+           発掘（usage の `weekly_7d` 窓・observability summary のコスト/品質など）、(ww) capability-gap-self-extension の known issue 実コード
+           再検証（flow-audit 二刀流）、(aaa) Observatory の「Tokens · 5h」Stat（session_5h）と governor 窓の二窓を一画面でどう区別表示するかの
+           小改善（今回は governor 窓のみ surface・session 窓は別ソースで未統合）。
