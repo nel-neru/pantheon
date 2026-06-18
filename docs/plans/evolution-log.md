@@ -2777,3 +2777,32 @@ Cycle 41 — (bbb) self_extension_pipeline を本番配線＝`capabilities --sel
   Next   : C42 候補 — (ccc) get_all_gaps に registry reconcile を入れ外部登録経由で能力が現れた gap も畳む（名前照合 fragility を gap.suggested_name↔
            registry .name の正規化で慎重に）、(zz) 他 atelier ページの未提示 backend データ surfacing（C39 横展開）、(ddd) self-extension 提案に
            生成コード本文（code_content）を提案へ載せ /inbox で diff プレビューできるようにする（今は file_path のみ・承認者が中身を見られない）。
+
+Cycle 42 — (ddd) self-extension 提案に生成コードプレビューを載せ atelier /inbox で承認者が中身を読めるようにする（C41 の HITL レビュー実体化・縦スライス）  (2026-06-19)
+  Plan   : (ddd) C41 で配線した self-extension は提案に file_path しか載せず、生成コード本文（code_output.code_content）を捨てていた＝承認者が
+           /inbox でコードを見ずに承認するしかなく HITL レビューが形骸。**なぜ今これか**: C41 の価値を完結させる直系の続き＋文脈が新鮮。承認者が
+           実コードを読めて初めて「自己拡張を人が監督する」が成立する。受け入れ基準=生成コードが提案に載り（上限付き）、atelier /inbox で展開して
+           読め、回帰テスト付き merged。多様性=C40/C41（orchestration 正確性/配線）に対し backend モデル＋pipeline＋atelier GUI の縦スライスへ転換。
+           **落とした候補**: (ccc) registry reconcile＝名前照合 fragility で確信度低・C40/C41 と同領域で多様性低、(zz) 他ページ surfacing＝C39 と同型。
+  Did    : work/self-extension-code-preview-20260619。① `ImprovementProposal` に additive `code_preview: str = ""`（後方互換）。② `SelfExtensionPipeline`
+           に `_truncate_code_preview`（120行/6000字上限・省略マーカー付きで提案 JSON と /inbox ペイロードを bound）を追加し提案へ充填。③ `web/server.py`
+           の `_serialize_generated_proposal` に `code_preview` を露出（`api_list_proposals` は既に `**proposal` で永続 dict を展開＝自動で流れる）。
+           ④ atelier `types.ts` に `code_preview?` 追加・`Inbox.tsx` に code_preview がある時だけ `<details>/<pre>` の展開コードブロックを描画（honest
+           ラベル「生成コード」・diff_text とは別セクション）。⑤ テスト: backend 6本（充填＋save/load 往復＝`get_pending_proposals` 経由で disk→
+           model_validate を通る load-bearing・トランケート境界＝行/文字キャップ・空/巨大1行）、web API 1本（永続→API surfacing）、atelier Inbox 2本
+           （描画 positive＋code_preview 無しで非描画の negative 対照）。
+  Check  : ruff クリーン ／ atelier build(tsc+vite) GREEN・Inbox vitest 17 passed ／ **test-triage 全件 GREEN（1624 passed・既知2失敗のみ・回帰0）**。
+           **敵対的レビュー code-reviewer = APPROVE（blocking 0）**＝後方互換（旧 JSON が code_preview 無しでも model_validate で `""`・往復健全）、
+           トランケート全経路が bound（空/巨大1行/多行→いずれも ~6007字上限・`>` で 120行ちょうどは無マーカー）、React の `<pre>{code}` は既定で
+           エスケープ＝`</script>` も literal 表示で注入リスク無し、テストが load-bearing（pipeline 配線 revert で `code_preview` assert が fail・
+           disk 往復を実通過）を全実証。green/cosmetic nit 2件（行キャップ後に文字キャップが続くと省略行数の精度が落ちる＝依然 bound/マーク済みで
+           実害なし／import 順は ruff 既 pass）は非ブロッキングで見送り。
+  Act    : merged ✅（merge_to_main ゲート通過・e1dfeaa）。固定化: (A) **配線サイクル（C41）で「検出→実行」を開通したら、次サイクルで「人が監督できる
+           可視化」まで縦に完結させる**＝HITL ゲートは承認者が判断材料（生成コード）を見られて初めて実機能。検出/実行だけで止めると承認は形骸。
+           (B) **永続フィールドの追加は additive＋既存の `**proposal` spread に乗せれば API 変更を最小化**＝モデルに足すだけで save→dict→API まで自動。
+           (C) **承認 UI に流すデータは必ず上限を設ける**＝生成物（コード・diff）は無制限だと state ファイルと /inbox ペイロードを肥大化させる。行＋文字の
+           二重キャップ＋省略マーカーで bound＆honest に。memory [[gui-publishing-subsystem]] 系の承認ハブ知見に連なる。
+  Next   : C43 候補 — (zz) 他 atelier ページ（Pantheon/Signals/Lab）の未提示 backend データ surfacing（C39 横展開・多様性のため別ページ）、(ccc)
+           get_all_gaps の registry reconcile（外部登録で能力が現れた gap も畳む・名前正規化の fragility を慎重に）、(eee) self-extension 提案の承認
+           （approve）が実際に生成コードを live repo へ統合する経路の実コード確認＝今は提案止まりで approve 後の適用が SafeChangeExecutor 経由か未検証
+           （承認後フローの honesty 監査）。
