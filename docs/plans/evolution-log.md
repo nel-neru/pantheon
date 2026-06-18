@@ -2552,3 +2552,23 @@ Cycle 34 — suggestion の None title/description を default に coerce（lite
            （correctness が4サイクル連続したので強く多様性を）、(ss) `core/trends/models.py:73` `str(d.get("title",""))` の同型
            literal "None"（None→"None"）＋ goal_decomposer の Epic/Story/Task title=None（dataclass で crash はしないが下流描画）を
            別スライスで、(tt) `commands/session.py`/`session_orchestrator` の `.get("title", agent_id)` 系の同型監査。
+
+Cycle 35 — 多様性のための meta/goals 候補を2件調査 → いずれも非該当（honest-negative / dead-code）で**非出荷**、次回 resume 用に記録  (2026-06-18)
+  Plan   : correctness が C31〜C34 と4連続したため**強く多様性**を持たせる方針で、(a) Claude Code ベストプラクティス採用
+           （meta/tooling・低リスク・複利）と (b) goals サブシステムの未触り correctness を候補に。受け入れ基準= 高確信で
+           安全・可逆な diverse 改善を1件出荷 or 候補が非該当なら**padding せず**正直に記録して次へ。
+  Did    : コードは触らず（非出荷）。memory [[get-default-none-footgun]] に C35 監査結果（dead-code 判定＋残 live サイト）を追記。
+  Check  : (a) trend-watcher = **honest negative**＝trend store 空・web 提案（/config key=value, Monitor tool, effort.level hook 等）は
+           version/日付が投機的で低確信、現 `.claude/` は成熟。C32 Act D「honest negative を尊重し低確信 .claude/ 改変で padding
+           しない」に従い**見送り**。(b) goals の `goal_parser._parse_with_llm` の `data.get("success_criteria", [])` が LLM の
+           `null` で None→`goal_verifier._evaluate_criteria` の list iteration が TypeError…**だが経路実測で dead code 判明**＝
+           `abstract_goal_pipeline` は `parser or GoalParser()`（llm 無し）で構築し production に `GoalParser(llm_client=...)` が
+           無く `_parse_with_llm` 不到達。**到達不能 crash の修正は低価値→見送り**（[[langgraph-checkpoint-serialization]]「fix と
+           呼ぶ前に経路全体を実測」を**着手前に**適用＝false positive 回避）。
+  Act    : 非出荷（merge 無し）。固定化: (A) **diverse 候補が枯れたら無理に出荷せず正直に記録する**＝meta=honest-negative・
+           goals=dead-code の2件を burn せず止め、knowledge を memory/log に残して次回 resume へ複利（/evolve「価値が尽きたら
+           基準を上げる／padding しない」の実践）。(B) **reachability triage を fix 着手の前段に**＝「real crash に見えて
+           production 不到達」を実装前に弾く手順を [[get-default-none-footgun]] に明文化。
+  Next   : C36 候補 — (rr) **GUI スライスへ本腰**（fresh context で frontend-dev に委譲。trends→提案 provenance か atelier 実機能。
+           4→5 サイクル correctness が続いたので最優先で領域転換）、(ss) `core/trends/models.py:73` の live な literal "None"
+           （到達性確認済みなら小さく出荷可）、(uu) flow-audit で未監査フローの健全性を1本（[[atlas-flows-drift]]）。
