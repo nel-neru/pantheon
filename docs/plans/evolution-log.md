@@ -2893,3 +2893,31 @@ Cycle 45 — (fff) CLI `proposal apply` の api-key ゲートを verbatim(genera
            （naive-tz/get-default-none/silent-drop archetype の未掃討モジュール sweep）、(hhh) self-extension 提案の承認→適用を実 git リポジトリで通す
            統合テスト（今は stub executor／verbatim 書込の git ブランチ作成を実 repo で end-to-end 検証）。**self-extension 隣接が C41-45 で5サイクル続いたので
            次は必ず運用層 or 別カテゴリへ転換**。
+
+Cycle 46 — (ggg-tz) ContentJob/PublishJob.is_due の naive-tz「早期 due」バグを coerce で修正＝運用/publishing 層へ転換（self-extension 5連続を断つ）  (2026-06-19)
+  Plan   : (ggg-tz) C41-45 が self-extension 隣接5連続だったので運用層へ多様性転換。`ContentJob.is_due`（core/content/content_jobs.py）と
+           `PublishJob.is_due`（core/publishing/publish_jobs.py）は `return fromisoformat(ts) <= now` を `try ... except (ValueError, TypeError): return True`
+           で包む。naive timestamp（legacy/移行/外部編集）は fromisoformat では落ちず、後段の `naive <= aware_now` が TypeError → それを catch して
+           `return True`＝**未来予約の naive ジョブが「即 due」と誤判定**される（特に PublishJob は外向き publish の早期公開＝フェイルオープン）。house style
+           （content_scheduler / health_calculator / capability_registry / metrics は全て coerce 済み）に対しこの2サイトだけが coerce し損ねた外れ値。
+           **なぜ今これか**: ログ方針どおり運用層へ転換＋確証済みの実欠陥（外向き経路）＋小さく可逆・高確信。受け入れ基準=両 is_due が naive→UTC coerce／
+           naive 未来時刻は NOT due・naive 過去時刻は due／解析不能は従来 fallback 維持／回帰付き merged。**落とした候補**: (zz)surfacing＝C39/C42 連発回避、
+           (hhh)self-extension 統合テスト＝5連続回避の方針に反する、runtime/metrics の naive-tz＝既ガード、trends の get-default-none＝`or` で既ガード。
+  Did    : work/jobs-isdue-naive-tz-coerce-20260619。両 is_due を「parse は try に残し、coerce（`if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)`）を
+           try の外で行ってから比較」に変更＝naive はもう except に来ず、真に解析不能な値（ValueError）だけが従来の `return True` fallback に落ちる。コメントを
+           「naive/不正で due に倒す防御」から「不正な値で cycle/スキャンを落とさない」に正直化（naive はもう except を通らないため）。回帰2本（content/publish
+           各: naive 未来→NOT due・naive 過去→due・garbage→fallback True）。両 import に `timezone` は既存。
+  Check  : ruff クリーン ／ **test-triage 全件 GREEN（1635 passed・既知2失敗のみ・回帰0）**。**敵対的レビュー code-reviewer = APPROVE（blocking 0）**＝
+           ① coerce は house style とバイト等価（content_scheduler:117 等）、② aware 経路は挙動不変（tzinfo 非 None で新分岐スキップ→同一 `return dt <= now`）、
+           ③ fallback 維持・narrow したコメントは naive がもう except に来ないので**より正確**、④ 回帰の naive-future 断言は旧コードで True を返す＝load-bearing、
+           ⑤ naive source は production 到達経路あり（`enqueue_from_proposal` が LLM free-form dict の scheduled_at を素通し）＝修正価値を補強。nit（content テストの
+           関数内 datetime import を sibling と揃える）を採用。out-of-scope nit（解析不能 PublishJob の fail-open は auto モード限定で既定 OFF→assisted 降格のため
+           暴発しない）は据え置きで妥当。
+  Act    : merged ✅（merge_to_main ゲート通過・03a4ab6）。固定化（memory [[naive-tz-coercion-convention]] を Cycle 46 として更新）: (A) **archetype の偽装版**＝
+           `except (ValueError, TypeError): return <default>` で datetime 比較を包む箇所は、TypeError 経路が naive-tz バグを黙って握り潰している疑いを持て
+           （catch が default を返すと crash しない＝grep でも気づきにくい・[[silent-drop-observability]] の datetime 版）。(B) **coerce は比較の直前で・try の外**＝
+           parse の例外（ValueError）と比較の例外（TypeError）を混ぜて捕まえると naive を coerce する機会を失う。(C) コメントが「防御」を名乗っていても実態が
+           取りこぼしのことがある＝コメントを鵜呑みにせず例外経路の実挙動を追う。
+  Next   : C47 候補 — (iii) 他の `except (...): return <default>` で datetime/数値比較を包む箇所の archetype sweep（C46 で見つけた偽装版を repo 全体で洗う）、
+           (zz) 他 atelier ページの未提示 backend データ surfacing（C39 横展開・そろそろ surfacing 解禁可）、(jjj) trends/daemons の robustness 監査（運用層を
+           もう1サイクル深掘り）。**運用層へ転換できたので次も運用 or テスト/正確性で多様性維持・self-extension は当面回避**。
