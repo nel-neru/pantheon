@@ -2517,3 +2517,38 @@ Cycle 33 — naive timestamp を aware に coerce し sort/比較クラッシュ
   Next   : C34 候補 — (rr) product/vision GUI スライス（trends→提案の /inbox provenance 可視化 or atelier 実機能）で
            GUI 系の多様性（コード correctness が3サイクル続いたので領域を変える）、(yy) goals パイプラインの未触り correctness
            （goal_verifier/execution_coordinator のエッジケース1件）、(ww) commit/PR メッセージ title=None→"None" 描画 cosmetic（低優先）。
+
+Cycle 34 — suggestion の None title/description を default に coerce（literal "None" 混入＋ValidationError クラッシュを同型6サイト一掃）  (2026-06-18)
+  Plan   : 候補から (ww) commit/PR の title=None→"None" 描画（reviewer が C32/C33 で2度フラグした確定 cosmetic）を選択。
+           受け入れ基準= free-form suggestion dict の title/description が None/不在でも commit メッセージ・PR タイトル/本文に
+           literal "None" を出さない／既存緑・新規回帰0／ruff・レビュー APPROVE／merged。**なぜ今これか**: 確定済み defect を
+           複数サイクル放置するのは C31/C32/C33 で確立した一貫性原則（known defect は残さない）に反する＋高確信・可逆。
+           **落とした候補**: (rr) GUI provenance 可視化＝trend→提案の end-to-end 配線追跡が重く1サイクルの高確信スライスに不適、
+           (yy) goals correctness＝scheduler/parser を実測したが概ね堅牢で needle 探しは低収量、frontend 実バグ探索＝overhaul 直後
+           (384 テスト)で lib/hooks が堅牢＝低収量と判断。**調査中に cosmetic が実は crash と判明し格上げ**（下記 Check）。
+  Did    : work/honest-suggestion-title-defaults-20260618（コード, main 6a2fa46）＋ work/evolve-log-c34（本ログ）。
+           **2系統・同型6サイトを一掃**: (1) 描画経路＝`pr_creator.py` に `suggestion_title`/`suggestion_description`
+           ヘルパを追加（`branch_slug` と同じ single source。`x or default` で None/空/不在を coerce）し、commit メッセージ
+           （refactor:/feat:）・PR タイトル（[Pantheon]）・PR 本文（title/description/expected_impact/priority/category）と
+           `improvement_executor_agent.py` の commit/thinking/PR 本文を全て経由（lazy import で循環/PyGithub 非誘発・C32 慣例踏襲）。
+           (2) 構築経路＝`ImprovementProposal.from_suggestion(suggestion, *, review_id)` classmethod を新設し、**完全コピペ4箇所**
+           （web/server・commands.org・chat_agent・scheduler）を集約。全 str フィールドを `x or default` で coerce。回帰テスト9件
+           （test_models 3・test_pr_branch_slug 4・test_improvement_executor_agent 2＝None/空/不在→default・present 透過）。
+  Check  : ruff クリーン ／ test-triage = **GREEN**（1613 passed＝+9 新テスト・既知2失敗のみ・新規回帰0）／ merge_to_main 全件
+           ゲート通過。**敵対的レビュー2周**: 1周目 code-reviewer = APPROVE だが **NIT で「cosmetic ではなく crash」を露呈**＝
+           web/server・commands.org の `title=suggestion.get("title","改善提案")` は title=None で必須 str フィールドへ None を渡し
+           **Pydantic ValidationError でクラッシュ**（提案生成ループ全体が落ちる）。自分の一貫性原則に従い同一スライスへ折り込み、
+           **さらに grep で chat_agent・scheduler の同型コピペ2サイトを発見**（着手時2のつもりが計4＝全コピペ）→`from_suggestion`
+           に集約。2周目 code-reviewer = **APPROVE・findings ゼロ**（旧コードの ValidationError と `"refactor: None"` を実証再現＝
+           load-bearing 確認・behavior 等価＝present 値は byte 同一・extra kwarg 無し・dangling import 無し・他 crash サイト無し）。
+  Act    : merged ✅（main 6a2fa46）。固定化: (A) **`.get(k, default)` の None 落とし穴を memory 新設**＝[[get-default-none-footgun]]。
+           「None 値で存在すると default でなく None」「描画=literal 'None'／構築=Pydantic crash の2系統」「正=`.get(k) or default`」
+           「コピペ構築は classmethod に集約」を次サイクル以降に複利化。(B) **cosmetic と思った候補が調査で crash に格上げされた**＝
+           reviewer の NIT を「scope 外」と流さず実害（必須 str への None）を裏取りして格上げ（[[autonomous-review-loop]] の安全網実例）。
+           (C) **「同種は全 call site を着手前に grep」を再び実践し損ね reviewer に救われた**（C32 slug・C33 task_queue と同じ救われ方）＝
+           今回も着手時2サイトのつもりが計4＝完全コピペ。grep を fix 前ルーチンにする教訓を memory へ再強調。(D) **コピペ構築は
+           single source 化**（C32 の slug 共有と同型）＝`from_suggestion` で4箇所の二重実装を解消し再 rot を防止。
+  Next   : C35 候補 — (rr) product/vision GUI スライス（trends→提案 /inbox provenance 可視化 or atelier 実機能）で領域を GUI へ
+           （correctness が4サイクル連続したので強く多様性を）、(ss) `core/trends/models.py:73` `str(d.get("title",""))` の同型
+           literal "None"（None→"None"）＋ goal_decomposer の Epic/Story/Task title=None（dataclass で crash はしないが下流描画）を
+           別スライスで、(tt) `commands/session.py`/`session_orchestrator` の `.get("title", agent_id)` 系の同型監査。
