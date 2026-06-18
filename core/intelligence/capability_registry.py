@@ -154,19 +154,32 @@ class CapabilityRegistry:
     def get_unused_capabilities(
         self, days_threshold: int = 90, days: Optional[int] = None
     ) -> List[dict]:
-        """Return capabilities unused longer than the threshold or never used."""
+        """しきい値より古い能力（=非推奨候補）を返す。
+
+        各能力の「最終アクティビティ時刻」を ``last_used``（未使用なら ``added_at``）で測り、
+        ``now - 最終アクティビティ >= threshold`` の能力だけを unused とみなす。
+        したがって **一度も使われていない能力も、追加(``added_at``)から threshold 日以上
+        経って初めて** unused に入る。scan 直後の新規能力（``usage_count==0`` だが追加が新しい）は
+        報告しない（旧実装は ``usage_count==0`` を無条件 unused 扱いし、threshold を無視して
+        ほぼ全件を返していた＝deprecation ワークフローのノイズ源だった）。
+
+        ``days`` は ``days_threshold`` を上書きする後方互換エイリアス。
+        タイムスタンプが解析不能な能力は、経過日数を判定できないため安全側で unused に含めない。
+        """
         threshold = days if days is not None else days_threshold
-        threshold_dt = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
         unused: List[dict] = []
         for cap in self._capabilities.values():
-            last_used = cap.last_used or cap.added_at
-            is_unused = cap.usage_count == 0
+            last_activity = cap.last_used or cap.added_at
             try:
-                last_used_dt = datetime.fromisoformat(last_used).replace(tzinfo=timezone.utc)
-                is_unused = is_unused or (threshold_dt - last_used_dt).days >= threshold
-            except Exception:
-                pass
-            if is_unused:
+                last_dt = datetime.fromisoformat(last_activity)
+            except (ValueError, TypeError):
+                # 経過日数が判定できない能力は非推奨候補にしない（安全側）。
+                continue
+            # naive な日時は UTC として扱う（aware な now との比較での TypeError を防ぐ）。
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            if (now - last_dt).days >= threshold:
                 unused.append(cap.to_dict())
         return unused
 
