@@ -42,6 +42,22 @@ def test_due_jobs_respects_schedule_and_status(tmp_path):
     assert j_future.job_id not in due_ids
 
 
+def test_is_due_coerces_naive_scheduled_at():
+    # naive な scheduled_at（legacy/外部編集）は UTC とみなす。coerce せず TypeError を
+    # catch→return True していた頃は、未来予約でも「即 due」となり予約時刻より早く
+    # 公開された（外向き publish のフェイルオープン）。
+    naive_future = (datetime.now(timezone.utc) + timedelta(hours=2)).replace(tzinfo=None)
+    job = PublishJob(org_name="o", platform="note", scheduled_at=naive_future.isoformat())
+    assert job.is_due() is False  # 未来予約 → まだ公開しない
+
+    naive_past = (datetime.now(timezone.utc) - timedelta(hours=2)).replace(tzinfo=None)
+    job_past = PublishJob(org_name="o", platform="note", scheduled_at=naive_past.isoformat())
+    assert job_past.is_due() is True
+
+    # 解析不能な値は従来どおり fallback（due スキャンを落とさない）。
+    assert PublishJob(org_name="o", platform="note", scheduled_at="garbage").is_due() is True
+
+
 def test_published_job_is_not_due(tmp_path):
     store = PublishJobStore(platform_home=tmp_path)
     job = store.add_job(PublishJob(org_name="o", platform="note"))

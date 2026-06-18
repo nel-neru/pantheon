@@ -75,9 +75,15 @@ class ContentJob:
             return True
         now = now or _now()
         try:
-            return datetime.fromisoformat(self.next_run_at) <= now
-        except (ValueError, TypeError):  # naive/不正な next_run_at で cycle 全体を落とさない
+            dt = datetime.fromisoformat(self.next_run_at)
+        except (ValueError, TypeError):  # 不正な next_run_at で cycle 全体を落とさない
             return True
+        # naive（legacy/移行/外部編集）は UTC とみなす。coerce せず生で比較すると
+        # aware な now との `<=` が TypeError になり、それを catch して return True ＝
+        # 未来予約の naive ジョブが「即 due」と誤判定され早期生成される（フェイルオープン）。
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt <= now
 
 
 class ContentJobStore:
