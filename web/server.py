@@ -1322,6 +1322,7 @@ def _serialize_generated_proposal(proposal: ImprovementProposal) -> dict[str, An
         "description": proposal.description,
         "file_path": proposal.file_path,
         "expected_impact": proposal.expected_impact,
+        "code_preview": proposal.code_preview,
         "status": proposal.status,
     }
 
