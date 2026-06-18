@@ -115,3 +115,48 @@ def test_apply_local_change_writes_only_inside_repo(
     assert fake_git.repos[0].git.checkout_calls[0][0] == "-b"
     assert fake_git.repos[0].index.add_calls == [["nested/file.py"]]
     assert fake_git.repos[0].index.commit_calls == ["refactor: Safe change"]
+
+
+def test_apply_local_change_japanese_title_yields_valid_branch(
+    tmp_path, monkeypatch, agent: ImprovementExecutorAgent
+):
+    """日本語タイトル（提案の主言語）でもローカルブランチ名が有効・非退化になる。
+
+    旧実装は slug が '-' に潰れ pantheon/improvement---<ts> という区別不能なブランチを作っていた
+    （PR 経路と同一バグ。ローカル経路は token 無しの既定経路なので実害が大きい）。
+    """
+    import re
+
+    repo_path = tmp_path / "repo"
+    target = repo_path / "file.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("before", encoding="utf-8")
+    fake_git = DummyGitModule()
+    monkeypatch.setitem(sys.modules, "git", SimpleNamespace(Repo=fake_git.Repo))
+
+    result = agent._apply_local_change(
+        repo_path, "file.py", "after", "summary", {"title": "キャッシュ層を改善する"}
+    )
+
+    branch = result["branch"]
+    assert re.fullmatch(r"pantheon/improvement-[a-z0-9][a-z0-9-]*-\d{14}", branch), branch
+    assert "improvement---" not in branch  # '-' 退化していない
+    assert fake_git.repos[0].git.checkout_calls[0] == ("-b", branch)
+
+
+def test_apply_local_change_none_title_does_not_crash(
+    tmp_path, monkeypatch, agent: ImprovementExecutorAgent
+):
+    """title=None でもローカル適用がクラッシュしない（旧コードは .lower() で AttributeError）。"""
+    import re
+
+    repo_path = tmp_path / "repo"
+    target = repo_path / "file.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("before", encoding="utf-8")
+    fake_git = DummyGitModule()
+    monkeypatch.setitem(sys.modules, "git", SimpleNamespace(Repo=fake_git.Repo))
+
+    result = agent._apply_local_change(repo_path, "file.py", "after", "summary", {"title": None})
+
+    assert re.fullmatch(r"pantheon/improvement-[a-z0-9][a-z0-9-]*-\d{14}", result["branch"])
