@@ -437,3 +437,76 @@ class TestOrchestratorSelfReview:
             "問題のあるオーケストレーションパターンは見つかりませんでした"
             in capsys.readouterr().out
         )
+
+
+# ═══════════════════════════════════════════════════════════════
+# cmd_orchestration_capabilities --unused（非推奨候補レポート）
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestOrchestrationCapabilitiesUnusedCLI:
+    @staticmethod
+    def _seed(tmp_path, *, added_days_ago: float, name: str = "DustyAgent"):
+        """指定日数前に追加された未使用能力を registry へ永続化する。"""
+        from datetime import datetime, timedelta, timezone
+
+        from core.intelligence.capability_registry import CapabilityEntry, CapabilityRegistry
+
+        registry = CapabilityRegistry()
+        registry.register(
+            CapabilityEntry(
+                id=name.lower(),
+                name=name,
+                capability_type="agent",
+                added_at=(datetime.now(timezone.utc) - timedelta(days=added_days_ago)).isoformat(),
+                usage_count=0,
+                last_used=None,
+            )
+        )
+
+    def test_unused_flag_lists_stale_capability(self, capsys, tmp_path):
+        """--unused は閾値より古い未使用能力を非推奨候補セクションに一覧する。"""
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path, added_days_ago=200)
+            _run(cmd_orchestration_capabilities(SimpleNamespace(unused=90)))
+        out = capsys.readouterr().out
+        # 「Agents」一覧にも名前は出るので、非推奨候補ヘッダ以降のセクションで検証する。
+        section = out.split("非推奨候補")[1]
+        assert " 1 件" in section
+        assert "DustyAgent" in section
+
+    def test_unused_flag_excludes_recent_capability(self, capsys, tmp_path):
+        """追加が新しい未使用能力は閾値内なので非推奨候補に出さない（C27 セマンティクス）。"""
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path, added_days_ago=5, name="FreshAgent")
+            _run(cmd_orchestration_capabilities(SimpleNamespace(unused=90)))
+        out = capsys.readouterr().out
+        assert "非推奨候補（最終アクティビティから 90 日以上） 0 件" in out
+        # FreshAgent は Agents 一覧には出るが、非推奨候補セクションには出ない。
+        section = out.split("非推奨候補")[1]
+        assert "FreshAgent" not in section
+
+    def test_without_flag_no_unused_section(self, capsys, tmp_path):
+        """フラグ無し（既定）では非推奨候補セクションを出さない＝従来挙動を保つ。"""
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path, added_days_ago=200)
+            _run(cmd_orchestration_capabilities(SimpleNamespace()))
+        out = capsys.readouterr().out
+        assert "非推奨候補" not in out
+
+    def test_unused_custom_threshold(self, capsys, tmp_path):
+        """--unused 10 のように閾値を指定でき、ヘッダにも反映される。"""
+        from main import cmd_orchestration_capabilities
+
+        with patch("core.platform.state.get_platform_home", return_value=tmp_path):
+            self._seed(tmp_path, added_days_ago=30)
+            _run(cmd_orchestration_capabilities(SimpleNamespace(unused=10)))
+        out = capsys.readouterr().out
+        assert "最終アクティビティから 10 日以上" in out
+        assert "DustyAgent" in out.split("非推奨候補")[1]

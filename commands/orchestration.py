@@ -97,6 +97,22 @@ async def cmd_orchestration_capabilities(args: argparse.Namespace) -> None:
     else:
         print("\n  能力ギャップなし")
 
+    # --unused: 最終アクティビティが閾値より古い能力を非推奨候補として一覧（既定オフ・read-only）。
+    unused_days = getattr(args, "unused", None)
+    if unused_days is not None:
+        unused = registry.get_unused_capabilities(days_threshold=unused_days)
+        print(f"\n  {'─' * 56}")
+        print(f"  非推奨候補（最終アクティビティから {unused_days} 日以上） {len(unused)} 件")
+        if unused:
+            for cap in sorted(unused, key=lambda c: c.get("last_used") or c.get("added_at") or ""):
+                last_activity = cap.get("last_used") or cap.get("added_at") or "不明"
+                print(
+                    f"    {cap.get('name')} ({cap.get('capability_type')})"
+                    f"  使用 {cap.get('usage_count', 0)} 回  最終 {last_activity}"
+                )
+        else:
+            print("    なし（全能力が閾値内にアクティブ）")
+
     # --resolve: 検出ギャップを CapabilityGapResolver で解消する（既定オフ）。
     # agent/skill → registry へ永続 spawn、team/division → PolicyEngine 評価（HITL ゲート）。
     if getattr(args, "resolve", False):
@@ -313,6 +329,16 @@ def register(subparsers: Any) -> None:
         "--org-name",
         default=None,
         help="--resolve の対象 Organization 名（省略時は登録済みの先頭を使用）",
+    )
+    capabilities.add_argument(
+        "--unused",
+        nargs="?",
+        type=int,
+        const=90,
+        default=None,
+        metavar="DAYS",
+        help="最終利用（未使用なら追加日）から DAYS 日以上経過した能力を非推奨候補として"
+        "一覧する（DAYS 省略時は 90）。既定オフ・読み取り専用",
     )
     capabilities.set_defaults(handler_name="cmd_orchestration_capabilities")
 
