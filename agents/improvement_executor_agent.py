@@ -65,6 +65,11 @@ class ImprovementExecutorAgent(BaseAgent):
         # そのまま適用する。再生成すると「レビューしたコード ≠ 適用されるコード」になり HITL の
         # 意味が失われるうえ、生成先は新規ファイルで存在しないため従来経路では必ず
         # "Target file not found" で失敗していた（承認しても適用不能）。
+        # セキュリティ不変条件: `generated_code` を永続提案へ書き込む正規の経路は
+        # SelfExtensionPipeline ただ一つ。free-form/LLM 由来の suggestion は
+        # ImprovementProposal.from_suggestion の allowlist が generated_code を落とすため、
+        # この verbatim 書き込みチャネルへ任意内容を流し込めない（書き込み先も
+        # _resolve_repo_file_path で repo 内に限定済み・承認は PolicyEngine + HITL ゲート通過後）。
         verbatim_code = suggestion.get("generated_code") or ""
         if verbatim_code:
             modified_content = verbatim_code
