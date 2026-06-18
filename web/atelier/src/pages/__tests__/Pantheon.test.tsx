@@ -94,3 +94,43 @@ describe('Pantheon organisation catalog filter regression', () => {
     expect(screen.queryByText('Org Beta')).not.toBeInTheDocument()
   })
 })
+
+describe('Pantheon metric meters surfacing', () => {
+  // 各プレートの lede は「健全度・自律度・改善速度」を約束する。
+  // improvement_velocity はバックエンドが返す（0〜100 にクランプ済み）が、
+  // 以前は描画されていなかった回帰を防ぐ。
+  const soloOrg = makeOrg({
+    id: 'org-solo',
+    name: 'Org Solo',
+    status: 'active',
+    health_score: 70,
+    autonomy_score: 60,
+    improvement_velocity: 42,
+  })
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/organizations')) {
+        return { ok: true, json: async () => [soloOrg] }
+      }
+      return { ok: true, json: async () => [] }
+    }) as unknown as typeof fetch
+  })
+
+  it('OrgPlate は健全度・自律度・改善速度の3メーターを描画し、改善速度に improvement_velocity を束ねる', async () => {
+    render(<Pantheon />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Org Solo')).toBeInTheDocument()
+    })
+
+    // 3 つのメーター（progressbar）が揃う
+    expect(screen.getByRole('progressbar', { name: '健全度' })).toHaveAttribute('aria-valuenow', '70')
+    expect(screen.getByRole('progressbar', { name: '自律度' })).toHaveAttribute('aria-valuenow', '60')
+
+    // 改善速度メーターが存在し、improvement_velocity の値を反映する（本修正の主眼）
+    const velocityMeter = screen.getByRole('progressbar', { name: '改善速度' })
+    expect(velocityMeter).toHaveAttribute('aria-valuenow', '42')
+  })
+})

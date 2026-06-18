@@ -78,6 +78,7 @@ export function Pantheon() {
 function OrgPlate({ org, index }: { org: OrgSummary; index: number }) {
   const health = clamp(org.health_score || 0, 0, 100)
   const autonomy = clamp(org.autonomy_score || 0, 0, 100)
+  const velocity = clamp(org.improvement_velocity || 0, 0, 100)
   return (
     <Plate no={`ORG · ${pad2(index)}`} className="flex flex-col rise">
       <div className="flex items-start justify-between">
@@ -95,6 +96,7 @@ function OrgPlate({ org, index }: { org: OrgSummary; index: number }) {
       <div className="mt-5 flex flex-col gap-3">
         <Meter label="健全度" value={health} tone="var(--green)" />
         <Meter label="自律度" value={autonomy} tone="var(--ice)" />
+        <Meter label="改善速度" value={velocity} tone="var(--gold)" />
       </div>
 
       <hr className="hairline my-5" />
