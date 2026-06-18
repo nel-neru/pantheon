@@ -1871,12 +1871,6 @@
       },
       {
         "severity": "low",
-        "title": "CapabilityGapAnalyzer never auto-marks a gap implemented when the capability later exists",
-        "detail": "_analyze_heuristic suppresses re-creating a gap if suggested_name is already a registry capability, but previously-saved gaps for a now-existing capability are never auto-flipped to implemented. get_all_gaps() keeps surfacing them until something calls mark_implemented explicitly, which nothing in the analyze loop does. Result: stale 'gaps' that are actually filled.",
-        "file": "core/intelligence/capability_gap_analyzer.py"
-      },
-      {
-        "severity": "low",
         "title": "CodebaseIndexer only AST-parses Python; other supported extensions get empty structure",
         "detail": "SUPPORTED_EXTENSIONS includes ts/js/go/rs/java/rb/cpp/c, but _index_file only calls _parse_python for .py. For all other languages classes/functions/imports/docstring stay empty, so search() and snapshot ranking degrade to path/size signal only on polyglot repos. mtime-based incremental update is fine, but the index is effectively Python-only.",
         "file": "core/intelligence/codebase_indexer.py"
