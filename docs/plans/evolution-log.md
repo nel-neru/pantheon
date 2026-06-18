@@ -2480,3 +2480,40 @@ Cycle 32 — 日本語タイトルでブランチ slug が '-' 退化＋title=No
   Next   : C33 候補 — (rr) product/vision GUI スライス（trends→提案の /inbox provenance 可視化 or atelier 実機能）で多様性、
            (ww) commit/PR メッセージの title=None が "None" と描画される cosmetic（reviewer 🟡・`or` fallback で honest 化・低優先）、
            (xx) 未触り subsystem（goals/daemon）で的を絞った correctness 1件。
+
+Cycle 33 — naive timestamp を aware に coerce し sort/比較クラッシュを解消（同型3サイト・capabilities/github_integration から離脱）  (2026-06-18)
+  Plan   : `datetime.fromisoformat(...)` の結果を aware と比較/sort する際に naive→aware coercion も TypeError ガードも
+           欠く箇所を、本コードベースが他全箇所で採用済みの canonical idiom（`dt if dt.tzinfo else dt.replace(tzinfo=
+           timezone.utc)`）で堅牢化。受け入れ基準= naive(legacy/移行/外部編集) と aware が混在しても `naive<aware` の
+           TypeError でクラッシュせず正しく sort/archive/cleanup する／aware データでは byte 等価／既存緑・新規回帰0／
+           ruff・レビュー APPROVE／merged。なぜ今: C28/30/31=capabilities・C32=github_integration と続いたので**多様性のため
+           未触りの state/knowledge/runtime 層**へ。Pantheon は utcnow(naive)→aware に明示移行した歴史があり、migrator が
+           timestamp を素通しするため legacy naive が現行 aware と混在し得る＝latent crash。**落とした候補（重要）**:
+           (a) goal_decomposer.py:682 `description=get("title")`＝Explore が copy-paste と断定したが、template 経路(566)も
+           `description=story_def["story"]`＝**description==title は意図的規約**で prompt にも description 無し→**false positive と
+           判定し棄却**（経路全体を実測してから fix と呼ぶ・[[langgraph-checkpoint-serialization]]）。(b) metrics の非アトミック
+           JSONL append 3件＝broad hygiene カテゴリ＋単一行 append はほぼアトミックで低確信→見送り（C31 §C の方針）。
+  Did    : work/naive-tz-sort-coercion-20260618（コード, main 787aa5a）＋ work/evolve-log-c33（ログ）。**3サイトを統一修正**:
+           (1) core/state/manager.py get_recent_decisions の sort_key＝naive を UTC 解釈で aware に揃える（旧: naive と aware
+           fallback/Z付きが混在で sorted() クラッシュ）、(2) core/knowledge/manager.py archive_stale_entries＝referenced_at を
+           coerce（旧: 比較が try 外＋ValueError のみ捕捉で naive<aware が TypeError）、(3) core/orchestration/task_queue.py
+           `_parse_timestamp`＝helper 1箇所の coerce で cleanup_old_tasks の `completed_at > cutoff` 全 caller を修正。回帰
+           テスト各1件（test_state_manager / test_theme_bc_remaining / test_task_queue）＝naive と aware を混在させ
+           load-bearing を stash で実証（旧コードで TypeError・新コードで pass）。
+  Check  : ruff クリーン ／ test-triage = **GREEN**（1604 passed＝+3 新テスト・既知2失敗のみ・新規回帰0）／ merge_to_main 全件
+           ゲート通過。**敵対的レビュー code-reviewer = APPROVE-WITH-NITS で第3サイトを検出**＝私は grep で「未ガードは
+           state/manager:119 と knowledge/manager:158 のちょうど2箇所」と断定したが、reviewer が task_queue.py の
+           `_parse_timestamp`→cleanup_old_tasks の比較サイトを辿り**同型の3つ目**を指摘。自分の一貫性基準（known defect を
+           残さない・C31/C32）に従い**同一スライスで折り込んで修正**＋回帰テスト追加。reviewer は残り16の fromisoformat
+           サイトを全件「coercion/ガード済み」と確認＝completeness クリーン。byte 等価・wall-clock フレーク無しも確認。
+  Act    : merged ✅（main 787aa5a）。固定化: (A) **naive-tz coercion 規約を memory に新設**＝[[naive-tz-coercion-convention]]。
+           idiom・参考実装一覧・3サイト・「現行 writer は aware だが latent」を記録し次サイクル以降に複利化。(B) **archetype の
+           全 call site は『grep だけ』では漏れる＝parse 結果を返す helper を辿って比較サイトまで確認する**＝`_parse_timestamp` は
+           fromisoformat を返すだけで比較は別関数（cleanup_old_tasks）に在り、「fromisoformat の隣に比較が無い」と見落とした。
+           [[windows-process-portability]]「同種は全 call site を grep」を**実践し損ね、敵対的レビューが安全網になった**（レビューを
+           省略しない実例・C32 の slug 二重実装と同じ救われ方）。(C) **Explore の断定（copy-paste）も経路全体を実測してから採否**＝
+           sibling の template 経路が「description==title は意図的規約」を示し false positive と判明（明白そうな fix ほど裏取り）。
+           (D) **回帰テストは naive/aware 混在を stash で旧コード fail 実証**してから merge（load-bearing 確認・[[testing-and-subagent-hazards]]）。memory 更新。
+  Next   : C34 候補 — (rr) product/vision GUI スライス（trends→提案の /inbox provenance 可視化 or atelier 実機能）で
+           GUI 系の多様性（コード correctness が3サイクル続いたので領域を変える）、(yy) goals パイプラインの未触り correctness
+           （goal_verifier/execution_coordinator のエッジケース1件）、(ww) commit/PR メッセージ title=None→"None" 描画 cosmetic（低優先）。
