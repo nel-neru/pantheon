@@ -6,6 +6,7 @@ Code Review Agent
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 from dataclasses import dataclass
@@ -105,6 +106,12 @@ class CodeImprovementSuggestion:
             allowed_values=VALID_CATEGORIES,
         )
         self.file_path = _normalize_relative_file_path(self.file_path)
+
+
+# LLM 出力には schema 外の余分なキー（severity/line/rationale など）が混入しやすい。
+# それらは無視して既知フィールドだけで構築する（余分なキー1個で well-formed な提案を
+# 提案ごと丸ごと drop しないため＝コア提案生成パイプラインの収量を守る）。
+_SUGGESTION_FIELDS = {f.name for f in dataclasses.fields(CodeImprovementSuggestion)}
 
 
 class CodeReviewAgent(BaseAgent):
@@ -325,9 +332,25 @@ class CodeReviewAgent(BaseAgent):
                 logger.warning("CodeReviewAgent: JSON parse failed (no JSON object in response)")
                 return []
             suggestions: List[CodeImprovementSuggestion] = []
-            for raw_suggestion in data.get("suggestions", []):
+            # `or []` で None 値（"suggestions": null）を空に倒す（`.get(k, [])` は key が
+            # None 値で存在すると default でなく None を返す罠＝for None で TypeError になる）。
+            for raw_suggestion in data.get("suggestions") or []:
+                if not isinstance(raw_suggestion, dict):
+                    logger.warning(
+                        "CodeReviewAgent: skipping non-dict suggestion: %r", raw_suggestion
+                    )
+                    continue
+                # 既知キーのみ通す＋明示的 null は捨てる。null を残すと既知の任意キー
+                # （expected_impact 等）の default を None で上書きし、None が下流 payload へ
+                # 流れる（get-default-none 罠の再来）。必須キーが null なら欠落扱いで drop（正）、
+                # 任意キーが null なら dataclass の default に落ちる（正）。
+                fields = {
+                    k: v
+                    for k, v in raw_suggestion.items()
+                    if k in _SUGGESTION_FIELDS and v is not None
+                }
                 try:
-                    suggestions.append(CodeImprovementSuggestion(**raw_suggestion))
+                    suggestions.append(CodeImprovementSuggestion(**fields))
                 except (TypeError, ValueError) as exc:
                     logger.warning("CodeReviewAgent: skipping invalid suggestion: %s", exc)
             return suggestions

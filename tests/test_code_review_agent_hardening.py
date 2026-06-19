@@ -135,3 +135,137 @@ def test_generate_suggestions_skips_invalid_llm_entries(monkeypatch):
     suggestions = _run(agent._generate_suggestions("code", "repo"))
 
     assert [suggestion.title for suggestion in suggestions] == ["Valid"]
+
+
+def _provider_returning(payload: dict) -> SimpleNamespace:
+    return SimpleNamespace(
+        generate=AsyncMock(return_value=SimpleNamespace(content=json.dumps(payload)))
+    )
+
+
+def test_generate_suggestions_tolerates_extra_keys(monkeypatch):
+    """LLM が schema 外の余分なキー（severity/line 等）を足しても提案を drop しない。
+
+    旧コードは ``CodeImprovementSuggestion(**raw)`` が余分なキー1個で TypeError になり、
+    well-formed な提案ごと黙って捨てていた（コア提案生成パイプラインの収量損失）。
+    """
+    agent = CodeReviewAgent(_make_specialist())
+    provider = _provider_returning(
+        {
+            "suggestions": [
+                {
+                    "title": "Has extras",
+                    "description": "desc",
+                    "file_path": "src/app.py",
+                    "priority": "high",
+                    "category": "security",
+                    "expected_impact": "impact",
+                    # schema 外の余分なキー（LLM がよく足す）。
+                    "severity": "critical",
+                    "line": 42,
+                    "rationale": "because",
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        "agents.code_review_agent.get_llm_provider", lambda _provider_name: provider
+    )
+
+    suggestions = _run(agent._generate_suggestions("code", "repo"))
+
+    assert [s.title for s in suggestions] == ["Has extras"]
+    assert suggestions[0].priority == "high"
+    assert suggestions[0].category == "security"
+
+
+def test_generate_suggestions_handles_null_suggestions(monkeypatch):
+    """``"suggestions": null`` でも TypeError にならず空リストを返す（get-default-none 罠）。"""
+    agent = CodeReviewAgent(_make_specialist())
+    provider = _provider_returning({"suggestions": None})
+    monkeypatch.setattr(
+        "agents.code_review_agent.get_llm_provider", lambda _provider_name: provider
+    )
+
+    assert _run(agent._generate_suggestions("code", "repo")) == []
+
+
+def test_generate_suggestions_null_optional_key_falls_back_to_default(monkeypatch):
+    """既知の任意キーが明示的 null でも default を上書きせず None を下流へ流さない。"""
+    agent = CodeReviewAgent(_make_specialist())
+    provider = _provider_returning(
+        {
+            "suggestions": [
+                {
+                    "title": "Null impact",
+                    "description": "desc",
+                    "file_path": "src/app.py",
+                    "priority": "low",
+                    "category": "testing",
+                    "expected_impact": None,
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        "agents.code_review_agent.get_llm_provider", lambda _provider_name: provider
+    )
+
+    suggestions = _run(agent._generate_suggestions("code", "repo"))
+
+    assert len(suggestions) == 1
+    assert suggestions[0].expected_impact == ""  # None 上書きでなく default
+
+
+def test_generate_suggestions_drops_entry_missing_required_field(monkeypatch):
+    """必須キー（file_path）が欠落した提案は構築されず drop される。"""
+    agent = CodeReviewAgent(_make_specialist())
+    provider = _provider_returning(
+        {
+            "suggestions": [
+                {"title": "No file_path", "description": "desc", "priority": "high"},
+                {
+                    "title": "Valid",
+                    "description": "desc",
+                    "file_path": "src/app.py",
+                    "priority": "high",
+                    "category": "bug",
+                },
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        "agents.code_review_agent.get_llm_provider", lambda _provider_name: provider
+    )
+
+    suggestions = _run(agent._generate_suggestions("code", "repo"))
+
+    assert [s.title for s in suggestions] == ["Valid"]
+
+
+def test_generate_suggestions_skips_non_dict_entries(monkeypatch):
+    """suggestions に非 dict 要素（文字列/None/数値）が混じっても有効分だけ残す。"""
+    agent = CodeReviewAgent(_make_specialist())
+    provider = _provider_returning(
+        {
+            "suggestions": [
+                "not a dict",
+                None,
+                123,
+                {
+                    "title": "Valid",
+                    "description": "desc",
+                    "file_path": "src/app.py",
+                    "priority": "medium",
+                    "category": "bug",
+                },
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        "agents.code_review_agent.get_llm_provider", lambda _provider_name: provider
+    )
+
+    suggestions = _run(agent._generate_suggestions("code", "repo"))
+
+    assert [s.title for s in suggestions] == ["Valid"]
