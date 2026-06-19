@@ -339,6 +339,14 @@ describe('OrgsPage', () => {
       if (method === 'GET' && path === '/api/organizations') return [baseOrg]
       if (method === 'GET' && path === '/api/organizations/acme-platform') return currentDetail
       if (method === 'GET' && path === '/api/organizations/acme-platform/proposals') return []
+      if (method === 'GET' && path === '/api/organizations/acme-platform/migration-plan') {
+        return {
+          org_name: 'acme-platform',
+          from_repo: '/repos/acme',
+          to_workspace: '/ws/acme-platform',
+          already_workspace: false,
+        }
+      }
       if (
         method === 'POST' &&
         path === '/api/organizations/acme-platform/migrate-to-workspace'
@@ -370,6 +378,47 @@ describe('OrgsPage', () => {
       )
     })
     expect(await screen.findByText('workspace（git 不要）')).toBeInTheDocument()
+  })
+
+  it('previews the migration plan (non-mutating GET) in the confirm dialog before migrating', async () => {
+    const currentDetail = { ...detailOrg, management_mode: 'repo' as string }
+    mockApi.mockImplementation(async (method, path) => {
+      if (method === 'GET' && path === '/api/organizations') return [baseOrg]
+      if (method === 'GET' && path === '/api/organizations/acme-platform') return currentDetail
+      if (method === 'GET' && path === '/api/organizations/acme-platform/proposals') return []
+      if (method === 'GET' && path === '/api/organizations/acme-platform/migration-plan') {
+        return {
+          org_name: 'acme-platform',
+          from_repo: '/repos/acme',
+          to_workspace: '/ws/acme-platform',
+          already_workspace: false,
+        }
+      }
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<OrgsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'acme-platform の詳細を開く' }))
+    await user.click(await screen.findByRole('button', { name: 'workspace へ移行' }))
+
+    // 起票なしの GET でプレビューを取得し、具体パスをダイアログに表示する
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith(
+        'GET',
+        '/api/organizations/acme-platform/migration-plan'
+      )
+    )
+    const confirmDialog = await screen.findByRole('dialog', { name: 'workspace へ移行' })
+    expect(await within(confirmDialog).findByText('/repos/acme')).toBeInTheDocument()
+    expect(within(confirmDialog).getByText('/ws/acme-platform')).toBeInTheDocument()
+
+    // 確認するまで mutating な migrate POST は呼ばれない
+    expect(mockApi).not.toHaveBeenCalledWith(
+      'POST',
+      '/api/organizations/acme-platform/migrate-to-workspace'
+    )
   })
 
   it('shows a lock icon for system organizations without a delete button', async () => {

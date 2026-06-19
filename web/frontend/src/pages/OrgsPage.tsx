@@ -253,6 +253,14 @@ function DependencyList({ divisions }: { divisions: TreeDivision[] }) {
   )
 }
 
+// repo→workspace 移行の計画（GET /api/organizations/{name}/migration-plan・副作用なし）
+type MigrationPlan = {
+  org_name: string
+  from_repo: string | null
+  to_workspace: string
+  already_workspace: boolean
+}
+
 function DetailPanel({
   org,
   onClose,
@@ -283,7 +291,34 @@ function DetailPanel({
   const [proposalError, setProposalError] = useState<string | null>(null)
   const [confirmMigrate, setConfirmMigrate] = useState(false)
   const [confirmResetIcon, setConfirmResetIcon] = useState(false)
+  // 不可逆な移行の前に「副作用なし」の移行プラン（from_repo → to_workspace）を確認用に取得する。
+  const [migrationPlan, setMigrationPlan] = useState<MigrationPlan | null>(null)
+  const [planLoading, setPlanLoading] = useState(false)
   const closeRef = useRef<HTMLButtonElement>(null)
+
+  // 確認ダイアログを開くと同時に、起票なしの GET で具体的な移行先パスをプレビューする。
+  const openMigrateConfirm = async () => {
+    setConfirmMigrate(true)
+    setMigrationPlan(null)
+    setPlanLoading(true)
+    try {
+      const plan = await api<Partial<MigrationPlan>>(
+        'GET',
+        `/api/organizations/${encodeURIComponent(org.name)}/migration-plan`
+      )
+      setMigrationPlan({
+        org_name: String(plan?.org_name ?? org.name),
+        from_repo: plan?.from_repo == null ? null : String(plan.from_repo),
+        to_workspace: String(plan?.to_workspace ?? ''),
+        already_workspace: Boolean(plan?.already_workspace),
+      })
+    } catch (err) {
+      // プレビュー取得に失敗してもダイアログは表示する（汎用警告で確認自体は可能）。
+      toast.error(err instanceof Error ? err.message : '移行プランの取得に失敗しました。')
+    } finally {
+      setPlanLoading(false)
+    }
+  }
 
   useEffect(() => {
     setLoadingProposals(true)
@@ -468,7 +503,7 @@ function DetailPanel({
                         type="button"
                         className="btn btn-secondary btn-sm ml-4"
                         disabled={migrating}
-                        onClick={() => setConfirmMigrate(true)}
+                        onClick={() => void openMigrateConfirm()}
                       >
                         {migrating ? '移行中…' : 'workspace へ移行'}
                       </button>
@@ -587,6 +622,22 @@ function DetailPanel({
         description={
           <>
             <strong>{org.name}</strong> を workspace モードへ移行します。
+            {planLoading ? (
+              <span className="block text-muted text-sm mt-2">移行プランを読み込み中…</span>
+            ) : migrationPlan ? (
+              // ConfirmDialog の description は Radix が <p> として描画するため
+              // ブロック要素は <span className="block"> で表現する（div-in-p 回避）。
+              <span className="mt-2 flex flex-col gap-1 text-sm">
+                <span className="block">
+                  <span className="text-muted">移行元（repo）: </span>
+                  <span className="mono">{migrationPlan.from_repo || '—'}</span>
+                </span>
+                <span className="block">
+                  <span className="text-muted">移行先（workspace）: </span>
+                  <span className="mono">{migrationPlan.to_workspace || '—'}</span>
+                </span>
+              </span>
+            ) : null}
             <br />
             この操作により git 管理が不要になりますが、<strong>元に戻すことはできません</strong>。
             移行前に未コミットの変更がないことを確認してください。
