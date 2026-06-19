@@ -8,6 +8,12 @@ describe('format helpers', () => {
     expect(pad2(42)).toBe('42')
   })
 
+  it('pad2 coerces non-finite input to 0', () => {
+    expect(pad2(NaN)).toBe('00')
+    expect(pad2(Infinity)).toBe('00')
+    expect(pad2(undefined as unknown as number)).toBe('00')
+  })
+
   it('compactNumber abbreviates', () => {
     expect(compactNumber(950)).toBe('950')
     expect(compactNumber(1500)).toBe('1.5k')
@@ -17,6 +23,13 @@ describe('format helpers', () => {
   it('percent handles fractions and whole numbers', () => {
     expect(percent(0.5)).toBe('50%')
     expect(percent(72)).toBe('72%')
+  })
+
+  it('percent renders 0% for non-finite input instead of NaN%', () => {
+    expect(percent(NaN)).toBe('0%')
+    expect(percent(Infinity)).toBe('0%')
+    expect(percent(undefined as unknown as number)).toBe('0%')
+    expect(percent(NaN, 1)).toBe('0.0%')
   })
 
   it('seedFrom is deterministic and in range', () => {
@@ -33,5 +46,11 @@ describe('format helpers', () => {
     expect(clamp(5, 0, 10)).toBe(5)
     expect(clamp(-3, 0, 10)).toBe(0)
     expect(clamp(99, 0, 10)).toBe(10)
+  })
+
+  it('clamp returns the lower bound for non-finite input', () => {
+    expect(clamp(NaN, 0, 100)).toBe(0)
+    expect(clamp(Infinity, 0, 100)).toBe(0)
+    expect(clamp(undefined as unknown as number, 5, 100)).toBe(5)
   })
 })

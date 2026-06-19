@@ -1,7 +1,8 @@
 // 小さな表示用フォーマッタ群。
 
 export function pad2(n: number): string {
-  return String(Math.max(0, Math.floor(n))).padStart(2, '0')
+  const v = Number.isFinite(n) ? n : 0
+  return String(Math.max(0, Math.floor(v))).padStart(2, '0')
 }
 
 export function compactNumber(n: number): string {
@@ -12,6 +13,9 @@ export function compactNumber(n: number): string {
 }
 
 export function percent(value: number, digits = 0): string {
+  // 非有限値（欠落フィールド由来の NaN/±Infinity）は 0% に倒す。compactNumber と
+  // 同じ finite-safe 規約に揃え、free-form payload で 'NaN%' を出荷しない。
+  if (!Number.isFinite(value)) return `${(0).toFixed(digits)}%`
   const v = value <= 1 ? value * 100 : value
   return `${v.toFixed(digits)}%`
 }
@@ -41,5 +45,8 @@ export function seedFrom(text: string): number {
 }
 
 export function clamp(value: number, lo: number, hi: number): number {
+  // 非有限値は下限 lo に倒す。Math.max/min は NaN を伝播させる（Math.min(hi, NaN)=NaN）ため、
+  // ガードしないと clamp 後も NaN が残り width:`${NaN}%` でバーが無言で壊れる。
+  if (!Number.isFinite(value)) return lo
   return Math.min(hi, Math.max(lo, value))
 }
