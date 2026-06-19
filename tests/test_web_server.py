@@ -211,11 +211,11 @@ def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
     class DummyProc:
         pid = 9876
 
-    def fake_popen(cmd, cwd, stdout, stderr, start_new_session):
+    def fake_popen(cmd, cwd, stdout, stderr, **kwargs):
         calls["cmd"] = cmd
         calls["cwd"] = cwd
         calls["stderr"] = stderr
-        calls["start_new_session"] = start_new_session
+        calls["kwargs"] = kwargs
         calls["stdout_name"] = Path(stdout.name)
         return DummyProc()
 
@@ -246,7 +246,10 @@ def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
     ]
     assert calls["cwd"] == server.PROJECT_ROOT
     assert calls["stderr"] == server.subprocess.STDOUT
-    assert calls["start_new_session"] is True
+    # OS-appropriate console-detach kwargs (Windows ignores start_new_session).
+    import core.runtime.daemon_registry as registry
+
+    assert calls["kwargs"] == registry._detach_popen_kwargs()
     assert calls["stdout_name"] == tmp_path / "daemon.log"
 
 

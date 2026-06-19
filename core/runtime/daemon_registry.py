@@ -222,6 +222,33 @@ def set_enabled(
 # --------------------------------------------------------------------------- #
 # Lifecycle
 # --------------------------------------------------------------------------- #
+# Windows-only console-detach constants (documented stable values). Referenced
+# via getattr so this helper is also importable/testable on POSIX, where the
+# subprocess module does not define them; production never hits the "nt" branch
+# off-Windows because it passes the real os.name.
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+_DETACHED_PROCESS = 0x00000008
+
+
+def _detach_popen_kwargs(os_name: str = os.name) -> Dict[str, Any]:
+    """Popen kwargs that detach a daemon from the launching console / group.
+
+    POSIX: ``start_new_session=True`` runs ``setsid()`` so the daemon leaves the
+    launcher's session/process group. **Windows silently ignores that kwarg**, so
+    the daemon would stay tied to the launching console — closing the terminal or
+    a Ctrl+C/Ctrl+Break to the parent group could take it down, defeating the
+    24/7 daemon design. There we pass the equivalent creation flags instead:
+    ``CREATE_NEW_PROCESS_GROUP`` isolates it from console control events sent to
+    the parent group, and ``DETACHED_PROCESS`` frees it from the parent's console
+    (all daemon stdio is redirected to the log file, so no console is needed).
+    """
+    if os_name == "nt":
+        new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", _CREATE_NEW_PROCESS_GROUP)
+        detached = getattr(subprocess, "DETACHED_PROCESS", _DETACHED_PROCESS)
+        return {"creationflags": new_group | detached}
+    return {"start_new_session": True}
+
+
 def spawn_daemon(
     name: str,
     *,
@@ -252,12 +279,15 @@ def spawn_daemon(
     log_file.parent.mkdir(parents=True, exist_ok=True)
     cmd = build_command(spec, args)
     with log_file.open("a", encoding="utf-8") as log_handle:
+        # Detach the daemon from the launching console/group so it survives the
+        # launcher exiting (POSIX setsid / Windows creation flags — see
+        # _detach_popen_kwargs; raw start_new_session=True is a no-op on Windows).
         proc = subprocess.Popen(
             cmd,
             cwd=PROJECT_ROOT,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
-            start_new_session=True,
+            **_detach_popen_kwargs(),
         )
     pid_file.write_text(str(proc.pid), encoding="utf-8")
     if record_enabled:

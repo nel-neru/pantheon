@@ -184,12 +184,12 @@ def test_cmd_daemon_start_closes_log_handle(monkeypatch, tmp_path, capsys):
     class DummyProc:
         pid = 4321
 
-    def fake_popen(cmd, cwd, stdout, stderr, start_new_session):
+    def fake_popen(cmd, cwd, stdout, stderr, **kwargs):
         captured["cmd"] = cmd
         captured["stdout"] = stdout
         captured["cwd"] = cwd
         captured["stderr"] = stderr
-        captured["start_new_session"] = start_new_session
+        captured["popen_kwargs"] = kwargs
         return DummyProc()
 
     monkeypatch.setattr(platform_state_module, "get_platform_home", lambda: tmp_path)
@@ -201,3 +201,7 @@ def test_cmd_daemon_start_closes_log_handle(monkeypatch, tmp_path, capsys):
     assert "[OK] デーモンを起動しました" in out
     assert captured["stdout"].closed is True
     assert (tmp_path / "daemon.pid").read_text(encoding="utf-8") == "4321"
+    # CLI daemon start also detaches OS-correctly (Windows ignores start_new_session).
+    import core.runtime.daemon_registry as registry
+
+    assert captured["popen_kwargs"] == registry._detach_popen_kwargs()
