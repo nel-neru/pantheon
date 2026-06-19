@@ -1835,6 +1835,35 @@ def test_get_task_not_found(tmp_path, monkeypatch):
     assert resp.status_code == 404
 
 
+def test_cancel_task_not_found(tmp_path, monkeypatch):
+    """存在しない task の DELETE は 404（姉妹 GET と同セマンティクス）。
+
+    回帰防止: 以前は不在でも 400 を返しており、GET(404) と不整合だった
+    （cancel_task が「不在」と「キャンセル不可」の両方で False を返すため）。
+    """
+    _set_task_queue_home(tmp_path, monkeypatch)
+
+    resp = client.delete("/api/tasks/nonexistent-id")
+    assert resp.status_code == 404
+
+
+def test_cancel_task_already_cancelled_returns_400(tmp_path, monkeypatch):
+    """存在するが PENDING でない（既にキャンセル済み）task は 400（不在の 404 と区別）。"""
+    _set_task_queue_home(tmp_path, monkeypatch)
+
+    resp = client.post(
+        "/api/tasks",
+        json={"task_type": "analyze", "org_name": "TestOrg", "description": "x"},
+    )
+    task_id = resp.json()["id"]
+
+    first = client.delete(f"/api/tasks/{task_id}")
+    assert first.status_code == 200
+    # 2 回目: 既にキャンセル済み（存在はするが PENDING でない）→ 404 ではなく 400。
+    second = client.delete(f"/api/tasks/{task_id}")
+    assert second.status_code == 400
+
+
 async def test_drain_pending_tasks_runs_executor_and_broadcasts(tmp_path, monkeypatch):
     """作業ボードの drain が MultiOrgExecutor.process_pending 経由で PENDING タスクを
     着火し、結果を /ws/updates へ配信することを pin する。

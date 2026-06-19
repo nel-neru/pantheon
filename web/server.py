@@ -2981,20 +2981,26 @@ async def api_cancel_task(task_id: str) -> Dict[str, Any]:
     """タスクをキャンセルする"""
     queue = _task_queue()
     task = queue.get_task(task_id)
+    # 不在は 404（姉妹の GET /api/tasks/{id} と同セマンティクス）。cancel_task は「不在」と
+    # 「PENDING でない（実行中/完了済）」の両方で False を返すため、先に不在を 404 で切り分け、
+    # 400 は「存在するがキャンセル不可」だけに絞る（誤って 400 を返さない REST 整合）。
+    if task is None:
+        raise HTTPException(status_code=404, detail="タスクが見つかりません")
     if not queue.cancel_task(task_id):
         raise HTTPException(
-            status_code=400, detail="タスクをキャンセルできません（実行中または存在しない）"
+            status_code=400, detail="タスクをキャンセルできません（実行中または完了済み）"
         )
+    # 上の 404 ガードで task は非 None 確定（`if task else` の旧フォールバックは不要）。
     await _record_execution_event(
         "task_cancelled",
-        str(task.get("description") if task else "Task cancelled"),
+        str(task.get("description") or "Task cancelled"),
         status="success",
         details="Task cancelled",
-        org_name=task.get("org_name") if task else None,
+        org_name=task.get("org_name"),
         entity_type="task",
         entity_id=task_id,
         route="/dashboard",
-        metadata={"task_type": task.get("type") if task else None},
+        metadata={"task_type": task.get("type")},
     )
     return {"status": "cancelled", "task_id": task_id}
 
