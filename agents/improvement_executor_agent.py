@@ -160,6 +160,19 @@ class ImprovementExecutorAgent(BaseAgent):
         relative_file_path = target.relative_to(repo_root).as_posix()
 
         repo = git.Repo(repo_root)
+
+        # 適用前のブランチ（detached HEAD なら commit SHA）を控え、コミット後に必ずここへ戻す。
+        # 戻さないと scheduler の一括 AUTO_APPROVE ループ（core/scheduler._apply_proposal を
+        # 提案ごとに呼ぶ）で2件目以降の `checkout -b` が直前の improvement ブランチを base に
+        # 切られ、各 improvement ブランチが独立せず変更が積み重なる（branchN が proposal 1..N の
+        # 全コミットを含む＝個別レビュー/PR が不能になる）。さらに作業ツリーが最後の improvement
+        # ブランチに置き去りになり、後続の自律処理や人手作業が想定外のブランチ上で走る。
+        try:
+            original_ref = repo.active_branch.name
+        except TypeError:
+            # detached HEAD: ブランチ名が取れないので commit SHA を控える。
+            original_ref = repo.head.commit.hexsha
+
         repo.git.checkout("-b", branch_name)
 
         # 新規ファイル（self-extension の生成コード等）はサブディレクトリがまだ無い場合がある。
@@ -168,6 +181,22 @@ class ImprovementExecutorAgent(BaseAgent):
         target.write_text(modified_content, encoding="utf-8")
         repo.index.add([relative_file_path])
         repo.index.commit(f"refactor: {suggestion_title(suggestion, 'Apply improvement')}")
+
+        # 元のブランチへ戻す。改善は branch_name にコミット済みなので作業ツリーは clean で
+        # 戻せる。戻せなくても適用自体は成功（branch+commit は作成済み）なので失敗に倒さず
+        # 警告のみ＝best-effort（汚れた作業ツリー等の別 failure class でこの復帰を握り潰さない）。
+        # 注意: 復帰に失敗すると HEAD が improvement ブランチに残り、次の提案の checkout -b が
+        # その上に積まれて stacking が再発する（warning が唯一のシグナル）。ただし旧挙動＝常時
+        # stacking より悪化はしない。通常の自律経路は clean tree なので復帰は失敗しない。
+        try:
+            repo.git.checkout(original_ref)
+        except Exception as exc:  # noqa: BLE001 — 元ブランチ復帰は best-effort
+            logger.warning(
+                "Could not restore branch %s after applying improvement to %s: %s",
+                original_ref,
+                branch_name,
+                exc,
+            )
 
         return {
             "branch": branch_name,
