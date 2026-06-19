@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 from typing import List
 
@@ -338,3 +339,150 @@ def test_headless_cross_process_poll_pid_alive_stays_running(tmp_path, monkeypat
     fresh = hd.HeadlessDriver(log_root=tmp_path)
     view = fresh.poll_surface(_cross_process_view(surface))
     assert view.status == SurfaceStatus.RUNNING
+
+
+# --------------------------------------------------------------------------- #
+# Cross-process stop (close_surface with no in-memory Popen handle)
+#
+# stop_session reached from a process that did not open the surface (e.g. the
+# web server stopping a session a daemon launched) has no Popen to ``terminate``,
+# so close_surface must fall back to the pid persisted as ``pty_id`` and kill it
+# via the Windows-safe ``terminate_pid``. The cross-process *poll* path is well
+# covered above; these pin the cross-process *stop* path it relies on.
+# --------------------------------------------------------------------------- #
+def _spawn_long_running(driver, ws, tmp_path, agent_id: str) -> Surface:
+    """Open a surface running a process that sleeps long enough to be killed."""
+    spec = AgentSpec(
+        agent_id=agent_id,
+        title=agent_id,
+        command=[sys.executable, "-c", "import time; time.sleep(30)"],
+        cwd=str(tmp_path),
+        metadata={"log_dir": str(tmp_path)},
+    )
+    surface = driver.open_surface(ws, spec)
+    assert surface.status == SurfaceStatus.RUNNING
+    return surface
+
+
+def pid_alive_check(pid: int) -> bool:
+    """Thin test-side wrapper over the shared liveness probe (readability)."""
+    from core.runtime.process_utils import pid_alive
+
+    return pid_alive(pid)
+
+
+def _wait_pid_dead(pid: int, timeout: float = 10.0) -> bool:
+    """Poll until ``pid`` is no longer alive (or ``timeout`` elapses)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not pid_alive_check(pid):
+            return True
+        time.sleep(0.05)
+    return not pid_alive_check(pid)
+
+
+def test_headless_cross_process_close_kills_real_process(tmp_path):
+    """End-to-end: a fresh driver (no Popen handle) stopping a surface another
+    process opened must actually terminate the real OS process via its pid, and
+    flip a RUNNING surface to CLOSED."""
+    from core.runtime.multiplexer import headless_driver as hd
+
+    owner = hd.HeadlessDriver(log_root=tmp_path)
+    ws = owner.create_workspace("hs")
+    surface = _spawn_long_running(owner, ws, tmp_path, "agent:sleep")
+    pid = int(surface.pty_id)
+    assert pid_alive_check(pid)  # really running before the cross-process stop
+
+    fresh = hd.HeadlessDriver(log_root=tmp_path)  # empty _procs == another process
+    view = _cross_process_view(surface)
+    fresh.close_surface(view)
+
+    assert _wait_pid_dead(pid), "cross-process close_surface did not terminate the real process"
+    assert view.status == SurfaceStatus.CLOSED
+    # tidy the owning driver's still-open log/proc handles (process already gone).
+    owner.close_surface(surface)
+
+
+def test_headless_cross_process_close_issues_kill_when_alive(tmp_path, monkeypatch):
+    """Deterministic branch pin: when the pid is alive, the cross-process close
+    path issues exactly one ``terminate_pid`` for that pid (no Popen needed)."""
+    from core.runtime.multiplexer import headless_driver as hd
+
+    owner = hd.HeadlessDriver(log_root=tmp_path)
+    ws = owner.create_workspace("hs")
+    surface = _run_headless_to_exit(owner, ws, tmp_path, "agent:gone", 0)
+    pid = int(surface.pty_id)
+
+    killed: list[int] = []
+    monkeypatch.setattr(hd, "_pid_alive", lambda p: True)
+    monkeypatch.setattr(hd, "_kill_pid", lambda p: killed.append(p) or True)
+
+    fresh = hd.HeadlessDriver(log_root=tmp_path)
+    view = _cross_process_view(surface)
+    fresh.close_surface(view)
+
+    assert killed == [pid]  # killed exactly the persisted pid
+    assert view.status == SurfaceStatus.CLOSED
+    owner.close_surface(surface)  # close the owning driver's log handle (proc already reaped)
+
+
+def test_headless_cross_process_close_skips_kill_when_pid_dead(tmp_path, monkeypatch):
+    """Deterministic branch pin: when the pid is already gone, the close path must
+    NOT issue a kill — guarding against terminating an unrelated, pid-reused
+    process (mirrors the pid-reuse caution on the poll path)."""
+    from core.runtime.multiplexer import headless_driver as hd
+
+    owner = hd.HeadlessDriver(log_root=tmp_path)
+    ws = owner.create_workspace("hs")
+    surface = _run_headless_to_exit(owner, ws, tmp_path, "agent:dead", 0)
+
+    killed: list[int] = []
+    monkeypatch.setattr(hd, "_pid_alive", lambda p: False)
+    monkeypatch.setattr(hd, "_kill_pid", lambda p: killed.append(p) or True)
+
+    fresh = hd.HeadlessDriver(log_root=tmp_path)
+    view = _cross_process_view(surface)
+    fresh.close_surface(view)
+
+    assert killed == []  # no needless kill of a vanished/pid-reused process
+    assert view.status == SurfaceStatus.CLOSED
+    owner.close_surface(surface)  # close the owning driver's log handle (proc already reaped)
+
+
+def test_stop_session_cross_process_terminates_real_subprocess(tmp_path):
+    """Realistic flow: orchestrator A starts a session backed by a real
+    subprocess; a *separate* orchestrator B (driver=None, so it reattaches a
+    fresh HeadlessDriver) stops it. The OS process must die and the persisted
+    session must record status=stopped with the surface CLOSED."""
+    from core.runtime.multiplexer.headless_driver import HeadlessDriver
+
+    owner_driver = HeadlessDriver(log_root=tmp_path)
+    orch_a = SessionOrchestrator(repo_root=tmp_path, driver=owner_driver)
+    rec = orch_a.start_command_session(
+        "cross-stop",
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        agent_id="work:sleeper",
+    )
+    pid = int(rec.surfaces[0]["pty_id"])
+    assert pid_alive_check(pid)
+    assert rec.driver == "headless"  # B will reattach a headless driver from this
+
+    # Fresh orchestrator standing in for another process: no injected driver, so
+    # stop_session goes through _reattach_driver -> a brand-new HeadlessDriver.
+    orch_b = SessionOrchestrator(repo_root=tmp_path)
+    stopped = orch_b.stop_session(rec.id)
+
+    assert stopped is not None and stopped.status == "stopped"
+    assert stopped.surfaces[0]["status"] == SurfaceStatus.CLOSED
+    assert _wait_pid_dead(pid), "stop_session did not terminate the cross-process subprocess"
+    # persisted state on disk reflects the stop (a third process would read this).
+    reloaded = SessionOrchestrator(repo_root=tmp_path).get_session(rec.id)
+    assert reloaded is not None and reloaded.status == "stopped"
+    # tidy the owning driver's still-open handles (process already terminated).
+    for proc in list(owner_driver._procs.values()):
+        try:
+            proc.wait(timeout=5)
+        except Exception:  # noqa: BLE001
+            pass
+    for surface_id in list(owner_driver._logs):
+        owner_driver._flush_log(surface_id)
