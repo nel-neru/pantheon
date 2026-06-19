@@ -45,6 +45,8 @@ class DummyRepo:
         self.path = path
         self.git = DummyGitOps()
         self.index = DummyIndex()
+        # _apply_local_change が適用前のブランチを控えて復帰するため。
+        self.active_branch = SimpleNamespace(name="main")
 
 
 class DummyGitModule:
@@ -254,3 +256,70 @@ def test_apply_local_change_absent_title_commit_message_is_honest(
     """title キー不在でも commit メッセージが default に落ちる（既存の後方互換）。"""
     commits = _run_local_change(agent, tmp_path, monkeypatch, {})
     assert commits == ["refactor: Apply improvement"]
+
+
+def test_apply_local_change_restores_original_branch(
+    tmp_path, monkeypatch, agent: ImprovementExecutorAgent
+):
+    """適用後に元のブランチへ戻る（checkout -b の後に元ブランチへ checkout する）。
+
+    戻さないと scheduler の一括 AUTO_APPROVE ループで2件目以降が直前の improvement
+    ブランチを base に切られ、改善が積み重なる（branchN が proposal 1..N を含む）。
+    """
+    repo_path = tmp_path / "repo"
+    target = repo_path / "file.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("before", encoding="utf-8")
+    fake_git = DummyGitModule()
+    monkeypatch.setitem(sys.modules, "git", SimpleNamespace(Repo=fake_git.Repo))
+
+    result = agent._apply_local_change(
+        repo_path, "file.py", "after", "summary", {"title": "Safe change"}
+    )
+
+    calls = fake_git.repos[0].git.checkout_calls
+    # 1) 新ブランチを切り、2) 適用後に元ブランチ（DummyRepo の active_branch="main"）へ戻る。
+    assert calls[0] == ("-b", result["branch"])
+    assert calls[-1] == ("main",)
+
+
+def test_apply_local_change_real_git_branches_are_independent(
+    tmp_path, agent: ImprovementExecutorAgent
+):
+    """実 git: 連続適用で各 improvement ブランチが独立し、変更が積み重ならない。
+
+    旧実装は checkout -b 後に元ブランチへ戻らなかったため、2件目の適用が1件目の
+    improvement ブランチを base に branch を切り、branchB が proposal A の変更まで
+    含んでいた（自律 AUTO_APPROVE 一括適用での実害）。
+    """
+    git = pytest.importorskip("git")
+
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+    try:
+        repo = git.Repo.init(repo_path)
+    except Exception as exc:  # pragma: no cover - git バイナリ不在環境はスキップ
+        pytest.skip(f"git unavailable: {exc}")
+    with repo.config_writer() as cw:
+        cw.set_value("user", "name", "Test")
+        cw.set_value("user", "email", "test@example.com")
+    (repo_path / "README.md").write_text("seed\n", encoding="utf-8")
+    repo.index.add(["README.md"])
+    repo.index.commit("seed")
+    base_branch = repo.active_branch.name
+
+    res_a = agent._apply_local_change(repo_path, "a.py", "AAA\n", "add a", {"title": "Add A"})
+    assert repo.active_branch.name == base_branch  # 適用後に元ブランチへ復帰
+
+    res_b = agent._apply_local_change(repo_path, "b.py", "BBB\n", "add b", {"title": "Add B"})
+    assert repo.active_branch.name == base_branch
+
+    files_a = repo.git.ls_tree("-r", "--name-only", res_a["branch"]).split()
+    files_b = repo.git.ls_tree("-r", "--name-only", res_b["branch"]).split()
+
+    # 各ブランチは自分の変更だけを含む（stack していない）。
+    assert "a.py" in files_a and "b.py" not in files_a
+    assert "b.py" in files_b and "a.py" not in files_b
+    # 両ブランチとも base から1コミットだけ進んでいる（branchB が A を含まない）。
+    assert repo.git.rev_list("--count", f"{base_branch}..{res_a['branch']}") == "1"
+    assert repo.git.rev_list("--count", f"{base_branch}..{res_b['branch']}") == "1"
