@@ -17,6 +17,13 @@ type Star = {
   drift: number
 }
 
+type DataSnapshot = {
+  stars: Star[]
+  orgIndex: Map<string, Star>
+  handoffs: OrchestraHandoff[]
+  colors: ReturnType<typeof readColors>
+}
+
 function readColors(): { gold: string; ice: string; faint: string; text: string } {
   const cs = getComputedStyle(document.documentElement)
   return {
@@ -82,6 +89,43 @@ export function Firmament({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const hoverRef = useRef<{ x: number; y: number } | null>(null)
 
+  // Holds the latest derived data — written by the data effect, read by the RAF loop each frame.
+  const dataRef = useRef<DataSnapshot>({
+    stars: [],
+    orgIndex: new Map<string, Star>(),
+    handoffs: [],
+    colors: {
+      gold: '#c9a86a',
+      ice: '#92b9cc',
+      faint: '#5f5a50',
+      text: '#ece5d8',
+    },
+  })
+
+  // Allows the data effect to trigger an immediate repaint (useful for reduced-motion / static
+  // frames and for the frame that follows each poll even while the RAF loop is running).
+  const drawRef = useRef<(() => void) | null>(null)
+
+  // ── Data effect ──────────────────────────────────────────────────────────────
+  // Runs whenever the polled data or the active theme changes.
+  // ONLY recomputes derived values and stores them in dataRef — NO canvas setup, NO RAF, NO
+  // listeners.  The running loop will pick up the new snapshot on its very next frame.
+  useEffect(() => {
+    const stars = buildStars(orgs, sessions)
+    const orgIndex = new Map<string, Star>()
+    for (const s of stars) if (s.kind === 'org') orgIndex.set(s.name, s)
+    const colors = readColors()
+
+    dataRef.current = { stars, orgIndex, handoffs, colors }
+
+    // Trigger an immediate repaint so the post-poll frame and reduced-motion static view are
+    // always up to date even though the RAF loop is not restarted.
+    drawRef.current?.()
+  }, [orgs, sessions, handoffs, theme])
+
+  // ── Setup / animation effect ─────────────────────────────────────────────────
+  // Mounts ONCE (deps: [height]).  Owns the canvas bootstrap, event listeners, and the RAF loop.
+  // `t` is a closure variable here and survives across polls — no more stutter/jump on data refresh.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -91,12 +135,6 @@ export function Firmament({
     const reduce =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    let colors = readColors()
-    const stars = buildStars(orgs, sessions)
-    // 名前→星座位置 index（handoff 線描画用）
-    const orgIndex = new Map<string, Star>()
-    for (const s of stars) if (s.kind === 'org') orgIndex.set(s.name, s)
 
     let raf = 0
     let t = 0
@@ -112,7 +150,8 @@ export function Firmament({
       canvas.width = Math.floor(w * dpr)
       canvas.height = Math.floor(h * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      colors = readColors()
+      // Window resize does not change the theme; colors in dataRef.current are refreshed by the
+      // data effect whenever the theme prop changes, so no need to re-read them here.
     }
 
     const pos = (star: Star) => {
@@ -123,6 +162,9 @@ export function Firmament({
     }
 
     const draw = () => {
+      // Always read from the ref so each frame paints the latest polled snapshot.
+      const { stars, orgIndex, handoffs, colors } = dataRef.current
+
       ctx.clearRect(0, 0, w, h)
       const pts = stars.map((s) => ({ s, ...pos(s) }))
 
@@ -229,6 +271,8 @@ export function Firmament({
     }
 
     resize()
+    // Expose draw so the data effect can trigger immediate repaints.
+    drawRef.current = draw
     if (reduce) {
       draw()
     } else {
@@ -239,12 +283,13 @@ export function Firmament({
     canvas.addEventListener('mouseleave', onLeave)
 
     return () => {
+      drawRef.current = null
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
       canvas.removeEventListener('mousemove', onMove)
       canvas.removeEventListener('mouseleave', onLeave)
     }
-  }, [orgs, sessions, handoffs, theme])
+  }, [height])
 
   return (
     <canvas
