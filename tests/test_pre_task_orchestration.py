@@ -243,6 +243,72 @@ class TestOrchestrationPatternStore:
         best = store.get_best_pattern("code_review")
         assert best == OrchestrationPattern.REVIEW_LOOP
 
+    def test_under_tested_lucky_pattern_does_not_beat_established(self, tmp_path):
+        """1件だけ成功(100%)のパターンが、実績豊富なパターンを上書きしない。
+
+        回帰: 旧実装は全パターン横断の最大 run 数で gate していたため、
+        別パターンが3件に達した途端、まぐれ1勝のパターン(success_rate=1.0)が
+        well-tested なパターンを打ち負かして選ばれていた。推奨対象はそのパターン
+        自身が3件以上の実績を持つ場合のみに限定する。
+        """
+        store = OrchestrationPatternStore(platform_home=tmp_path)
+        # review_loop: 5回中4成功 (success_rate=0.8) ＝ 実績豊富
+        for s in [True, True, True, True, False]:
+            store.record(
+                PatternRecord(
+                    task_type="code_review",
+                    pattern=OrchestrationPattern.REVIEW_LOOP,
+                    agent_ids=[],
+                    success=s,
+                )
+            )
+        # single_agent: 1回だけ成功 (success_rate=1.0) ＝ under-tested なまぐれ
+        store.record(
+            PatternRecord(
+                task_type="code_review",
+                pattern=OrchestrationPattern.SINGLE_AGENT,
+                agent_ids=[],
+                success=True,
+            )
+        )
+        # 実績豊富な review_loop が選ばれる（1勝の single_agent ではない）
+        assert store.get_best_pattern("code_review") == OrchestrationPattern.REVIEW_LOOP
+
+    def test_recommended_flag_aligns_with_min_runs_gate(self, tmp_path):
+        """表示用 recommended フラグも get_best_pattern と同じ実績ゲートで整合する。
+
+        実績が全て3件未満なら誰にもフラグを立てない（★推奨 の誤表示防止）。
+        十分な実績を積んだパターンが現れたらそれにフラグを立てる。
+        """
+        store = OrchestrationPatternStore(platform_home=tmp_path)
+        # 2件のみ（実績不足）→ 推奨フラグなし
+        for _ in range(2):
+            store.record(
+                PatternRecord(
+                    task_type="code_review",
+                    pattern=OrchestrationPattern.SINGLE_AGENT,
+                    agent_ids=[],
+                    success=True,
+                )
+            )
+        stats = store.get_stats_for_task("code_review")
+        assert all(not s.recommended for s in stats)
+        assert store.get_best_pattern("code_review") is None
+
+        # 3件目で実績充足 → そのパターンに推奨フラグ
+        store.record(
+            PatternRecord(
+                task_type="code_review",
+                pattern=OrchestrationPattern.SINGLE_AGENT,
+                agent_ids=[],
+                success=True,
+            )
+        )
+        stats = store.get_stats_for_task("code_review")
+        recommended = [s for s in stats if s.recommended]
+        assert len(recommended) == 1
+        assert recommended[0].pattern == OrchestrationPattern.SINGLE_AGENT
+
     def test_persistence(self, tmp_path):
         store1 = OrchestrationPatternStore(platform_home=tmp_path)
         for _ in range(3):

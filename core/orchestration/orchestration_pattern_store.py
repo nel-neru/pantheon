@@ -58,6 +58,9 @@ class OrchestrationPatternStore:
     """
 
     STORE_FILE = "orchestration_patterns.json"
+    # パターンを「推奨」できる最小実績数。これ未満の実績しか無いパターンは
+    # まぐれ成功で well-tested なパターンを上書きしないよう推奨対象から外す。
+    MIN_RUNS_FOR_RECOMMENDATION = 3
 
     def __init__(
         self,
@@ -83,12 +86,19 @@ class OrchestrationPatternStore:
     def get_best_pattern(self, task_type: str) -> Optional[str]:
         """
         指定タスク種別で最も成功率が高いパターンを返す。
-        データが3件未満の場合は None（デフォルトを使うべき）。
+        実績が3件未満のパターンは推奨対象にしない（該当が無ければ None →
+        デフォルトを使うべき）。
         """
         stats = self.get_stats_for_task(task_type)
-        if not stats or max(s.total_runs for s in stats) < 3:
+        # 推奨できるのは「そのパターン自身」が3件以上の実績を積んだ場合のみ。
+        # 旧実装は全パターン横断の最大 run 数で gate していたため、別パターンが
+        # 3件に達した途端、1件だけ成功（success_rate=1.0）のパターンが
+        # well-tested なパターンを打ち負かして選ばれてしまっていた（まぐれ1勝で
+        # 学習結果が誤選択され、しかも再記録で under-tested なパターンに固着する）。
+        eligible = [s for s in stats if s.total_runs >= self.MIN_RUNS_FOR_RECOMMENDATION]
+        if not eligible:
             return None
-        best = max(stats, key=lambda s: (s.success_rate, s.avg_quality))
+        best = max(eligible, key=lambda s: (s.success_rate, s.avg_quality))
         return best.pattern
 
     def get_stats_for_task(self, task_type: str) -> List[PatternStats]:
@@ -116,9 +126,12 @@ class OrchestrationPatternStore:
                 )
             )
 
-        # 推奨パターンにフラグ
-        if stats:
-            best = max(stats, key=lambda s: (s.success_rate, s.avg_quality))
+        # 推奨パターンにフラグ（get_best_pattern と同じ実績ゲートで整合させる。
+        # 実績不足のパターンを表示上「★推奨」と誤表示しないため、十分な実績を
+        # 積んだパターンが無ければどれにもフラグを立てない）。
+        eligible = [s for s in stats if s.total_runs >= self.MIN_RUNS_FOR_RECOMMENDATION]
+        if eligible:
+            best = max(eligible, key=lambda s: (s.success_rate, s.avg_quality))
             best.recommended = True
 
         return stats
