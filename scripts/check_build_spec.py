@@ -8,7 +8,7 @@
 2. 実行時に ``core.paths.resource_path`` で参照される重要リソース（config/skills/knowledge と
    Atlas 用ソースツリー）が **spec の datas に列挙され、かつ実体がリポジトリに存在する**。
 3. ランタイムが文字列から動的解決する uvicorn/websocket 系の hiddenimports が宣言されている。
-4. フロントのビルド出力（web/dist / web/atelier/dist）は任意（未ビルドは警告のみ）。
+4. フロントのビルド出力（web/dist）は任意（未ビルドは警告のみ）。
 
 LLM 非依存・決定論。``main()`` は致命的欠落があれば終了コード 1。
 """
@@ -57,10 +57,7 @@ REQUIRED_HIDDENIMPORTS: Tuple[str, ...] = (
 )
 
 # 任意（未ビルドは警告）。
-OPTIONAL_PATHS: Tuple[str, ...] = (
-    "web/dist",
-    "web/atelier/dist",
-)
+OPTIONAL_PATHS: Tuple[str, ...] = ("web/dist",)
 
 
 def check_build_spec(repo_root: Path = REPO_ROOT) -> Tuple[List[str], List[str]]:
