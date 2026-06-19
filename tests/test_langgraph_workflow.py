@@ -54,3 +54,30 @@ class TestSelfImprovementGraph:
         result = prioritize_proposals({"pending_proposals": [proposal]})
         assert result["current_proposal"]["title"] == "Critical fix"
         assert result["human_approval_required"] is True
+
+    def test_prioritize_tolerates_null_expected_impact_in_sort(self):
+        """expected_impact が null の提案でソートが落ちない（``None < str`` TypeError 回帰）。
+
+        2 件とも同一 priority → ソート第2キー（expected_impact）が比較される。片方が null
+        だと旧コードは TypeError で prioritize_proposals 全体が落ちた。
+        """
+        proposals = [
+            {"title": "null impact", "priority": "low", "expected_impact": None},
+            {"title": "string impact", "priority": "low", "expected_impact": "large gain"},
+        ]
+        result = prioritize_proposals({"pending_proposals": proposals})
+        assert {p["title"] for p in result["pending_proposals"]} == {
+            "null impact",
+            "string impact",
+        }
+
+    def test_prioritize_tolerates_null_expected_impact_in_approval_check(self):
+        """current の expected_impact が null でも approval 判定が落ちない（``None.lower()`` 回帰）。
+
+        priority != "high" の単一提案 → ``"large" in (expected_impact).lower()`` 分岐に入る。
+        null だと旧コードは AttributeError。修正後は coerce され human_approval_required=False。
+        """
+        proposal = {"title": "null impact", "priority": "low", "expected_impact": None}
+        result = prioritize_proposals({"pending_proposals": [proposal]})
+        assert result["current_proposal"]["title"] == "null impact"
+        assert result["human_approval_required"] is False

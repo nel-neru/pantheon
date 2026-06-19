@@ -2678,7 +2678,9 @@ async def api_list_business_proposals() -> Dict[str, Any]:
                         "org_name": org.name,
                         "title": p.get("title", ""),
                         "priority": p.get("priority", "medium"),
-                        "expected_impact": p.get("expected_impact", ""),
+                        # 生 dict の expected_impact は null になりうる（``.get(k, "")`` は
+                        # null 値存在時に "" でなく None を返す）。型契約 str に揃えて coerce。
+                        "expected_impact": p.get("expected_impact") or "",
                         "route": f"/proposals?org={quote(org.name)}",
                     }
                 )

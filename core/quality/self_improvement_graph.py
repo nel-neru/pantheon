@@ -72,7 +72,9 @@ async def pickup_proposals(state: SelfImprovementState) -> Dict[str, Any]:
 def prioritize_proposals(state: SelfImprovementState) -> Dict[str, Any]:
     proposals = sorted(
         state["pending_proposals"],
-        key=lambda p: (p.get("priority") == "high", p.get("expected_impact", "")),
+        # expected_impact は生 JSON で null になりうる。``.get(k, "")`` は null 値存在時に
+        # None を返すため ``None < str`` のソート TypeError を招く（self_improvement_loop と同型）。
+        key=lambda p: (p.get("priority") == "high", p.get("expected_impact") or ""),
         reverse=True,
     )
     current = proposals[0] if proposals else None
@@ -81,7 +83,8 @@ def prioritize_proposals(state: SelfImprovementState) -> Dict[str, Any]:
     if current:
         if (
             current.get("priority") == "high"
-            or "large" in current.get("expected_impact", "").lower()
+            # 同上: expected_impact が null だと ``None.lower()`` で AttributeError。``or ""`` で coerce。
+            or "large" in (current.get("expected_impact") or "").lower()
         ):
             human_approval_required = True
             print(f"[Graph] 重要提案のため Human-in-the-loop を有効化: {current.get('title')}")
