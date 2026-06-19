@@ -3051,3 +3051,38 @@ Cycle 50 — (jjj/platform-ops) デーモン spawn の console 切り離しを W
            C10/C12 実績・medium・別カテゴリ＝配線で多様性）、(mmm) Observatory ページの組織行 surfacing（frontend・C48 から2サイクル空いた＝解禁可）、(ooo) atlas
            known_issues の残 medium（self_improvement_graph はアーキ変更で回避継続・config_autotuner H系は hollow risk で要設計）。**Windows-process 系を3連で締めたので
            次は配線 or frontend で必ず別ドメインへ・atlas known_issues を引き続き候補源に**。
+
+Cycle 51 — (nnn/work-board-tasks) MultiOrgExecutor 配線の known_issue は stale（既に配線済）と再確証→未テストだった drain 配線を回帰固め＋flows.json を honest 化し当該フローを solid へ昇格（C50 Windows-process から配線/テストへ多様性転換）  (2026-06-19)
+  Plan   : C49/C50 で確立した「atlas flows.json の known_issues を候補源にする」を踏襲し、C50 Next 筆頭 (nnn) work-board-tasks
+           「MultiOrgExecutor がライブキュー/web API に未配線（POST /api/tasks で積むが誰も process_pending を呼ばない）」を選定。だが**着手前に実コードで再検証**
+           （[[atlas-flows-drift]] の鉄則）したところ、web/server.py に既に完全な配線が存在＝`_drain_pending_tasks`→`MultiOrgExecutor.process_pending(_dispatch_task_to_wmux)`、
+           `_ensure_session_monitor` が起動（run_server で `_LIVE_MONITOR_ENABLED=True`＋config `auto_drain_tasks`(既定True)→`_TASK_DRAIN_ENABLED`、`/ws/updates` 接続時に
+           `_task_drain_loop` を create_task）。**known_issue は stale**。ただし grep で確認するとこの配線には回帰テストが**一切無い**（drain/監視ループは全て無被覆）＝C49 の
+           coverage-gap archetype。そこで方針を「rubber-stamp で status を反転」ではなく「**stale issue の正直な解消＋wired-but-untested 経路の回帰固め**」に切替。
+           **なぜ今これか**: 確証済み・小さく可逆・C50(Windows-process 3連) から配線/テストへ多様性転換・atlas known_issues 候補源の継続。受け入れ基準=drain 配線と
+           `_ensure_session_monitor` の起動分岐に load-bearing 回帰追加・全 GREEN・回帰0・flows.json 当該 issue を resolved 移送＋partial→solid・merged。
+           **落とした候補**: (mmm)Observatory surfacing=frontend で別途、(ooo)self_improvement_graph=アーキ変更で回避継続。
+  Did    : work/task-drain-wiring-tests-20260619（main fca2ee5）。tests/test_web_server.py に async 4本追加（`asyncio_mode=auto`／`import asyncio` 追加）:
+           ① `_drain_pending_tasks` が実 TaskQueue(tmp) の PENDING を `process_pending` 経由で着火し status→DONE＋`task_dispatched` を session_id 付きで broadcast
+           （`_dispatch_task_to_wmux` と `_updates_hub.broadcast` を monkeypatch・DONE は executor 実行の証跡）、② `_ensure_session_monitor` がライブ監視無効（テスト既定）で
+           inert、③ 両フラグ有効で drain ループ起動（no-op ループに差し替え→create_task を gather で待ち切り leak 防止）、④ 監視有効・drain 無効（auto_drain_tasks:false 相当）で
+           監視だけ起動し drain は起動しない（`_TASK_DRAIN_ENABLED` gate を独立 pin）。flows.json: work-board-tasks を partial→solid・known_issue を resolved[] へ移送
+           （GUI-gated 起動経路を明記して honest 化）・step ラベルから「（※未配線）」除去。**production コードは不変**（手書きコンパクト整形の flows.json は Python で外科的に置換＝
+           全体 json.dump 再整形を回避・LF 一貫維持）。
+  Check  : ruff クリーン ／ **test-triage 全件 GREEN（1647 passed・既知2失敗のみ・回帰0／+3→さらに+1=4本）** ／ check_flows.py passed。**load-bearing 実証**:
+           `_drain_pending_tasks` の `process_pending` を no-op 化→①が fail／`_ensure_session_monitor` の drain-start 分岐を `if False and …` で無効化→③が fail（②inert は pass=正しい分離）、
+           両 mutation revert 後に server.py 無改変を git diff で確認。**敵対的レビュー code-reviewer = APPROVE（blocking 0）**＝① 3テストは executor 契約と配線分岐を真に pin（DONE は
+           `execute_task` のみが生成・session_id は executor 結果由来でハードコードでない・tautological でない）、② async tasks は gather で待ち切り・module globals は monkeypatch 自動復元で
+           leak 無し・②の `_LIVE_MONITOR_ENABLED is False` 断言は run_server 未呼び出しの suite では順序非依存、③ partial→solid は GUI-gated 起動を resolved[] に明記＝overclaim でなくフロー
+           scope 内で正直、④ flows.json は LF/no-BOM・valid・validator green。reviewer 提案（drain gate 自体を pin するテスト）を④として採用。
+  Act    : merged ✅（merge_to_main ゲート通過・fca2ee5）。固定化（memory [[atlas-flows-drift]] と [[autonomous-review-loop]]/coverage-gap 系を更新）: (A) **atlas known_issue を
+           候補に選んでも「着手前に実コードで再検証」は不可避**＝硬直 codebase では過去サイクルが既に解消済みなのに flows.json 未更新で残る stale issue が混じる（C43 で2件・C51 で1件）。
+           再検証で「既に配線済」と判明したら、候補を捨てるのでなく「**配線の正直化（status/issue 更新）＋未テスト経路の回帰固め**」に転換すると確証 UX と回帰防御を同時に得られる
+           （rubber-stamp 反転は禁物）。(B) **「wired-but-untested」も coverage-gap archetype の一種**（C49 の poll/stop 対称性に加え、検出/実行配線が本番稼働なのに無被覆も同型）＝
+           grep で配線の呼び出し元を辿り「production で動くがテストが触れていない経路」を回帰で pin する。(C) 手書きコンパクト整形の JSON（flows.json）は json.dump で全体爆発する
+           （387→994行）＝**Python で raw 文字列を外科置換**し既存の1行1オブジェクト整形と LF を維持、`count==1` assert で置換対象の一意性を担保。(D) commit message は
+           Bash ツールで PowerShell here-string(`@'…'@`) を使うと先頭に `@` が混入＝Bash では `$'…\n…'`(ANSI-C 引用) か `-F file`、長文は PowerShell tool でも 965B 上限に注意。
+  Next   : C52 候補 — (mmm) Observatory ページの組織行 surfacing（frontend・C48 から3サイクル空いた＝解禁・autonomy/velocity 等の未提示メトリクス）、(ppp) reviewer 提案の
+           深掘り＝headless POST /api/tasks が GUI 未接続だと drain しない設計を「daemon 経路で headless drain」する配線（detection-execution-gap・default-off）か、その非実行を明示する
+           UX/ドキュメント、(ooo) atlas known_issues の残（codebase-exploration の non-Python 表示薄め=low・revenue-content の意図的ゲートは対象外）。**配線/テストを C51 で出したので
+           次は frontend か設計寄りで多様性維持・atlas known_issues は「着手前に実コード再検証」を徹底**。
