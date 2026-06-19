@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from core.runtime.session_orchestrator import SessionOrchestrator, SessionRecord
 
@@ -125,4 +125,26 @@ def launch_apply(
         title=f"apply#{n}",
         agent_id=f"work:{_slug(org_name)}:apply:{n}",
         role="apply",
+    )
+
+
+def dispatch_task(
+    task: dict[str, Any],
+    *,
+    repo_root: Optional[Path] = None,
+    prefer: Optional[str] = None,
+) -> SessionRecord:
+    """作業ボードの 1 タスクを wmux の work セッションへ着火する（type→launch 振り分け）。
+
+    web の drain ループ（``web.server._dispatch_task_to_wmux``）と CLI の
+    ``pantheon tasks drain`` の共通チョークポイント。analyze/review/improve かつ
+    org 指定があれば ``launch_analyze``、それ以外は ``launch_goal`` に流す。
+    """
+    ttype = str(task.get("type", "custom"))
+    org = task.get("org_name") or "Pantheon"
+    desc = task.get("description") or ""
+    if ttype in ("analyze", "review", "improve") and task.get("org_name"):
+        return launch_analyze(org, repo_root=repo_root, prefer=prefer)
+    return launch_goal(
+        desc or ttype, org_name=task.get("org_name"), repo_root=repo_root, prefer=prefer
     )

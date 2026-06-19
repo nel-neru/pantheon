@@ -513,6 +513,24 @@ async def cmd_session_doctor(args) -> None:
     await _impl(args)
 
 
+async def cmd_tasks_add(args) -> None:
+    from commands.tasks import cmd_tasks_add as _impl
+
+    await _impl(args)
+
+
+async def cmd_tasks_list(args) -> None:
+    from commands.tasks import cmd_tasks_list as _impl
+
+    await _impl(args)
+
+
+async def cmd_tasks_drain(args) -> None:
+    from commands.tasks import cmd_tasks_drain as _impl
+
+    await _impl(args)
+
+
 async def cmd_daemons_status(args) -> None:
     from commands.daemons import cmd_daemons_status as _impl
 
@@ -691,6 +709,9 @@ HANDLERS = {
     "cmd_session_stop": cmd_session_stop,
     "cmd_session_resume": cmd_session_resume,
     "cmd_session_doctor": cmd_session_doctor,
+    "cmd_tasks_add": cmd_tasks_add,
+    "cmd_tasks_list": cmd_tasks_list,
+    "cmd_tasks_drain": cmd_tasks_drain,
     "cmd_daemons_status": cmd_daemons_status,
     "cmd_daemons_start": cmd_daemons_start,
     "cmd_daemons_stop": cmd_daemons_stop,
