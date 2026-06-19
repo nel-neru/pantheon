@@ -64,7 +64,11 @@ class SelfImprovementLoop:
 
         prioritized = sorted(
             raw_proposals,
-            key=lambda p: (p.get("priority") == "high", p.get("expected_impact", "")),
+            # 生 JSON 由来の提案は expected_impact が null のことがある（legacy/手編集/外部生成）。
+            # ``.get(k, "")`` は **キーが null 値で存在すると "" でなく None を返す** ため、
+            # ソート比較で ``None < str`` の TypeError がこの load-bearing ループ全体を落とす
+            # （scheduler の try/except に飲まれ、自己改善が静かに永久停止する）。``or ""`` で coerce。
+            key=lambda p: (p.get("priority") == "high", p.get("expected_impact") or ""),
             reverse=True,
         )
 
