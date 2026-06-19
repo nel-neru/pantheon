@@ -11,7 +11,7 @@ argument-hint: "[任意: 注力領域 (例: frontend / 24h-autonomy / monetizati
 注力ヒント / 上限サイクル数（任意）: **$ARGUMENTS**（空なら全体最適を自分で判断）。
 
 まず開始時に一度だけ現状を把握する: `CLAUDE.md` / `AGENTS.md`、memory（特に
-[[pantheon-evolution-roadmap]] [[atelier-gui]] [[pantheon-test-baseline]]）、
+[[pantheon-evolution-roadmap]] [[web-frontend-overhaul]] [[pantheon-test-baseline]]）、
 `node scripts/branch_status.mjs`、`test-triage` subagent でのテスト基線、
 `pantheon daemons status` 相当・`GET /api/usage/summary` の余力。これを「現在地」として 1 サイクル目に入る。
 
@@ -28,8 +28,7 @@ argument-hint: "[任意: 注力領域 (例: frontend / 24h-autonomy / monetizati
   **新規の失敗だけ**が回帰。全件の収集・実行を壊さない。
 - **コード規約**: 新規 Python は `from __future__ import annotations`、`datetime.now(timezone.utc)`、
   `SpecialistAgent.skills` は 2〜3、`web/server.py` の明示 404 を壊さない、状態は `~/.pantheon`（global）/
-  `<repo>/.pantheon`（repo 固有）。フロントは strict TS、`web/frontend`（legacy）と `web/atelier`（新 GUI）の
-  build / test を緑に保つ。
+  `<repo>/.pantheon`（repo 固有）。フロントは strict TS、`web/frontend` の build / test を緑に保つ。
 - **計画ドキュメント衛生**: 一時的な計画・ログは `docs/plans/` に置き、完了時に恒久ドキュメントへ統合・アーカイブ。
 - **敵対的レビューを必ず通す**: 変更は merge 前に `code-reviewer` subagent か Workflow で
   correctness/security/compat を懐疑的に検証し、**確定した所見だけ**を直す。レビューは省略しない。
@@ -73,7 +72,7 @@ argument-hint: "[任意: 注力領域 (例: frontend / 24h-autonomy / monetizati
 - **テスト**: カバレッジの穴、回帰防止テスト、フレークの根治。
 - **Claude Code ベストプラクティス採用**: `trend-watcher` subagent や trends（genre=claude_code）・
   WebSearch で最新動向を調べ、`.claude/`（agents/skills/commands/hooks/MCP/model tiers）を更新提案・適用。
-- **ビジョン機能**: 24h 自律基盤の硬化、トレンド、Org 量産、GUI（特に `web/atelier`）、
+- **ビジョン機能**: 24h 自律基盤の硬化、トレンド、Org 量産、GUI（`web/frontend`）、
   収益化配線（例: 未実装の publishing `_publish_live` を承認ゲート付きで前進）。
 - **DX / ドキュメント / セキュリティ / パフォーマンス**。
 - **メタ**: このループ自身・開発ツール・レビュー手法の改善。

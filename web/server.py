@@ -43,8 +43,6 @@ app = FastAPI(title="Pantheon Platform", version="2.0.0")
 # 同梱リソースは resource_path 経由で解決する（exe 化時は sys._MEIPASS 配下）。
 STATIC_DIR = resource_path("web", "static")
 DIST_DIR = resource_path("web", "dist")
-ATELIER_DIST_DIR = resource_path("web", "atelier", "dist")
-UI_ENV = "PANTHEON_UI"  # "legacy"(既定) | "atelier" — serve/up の --ui からも設定される
 PROJECT_ROOT = resource_root()
 KNOWLEDGE_DIR = resource_path("knowledge")
 SYSTEM_ORG_NAMES = {"Meta-Improvement Organization", "Pantheon Core", "meta-improvement"}
@@ -201,23 +199,7 @@ async def _reject_ws_if_unauthorized(websocket: WebSocket) -> bool:
 
 # Serve React build (dist/) when available, fallback to legacy static/
 def _resolve_serve_dir() -> Path:
-    """配信する frontend の dist を選ぶ。
-
-    既定は legacy（web/dist）。``PANTHEON_UI=atelier`` で新 GUI（web/atelier/dist）を
-    ルートで配信する（サブパス配信は Vite base/Router の再ビルドが必要になるため
-    「dist 差し替え」方式）。atelier 指定でもビルドが無ければ警告して legacy に
-    フォールバックし、serve 自体は壊さない。
-    """
-    ui = (os.environ.get(UI_ENV) or "").strip().lower()
-    if ui == "atelier":
-        if (ATELIER_DIST_DIR / "index.html").exists():
-            return ATELIER_DIST_DIR
-        logger.warning(
-            "%s=atelier ですが %s がありません（cd web/atelier && npm run build）。"
-            "legacy GUI にフォールバックします。",
-            UI_ENV,
-            ATELIER_DIST_DIR,
-        )
+    """配信する frontend の dist を選ぶ（web/dist、無ければ静的フォールバック）。"""
     return DIST_DIR if DIST_DIR.is_dir() else STATIC_DIR
 
 

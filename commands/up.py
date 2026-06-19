@@ -14,7 +14,6 @@ pantheon up — フル起動エントリ。
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from typing import Any, List
 
@@ -65,10 +64,6 @@ def cmd_up(args: argparse.Namespace) -> None:
     if not getattr(args, "no_wmux", False):
         _launch_general_chat_tab()
 
-    # 配信 UI の選択は web.server の import 時（_serve_dir 解決）に効くため、import より先に反映。
-    if getattr(args, "ui", None):
-        os.environ["PANTHEON_UI"] = args.ui
-
     try:
         from web.server import run_server
     except ImportError:
@@ -108,14 +103,5 @@ def register(subparsers: Any) -> None:
         "--no-wmux",
         action="store_true",
         help="wmux 汎用チャットタブを起動しない（Web GUI のみ）",
-    )
-    parser.add_argument(
-        "--ui",
-        choices=("legacy", "atelier"),
-        default=None,
-        help=(
-            "配信する GUI (default: legacy=web/dist)。atelier=新 GUI（web/atelier/dist、"
-            "要 `cd web/atelier && npm run build`）。環境変数 PANTHEON_UI でも指定可"
-        ),
     )
     parser.set_defaults(handler_name="cmd_up")

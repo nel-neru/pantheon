@@ -1662,50 +1662,27 @@ def test_cors_preflight_allows_localhost_origin():
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
-def test_resolve_serve_dir_default_is_legacy(tmp_path, monkeypatch):
-    """PANTHEON_UI 未指定なら従来どおり legacy dist を配信する。"""
+def test_resolve_serve_dir_serves_dist_when_built(tmp_path, monkeypatch):
+    """web/dist がビルド済みならそれを配信する。"""
     from web import server
 
-    legacy = tmp_path / "dist"
-    legacy.mkdir()
-    monkeypatch.setattr(server, "DIST_DIR", legacy)
-    monkeypatch.setattr(server, "ATELIER_DIST_DIR", tmp_path / "atelier_dist")
-    monkeypatch.delenv("PANTHEON_UI", raising=False)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    monkeypatch.setattr(server, "DIST_DIR", dist)
 
-    assert server._resolve_serve_dir() == legacy
+    assert server._resolve_serve_dir() == dist
 
 
-def test_resolve_serve_dir_atelier_when_built(tmp_path, monkeypatch):
-    """PANTHEON_UI=atelier かつビルド済みなら atelier dist を配信する。"""
+def test_resolve_serve_dir_falls_back_to_static_when_unbuilt(tmp_path, monkeypatch):
+    """web/dist 未ビルドなら静的フォールバック（static）を配信する（serve を壊さない）。"""
     from web import server
 
-    atelier = tmp_path / "atelier_dist"
-    atelier.mkdir()
-    (atelier / "index.html").write_text("<html></html>", encoding="utf-8")
-    legacy = tmp_path / "dist"
-    legacy.mkdir()
-    monkeypatch.setattr(server, "DIST_DIR", legacy)
-    monkeypatch.setattr(server, "ATELIER_DIST_DIR", atelier)
-    monkeypatch.setenv("PANTHEON_UI", "atelier")
+    static = tmp_path / "static"
+    static.mkdir()
+    monkeypatch.setattr(server, "DIST_DIR", tmp_path / "dist")  # 存在しない
+    monkeypatch.setattr(server, "STATIC_DIR", static)
 
-    assert server._resolve_serve_dir() == atelier
-
-
-def test_resolve_serve_dir_falls_back_when_atelier_unbuilt(tmp_path, monkeypatch, caplog):
-    """atelier 指定でもビルドが無ければ警告して legacy にフォールバック（serve を壊さない）。"""
-    from web import server
-
-    legacy = tmp_path / "dist"
-    legacy.mkdir()
-    monkeypatch.setattr(server, "DIST_DIR", legacy)
-    monkeypatch.setattr(server, "ATELIER_DIST_DIR", tmp_path / "atelier_dist")  # index.html 無し
-    monkeypatch.setenv("PANTHEON_UI", "atelier")
-
-    with caplog.at_level(logging.WARNING, logger="web.server"):
-        resolved = server._resolve_serve_dir()
-
-    assert resolved == legacy
-    assert any("atelier" in rec.message for rec in caplog.records)
+    assert server._resolve_serve_dir() == static
 
 
 def test_get_settings_warns_on_open_permissions(tmp_path, monkeypatch, caplog):
