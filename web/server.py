@@ -895,19 +895,14 @@ async def _session_monitor_loop(interval: float = 3.0) -> None:
 
 
 async def _dispatch_task_to_wmux(task: dict[str, Any]) -> dict[str, Any]:
-    """作業ボードの 1 タスクを wmux の work セッションへ着火する（executor_fn）。"""
+    """作業ボードの 1 タスクを wmux の work セッションへ着火する（executor_fn）。
+
+    振り分けは CLI（``pantheon tasks drain``）と共通の
+    ``work_launcher.dispatch_task`` に集約している。
+    """
     from core.runtime import work_launcher
 
-    ttype = str(task.get("type", "custom"))
-    org = task.get("org_name") or "Pantheon"
-    desc = task.get("description") or ""
-
-    def _run():
-        if ttype in ("analyze", "review", "improve") and task.get("org_name"):
-            return work_launcher.launch_analyze(org)
-        return work_launcher.launch_goal(desc or ttype, org_name=task.get("org_name"))
-
-    record = await asyncio.to_thread(_run)
+    record = await asyncio.to_thread(work_launcher.dispatch_task, task)
     return {"session_id": record.id, "driver": record.driver, "dispatched": True}
 
 
