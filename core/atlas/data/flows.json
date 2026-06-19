@@ -184,12 +184,11 @@
       "surfaces": ["pantheon platform status/config/logs/backup/restore/run-all", "pantheon daemon start/stop/status", "pantheon doctor", "pantheon version", "GET /api/storage/info", "GET/PUT /api/settings", "DashboardPage", "SettingsPage"],
       "state": ["~/.pantheon/backups/", "~/.pantheon/gui_settings.json"],
       "verification": ["tests/test_platform_state.py", "tests/test_platform_run_all.py", "tests/test_web_server.py"],
-      "status": "partial",
-      "known_issues": [
-        { "severity": "low", "title": "デーモン spawn の start_new_session が Windows で no-op", "detail": "subprocess.Popen(start_new_session=True) は Windows では無視され、プロセスグループ分離されない。実害は軽微（デーモンは起動し、生存判定・停止は Windows-safe）。", "file": "core/runtime/daemon_registry.py" }
-      ],
+      "status": "solid",
+      "known_issues": [],
       "resolved": [
-        { "title": "デーモン制御の POSIX 前提を Windows-safe 化。pid 生存判定を pid_alive（OpenProcess+GetExitCodeProcess・reaped pid 偽陽性を解消）、停止を terminate_pid（TerminateProcess）へ集約し os.kill(0)/os.kill(SIGTERM) 依存を排除（core/runtime/process_utils.py が single source）。", "file": "core/runtime/daemon_registry.py" }
+        { "title": "デーモン制御の POSIX 前提を Windows-safe 化。pid 生存判定を pid_alive（OpenProcess+GetExitCodeProcess・reaped pid 偽陽性を解消）、停止を terminate_pid（TerminateProcess）へ集約し os.kill(0)/os.kill(SIGTERM) 依存を排除（core/runtime/process_utils.py が single source）。", "file": "core/runtime/daemon_registry.py" },
+        { "title": "デーモン spawn の console 切り離しを Windows-safe 化。start_new_session=True は Windows で黙殺される（プロセスグループ分離されず、起動コンソール終了/親への Ctrl+C で巻き添え死しうる＝24/7 デーモン設計を損なう）ため、_detach_popen_kwargs(os.name) で POSIX=setsid / Windows=CREATE_NEW_PROCESS_GROUP|DETACHED_PROCESS を出し分け。stdio は log へリダイレクト済でコンソール不要。stop/watchdog は terminate_pid のハンドル kill で不変。", "file": "core/runtime/daemon_registry.py" }
       ]
     },
     {
