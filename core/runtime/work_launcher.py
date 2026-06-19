@@ -136,9 +136,10 @@ def dispatch_task(
 ) -> SessionRecord:
     """作業ボードの 1 タスクを wmux の work セッションへ着火する（type→launch 振り分け）。
 
-    web の drain ループ（``web.server._dispatch_task_to_wmux``）と CLI の
-    ``pantheon tasks drain`` の共通チョークポイント。analyze/review/improve かつ
-    org 指定があれば ``launch_analyze``、それ以外は ``launch_goal`` に流す。
+    web の drain ループ・CLI の ``pantheon tasks drain``・headless の ``task`` daemon
+    が共通で使う :func:`core.runtime.task_drain.drain_pending_tasks` の最下層チョーク
+    ポイント。analyze/review/improve かつ org 指定があれば ``launch_analyze``、それ
+    以外は ``launch_goal`` に流す。
     """
     ttype = str(task.get("type", "custom"))
     org = task.get("org_name") or "Pantheon"

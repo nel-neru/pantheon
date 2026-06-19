@@ -1847,11 +1847,17 @@ async def test_drain_pending_tasks_runs_executor_and_broadcasts(tmp_path, monkey
     queue = server._task_queue()
     task = queue.add_task("analyze", "TestOrg", "ドレイン対象タスク", priority=5)
 
-    async def fake_dispatch(t):
-        # 実 wmux 着火の代わり。executor_fn として呼ばれた証跡を session_id で返す。
-        return {"session_id": f"sess-{t['id']}", "driver": "wmux", "dispatched": True}
+    class _FakeRecord:
+        def __init__(self, tid: str):
+            self.id = f"sess-{tid}"
+            self.driver = "wmux"
 
-    monkeypatch.setattr(server, "_dispatch_task_to_wmux", fake_dispatch)
+    def fake_dispatch(t):
+        # 実 wmux 着火の代わり。共有ヘルパ drain_pending_tasks → work_launcher.dispatch_task
+        # の最下層 seam を差し替え、その上の実 executor 配線（task→DONE）は本物を通す。
+        return _FakeRecord(t["id"])
+
+    monkeypatch.setattr("core.runtime.work_launcher.dispatch_task", fake_dispatch)
 
     captured: list[dict] = []
 
@@ -3013,7 +3019,7 @@ def test_daemons_status_lists_registry(tmp_path, monkeypatch):
     data = resp.json()
     assert data["rate_limited"] is False
     names = [d["name"] for d in data["daemons"]]
-    assert names == ["content", "improvement", "revenue", "trend", "watchdog"]
+    assert names == ["content", "improvement", "revenue", "task", "trend", "watchdog"]
     for d in data["daemons"]:
         assert d["running"] is False
         assert d["heartbeat_stale"] is True

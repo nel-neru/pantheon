@@ -24,7 +24,14 @@ from core.runtime.heartbeat import write_heartbeat
 
 
 def test_known_daemons_and_get_spec():
-    assert set(KNOWN_DAEMONS) == {"improvement", "content", "watchdog", "trend", "revenue"}
+    assert set(KNOWN_DAEMONS) == {
+        "improvement",
+        "content",
+        "watchdog",
+        "trend",
+        "revenue",
+        "task",
+    }
     assert get_spec("improvement").pid_filename == "daemon.pid"  # 既存レイアウト互換
     assert get_spec("content").pid_filename == "content_daemon.pid"
     assert get_spec("watchdog").pid_filename == "watchdog.pid"
@@ -32,8 +39,23 @@ def test_known_daemons_and_get_spec():
     assert revenue.pid_filename == "revenue_daemon.pid"
     assert revenue.runner_module == "core._revenue_daemon_runner"
     assert revenue.frozen_flag == "--revenue-daemon-run"
+    task = get_spec("task")
+    assert task.pid_filename == "task_daemon.pid"
+    assert task.runner_module == "core._task_daemon_runner"
+    assert task.frozen_flag == "--task-daemon-run"
     with pytest.raises(ValueError):
         get_spec("ghost")
+
+
+def test_cli_daemon_names_match_registry():
+    """CLI の argparse choices（DAEMON_NAMES）と KNOWN_DAEMONS のドリフトを機械検出する。
+
+    新デーモン追加時に片方だけ更新すると `daemons start <name>` が choices で弾かれる/
+    レジストリに無い名前を受ける、という不整合になる。set 等値で同期を pin する。
+    """
+    from commands.daemons import DAEMON_NAMES
+
+    assert set(DAEMON_NAMES) == set(KNOWN_DAEMONS)
 
 
 def test_build_command_non_frozen():

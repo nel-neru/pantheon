@@ -894,24 +894,16 @@ async def _session_monitor_loop(interval: float = 3.0) -> None:
         await asyncio.sleep(interval)
 
 
-async def _dispatch_task_to_wmux(task: dict[str, Any]) -> dict[str, Any]:
-    """作業ボードの 1 タスクを wmux の work セッションへ着火する（executor_fn）。
-
-    振り分けは CLI（``pantheon tasks drain``）と共通の
-    ``work_launcher.dispatch_task`` に集約している。
-    """
-    from core.runtime import work_launcher
-
-    record = await asyncio.to_thread(work_launcher.dispatch_task, task)
-    return {"session_id": record.id, "driver": record.driver, "dispatched": True}
-
-
 async def _drain_pending_tasks() -> None:
-    """PENDING タスクを wmux work セッションへ dispatch し、結果を /ws/updates へ配信する。"""
-    from core.orchestration.multi_org_executor import MultiOrgExecutor
+    """PENDING タスクを wmux work セッションへ dispatch し、結果を /ws/updates へ配信する。
 
-    executor = MultiOrgExecutor(queue=_task_queue())
-    results = await executor.process_pending(_dispatch_task_to_wmux, max_tasks=5)
+    drain の本体（executor を組んで pending を捌く）は CLI（``pantheon tasks drain``）
+    / headless daemon（``task``）と共通の ``core.runtime.task_drain.drain_pending_tasks``
+    に集約している。ここは web 固有の broadcast 提示だけを担う。
+    """
+    from core.runtime.task_drain import drain_pending_tasks
+
+    results = await drain_pending_tasks(queue=_task_queue(), max_tasks=5)
     for result in results:
         if isinstance(result, dict) and result.get("session_id"):
             await _updates_hub.broadcast(

@@ -109,6 +109,15 @@ KNOWN_DAEMONS: Dict[str, DaemonSpec] = {
         pid_filename="revenue_daemon.pid",
         log_filename="revenue_daemon.log",
     ),
+    "task": DaemonSpec(
+        name="task",
+        description="作業ボードの headless 自動実行（PENDING タスクを定期 drain→wmux work セッション着火）",
+        runner_module="core._task_daemon_runner",
+        frozen_flag="--task-daemon-run",
+        default_interval=120,
+        pid_filename="task_daemon.pid",
+        log_filename="task_daemon.log",
+    ),
 }
 
 
