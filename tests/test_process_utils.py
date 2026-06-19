@@ -8,8 +8,12 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+import time
+
+import pytest
 
 from core.runtime.daemon_registry import is_process_running
 from core.runtime.process_utils import pid_alive, terminate_pid
@@ -56,3 +60,23 @@ def test_terminate_pid_kills_live_child():
 def test_terminate_pid_rejects_nonpositive():
     assert terminate_pid(0) is False
     assert terminate_pid(-5) is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX-only: Windows has no zombie processes")
+def test_pid_alive_false_for_unreaped_zombie_child():
+    """回帰防止: POSIX で kill 済みだが未 ``wait()`` の子は *ゾンビ* として残り、
+    ``os.kill(pid, 0)`` は成功し続ける。だが ゾンビは終了済みであり稼働中ではない。
+    旧実装はこれを True と誤報告し、クロスプロセス stop の e2e テストが Linux CI で
+    タイムアウト失敗していた（Windows にゾンビは無く素通りしていた OS 差異バグ）。
+    ここでは あえて刈り取らずに ``pid_alive`` が False を返すことを直接ピンする。"""
+    proc = _spawn_sleeper()
+    try:
+        assert pid_alive(proc.pid) is True  # 稼働中
+        proc.terminate()  # SIGTERM — 親(=このプロセス)が reap するまでゾンビ化
+        # teeth: 刈り取らないまま、ゾンビを「死亡」と判定できること。
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and pid_alive(proc.pid):
+            time.sleep(0.05)
+        assert pid_alive(proc.pid) is False
+    finally:
+        proc.wait(timeout=10)  # ここで初めて reap（テスト後始末）

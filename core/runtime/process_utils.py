@@ -52,9 +52,37 @@ def pid_alive(pid: int) -> bool:
             kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
-        return True
     except (OSError, ProcessLookupError):
         return False
+    # POSIX: a child that has been killed but not yet ``wait()``-reaped lingers
+    # as a *zombie* (defunct). ``os.kill(pid, 0)`` still succeeds for a zombie,
+    # but a zombie has terminated — it is NOT a running process. Reporting it as
+    # alive is the exact same false-positive class this module exists to prevent
+    # on Windows for reaped pids (a dead process probed as live blocks watchdog
+    # resurrection). Treat zombies as dead. Linux exposes the state via /proc;
+    # platforms without /proc (e.g. macOS) degrade gracefully to the old behavior.
+    return not _is_zombie(pid)
+
+
+def _is_zombie(pid: int) -> bool:
+    """True iff ``pid`` is a zombie (terminated, awaiting reap) on Linux.
+
+    Reads ``/proc/<pid>/stat`` and inspects the process state field. Returns
+    False on any platform/condition where the state can't be read (no /proc,
+    permission error, race) so callers fall back to the ``os.kill`` verdict.
+    """
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as fh:
+            data = fh.read()
+    except (FileNotFoundError, ProcessLookupError, PermissionError, OSError):
+        return False
+    # Format: "<pid> (<comm>) <state> ...". ``comm`` may itself contain spaces
+    # and parentheses, so anchor on the LAST ')' before reading the state char.
+    rparen = data.rfind(b")")
+    if rparen == -1:
+        return False
+    rest = data[rparen + 1 :].split()
+    return bool(rest) and rest[0] == b"Z"
 
 
 def terminate_pid(pid: int) -> bool:
