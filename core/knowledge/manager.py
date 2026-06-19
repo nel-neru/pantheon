@@ -15,6 +15,29 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 
+def _coerce_int(value: Any, default: int) -> int:
+    """raw JSON 由来の値を安全に int 化する（null/非数値文字列は default へ倒す）。
+
+    知識レコードは disk から生 JSON で読まれるため usage_count が legacy/手編集/外部生成で
+    ``null``/非数値になりうる。``int(None)`` はソートキー算出中に TypeError を送出し並べ替え
+    全体（＝知識取得の全経路）を落とす。``is None`` ＋ try/except で coerce する。
+    """
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _sort_str(value: Any) -> str:
+    """raw JSON 由来の値を安全に比較可能な str へ coerce する（null/非 str を空文字へ）。
+
+    created_at が ``null`` だと ``None < str`` の TypeError でソート全体が落ちる。
+    """
+    return str(value) if value else ""
+
+
 class KnowledgeManager:
     """
     .pantheon/knowledge/ に知見を保存・取得する。
@@ -102,8 +125,8 @@ class KnowledgeManager:
         entries = self._load_all_entries()
         entries.sort(
             key=lambda record: (
-                -int(record.get("usage_count", 0)),
-                record.get("created_at", ""),
+                -_coerce_int(record.get("usage_count"), 0),
+                _sort_str(record.get("created_at")),
             ),
         )
         return entries[:limit]
@@ -127,8 +150,8 @@ class KnowledgeManager:
         ]
         entries.sort(
             key=lambda record: (
-                -int(record.get("usage_count", 0)),
-                record.get("created_at", ""),
+                -_coerce_int(record.get("usage_count"), 0),
+                _sort_str(record.get("created_at")),
             ),
         )
         return entries[:limit]
@@ -181,8 +204,8 @@ class KnowledgeManager:
         ]
         entries.sort(
             key=lambda record: (
-                -int(record.get("usage_count", 0)),
-                record.get("created_at", ""),
+                -_coerce_int(record.get("usage_count"), 0),
+                _sort_str(record.get("created_at")),
             ),
         )
         return entries[:limit]
@@ -229,5 +252,6 @@ class KnowledgeManager:
                 continue
             if isinstance(record, dict):  # 非 dict の壊れたファイルは読み取り全体を壊さない
                 entries.append(record)
-        entries.sort(key=lambda record: record.get("created_at", ""), reverse=True)
+        # 生 JSON の created_at は null/非 str になりうる（``None < str`` のソート TypeError 防止）。
+        entries.sort(key=lambda record: _sort_str(record.get("created_at")), reverse=True)
         return entries

@@ -1142,7 +1142,9 @@ def _combined_execution_history(
     ]
     seen: set[str] = set()
     deduped: list[dict[str, Any]] = []
-    for record in sorted(records, key=lambda item: item.get("timestamp", ""), reverse=True):
+    # 複数ソース由来の record は timestamp が null/非 str になりうる（``None < str`` のソート
+    # TypeError で履歴 API 全体が 500 になるのを防ぐ）。比較前に str へ coerce。
+    for record in sorted(records, key=lambda item: str(item.get("timestamp") or ""), reverse=True):
         record_id = str(record.get("id"))
         if record_id in seen:
             continue
