@@ -3231,3 +3231,27 @@ Cycle 56 — (frontend/正確性) 共有データフック `useApi` の stale-re
   Next   : C57 候補 — (yyy) Firmament effect の poll 毎再起動を ref ベースで一回起動化（C56 で記録した①・視覚 perf・effect 再構成を伴う中スライス）、(www) goals `_topological_sort` の循環依存堅牢性
            （A↔B で無限再帰しないか・dangling dep 観測化＝C55 の隣・backend）、(zzz) 運用層 or core/runtime で論理バグ bug-hunt 継続（複雑モジュールへ網を昇格）。**frontend を C56 で出したので次は backend or 運用層で
            多様性維持・bug-hunt は subagent で複雑モジュールに昇格・確証 HIGH のみ修正・既掃討 archetype は除外を継続**。
+
+Cycle 57 — (運用層/堅牢性) 24/7 デーモン/スケジューラの state 書き込み4件を atomic 化＝C37 で確立した torn-write 硬化 sweep を運用層に対して完了  (2026-06-19)
+  Plan   : 多様性ルール（C55 backend→C56 frontend→次は backend or 運用層）＋vision（24h 自律基盤）から、まだ論理 bug-hunt していない **core/runtime（運用層の核）** に subagent 1本投下（確証 HIGH のみ）。
+           **結果 clean（HIGH バグ0＝層が成熟）**＝rate-limit pause→resume の永久停止なし・hot-spin/無限 backoff なし・heartbeat×watchdog 整合・claude provider の timeout/return-code 健全・token/quota 会計正・
+           model_router フォールバック正・lock/TOCTOU/temp 名衝突なし。MEDIUM 指摘2件のうち②「scheduler/session の state を非アトミック `write_text` で書いており C37/C41/C42 の atomic_write_text 硬化から漏れている」を採用。
+           実コードで scope を確定: core state 層（platform/state・state/manager・task_queue・content_jobs・publish_jobs 等）は既に atomic だが、運用層に **4件の真の state writer** が非アトミックで残存と判明
+           （content_scheduler._write_state＝retry_at/cycle_count を読み戻す・quota_governor token_quota.yaml＝quota ルール・session_orchestrator session.json＝SessionRecord・daemon_registry pid_file＝watchdog 用）。
+           **なぜ今これか**: 確証高（既テスト済みヘルパへの drop-in 置換）・確立 sweep の取りこぼしを焦点的に完了・運用層で多様性・最小可逆・24/7 で kill/restart 中の torn-write を実際に防ぐ。**スコープ規律**: 40+ ある全
+           非アトミック write_text の一斉 sweep は「大規模投機的書き換え」で禁忌＝**運用層の真の state file だけ**に限定。受け入れ基準=4件を atomic 化・全 GREEN・回帰0・敵対レビュー pass・merged。
+           **落とした候補**: (www)topological_sort 循環依存=テンプレは線形で循環を作れず到達性低・別途、(yyy)Firmament 一回起動化=C56 で frontend 連続のため見送り。MEDIUM 指摘①(pid_alive 259 曖昧)=回避不能な既知エッジで放置が妥当。
+  Did    : work/ops-state-atomic-writes-20260619（main へ統合）。4ファイルで `path.write_text(text, encoding="utf-8")`→`atomic_write_text(path, text)`（各 `from core.persistence import atomic_write_text`）。
+           why コメント付き。**意図的に非変換**: session_orchestrator の prompt/system ファイル（subprocess 用の一時入力で読み戻す state でない）。quota_governor の冗長 `path.parent.mkdir` は helper が内包するため除去。
+  Check  : ruff クリーン ／ **test-triage 全件 GREEN（1667 passed・既知2失敗のみ・回帰0）** ／ smoke import OK（循環 import なし＝persistence は os/tempfile/pathlib のみ依存）。**敵対的レビュー code-reviewer = APPROVE
+           （findings 0）**: ① 4件とも drop-in 完全一致（utf-8 default＋parent mkdir 内包）・除去した mkdir は load-bearing でない（daemon_registry の log_file.parent mkdir は別 path で温存）、② 循環 import なし（実証）、
+           ③ 全 reader が atomic replace を許容（content_scheduler 状態は web/server で {} 降格・session.json は None 降格・quota は {} 降格）・os.replace は同一ディレクトリ temp で Windows でも原子的・last-writer-wins が単一所有者
+           state の望ましい挙動、④ prompt/system スキップは正当（_build_spec で書き subprocess が消費する一時入力）、⑤ 全 daemon の pid は spawn_daemon の単一 site を通るので1件変換で全 daemon を被覆・pid 含めても無害。
+  Act    : merged ✅（merge_to_main ゲート通過・--delete-branch、リモート削除エラーは未 push で benign）＝production robustness（運用層 torn-write 硬化）。**回帰テストは新規追加せず**（機械的な既テスト済みヘルパ置換で
+           ラウンドトリップ correctness は既存テスト 138 が担保・torn-write 保証は test_persistence が helper 層でテスト済＝正直に「contrived な crash 模擬テストは足さない」）。固定化（memory [[silent-drop-observability]] を
+           C57 として更新）: (A) **確立した硬化パターン（atomic_write_text）は「採用済みか」を層ごとに grep で監査して取りこぼしを焦点的に完了**＝C37 で core state 層を atomic 化したが運用層 scheduler に4件残存。`grep "\.write_text(" | grep -v atomic_write_text`
+           で全 site を洗い、**真の state（読み戻す真実）vs benign artifact（subprocess 一時入力・出力成果物）を三分**し state だけ変換（[[ruff-bug-scan-triage]] の三分規律の atomic 版）。(B) **40+ ある全 write_text の一斉 sweep は禁忌**＝1サイクル=1焦点で
+           「運用層の state だけ」に絞る。(C) **drop-in ヘルパ置換は新テストを捏造しない**＝correctness は既存ラウンドトリップ、torn-write 保証は helper のテストが担保で十分。次の取りこぼし＝web/server.py の settings/history write_text（web-API 層）。
+  Next   : C58 候補 — (aaa) web/server.py の settings/history など web-API 層の非アトミック state write を atomic 化（C57 の自然な続き・別レイヤー・reviewer が scope 外と明示した残り）、(www) goals `_topological_sort` の
+           循環依存ガード（A↔B で無限再帰回避・到達性低だが vision-core の crash 安全）、(zzz) 別ドメイン（web/server.py or github_integration）で論理 bug-hunt 継続。**運用層を C57 で出したので次は frontend or web-API 層で多様性維持・
+           確立硬化の取りこぼし監査は grep で層別に・確証 HIGH のみ修正・既掃討 archetype 除外を継続**。
