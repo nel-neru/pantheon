@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.models.organization import ImprovementProposal, is_active_improvement_proposal_status
 from core.paths import resource_path, resource_root
+from core.persistence import atomic_write_text
 from core.platform.state import PlatformStateManager, get_platform_home, resolve_environment
 from core.policy.engine import DEFAULT_POLICY, ApprovalDecision, PolicyEngine
 
@@ -283,8 +284,10 @@ def _load_gui_settings() -> Dict[str, Any]:
 
 def _save_gui_settings(data: Dict[str, Any]) -> None:
     settings_file = _settings_file()
-    settings_file.parent.mkdir(parents=True, exist_ok=True)
-    settings_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 原子的に書く（書きかけ JSON を残さない）。atomic_write_text が parent.mkdir を内包。
+    # 一時ファイルは mkstemp（0o600 生成）→ os.replace なので最終ファイルへ
+    # _set_settings_file_permissions を適用すれば権限も維持される。
+    atomic_write_text(settings_file, json.dumps(data, ensure_ascii=False, indent=2))
     _set_settings_file_permissions(settings_file)
 
 
@@ -1021,9 +1024,10 @@ def _load_goal_history() -> list[dict[str, Any]]:
 
 def _save_goal_history(record: dict[str, Any], keep: int = 12) -> None:
     history = [_normalize_goal_history_item(record), *_load_goal_history()][:keep]
-    _goal_history_path().write_text(
+    # read-modify-write の state。torn write でゴール履歴が破損しないよう原子的に書く。
+    atomic_write_text(
+        _goal_history_path(),
         json.dumps(history, ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
 
 
@@ -1064,9 +1068,10 @@ def _load_execution_history() -> list[dict[str, Any]]:
 
 def _save_execution_history(records: list[dict[str, Any]], keep: int = 200) -> None:
     normalized = [_normalize_execution_history_item(record) for record in records][:keep]
-    _execution_history_path().write_text(
+    # read-modify-write の state。torn write で実行履歴が破損しないよう原子的に書く。
+    atomic_write_text(
+        _execution_history_path(),
         json.dumps(normalized, ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
 
 
@@ -3729,7 +3734,8 @@ async def api_clear_goal_history() -> Dict[str, Any]:
     """ゴール実行履歴を消去する"""
     path = _goal_history_path()
     if path.exists():
-        path.write_text("[]", encoding="utf-8")
+        # 同じ履歴 state ファイルの writer なので _save_goal_history と同様に原子的に。
+        atomic_write_text(path, "[]")
     return {"status": "cleared"}
 
 
