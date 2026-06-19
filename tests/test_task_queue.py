@@ -1,5 +1,6 @@
 """Tests for TaskQueue."""
 
+import json
 import subprocess
 import sys
 import textwrap
@@ -67,6 +68,45 @@ def test_task_queue_pending_priority_order(tmp_path):
     pending = queue.get_pending_tasks(limit=None)
 
     assert [task["id"] for task in pending][:2] == [high["id"], low["id"]]
+
+
+def test_get_pending_tasks_tolerates_null_priority_and_created_at(tmp_path):
+    """priority/created_at が null の生 JSON タスク（legacy/手編集/外部）で drain ソートが落ちない。
+
+    回帰: get_pending_tasks の ``-int(t.get("priority", 5))`` は null で ``int(None)`` TypeError、
+    ``t.get("created_at", "")`` は null で ``None < str`` TypeError。これが try/except に包まれた
+    24/7 デーモンの drain ループを静かに止めていた。加えて priority ``0`` は有効値なので
+    ``value or 5`` 系の素朴な修正だと 0→5 に破壊される（``pending[-1] == "c"`` がそれを捕捉）。
+    """
+    queue_file = tmp_path / "queue.json"
+    queue_file.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "tasks": [
+                    # priority/created_at が null＝旧コードはここで int(None)/None<str クラッシュ
+                    {"id": "a", "status": "pending", "priority": None, "created_at": None},
+                    {"id": "b", "status": "pending", "priority": 9, "created_at": "2026-01-02"},
+                    {"id": "c", "status": "pending", "priority": 0, "created_at": "2026-01-01"},
+                    {"id": "d", "status": "pending", "priority": 3, "created_at": "2026-01-03"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    queue = TaskQueue(queue_file)
+
+    pending = queue.get_pending_tasks(limit=None)  # 旧コードはソートキー算出で TypeError
+
+    assert {t["id"] for t in pending} == {"a", "b", "c", "d"}
+    # priority 9(b) が最優先、null(a)→default 5。priority 0(c) は 0 のまま＝-priority 順で最後尾。
+    # 素朴な ``priority or 5`` だと c が 5 に化け d(3) より前に来て最後尾は d になる（差分検出）。
+    assert pending[0]["id"] == "b"
+    assert pending[-1]["id"] == "c"
+
+    # list_tasks も created_at null で落ちない。
+    listed = queue.list_tasks(limit=None)
+    assert {t["id"] for t in listed} == {"a", "b", "c", "d"}
 
 
 def test_task_queue_concurrent_cross_process_no_lost_update(tmp_path):

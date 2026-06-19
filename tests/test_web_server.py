@@ -3066,3 +3066,28 @@ def test_daemons_start_and_stop_roundtrip(tmp_path, monkeypatch):
     assert killed["pid"] == 7777
     # 明示 stop で desired state は OFF（watchdog は復元しない）
     assert registry.load_enabled(platform_home=tmp_path)["content"]["enabled"] is False
+
+
+def test_combined_execution_history_tolerates_null_timestamp(monkeypatch):
+    """複数ソース由来 record の timestamp が null でも履歴の並べ替えが落ちない（500 回避）。
+
+    回帰: ``item.get("timestamp", "")`` は null 値存在時に None を返し、``None < str`` の
+    ソート TypeError が _combined_execution_history（実行履歴 API）全体を 500 にしていた。
+    """
+    monkeypatch.setattr(
+        server,
+        "_load_execution_history",
+        lambda: [{"id": "no-ts", "timestamp": None, "title": "missing timestamp"}],
+    )
+    monkeypatch.setattr(server, "_goal_history_execution_items", lambda: [])
+    monkeypatch.setattr(
+        server,
+        "_task_execution_items",
+        lambda: [{"id": "has-ts", "timestamp": "2026-01-01T00:00:00+00:00", "title": "ok"}],
+    )
+
+    history = server._combined_execution_history()  # 旧コードは None<str の TypeError
+
+    assert {r["id"] for r in history} == {"no-ts", "has-ts"}
+    # timestamp 有りが先頭（null は "" に coerce され reverse ソートで後方）。
+    assert history[0]["id"] == "has-ts"
