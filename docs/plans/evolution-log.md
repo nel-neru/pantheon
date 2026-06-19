@@ -3175,3 +3175,35 @@ Cycle 54 — (frontend/正確性) 共有フォーマッタ `web/atelier/src/lib/
   Next   : C55 候補 — (uuu) `format.ts` finite-safe 化に伴い caller 側の冗長な `||0`/ローカル `num()`（Observatory:42 等）を `clamp`/共有 helper へ寄せて DRY 化（behavior 等価・小スライス・
            今回 util を単一防御化した自然な続き）、(vvv) 別ドメインの正確性 bug-hunt＝未掃討モジュール（github_integration / session_orchestrator / eval harness）へ網を広げる、
            (mmm) Observatory surfacing は feature として design 起票。**frontend を C54 で出したので次は backend 正確性 or 運用層で多様性維持・stale 候補は着手前に実コード再検証を継続**。
+
+Cycle 55 — (backend/正確性) ゴール実行の依存カスケードで SKIPPED が伝播しないバグを根治＝C54(frontend) から backend 正確性へ多様性転換・新 archetype「terminal 状態の推移伝播漏れ」  (2026-06-19)
+  Plan   : 自動再開（中断はサイクル間・lock 無し・C54 まで全マージ済）。多様性ルール（C52/C53 検出-実行ギャップ→C54 frontend→次は backend 正確性 or 運用層）に従い (vvv) を選定。
+           まず単純 archetype の残存を実コードで closeout: **naive-tz は全 fromisoformat サイト（content_jobs/content_scheduler/capability_*/health_calculator×2/live_metrics/scoring/
+           rate_limit/session_orchestrator/usage_gate/heartbeat/token_ledger/growth_history/publish_jobs）でガード済＝完全掃討**、get-default-none も github_integration(C34)で防御済、
+           zero-division は growth_history.predict_score が二段ガード済、publishing は auto_send×supports_auto の二重ゲートで堅牢＝**単純 archetype の井戸は枯れた**。evolve ガイダンスの
+           「網を細かくして基準を上げる」に従い、複雑で未監査の推論モジュール（core/goals・core/orchestration / core/quality・core/intelligence・agents）に証拠ベース bug-hunt を2 subagent 並行
+           （投機禁止・確証 HIGH のみ）で投下。**1件 HIGH 確証ヒット**: `execution_coordinator._has_failed_dependency` が FAILED **のみ**を block 対象とするが、タスクは
+           `prev_task_ids=[task_id]`（直前タスクのみ）の推移連鎖（goal_decomposer の全テンプレ・長さ4）で、依存失敗タスクは **SKIPPED**（FAILED でない）になる。よって A→B→C で A 失敗→B SKIPPED→
+           C は「B は FAILED でない」と判定され前提未達のまま実行され、無駄な claude 実行＋未達なのに DONE で GoalVerifier.achievement_pct を水増し。実コードで連鎖構造（line 593 リセット）を確認し確定。
+           **なぜ今これか**: 確証済み・vision 核心（抽象ゴール自律実行）・最小可逆（1行＋テスト）・多様性（backend 正確性）。受け入れ基準=SKIPPED も block・回帰テスト・全 GREEN・回帰0・敵対レビュー pass・merged。
+           **落とした候補**: (uuu)format.ts caller DRY=frontend で C54 連続のため多様性で見送り、(mmm)Observatory surfacing=lede 約束外の feature（[[surfacing-promised-metrics]]）で別 design。
+  Did    : work/goals-skip-dep-cascade-20260619（main 8723a03）。① `core/goals/execution_coordinator.py`: `_has_failed_dependency`→`_has_unsatisfied_dependency` に改名し
+           `status in (FAILED, SKIPPED)` で block（意味が変わったので名前と skip メッセージ「依存タスクが失敗/スキップされたためスキップ」も正直化）＋why コメント（topological sort で依存は
+           先に terminal 化済→DONE 以外の terminal は全て下流へ伝播）。② `tests/test_abstract_goal_pipeline.py` に回帰2本: `_has_unsatisfied_dependency` 直接ユニット（SKIPPED=block・
+           FAILED=block・DONE=非block）＋A→B→C 連鎖で A 失敗時に B/C 両方 SKIPPED かつ C は未実行（mock orchestrator）。③ `core/atlas/data/subsystem_maps.json` の旧シンボル参照と role 文を更新。
+  Check  : ruff クリーン ／ **test-triage 全件 GREEN（1667 passed・既知2失敗のみ・回帰0／新+2本）** ／ atlas 16 passed・JSON 妥当。**load-bearing 実証**: helper を旧仕様（FAILED のみ）へ一時 revert→
+           新2テストが fail（カスケードテストは C=DONE で実行されてしまうことを露呈）後 restore。**敵対的レビュー code-reviewer = APPROVE-WITH-NITS**: ① ブロック対象 {FAILED,SKIPPED}・非 {DONE,PENDING,
+           RUNNING} は topological 保証下で厳密に正しい・正当な実行可能タスクは誤 skip されない（is_executable=False 由来 SKIPPED の下流カスケードも「前提出力が無いのに走っていた」のを正す widening＝より正確）、
+           ② edge（dangling dep=非 block・空 deps=False・DONE+SKIPPED 混在=block）全て正、③ 新テスト load-bearing・非 tautological（mock の input.task_id は実 _build_agent_task と整合・failure shape は
+           plan-only fallback を回避し真に FAILED 到達）、④ achievement_pct 低下は「水増しの是正」で回帰でない・full-flow テストは no-orchestrator 経路で新パス不発＝無影響、⑤ 旧名の残参照ゼロ。
+           **確定所見（should-fix）**= Atlas データの旧シンボル名 stale 参照→修正済（nit の role 文も同梱で正直化）。
+  Act    : merged ✅（merge_to_main ゲート通過・8723a03・--delete-branch、リモートブランチ削除エラーは未 push のため benign）＝production correctness fix。固定化（memory に新トピック
+           [[skip-state-transitive-propagation]] を作成）: (A) **新 archetype「terminal 状態の推移伝播漏れ」**＝依存ゲートが「失敗(FAILED)」だけを block し、失敗の*派生* terminal（SKIPPED）を
+           伝播しないと、推移連鎖の2ホップ以降で前提未達タスクが実行される。`status==X` の等値比較を見たら「X の派生 terminal も同じ扱いにすべきか」を必ず問う。(B) **依存構造は
+           `prev_task_ids` の累積 vs リセットで意味が激変**＝リセット（直前のみ依存）だと推移伝播が必須、累積（全先行に依存）なら各 dependent が root を直接見るのでこのバグは出ない。修正前に
+           依存生成コードで連鎖形を確認。(C) **「井戸が枯れた」判定は実コードで closeout してから**＝naive-tz/get-default-none/zero-division を全サイト確認して単純 archetype を打ち切り、
+           bug-hunt subagent を複雑モジュールへ昇格させて初めて深い論理バグに到達（[[ruff-bug-scan-triage]] の基準引き上げの実践）。(D) **シンボル改名時は Atlas データ（subsystem_maps.json）の
+           key_functions も grep で追従**（テスト非強制＝静かにドリフトする）。
+  Next   : C56 候補 — (www) goals 経路の隣接堅牢性＝`_topological_sort` の循環依存（A↔B）で無限再帰/欠落しないか・dangling dep の観測化を検証（今回の隣）、(uuu) format.ts caller DRY 化
+           （frontend・behavior 等価の小スライス）、(xxx) 別ドメイン（core/runtime or web/server.py）で論理バグ bug-hunt を継続＝複雑モジュールへ網を昇格。**backend 正確性を C55 で出したので
+           次は frontend or 運用層で多様性維持・bug-hunt は subagent で複雑モジュールに昇格・確証 HIGH のみ修正を継続**。
