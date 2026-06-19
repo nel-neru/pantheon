@@ -3207,3 +3207,27 @@ Cycle 55 — (backend/正確性) ゴール実行の依存カスケードで SKIP
   Next   : C56 候補 — (www) goals 経路の隣接堅牢性＝`_topological_sort` の循環依存（A↔B）で無限再帰/欠落しないか・dangling dep の観測化を検証（今回の隣）、(uuu) format.ts caller DRY 化
            （frontend・behavior 等価の小スライス）、(xxx) 別ドメイン（core/runtime or web/server.py）で論理バグ bug-hunt を継続＝複雑モジュールへ網を昇格。**backend 正確性を C55 で出したので
            次は frontend or 運用層で多様性維持・bug-hunt は subagent で複雑モジュールに昇格・確証 HIGH のみ修正を継続**。
+
+Cycle 56 — (frontend/正確性) 共有データフック `useApi` の stale-response 順序逆転レースを根治＝C55(backend) から frontend へ多様性転換・発生源（共有フック）で複利化  (2026-06-19)
+  Plan   : 多様性ルール（C54 frontend→C55 backend→次は frontend or 運用層）＋vision 優先（atelier は成長中の GUI）から、C55 と同等の厳密さで **web/atelier の frontend 正確性 bug-hunt** を
+           1 subagent で投下（確証 HIGH のみ・既掃討の NaN/finite は除外）。**2件ヒット**: ①Firmament の canvas effect が poll 更新される配列 props（8s 毎に参照新規）に依存し 8s 毎にアニメ再起動
+           （視覚 stutter＋RAF/listener churn・subagent 評価 MEDIUM-HIGH＝データ正確性でなく perf/視覚）、②`useApi` が `alive.current`（unmount）だけをガードし**応答順序を見ない**＝interval が前回を await しないため
+           複数リクエスト in-flight 時に遅い古い応答が新しい応答を上書き（データ正確性バグ・Observatory/Pantheon/Signals/Lab が共有）。**②を選定**: データ正確性・修正は同コードベースの `Inbox.tsx` reqRef で
+           実証済みパターン・**共有フックを発生源で直す＝複利化**（[[get-default-none-footgun]] C54 の単一防御哲学と一致）・小さく可逆・frontend で多様性。①は修正が侵襲的（effect 再構成）かつ視覚寄りで見送り（C57 候補へ記録）。
+           **なぜ今これか**: 確証済み・全 polling caller に効く単一点修正・最小可逆。受け入れ基準=seq ガード追加・順序逆転回帰テスト・atelier build+test 緑・敵対レビュー pass・merged。
+  Did    : work/atelier-useapi-stale-response-guard-20260619（main 2a8091f）。`useApi.ts`: await 前に単調連番 `const id = ++seq.current` を捕捉し、全 commit 経路（setData/setError/finally の loading）を
+           `id === seq.current` でゲート＝**最後に開始したリクエストだけが書ける**（path 変更時の in-flight も低位 id で破棄）。why コメント＋Inbox.tsx 参照。新 `__tests__/useApi.test.tsx`（3本: 基本取得＋
+           成功/エラーの順序逆転レースを deferred Promise で決定的に再現）。
+  Check  : **atelier vitest 77 passed（12 files・+3）／ `npm run build`（tsc -b 型チェック）緑** ／ backend 無影響（frontend-only）。**load-bearing 実証**: seq ガードを一時除去→順序逆転2テストが fail
+           （古い応答/エラーが新 data を上書き）後 restore。**敵対的レビュー code-reviewer = APPROVE（blocking 0）**: ① id は await 前に同期捕捉で安定・全経路ゲート・loading は stale 完了で誤クリアされず
+           最新完了まで true 維持（旧 alive のみより厳密に改善）、② seq は top-level ref で useCallback 再生成を跨ぎ path 変更も被覆・正当応答の誤破棄なし、③ refetch も最新として正常 commit、
+           ④ 新テストは load-bearing（reviewer も guard-less replica で再現確認）・非 tautological・実 interval 競合の忠実モデル・act 包囲で flake/警告なし、⑤ StrictMode 二重起動でも ref 存続で stuck なし。
+           nit 2件（api 直接モック＝この unit には適切・新ファイル untracked→明示コミットで対応）は対応不要/対応済。merge_to_main ゲート通過。
+  Act    : merged ✅（merge_to_main・2a8091f・--delete-branch、リモート削除エラーは未 push で benign）＝production correctness fix。固定化（memory [[frontend-sse-streaming-pattern]] を C56 で更新）:
+           (A) **共有データフック/util は「最後に開始したものだけ commit」を単調 seq id で保証**＝interval ポーリングは前回を await しないので順序逆転が常時起こり得る。`alive`（unmount）だけでは不十分で
+           await 前に `const id = ++seq.current` を捕捉し全 commit 経路（data/error/loading）をゲート（[[get-default-none-footgun]] の「発生源で単一防御＝複利化」の async 版）。(B) **同コードベースに実証済みパターン
+           （Inbox.tsx reqRef）があれば再利用して横展開**＝新発明より低リスク・レビュー容易。(C) **順序逆転テストは deferred Promise で解決順を手動制御**（実タイマー不要＝決定的・非 flake）し、最新→古い の順で
+           解決して古いが上書きしないことをアサート。(D) **frontend bug-hunt も backend と同じ archetype 規律**（NaN/finite は既掃討で除外・視覚 perf 寄りとデータ正確性を分け後者を優先）。
+  Next   : C57 候補 — (yyy) Firmament effect の poll 毎再起動を ref ベースで一回起動化（C56 で記録した①・視覚 perf・effect 再構成を伴う中スライス）、(www) goals `_topological_sort` の循環依存堅牢性
+           （A↔B で無限再帰しないか・dangling dep 観測化＝C55 の隣・backend）、(zzz) 運用層 or core/runtime で論理バグ bug-hunt 継続（複雑モジュールへ網を昇格）。**frontend を C56 で出したので次は backend or 運用層で
+           多様性維持・bug-hunt は subagent で複雑モジュールに昇格・確証 HIGH のみ修正・既掃討 archetype は除外を継続**。
