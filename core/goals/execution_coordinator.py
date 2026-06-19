@@ -161,9 +161,9 @@ class ExecutionCoordinator:
         for task in ordered:
             task_prog = progress.task_progresses[task.task_id]
 
-            if self._has_failed_dependency(task, progress):
+            if self._has_unsatisfied_dependency(task, progress):
                 task_prog.status = TaskStatus.SKIPPED
-                task_prog.error = "依存タスクが失敗したためスキップ"
+                task_prog.error = "依存タスクが失敗/スキップされたためスキップ"
                 self._notify(progress)
                 continue
 
@@ -293,11 +293,20 @@ class ExecutionCoordinator:
             visit(task)
         return result
 
-    def _has_failed_dependency(self, task: TaskSpec, progress: ExecutionProgress) -> bool:
-        """依存タスクが失敗しているかを確認する。"""
+    def _has_unsatisfied_dependency(self, task: TaskSpec, progress: ExecutionProgress) -> bool:
+        """依存タスクが未充足（失敗 or スキップ）かを確認する。
+
+        SKIPPED も block 対象に含めるのが要点。タスクは ``prev_task_ids = [task_id]`` で
+        **直前タスクのみ**に推移的に連鎖する（goal_decomposer）ため、A→B→C で A が FAILED だと
+        B は SKIPPED になる。FAILED だけを見ると C の依存（B）は SKIPPED で「失敗ではない」と
+        判定され、前提チェーン（A→B）が一度も完了していないのに C が実行されてしまう
+        （前提未達タスクへの無駄な claude 実行＋未達なのに DONE で達成率を水増し）。
+        topological sort により依存タスクは先に terminal 化済みなので、DONE 以外の terminal
+        （FAILED/SKIPPED）はすべて未充足として下流へ伝播させる。
+        """
         for dep_id in task.dependencies:
             dep_prog = progress.task_progresses.get(dep_id)
-            if dep_prog and dep_prog.status == TaskStatus.FAILED:
+            if dep_prog and dep_prog.status in (TaskStatus.FAILED, TaskStatus.SKIPPED):
                 return True
         return False
 

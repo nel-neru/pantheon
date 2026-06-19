@@ -984,12 +984,12 @@
       {
         "name": "ExecutionCoordinator",
         "path": "core/goals/execution_coordinator.py",
-        "role": "M-04: topologically sorts the plan's tasks, skips ineligible/failed-dependency tasks, and 'executes' each via an optional PreTaskOrchestrator with retry; tracks ExecutionProgress",
+        "role": "M-04: topologically sorts the plan's tasks, skips ineligible/unsatisfied-dependency (failed or skipped) tasks, and 'executes' each via an optional PreTaskOrchestrator with retry; tracks ExecutionProgress",
         "key_functions": [
           "ExecutionCoordinator.execute",
           "ExecutionCoordinator._execute_task",
           "ExecutionCoordinator._topological_sort",
-          "ExecutionCoordinator._has_failed_dependency",
+          "ExecutionCoordinator._has_unsatisfied_dependency",
           "ExecutionProgress.progress_pct"
         ]
       },

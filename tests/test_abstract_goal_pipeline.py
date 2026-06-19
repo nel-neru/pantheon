@@ -7,8 +7,19 @@ from __future__ import annotations
 import asyncio
 
 from core.goals.abstract_goal_pipeline import AbstractGoalPipeline
-from core.goals.execution_coordinator import ExecutionCoordinator, TaskStatus
-from core.goals.goal_decomposer import GoalDecomposer, TaskSpec
+from core.goals.execution_coordinator import (
+    ExecutionCoordinator,
+    ExecutionProgress,
+    TaskProgress,
+    TaskStatus,
+)
+from core.goals.goal_decomposer import (
+    EpicSpec,
+    GoalDecomposer,
+    GoalPlan,
+    StorySpec,
+    TaskSpec,
+)
 from core.goals.goal_parser import GoalParser, GoalScale, GoalType, StructuredGoal
 from core.goals.goal_verifier import GoalVerifier
 from core.goals.org_instantiator import OrgInstantiator
@@ -273,6 +284,81 @@ class TestExecutionCoordinator:
             1 for p in progress.task_progresses.values() if p.status == TaskStatus.SKIPPED
         )
         assert skipped == progress.total
+
+    def test_skipped_dependency_blocks_downstream_unit(self):
+        """SKIPPED の依存も（FAILED と同様に）未充足として下流を block する。
+
+        回帰防止: 旧 ``_has_failed_dependency`` は FAILED だけを見ていたため、
+        A→B→C の推移連鎖で A 失敗→B が SKIPPED になると、C の依存（B）が
+        「失敗ではない」と判定され C が実行されてしまっていた。
+        """
+        coord = ExecutionCoordinator()
+        progress = ExecutionProgress(plan_id="p", goal_description="g")
+        progress.task_progresses["A"] = TaskProgress(task_id="A", title="A")
+        task_c = TaskSpec(
+            task_id="C", title="C", description="", required_skills=[], dependencies=["A"]
+        )
+
+        progress.task_progresses["A"].status = TaskStatus.SKIPPED
+        assert coord._has_unsatisfied_dependency(task_c, progress) is True
+        progress.task_progresses["A"].status = TaskStatus.FAILED
+        assert coord._has_unsatisfied_dependency(task_c, progress) is True
+        # DONE な依存は充足済み（block しない）。
+        progress.task_progresses["A"].status = TaskStatus.DONE
+        assert coord._has_unsatisfied_dependency(task_c, progress) is False
+
+    def test_skip_cascades_transitively_through_chain(self):
+        """A→B→C の連鎖で A が失敗したら B も C も SKIPPED になり、C は実行されない。
+
+        各タスクは ``depends_on_prev``（直前タスクのみに依存）の推移連鎖なので、
+        SKIPPED を伝播しないと C が前提未達のまま実行され、達成率も水増しされる。
+        """
+        from types import SimpleNamespace
+
+        class _FailOneOrchestrator:
+            """``fail_id`` のタスクだけ実エージェント失敗を返す実行バックエンド。"""
+
+            def __init__(self, fail_id: str):
+                self.fail_id = fail_id
+                self.executed: list[str] = []
+
+            def analyze(self, agent_type, description):
+                return SimpleNamespace(recommended_agent_ids=["agent-x"], recommended_pattern="seq")
+
+            async def execute(self, agent_task, analysis):
+                tid = agent_task.input.get("task_id")
+                self.executed.append(tid)
+                if tid == self.fail_id:
+                    return SimpleNamespace(success=False, error="boom", output={})
+                return SimpleNamespace(success=True, error="", output={"summary": "ok"})
+
+        def _task(tid: str, deps: list[str]) -> TaskSpec:
+            return TaskSpec(
+                task_id=tid, title=tid, description="", required_skills=[], dependencies=deps
+            )
+
+        story = StorySpec(
+            story_id="s",
+            title="s",
+            description="",
+            tasks=[_task("A", []), _task("B", ["A"]), _task("C", ["B"])],
+        )
+        plan = GoalPlan(
+            plan_id="p",
+            goal_id="g",
+            goal_description="chain",
+            epics=[EpicSpec(epic_id="e", title="e", description="", stories=[story])],
+        )
+
+        orch = _FailOneOrchestrator(fail_id="A")
+        coord = ExecutionCoordinator(pre_task_orchestrator=orch)
+        progress = _run(coord.execute(plan))
+
+        assert progress.task_progresses["A"].status == TaskStatus.FAILED
+        assert progress.task_progresses["B"].status == TaskStatus.SKIPPED
+        assert progress.task_progresses["C"].status == TaskStatus.SKIPPED
+        # 前提未達の C には実エージェント実行が一度も走らない。
+        assert "C" not in orch.executed
 
 
 # ═══════════════════════════════════════════════════════════════
