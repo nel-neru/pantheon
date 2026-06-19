@@ -3275,3 +3275,25 @@ Cycle 58 — (web-API/正確性) `DELETE /api/tasks/{id}` が不在タスクに 
            **bug-hunt が HIGH 0 でも MEDIUM の REST 整合性は拾う価値がある**（外部公開 API の polish）。
   Next   : C59 候補 — (aaa) web/server.py の settings/history 非アトミック write を atomic 化（C57 の web-API 層への取りこぼし続き・ただし atomic-write は C57 と同種なので間隔を空ける）、(www) goals topological_sort 循環ガード（vision-core crash 安全・到達性低）、
            (bbb) 他の mutating endpoint（update/delete 系）で missing-vs-invalid の status parity を横ぐし監査（C58 archetype の横展開）。**web-API を C58 で出したので次は frontend or backend-core で多様性維持・bug-hunt は HIGH のみ修正・MEDIUM は REST/UX 整合性なら採用可・既掃討除外を継続**。
+
+Cycle 59 — (backend-core/正確性) 学習サブシステムの「推奨パターン」選定が母集団横断 max で gate し under-tested なまぐれ勝者を選ぶバグを per-pattern 実績ゲートで根治  (2026-06-19)
+  Plan   : 多様性ルール（C58=web-API → 次は frontend or backend-core）＋raised-bar から、**まだ論理 bug-hunt していない複雑な backend-core（orchestration 学習/永続/重み算術・metrics 正規化）** に debugger subagent 1本投下（確証 HIGH のみ・既掃討
+           archetype=naive-tz/get-default-none/zero-division/NaN は除外）。**HIGH 1件ヒット**: `orchestration_pattern_store.get_best_pattern`（pre_task_orchestrator.py:314 の routing 上書き経路が消費）が `max(s.total_runs for s in stats) < 3` で gate＝
+           「いずれかのパターンが3 runs に達したら通過」だが、勝者は**全 stats から** `(success_rate, avg_quality)` で選ぶため、別パターンが3件に達した途端に **1件だけ成功（success_rate=1.0）のまぐれパターンが実績豊富なパターンを打ち負かして選ばれ**、しかも再記録で
+           under-tested なパターンに固着する（学習結果の誤選択＝サブシステム中核出力）。docstring の意図「3件未満は None」は本来「採用するパターン自身が3件必要」のはず。実コードで両 decompose 経路が線形連鎖を生むこと・`get_best_pattern`/`recommended` の消費者
+           （前者=routing 実アクション、後者=best_practice_advisor の ★推奨 表示のみ）・既存4テストが全て勝者 ≥3 runs で互換なことを確認し確定。**なぜ今これか**: 確証高・最小可逆・vision-core（自己進化 routing）の正確性・backend-core で多様性。**落とした候補**:
+           (www)topological_sort 循環ガード=`GoalPlan.from_dict` 等の逆シリアライズ経路が無く両 decompose 経路は `_make_id`+`prev_task_ids` で線形連鎖のみ→**循環の到達性ゼロを実コードで closeout** し低レバレッジと判定し見送り、(yyy)Firmament 一回起動化=視覚 perf 寄り＋effect 再構成が侵襲的で見送り。
+           受け入れ基準=勝者を per-pattern `total_runs>=3` でフィルタ・回帰テスト・全 GREEN・回帰0・敵対レビュー pass・merged。
+  Did    : work/pattern-store-min-runs-gate-20260619（main 0396e50）。`get_best_pattern`: `eligible = [s for s in stats if s.total_runs >= MIN_RUNS_FOR_RECOMMENDATION(=3)]` でフィルタ→該当無しは None・最良は eligible から選定。reviewer nit を取り込み (A) 閾値を class 定数
+           `MIN_RUNS_FOR_RECOMMENDATION` に抽出（docstring×2 とフィルタの magic-number ドリフト防止）、(B) `get_stats_for_task` の表示用 `recommended` フラグも同じゲートで整合（実績不足のパターンを ★推奨 と誤表示しない＝発生源で単一定義＝複利化）。回帰テスト2本追加
+           （まぐれ1勝が実績豊富を上書きしない・recommended フラグが実績ゲートと整合）。
+  Check  : ruff クリーン ／ **test-triage 全件 GREEN（1671 passed・既知2失敗のみ・回帰0／新+2本）** ／ orchestration 系3ファイル65 passed。**load-bearing 実証**: 修正を旧 buggy gate に一時撤回→新テストが `single_agent != review_loop` で fail（まぐれ1勝が勝つ）後 restore。
+           **敵対的レビュー code-reviewer = APPROVE-WITH-NITS（blocking 0）**: ① eligibility フィルタは per-pattern 実績で正しく gate・edge（空 stats/全<3/同点/境界3）全て健全・全<3 で None は旧より厳密で正、② 唯一の本番消費者 pre_task_orchestrator.py:314 は `if learned_pattern:` で
+           None を静的プロファイルに安全フォールバック・非 None 前提の caller 無し、③ 新テスト load-bearing（reviewer も stash 再現で旧コードが lucky を選ぶこと確認）・非 tautological・実バグの忠実モデル、④ `recommended` は表示専用（best_practice_advisor が ★推奨 文字列に条件付加するだけ・
+           `.recommended` をアサートするテストは無し）で sister bug でないが整合は妥当。nit（閾値定数化・表示フラグ整合）は本サイクルで取込済。
+  Act    : merged ✅（merge_to_main ゲート通過・0396e50・--delete-branch、リモート削除エラーは未 push で benign）＝production correctness（自己進化 routing の学習選定）。固定化（memory [[ruff-bug-scan-triage]] に新 archetype 追記）:
+           **「集計ゲートを母集団横断 max/any で張り、勝者選定は per-item フィルタ無し」archetype**＝「N 件以上で推奨」の意図に対し `max(all.runs) >= N` で gate すると、1 item が N に達した瞬間に別の under-sampled item（極端な率）が established を打ち負かす。
+           **正=勝者候補そのものを `item.count >= N` でフィルタしてから選ぶ**。`max(... for all) </>= threshold` の population-wide gate を見たら「閾値は勝者個別に効くべきでは？」を必ず問う。表示用フラグと実アクション選定が**同じ選択ロジックを二重持ち**していたら同じゲートで整合させ発生源で単一定義する
+           （[[get-default-none-footgun]] の「発生源で単一防御＝複利化」の選定版）。**「到達性ゼロを実コードで closeout してから低レバレッジ候補を打ち切る」**＝topological_sort 循環ガードは逆シリアライズ経路の不在を確認して初めて見送り（[[skip-state-transitive-propagation]](C) の実践）。
+  Next   : C60 候補 — (yyy) Firmament effect の poll 毎再起動を ref ベースで一回起動化（C56 で記録・frontend 視覚 perf・effect 再構成の中スライス）、(aaa) web/server.py settings/history 非アトミック write の atomic 化（C57 web-API 取りこぼし・atomic-write 間隔を空けたので解禁）、
+           (ccc) core/intelligence（capability_registry/gap_analyzer/skill_engine）で論理 bug-hunt 継続＝未 hunt の複雑モジュールへ網を昇格。**backend-core を C59 で出したので次は frontend or 運用層 or web-API で多様性維持・bug-hunt は HIGH のみ修正・MEDIUM は整合性なら採用可・既掃討除外を継続**。
