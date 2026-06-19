@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.persistence import atomic_write_text
 from core.runtime.claude_code import claude_binary, scan_result_text_for_rate_limit
 from core.runtime.multiplexer import (
     AgentSpec,
@@ -635,9 +636,10 @@ class SessionOrchestrator:
     def _persist(self, record: SessionRecord) -> None:
         session_dir = self.sessions_dir / record.id
         session_dir.mkdir(parents=True, exist_ok=True)
-        (session_dir / "session.json").write_text(
-            json.dumps(record.to_dict(), indent=2, ensure_ascii=False),
-            encoding="utf-8",
+        # torn write 防止: session.json は SessionRecord の真実で、半端な書き込みは
+        # 読み戻し時に破損する。atomic に差し替える（core state 層と同方針）。
+        atomic_write_text(
+            session_dir / "session.json", json.dumps(record.to_dict(), indent=2, ensure_ascii=False)
         )
 
 

@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from core.content.content_jobs import ContentJobStore
 from core.content.content_runner import run_content_job
+from core.persistence import atomic_write_text
 from core.runtime.heartbeat import write_heartbeat
 from core.runtime.quota_governor import (
     PRIORITY_BACKGROUND,
@@ -294,9 +295,9 @@ class ContentScheduler:
             "updated_at": _now_iso(),
         }
         try:
-            self._state_path.write_text(
-                json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+            # torn write 防止（24h 自律: デーモン kill/restart 中の中断でも resume 用
+            # state＝retry_at/cycle_count が破損しない）。core state 層と同じ atomic 書き込み。
+            atomic_write_text(self._state_path, json.dumps(state, ensure_ascii=False, indent=2))
         except OSError:
             pass
         # 状態遷移は必ず heartbeat にも反映する（サイクルごとの生存通知を兼ねる）。
