@@ -3086,3 +3086,31 @@ Cycle 51 — (nnn/work-board-tasks) MultiOrgExecutor 配線の known_issue は s
            深掘り＝headless POST /api/tasks が GUI 未接続だと drain しない設計を「daemon 経路で headless drain」する配線（detection-execution-gap・default-off）か、その非実行を明示する
            UX/ドキュメント、(ooo) atlas known_issues の残（codebase-exploration の non-Python 表示薄め=low・revenue-content の意図的ゲートは対象外）。**配線/テストを C51 で出したので
            次は frontend か設計寄りで多様性維持・atlas known_issues は「着手前に実コード再検証」を徹底**。
+
+Cycle 52 — (ppp/work-board-tasks) `pantheon tasks` CLI（add/list/drain）を新設し作業ボードの headless 実行経路を開通＝C51 reviewer が指摘した「GUI 未接続だと drain しない」ギャップを detection-execution-gap で配線（C51 テスト/正直化から CLI feature へ多様性転換）  (2026-06-19)
+  Plan   : C51 の敵対的レビューが surfaced した残ギャップ (ppp) を選定＝作業ボードのタスクキューは web GUI/API からしか操作できず、drain は `/ws/updates` に GUI が
+           接続中だけ動く→ headless/cron（GUI を開かない 24/7 運用）ではキューに積んだタスクの実行経路が皆無。**確証**: main.py/commands に tasks 系コマンドは存在せず
+           （grep）、queue は web 専用。これは [[detection-execution-gap-wiring]] archetype（検出/起票はあるが実行配線が欠落）の典型で C10/C12 実績あり。落とした候補:
+           (mmm)Observatory surfacing=lede が health/agents/sessions のみ約束＝autonomy/velocity 追加は [[surfacing-promised-metrics]] 反例どおり defect でなく feature で見送り、
+           frontend BoardPage 改修=backend が drain 状態を露出せず大きくなる。**なぜ今これか**: 確証済み・ビジョン（24h 自律基盤）の核心・最小 opt-in で可逆・C51(backend test/atlas)
+           から CLI feature へ多様性転換。受け入れ基準=`pantheon tasks add/list/drain` を既存 CLI 規約どおり配線・dispatch 重複を排除・全 GREEN・回帰0・敵対レビュー pass・merged。
+  Did    : work/tasks-cli-headless-drain-20260619（main 0ec3d53）。① **DRY 抽出**: web の `_dispatch_task_to_wmux` の type→launch 振り分けを
+           `core/runtime/work_launcher.dispatch_task(task)` に抽出し、web は 2 行委譲（analyze/review/improve かつ org→launch_analyze・他→launch_goal を verbatim 保存・
+           挙動ドリフト無し＝web/CLI 共通チョークポイント）。② **commands/tasks.py 新設**: `add`（POST /api/tasks 相当・core import 遅延）/`list`/`drain`
+           （MultiOrgExecutor.process_pending を asyncio.run・org_filter/max_tasks・出力は「着火」＝DONE は session 起動であって作業完了でない旨を明示）。③ main.py に
+           wrapper 3本＋HANDLERS 3エントリ（daemons.py パターン準拠・auto-discover register）。④ tests/test_tasks_cli.py（dispatch 振り分け2・add/list/drain・org フィルタ・
+           空ケース・**TASK_TYPES↔TaskType enum 同期 pin**・analyze の **--org 必須ガード**）。flows.json: work-board-tasks に CLI サーフェス/ステップを追記（headless gap 解消を反映）。
+  Check  : ruff クリーン ／ **test-triage 全件 GREEN（1656 passed・既知2失敗のみ・回帰0／新10本）** ／ `pantheon tasks --help` 配線実証 ／ check_flows passed ／ 既存 C51 drain
+           テストも緑（委譲で web 経路不変）。**敵対的レビュー code-reviewer = APPROVE-WITH-NITS（blocking 0）**: DRY 抽出は routing 完全保存・drain 出力は dispatch≠完了を
+           honest に表現（「着火」）・8テスト load-bearing・main 配線正・safety（argv は list で shell 非注入・max_tasks/semaphore で fan-out 上限・--type は choices 制約）・
+           core import 遅延。should-fix の warning =「`tasks add` の空 org_name が API 契約（org_name min_length=1）と乖離し analyze を org 無しで積むと silent に goal 誤ルート」
+           → **修正採用**: analyze/review/improve は --org 必須にしエラー＋非 enqueue（回帰テスト追加）。🟢2件も採用（drain honesty コメント・TASK_TYPES enum 同期 pin テスト）。再チェック緑。
+  Act    : merged ✅（merge_to_main ゲート通過・0ec3d53）＝production feature。flows.json/log は work/evolve-log-c52 で統合。固定化（memory [[detection-execution-gap-wiring]]
+           を C52 として更新）: (A) **「GUI/web 専用で稼働しているフローを headless CLI で開通」も detection-execution-gap の一種**＝queue/起票は本番だが実行トリガが GUI ライフ
+           サイクルに縛られている場合、最小 opt-in CLI（既存 add-cli-command 規約: register auto-discover＋main wrapper＋HANDLERS）で実行経路を可逆に足す。(B) **重複ロジックは
+           「弱い方をコピー」でなく canonical helper に抽出して両 caller を委譲**（C22/23 の JSON 抽出統合と同型）＝web の dispatch を work_launcher.dispatch_task に一本化し
+           routing を verbatim 保存（reviewer が drift 無しを確認）。(C) **CLI choices が core enum をミラーするなら `== tuple(t.value for t in Enum)` で同期 pin**（[[daemon-registry-addition]]
+           の literal-equality pin と同型のドリフト機械検出）。(D) **dispatch≠完了の honesty**: 「起動した」を「完了した」と言わない（process_pending は dispatcher 返却=session 起動で DONE 化）。
+  Next   : C53 候補 — (qqq) `pantheon tasks add` を daemon 化（content/improvement daemon が定期 drain）または watchdog 連携で「真の headless 自動実行」へ前進（C52 は手動 drain 止まり）、
+           (mmm) Observatory は feature 扱いなので別途 design 起票、(rrr) trends→ContentJob/新規事業の承認ゲート経路の robustness 監査（運用層・未掃討）。**CLI feature を C52 で出したので
+           次は運用層 robustness か frontend で多様性維持・atlas known_issues は「着手前に実コード再検証」を継続**。

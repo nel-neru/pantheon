@@ -219,9 +219,10 @@
       "steps": [
         { "component": "core/orchestration/task_queue.py", "action": "タスクをファイルバック・キューに enqueue" },
         { "component": "core/orchestration/multi_org_executor.py", "action": "保留タスクを drain し並列実行（web の _drain_pending_tasks ループ経由）" },
-        { "component": "web/frontend/src/pages/BoardPage.tsx", "action": "pending/running/review 列でタスクを可視化" }
+        { "component": "web/frontend/src/pages/BoardPage.tsx", "action": "pending/running/review 列でタスクを可視化" },
+        { "component": "commands/tasks.py", "action": "headless で add/list/drain（GUI 未接続でも保留を着火＝work_launcher.dispatch_task 共有）" }
       ],
-      "surfaces": ["GET/POST/DELETE /api/tasks", "BoardPage"],
+      "surfaces": ["GET/POST/DELETE /api/tasks", "BoardPage", "pantheon tasks add/list/drain"],
       "state": ["~/.pantheon/task_queue/"],
       "verification": ["tests/test_task_queue.py", "tests/test_multi_org_executor.py"],
       "status": "solid",
