@@ -53,6 +53,21 @@ type PortfolioProposal = {
   priority: number
 }
 
+// 月収益目標に対するギャップ（GET /api/hq/portfolio/plan の gap・起票しないプレビュー）
+type PlanGap = {
+  target: number
+  current: number
+  forecast: number
+  present_gap: number
+  forecast_gap: number
+  under_target: boolean
+}
+
+type PlanPreview = {
+  gap: PlanGap
+  plan: PortfolioProposal[]
+}
+
 const REVENUE_METRICS = ['revenue', 'sales', 'conversions'] as const
 type RevenueMetric = (typeof REVENUE_METRICS)[number]
 
@@ -134,6 +149,9 @@ export function RevenuePage() {
   // P4.1 自律経営プラン（目標額）
   const [targetInput, setTargetInput] = useState('')
   const [planning, setPlanning] = useState(false)
+  // 起票しないプレビュー（GET /api/hq/portfolio/plan）。null = 未取得（プレビュー前）。
+  const [planPreview, setPlanPreview] = useState<PlanPreview | null>(null)
+  const [previewing, setPreviewing] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -226,6 +244,45 @@ export function RevenuePage() {
       toast.error(err instanceof Error ? err.message : 'プラン生成に失敗しました。')
     } finally {
       setPlanning(false)
+    }
+  }, [targetInput])
+
+  // 起票せずに目標とのギャップ＋打ち手をプレビューする（GET）。payload は free-form なので防御的に coerce。
+  const previewPlan = useCallback(async () => {
+    const target = Number(targetInput)
+    if (!targetInput.trim() || Number.isNaN(target) || target <= 0) {
+      toast.error('月次目標額（正の数値）を入力してください。')
+      return
+    }
+    setPreviewing(true)
+    try {
+      const res = await api<{ gap?: Partial<PlanGap>; plan?: PortfolioProposal[] }>(
+        'GET',
+        `/api/hq/portfolio/plan?target=${encodeURIComponent(String(target))}`
+      )
+      const num = (x: unknown): number => (Number.isFinite(Number(x)) ? Number(x) : 0)
+      const g = res.gap ?? {}
+      const plan = (Array.isArray(res.plan) ? res.plan : []).map((e) => ({
+        kind: String(e?.kind ?? ''),
+        title: String(e?.title ?? ''),
+        reason: String(e?.reason ?? ''),
+        priority: num(e?.priority),
+      }))
+      setPlanPreview({
+        gap: {
+          target: num(g.target),
+          current: num(g.current),
+          forecast: num(g.forecast),
+          present_gap: num(g.present_gap),
+          forecast_gap: num(g.forecast_gap),
+          under_target: Boolean(g.under_target),
+        },
+        plan,
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'プレビューに失敗しました。')
+    } finally {
+      setPreviewing(false)
     }
   }, [targetInput])
 
@@ -486,6 +543,16 @@ export function RevenuePage() {
                 />
                 <button
                   type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={previewing}
+                  onClick={() => void previewPlan()}
+                  title="起票せずに、目標とのギャップと打ち手だけを確認します"
+                >
+                  <Eye size={14} />
+                  {previewing ? 'プレビュー中…' : 'プランをプレビュー'}
+                </button>
+                <button
+                  type="button"
                   className="btn btn-primary btn-sm"
                   disabled={planning}
                   onClick={() => void runTargetPlan()}
@@ -494,6 +561,63 @@ export function RevenuePage() {
                   {planning ? 'プラン生成中…' : 'プランを起票'}
                 </button>
               </div>
+              {planPreview !== null && (
+                <div
+                  id="plan-preview"
+                  className="rounded-xl border border-white/10 p-3 flex flex-col gap-3"
+                >
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Eye size={14} />
+                    プランプレビュー（未起票）
+                  </div>
+                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                    <span>
+                      <span className="text-muted">現状（月次）: </span>
+                      <span className="font-medium">{formatYen(planPreview.gap.current)}</span>
+                    </span>
+                    <span>
+                      <span className="text-muted">目標: </span>
+                      <span className="font-medium">{formatYen(planPreview.gap.target)}</span>
+                    </span>
+                    <span>
+                      <span className="text-muted">ギャップ: </span>
+                      <span
+                        className={`font-medium ${
+                          planPreview.gap.under_target ? 'text-yellow' : 'text-green-600'
+                        }`}
+                      >
+                        {formatYen(planPreview.gap.present_gap)}
+                      </span>
+                    </span>
+                    <span>
+                      <span className="text-muted">翌月予測: </span>
+                      <span className="font-medium">{formatYen(planPreview.gap.forecast)}</span>
+                    </span>
+                  </div>
+                  {planPreview.plan.length === 0 ? (
+                    <div className="text-muted text-sm">
+                      目標達成済み、または提案できる打ち手がありません。
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {planPreview.plan.map((p, i) => (
+                        <div
+                          key={`${p.kind}-${i}`}
+                          className="flex items-start gap-2 border-t border-base pt-2 first:border-t-0 first:pt-0"
+                        >
+                          <span className={`badge ${kindBadge(p.kind)} shrink-0`}>
+                            {kindLabel(p.kind)}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-medium">{p.title}</div>
+                            <div className="text-sm text-muted">{p.reason}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

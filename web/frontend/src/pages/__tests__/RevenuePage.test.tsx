@@ -64,6 +64,21 @@ function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
     if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(ai)
     if (path === '/api/hq/portfolio') return Promise.resolve(portfolio)
     if (path === '/api/hq/portfolio/scan') return Promise.resolve({ proposals: 2 })
+    if (path.startsWith('/api/hq/portfolio/plan')) {
+      return Promise.resolve({
+        gap: {
+          target: 100000,
+          current: 2000,
+          forecast: 2666,
+          present_gap: 98000,
+          forecast_gap: 97334,
+          under_target: true,
+        },
+        plan: [
+          { kind: 'monetization', title: '[プラン] 収益化を強化する打ち手', reason: 'プレビュー専用の理由', priority: 2 },
+        ],
+      })
+    }
     if (path === '/api/outcomes') return Promise.resolve({ ok: true, event: {} })
     return Promise.resolve({})
   })
@@ -167,6 +182,34 @@ it('自律経営プラン: 目標額を入れてプランを起票する', async
   await waitFor(() =>
     expect(mockApi).toHaveBeenCalledWith('POST', '/api/hq/portfolio/scan', { target: 100000 })
   )
+})
+
+it('自律経営プラン: 「プランをプレビュー」は起票せず GET プレビューを呼び、ギャップと打ち手を表示する', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+
+  await screen.findByText('自律経営プラン（月収益目標）')
+  fireEvent.change(screen.getByPlaceholderText('月次目標額（円）'), { target: { value: '100000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'プランをプレビュー' }))
+
+  // 非破壊の GET を呼ぶ（起票の scan POST は呼ばない）
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('GET', '/api/hq/portfolio/plan?target=100000')
+  )
+  expect(mockApi).not.toHaveBeenCalledWith('POST', '/api/hq/portfolio/scan', expect.anything())
+
+  // ギャップ（目標¥100,000・ギャップ¥98,000）と打ち手をプレビュー表示
+  expect(await screen.findByText('プランプレビュー（未起票）')).toBeInTheDocument()
+  expect(screen.getByText('¥98,000')).toBeInTheDocument()
+  expect(screen.getByText('[プラン] 収益化を強化する打ち手')).toBeInTheDocument()
+})
+
+it('自律経営プラン: プレビュー前は plan-preview を描画しない', async () => {
+  wireApi()
+  renderWithRouter(<RevenuePage />)
+
+  await screen.findByText('自律経営プラン（月収益目標）')
+  expect(screen.queryByText('プランプレビュー（未起票）')).not.toBeInTheDocument()
 })
 
 it('自律経営プラン: Enter キーでも起票できる', async () => {
