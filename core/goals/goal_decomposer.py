@@ -679,7 +679,9 @@ knowledge_curation, agent_workflow_design, org_design, corporate_research"""
                 story = StorySpec(
                     story_id=_make_id("story"),
                     title=story_data.get("title", "Story"),
-                    description=story_data.get("title", ""),
+                    # copy-paste 由来で "title" を読んでいた（Epic/Task は "description" 参照）。
+                    # Story の説明が title の複製になり、本来の description が落ちていた。
+                    description=story_data.get("description", ""),
                 )
                 for task_data in story_data.get("tasks", []):
                     task_id = _make_id("task")

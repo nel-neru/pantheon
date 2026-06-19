@@ -117,7 +117,7 @@ def test_goal_decomposer_llm_path_parses_nested_plan():
     content = (
         "Here is the decomposition:\n"
         '{"epics": [{"title": "Epic A", "description": "d", '
-        '"stories": [{"title": "Story A", "tasks": ['
+        '"stories": [{"title": "Story A", "description": "story desc", "tasks": ['
         '{"title": "Task A", "description": "t", '
         '"required_skills": ["deep_research"], "estimated_tokens": 1000, '
         '"depends_on_prev": false}]}]}]}\n'
@@ -139,6 +139,10 @@ def test_goal_decomposer_llm_path_parses_nested_plan():
     plan = decomposer.decompose(goal, use_llm=True)
     titles = [e.title for e in plan.epics]
     assert "Epic A" in titles
+    # Story description must come from "description", not be a copy of "title".
+    story = plan.epics[0].stories[0]
+    assert story.title == "Story A"
+    assert story.description == "story desc"
 
 
 # --------------------------------------------------------------------------- #
