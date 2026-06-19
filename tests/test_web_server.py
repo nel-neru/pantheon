@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -1832,6 +1833,106 @@ def test_get_task_not_found(tmp_path, monkeypatch):
 
     resp = client.get("/api/tasks/nonexistent-id")
     assert resp.status_code == 404
+
+
+async def test_drain_pending_tasks_runs_executor_and_broadcasts(tmp_path, monkeypatch):
+    """作業ボードの drain が MultiOrgExecutor.process_pending 経由で PENDING タスクを
+    着火し、結果を /ws/updates へ配信することを pin する。
+
+    これは work-board-tasks フローの肝（POST /api/tasks で積んだタスクを誰が実行するか）の
+    配線テスト。drain が executor に繋がっていないと、タスクは DONE にならず broadcast も出ない。
+    """
+    _set_task_queue_home(tmp_path, monkeypatch)
+
+    queue = server._task_queue()
+    task = queue.add_task("analyze", "TestOrg", "ドレイン対象タスク", priority=5)
+
+    async def fake_dispatch(t):
+        # 実 wmux 着火の代わり。executor_fn として呼ばれた証跡を session_id で返す。
+        return {"session_id": f"sess-{t['id']}", "driver": "wmux", "dispatched": True}
+
+    monkeypatch.setattr(server, "_dispatch_task_to_wmux", fake_dispatch)
+
+    captured: list[dict] = []
+
+    async def fake_broadcast(event):
+        captured.append(event)
+
+    monkeypatch.setattr(server._updates_hub, "broadcast", fake_broadcast)
+
+    await server._drain_pending_tasks()
+
+    # executor 経由で実行された証跡: タスクが DONE になり、PENDING が捌けている。
+    assert server._task_queue().get_task(task["id"])["status"] == "done"
+    assert server._task_queue().get_pending_tasks(limit=None) == []
+    # 結果が task_dispatched として配信された（session_id 付き）。
+    dispatched = [e for e in captured if e.get("type") == "task_dispatched"]
+    assert len(dispatched) == 1
+    assert dispatched[0]["session_id"] == f"sess-{task['id']}"
+
+
+def test_ensure_session_monitor_inert_when_drain_disabled(monkeypatch):
+    """ライブ監視が無効（テスト既定 = run_server 未呼び出し）の間は drain/監視ループを
+    起動しないことを pin する。これが崩れるとテスト実行中に背景タスクが湧く。"""
+    # 既定の不変条件: テストでは run_server を呼ばないのでライブ監視は無効。
+    assert server._LIVE_MONITOR_ENABLED is False
+
+    monkeypatch.setattr(server, "_session_monitor_task", None)
+    monkeypatch.setattr(server, "_task_drain_task", None)
+
+    server._ensure_session_monitor()
+
+    assert server._session_monitor_task is None
+    assert server._task_drain_task is None
+
+
+async def test_ensure_session_monitor_starts_drain_when_enabled(monkeypatch):
+    """ライブ監視 + drain が有効なときに _ensure_session_monitor が drain ループを
+    起動することを pin する（run_server 経由で auto_drain_tasks が True のとき相当）。"""
+
+    async def _noop_loop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(server, "_session_monitor_loop", _noop_loop)
+    monkeypatch.setattr(server, "_task_drain_loop", _noop_loop)
+    monkeypatch.setattr(server, "_LIVE_MONITOR_ENABLED", True)
+    monkeypatch.setattr(server, "_TASK_DRAIN_ENABLED", True)
+    monkeypatch.setattr(server, "_session_monitor_task", None)
+    monkeypatch.setattr(server, "_task_drain_task", None)
+
+    server._ensure_session_monitor()
+
+    monitor_task = server._session_monitor_task
+    drain_task = server._task_drain_task
+    assert monitor_task is not None
+    assert drain_task is not None
+
+    # no-op ループなので即終了する。leak しないよう待ち切る。
+    await asyncio.gather(monitor_task, drain_task)
+
+
+async def test_ensure_session_monitor_skips_drain_when_drain_disabled(monkeypatch):
+    """ライブ監視は有効でも drain が無効（auto_drain_tasks: false 設定相当）のときは
+    監視ループだけ起動し、drain ループは起動しないことを pin する。これが崩れると
+    auto_drain_tasks=False を設定してもタスクが勝手に着火される。"""
+
+    async def _noop_loop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(server, "_session_monitor_loop", _noop_loop)
+    monkeypatch.setattr(server, "_task_drain_loop", _noop_loop)
+    monkeypatch.setattr(server, "_LIVE_MONITOR_ENABLED", True)
+    monkeypatch.setattr(server, "_TASK_DRAIN_ENABLED", False)
+    monkeypatch.setattr(server, "_session_monitor_task", None)
+    monkeypatch.setattr(server, "_task_drain_task", None)
+
+    server._ensure_session_monitor()
+
+    monitor_task = server._session_monitor_task
+    assert monitor_task is not None
+    assert server._task_drain_task is None
+
+    await monitor_task
 
 
 def test_get_provider_models_returns_claude_models(tmp_path, monkeypatch):
