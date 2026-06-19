@@ -218,17 +218,20 @@
       "trigger": { "kind": "api", "name": "POST /api/tasks" },
       "steps": [
         { "component": "core/orchestration/task_queue.py", "action": "タスクをファイルバック・キューに enqueue" },
-        { "component": "core/orchestration/multi_org_executor.py", "action": "保留タスクを drain し並列実行（web の _drain_pending_tasks ループ経由）" },
+        { "component": "core/runtime/task_drain.py", "action": "保留タスクを drain（web/CLI/daemon 共通の正準ヘルパ＝MultiOrgExecutor.process_pending→work_launcher.dispatch_task）" },
+        { "component": "core/orchestration/multi_org_executor.py", "action": "保留タスクを並列で着火（process_pending）" },
         { "component": "web/frontend/src/pages/BoardPage.tsx", "action": "pending/running/review 列でタスクを可視化" },
-        { "component": "commands/tasks.py", "action": "headless で add/list/drain（GUI 未接続でも保留を着火＝work_launcher.dispatch_task 共有）" }
+        { "component": "commands/tasks.py", "action": "headless で add/list/drain（GUI 未接続でも保留を着火＝drain_pending_tasks 共有）" },
+        { "component": "core/runtime/task_drain_scheduler.py", "action": "task daemon が一定間隔で保留を自動 drain（GUI も cron も無い 24/7 運用での真の headless 実行・既定オフ opt-in）" }
       ],
-      "surfaces": ["GET/POST/DELETE /api/tasks", "BoardPage", "pantheon tasks add/list/drain"],
-      "state": ["~/.pantheon/task_queue/"],
-      "verification": ["tests/test_task_queue.py", "tests/test_multi_org_executor.py"],
+      "surfaces": ["GET/POST/DELETE /api/tasks", "BoardPage", "pantheon tasks add/list/drain", "pantheon daemons start task"],
+      "state": ["~/.pantheon/task_queue/", "~/.pantheon/task_drain_log.jsonl"],
+      "verification": ["tests/test_task_queue.py", "tests/test_multi_org_executor.py", "tests/test_task_drain.py"],
       "status": "solid",
       "known_issues": [],
       "resolved": [
-        { "title": "MultiOrgExecutor をライブキュー/web API に配線済み。POST /api/tasks で積んだ PENDING タスクは web の _drain_pending_tasks→MultiOrgExecutor.process_pending(_dispatch_task_to_wmux) が wmux work セッションへ着火する。run_server で auto_drain_tasks（既定 True）→_ensure_session_monitor が /ws/updates 接続時に _task_drain_loop を起動。drain 配線・起動分岐の回帰テストを tests/test_web_server.py に追加。", "file": "web/server.py" },
+        { "title": "MultiOrgExecutor をライブキュー/web API に配線済み。POST /api/tasks で積んだ PENDING タスクは web の _drain_pending_tasks→共有 drain_pending_tasks→MultiOrgExecutor.process_pending→work_launcher.dispatch_task が wmux work セッションへ着火する。run_server で auto_drain_tasks（既定 True）→_ensure_session_monitor が /ws/updates 接続時に _task_drain_loop を起動。drain 配線・起動分岐の回帰テストを tests/test_web_server.py に追加。", "file": "web/server.py" },
+        { "title": "GUI 未接続（headless/cron）だと drain が走らないギャップを task daemon で開通。web/CLI/daemon の drain 本体を core/runtime/task_drain.py の drain_pending_tasks に正準化（3重複を解消）し、TaskDrainScheduler（既定オフ opt-in・レート制限/クォータ尊重）が一定間隔で保留を自動着火する。daemon レジストリ task として登録（pantheon daemons start task）。回帰テストは tests/test_task_drain.py。", "file": "core/runtime/task_drain_scheduler.py" },
         { "title": "TaskQueue のクロスプロセスロックが Windows で no-op だった問題を msvcrt/fcntl の移植版ロック（_lock_fd/_unlock_fd）で根治。複数デーモンの並行 load→save による lost update を防止。_save も atomic_write_text（mkstemp 一意名）化し固定 .tmp 衝突を根絶。3子プロセス並行の回帰テスト付き。", "file": "core/orchestration/task_queue.py" }
       ]
     },

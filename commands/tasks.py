@@ -15,7 +15,6 @@ wmux の work セッションへ着火する）。
 from __future__ import annotations
 
 import argparse
-import asyncio
 from typing import Any
 
 # argparse choices 用（core を import せず CLI 起動を軽く保つ）。
@@ -67,21 +66,13 @@ async def cmd_tasks_drain(args: argparse.Namespace) -> None:
     注意: process_pending は dispatcher が返った時点（= wmux セッションを *起動* した
     時点）でタスクを DONE にする。作業の *完了* ではなく *着火* を意味するので、出力は
     「着火」と表現する（実作業の進捗は起動したセッション側で追う）。
+
+    drain の本体（executor を組んで pending を捌く）は web GUI / headless daemon と
+    共通の :func:`core.runtime.task_drain.drain_pending_tasks` に集約している。
     """
-    from core.orchestration.multi_org_executor import MultiOrgExecutor
-    from core.orchestration.task_queue import TaskQueue
-    from core.runtime import work_launcher
+    from core.runtime.task_drain import drain_pending_tasks
 
-    queue = TaskQueue()
-    executor = MultiOrgExecutor(queue=queue)
-
-    async def _dispatch(task: dict[str, Any]) -> dict[str, Any]:
-        record = await asyncio.to_thread(work_launcher.dispatch_task, task)
-        return {"session_id": record.id, "driver": record.driver, "dispatched": True}
-
-    results = await executor.process_pending(
-        _dispatch, org_filter=args.org, max_tasks=args.max_tasks
-    )
+    results = await drain_pending_tasks(org_filter=args.org, max_tasks=args.max_tasks)
     if not results:
         print("着火対象の保留タスクはありません。")
         return

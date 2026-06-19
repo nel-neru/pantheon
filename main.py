@@ -780,6 +780,14 @@ def main() -> None:
         _revenue_daemon_runner.main()
         return
 
+    # task daemon（作業ボードの headless 自動実行）の frozen 自己再起動エントリ。
+    if argv and argv[0] == "--task-daemon-run":
+        from core import _task_daemon_runner
+
+        sys.argv = [sys.argv[0], *argv[1:]]
+        _task_daemon_runner.main()
+        return
+
     # 引数なし起動（exe をダブルクリックした場合など）はフル起動（up）する:
     # Web GUI（監視）+ wmux 汎用チャットタブ + ブラウザ自動オープン。
     # ターミナルから `Pantheon.exe <command>` とすれば従来どおり CLI が使える。
