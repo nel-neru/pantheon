@@ -76,10 +76,10 @@ def test_spawn_writes_pid_and_desired_state(tmp_path, monkeypatch):
     class DummyProc:
         pid = 1234
 
-    def fake_popen(cmd, cwd, stdout, stderr, start_new_session):
+    def fake_popen(cmd, cwd, stdout, stderr, **kwargs):
         captured["cmd"] = cmd
         captured["cwd"] = cwd
-        captured["start_new_session"] = start_new_session
+        captured["kwargs"] = kwargs
         return DummyProc()
 
     monkeypatch.setattr(registry.subprocess, "Popen", fake_popen)
@@ -90,8 +90,30 @@ def test_spawn_writes_pid_and_desired_state(tmp_path, monkeypatch):
     assert (tmp_path / "daemon.pid").read_text(encoding="utf-8") == "1234"
     assert captured["cmd"][:3] == [sys.executable, "-m", "core._daemon_runner"]
     assert captured["cwd"] == registry.PROJECT_ROOT
-    assert captured["start_new_session"] is True
+    # spawn passes the OS-appropriate console-detach kwargs (POSIX setsid /
+    # Windows creation flags), not a raw start_new_session that Windows ignores.
+    assert captured["kwargs"] == registry._detach_popen_kwargs()
     assert load_enabled(platform_home=tmp_path)["improvement"]["enabled"] is True
+
+
+def test_detach_popen_kwargs_posix_uses_setsid():
+    """POSIX detaches via setsid (start_new_session), no Windows creationflags."""
+    kw = registry._detach_popen_kwargs("posix")
+    assert kw == {"start_new_session": True}
+
+
+def test_detach_popen_kwargs_windows_uses_creationflags():
+    """Windows ignores start_new_session, so we must pass detach creation flags:
+    a new process group (isolates console control events) AND a detached console
+    (frees the daemon from the launching terminal). Asserted via the documented
+    constant values so this runs on any host OS."""
+    kw = registry._detach_popen_kwargs("nt")
+    assert "start_new_session" not in kw
+    flags = kw["creationflags"]
+    assert flags & 0x00000200  # CREATE_NEW_PROCESS_GROUP
+    assert flags & 0x00000008  # DETACHED_PROCESS
+    # exact value so dropping either flag (single-flag swap) is caught precisely.
+    assert flags == 0x00000200 | 0x00000008
 
 
 def test_spawn_already_running(tmp_path, monkeypatch):
