@@ -3255,3 +3255,23 @@ Cycle 57 — (運用層/堅牢性) 24/7 デーモン/スケジューラの state
   Next   : C58 候補 — (aaa) web/server.py の settings/history など web-API 層の非アトミック state write を atomic 化（C57 の自然な続き・別レイヤー・reviewer が scope 外と明示した残り）、(www) goals `_topological_sort` の
            循環依存ガード（A↔B で無限再帰回避・到達性低だが vision-core の crash 安全）、(zzz) 別ドメイン（web/server.py or github_integration）で論理 bug-hunt 継続。**運用層を C57 で出したので次は frontend or web-API 層で多様性維持・
            確立硬化の取りこぼし監査は grep で層別に・確証 HIGH のみ修正・既掃討 archetype 除外を継続**。
+
+Cycle 58 — (web-API/正確性) `DELETE /api/tasks/{id}` が不在タスクに 400 を返す REST 不整合を 404 へ是正＝姉妹 GET と整合・「False-for-both ヘルパが not-found と not-allowed を混同」archetype  (2026-06-19)
+  Plan   : 多様性ルール（C57 が atomic-write なので同種連発回避）＋「未だ論理 bug-hunt していない最大ドメイン＝web-API 層（外部公開面・5255行）」から web/server.py に bug-hunt 1本投下（確証 HIGH のみ・404 不変尊重）。
+           **結果 HIGH バグ0（外部公開面も成熟＝error path/WS lifecycle/入力検証/path-traversal/timing-safe token compare/明示404 すべて健全）**。MEDIUM 観測3件のうち #1 を採用＝`api_cancel_task` は `queue.cancel_task` が「不在」と
+           「PENDING でない（実行中/完了済）」の**両方で False** を返すため、存在しない task_id に 400 を返し、姉妹 `GET /api/tasks/{id}`（不在=404）と不整合。実コードで `cancel_task`（task_queue.py:255 が exists&&PENDING のみ True）と
+           既存テスト（旧 400-on-missing に依存するものは無し）を確認し確定。**なぜ今これか**: 確証高（404-for-missing は REST 上明白・姉妹 GET と publish-job endpoints の fetch→404 パターンに整合）・最小可逆・web-API 層で多様性・
+           **明示404不変を壊さず逆に正しい 404 を足す**。受け入れ基準=不在=404/非キャンセル可=400 に分離・回帰テスト・全 GREEN・回帰0・敵対レビュー pass・merged。**落とした候補**: #2 提案 pending の limit=100 上限=GET/approve 両経路が同 cap で
+           UI は #101 に触れない soft ceiling（wrong-response でない）、#3 prefix-match ambiguity=実 UI は full UUID 送信で到達不能（LOW）。
+  Did    : work/cancel-task-404-parity-20260619（main へ統合）。`api_cancel_task`: `task = get_task(id)` 後に `if task is None: raise 404`（姉妹 GET と同 shape）を前置し、400 は「存在するがキャンセル不可（実行中/完了済）」に限定。
+           404 ガードで task 非 None 確定のため `_record_execution_event` の dead な `if task else` フォールバックも除去（reviewer 🟢 nit）。`test_web_server.py` に回帰2本（不在→404・既キャンセル→400 で両ケース区別）。
+  Check  : ruff クリーン ／ **test-triage 全件 GREEN（1669 passed・既知2失敗のみ・回帰0／新+2本）** ／ 旧 400-on-missing に依存する legacy テスト無しを確認。**load-bearing 実証**: 404 ガードを一時除去→`test_cancel_task_not_found` が
+           400!=404 で fail・既キャンセルテストは 400 のまま pass（両経路を正しく分離）後 restore。**敵対的レビュー code-reviewer = APPROVE（blocking 0）**: ① 404/400 split は REST 正・姉妹 GET と publish-job endpoints に整合、
+           ② 明示404不変保持（middleware は 401 のみで HTTPException 非介入）、③ 新テスト load-bearing・非 tautological（2回目 DELETE で CANCELLED 状態の 400 経路に正当到達）、④ TOCTOU は cancel_task 内 _locked で原子的・クロスコール窓の
+           400-vs-404 race は無視可、⑤ publish-job endpoints は既に fetch→404→409 の良い型＝本修正は task endpoint をそれに整合させる方向。
+  Act    : merged ✅（merge_to_main ゲート通過・--delete-branch、リモート削除エラーは未 push で benign）＝production REST correctness。固定化（memory [[get-default-none-footgun]] に姉妹 archetype として追記）:
+           **「False-for-both（or None-for-both）ヘルパが not-found と not-allowed/invalid-state を混同する」archetype**＝`cancel_task`/`delete`/`update` 系が「不在」と「状態不一致」の両方で同じ falsy を返すと、呼び出し側が
+           1つの誤ったステータス（400）に潰す。**正=呼び出し側で先に存在確認して 404、その後 invalid-state を 400/409 に分ける**（REST 上 missing≠invalid）。姉妹 endpoint（GET/publish-job）と status-code parity を必ず横ぐしで確認。
+           **bug-hunt が HIGH 0 でも MEDIUM の REST 整合性は拾う価値がある**（外部公開 API の polish）。
+  Next   : C59 候補 — (aaa) web/server.py の settings/history 非アトミック write を atomic 化（C57 の web-API 層への取りこぼし続き・ただし atomic-write は C57 と同種なので間隔を空ける）、(www) goals topological_sort 循環ガード（vision-core crash 安全・到達性低）、
+           (bbb) 他の mutating endpoint（update/delete 系）で missing-vs-invalid の status parity を横ぐし監査（C58 archetype の横展開）。**web-API を C58 で出したので次は frontend or backend-core で多様性維持・bug-hunt は HIGH のみ修正・MEDIUM は REST/UX 整合性なら採用可・既掃討除外を継続**。
