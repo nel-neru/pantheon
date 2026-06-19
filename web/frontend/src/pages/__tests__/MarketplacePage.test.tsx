@@ -59,6 +59,15 @@ function wireApi() {
     if (method === 'POST' && path === '/api/hq/untapped-genres/scan') {
       return Promise.resolve({ proposals: 1 })
     }
+    if (method === 'GET' && path === '/api/hq/untapped-genres') {
+      return Promise.resolve({
+        items: [
+          { genre: 'ai_devtools', count: 4, max_score: 8.5, top_title: 'AI コーディング支援の台頭' },
+        ],
+        covered: ['digital_content'],
+        count: 1,
+      })
+    }
     if (method === 'POST' && path.includes('/install')) {
       return Promise.resolve({ org_name: 'note 販売会社', divisions: ['コンテンツ企画部'] })
     }
@@ -160,6 +169,47 @@ it('「未開拓ジャンルをスキャン」で untapped scan API を呼ぶ', 
   await waitFor(() =>
     expect(mockApi).toHaveBeenCalledWith('POST', '/api/hq/untapped-genres/scan', { min_score: 7.0 })
   )
+})
+
+it('「未開拓ジャンルを確認」で起票せず GET プレビューを呼び、結果を表示する', async () => {
+  wireApi()
+  renderWithRouter(<MarketplacePage />)
+
+  fireEvent.click(await screen.findByRole('button', { name: '未開拓ジャンルを確認' }))
+
+  // 非破壊の GET プレビューを呼ぶ（scan POST は呼ばない）
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('GET', '/api/hq/untapped-genres')
+  )
+  expect(mockApi).not.toHaveBeenCalledWith(
+    'POST',
+    '/api/hq/untapped-genres/scan',
+    expect.anything()
+  )
+  // プレビュー結果（ジャンル名・代表トレンド・スコア）を描画する
+  expect(await screen.findByText('ai_devtools')).toBeInTheDocument()
+  expect(screen.getByText('AI コーディング支援の台頭')).toBeInTheDocument()
+  expect(screen.getByText('8.5')).toBeInTheDocument()
+})
+
+it('未開拓ジャンルが0件のときプレビューで空状態メッセージを表示する', async () => {
+  mockApi.mockImplementation((method: string, path: string) => {
+    if (path === '/api/company-plugin-manifests') return Promise.resolve(companyManifests)
+    if (path === '/api/division-plugins') return Promise.resolve(divisionPlugins)
+    if (path === '/api/organizations') return Promise.resolve(orgs)
+    if (path === '/api/hq/business-proposals') return Promise.resolve({ items: [] })
+    if (method === 'GET' && path === '/api/hq/untapped-genres') {
+      return Promise.resolve({ items: [], covered: [], count: 0 })
+    }
+    return Promise.resolve({})
+  })
+  renderWithRouter(<MarketplacePage />)
+
+  fireEvent.click(await screen.findByRole('button', { name: '未開拓ジャンルを確認' }))
+
+  expect(
+    await screen.findByText('現在カバーされていない未開拓ジャンルは見つかりませんでした。')
+  ).toBeInTheDocument()
 })
 
 it('事業部「追加」は確認ダイアログを開き、確認後に POST を呼ぶ', async () => {

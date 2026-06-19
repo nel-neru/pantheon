@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Blocks, ExternalLink, Plus, RefreshCw, Sparkles } from 'lucide-react'
+import { AlertTriangle, Blocks, ExternalLink, Eye, Plus, RefreshCw, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
@@ -26,6 +26,13 @@ type BusinessProposal = {
 
 type OrgRow = { id: string; name: string }
 
+type UntappedGenre = {
+  genre: string
+  count: number
+  max_score: number
+  top_title: string
+}
+
 type ConfirmState = {
   title: string
   description?: ReactNode
@@ -47,6 +54,10 @@ export function MarketplacePage() {
   const [manifestError, setManifestError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  // 未開拓ジャンルの「起票しない」プレビュー（GET /api/hq/untapped-genres）。
+  // null = 未取得（プレビュー前）, [] = 取得したが未開拓ジャンル0件。
+  const [untapped, setUntapped] = useState<UntappedGenre[] | null>(null)
+  const [previewing, setPreviewing] = useState(false)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const initialLoadDone = useRef(false)
 
@@ -142,6 +153,26 @@ export function MarketplacePage() {
       setScanning(false)
     }
   }, [load])
+
+  // 起票せずに未開拓ジャンルを覗く（GET プレビュー）。スキャンで盲目的に起票する前に
+  // 「何が未開拓か」を確認できるようにする。payload は free-form なので防御的に coerce する。
+  const previewUntapped = useCallback(async () => {
+    setPreviewing(true)
+    try {
+      const res = await api<{ items?: UntappedGenre[] }>('GET', '/api/hq/untapped-genres')
+      const items = (Array.isArray(res.items) ? res.items : []).map((g) => ({
+        genre: String(g?.genre ?? ''),
+        count: Number.isFinite(Number(g?.count)) ? Number(g?.count) : 0,
+        max_score: Number.isFinite(Number(g?.max_score)) ? Number(g?.max_score) : 0,
+        top_title: String(g?.top_title ?? ''),
+      }))
+      setUntapped(items)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'プレビューに失敗しました。')
+    } finally {
+      setPreviewing(false)
+    }
+  }, [])
 
   const installCompanyConfirmed = useCallback(
     async (manifest: CompanyManifest) => {
@@ -309,6 +340,16 @@ export function MarketplacePage() {
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
+                      disabled={previewing || isBusy}
+                      onClick={() => void previewUntapped()}
+                      title="起票せずに、現組織がカバーしていない未開拓ジャンルを一覧で確認します"
+                    >
+                      <Eye size={14} />
+                      {previewing ? '確認中…' : '未開拓ジャンルを確認'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
                       disabled={scanning || isBusy}
                       onClick={() => void scanUntapped()}
                       title="既存組織がカバーしていない未開拓ジャンルを探して候補を起票します"
@@ -324,9 +365,44 @@ export function MarketplacePage() {
                   <br />
                   <span className="text-xs">
                     トレンドからスキャン: 直近のトレンドを起点に候補生成 ／
-                    未開拓ジャンルをスキャン: 現組織がカバーしていないジャンルを探して候補生成。
+                    未開拓ジャンルをスキャン: 現組織がカバーしていないジャンルを探して候補生成 ／
+                    未開拓ジャンルを確認: 起票せずジャンルの一覧だけを覗く（プレビュー）。
                   </span>
                 </p>
+                {untapped !== null && (
+                  <div className="rounded-xl border border-white/10 p-3 flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Eye size={14} />
+                      未開拓ジャンル（プレビュー・未起票）
+                    </div>
+                    {untapped.length === 0 ? (
+                      <div className="text-muted text-sm">
+                        現在カバーされていない未開拓ジャンルは見つかりませんでした。
+                      </div>
+                    ) : (
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>ジャンル</th>
+                            <th>証拠数</th>
+                            <th>最高スコア</th>
+                            <th>代表トレンド</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {untapped.map((g) => (
+                            <tr key={g.genre}>
+                              <td className="font-medium">{g.genre}</td>
+                              <td className="text-muted text-sm">{g.count}</td>
+                              <td className="text-muted text-sm">{g.max_score.toFixed(1)}</td>
+                              <td className="text-muted text-sm">{g.top_title || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
                 {bizProposals.length === 0 ? (
                   <div className="text-muted text-sm">
                     候補はまだありません。上のスキャンボタンで生成できます。
