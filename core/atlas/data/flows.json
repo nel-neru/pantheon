@@ -117,13 +117,12 @@
       "surfaces": ["pantheon session start/list/show/stop/resume/doctor", "GET/POST /api/sessions", "POST /api/sessions/{id}/stop|resume", "WS /ws/updates", "SessionsPage"],
       "state": ["~/.pantheon/sessions/"],
       "verification": ["tests/test_session_orchestrator.py", "tests/test_multiplexer_factory.py", "tests/test_wmux_rpc.py", "tests/test_rate_limit.py"],
-      "status": "partial",
-      "known_issues": [
-        { "severity": "low", "title": "クロスプロセス stop の専用回帰テストが未整備", "detail": "停止経路はコード実装済（headless_driver.close_surface の proc is None 分岐）だが、別プロセスから web 起動セッションを停止する統合テストが無い（poll 経路は被覆済）。test_stop_session_closes_surfaces は FakeDriver 経由。", "file": "tests/test_session_orchestrator.py" }
-      ],
+      "status": "solid",
+      "known_issues": [],
       "resolved": [
         { "title": "Headless poll が exit code 無しに DONE を捏造し失敗を隠す問題を exit-code サイドカー（<log_path>.exit）で根治。所有プロセスが reaped exit code を atomic 記録し、クロスプロセス poll はそれを authoritative に読む。不在で pid 消滅時は DONE 捏造せず FAILED（誤りは安全側）。", "file": "core/runtime/multiplexer/headless_driver.py" },
-        { "title": "Headless プロセスのプロセス跨ぎ孤児化（web 起動セッションを停止できない）を解消。open_surface が pid を surface.pty_id に保存し session.json へ永続化、別プロセスで再構築した HeadlessDriver の close_surface（proc is None 分岐）が永続化 pid を pid_alive で確認し terminate_pid で停止する。", "file": "core/runtime/multiplexer/headless_driver.py" }
+        { "title": "Headless プロセスのプロセス跨ぎ孤児化（web 起動セッションを停止できない）を解消。open_surface が pid を surface.pty_id に保存し session.json へ永続化、別プロセスで再構築した HeadlessDriver の close_surface（proc is None 分岐）が永続化 pid を pid_alive で確認し terminate_pid で停止する。", "file": "core/runtime/multiplexer/headless_driver.py" },
+        { "title": "クロスプロセス stop の専用回帰テストを整備。実 subprocess を所有 HeadlessDriver で起動→別プロセス相当の fresh driver / 別 SessionOrchestrator(driver 未注入→_reattach_driver で headless 再構築) の close_surface・stop_session が永続化 pid を terminate_pid で実際に終了させ status=CLOSED/stopped になることを end-to-end 検証。加えて pid 生存→kill 発行 / pid 死亡→kill 抑止(pid 再利用ガード) を monkeypatch で決定論的に固定。", "file": "tests/test_session_orchestrator.py" }
       ]
     },
     {
