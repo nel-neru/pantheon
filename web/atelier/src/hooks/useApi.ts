@@ -15,19 +15,24 @@ export function useApi<T>(path: string | null, pollMs = 0): AsyncState<T> {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(Boolean(path))
   const alive = useRef(true)
+  // 直近に開始したリクエストの連番。ポーリング（interval は前回を await しない）や path 変更で
+  // 複数リクエストが同時に飛び、遅い古い応答が新しい応答を上書きする順序逆転を防ぐ。最新の id を
+  // 持つ応答だけが commit できる（Inbox.tsx の reqRef ガードと同型）。
+  const seq = useRef(0)
 
   const run = useCallback(async () => {
     if (!path) return
+    const id = ++seq.current
     try {
       const result = await api<T>('GET', path)
-      if (alive.current) {
+      if (alive.current && id === seq.current) {
         setData(result)
         setError(null)
       }
     } catch (e) {
-      if (alive.current) setError((e as Error).message)
+      if (alive.current && id === seq.current) setError((e as Error).message)
     } finally {
-      if (alive.current) setLoading(false)
+      if (alive.current && id === seq.current) setLoading(false)
     }
   }, [path])
 
