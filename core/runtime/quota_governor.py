@@ -27,6 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from core.persistence import atomic_write_text
 from core.runtime.token_ledger import TokenLedger
 from core.runtime.usage_gate import RateLimitGate
 
@@ -125,10 +126,9 @@ def save_rules(
         "hard_limit_tokens": new_hard,
     }
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8"
-        )
+        # torn write 防止: token_quota.yaml は quota ルール（window/soft/hard）の真実で、
+        # 半端な書き込みは reader 側で {} 化＝誤った quota ゲートを招く。atomic に差し替える。
+        atomic_write_text(path, yaml.safe_dump(payload, allow_unicode=True, sort_keys=False))
     except OSError as exc:  # pragma: no cover - 書き込み不可は握りつぶし
         logger.warning("failed to persist token_quota.yaml: %s", exc)
     return QuotaRules(

@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from core.paths import resource_root
+from core.persistence import atomic_write_text
 from core.runtime.heartbeat import (
     heartbeat_age_seconds,
     read_heartbeat,
@@ -298,7 +299,9 @@ def spawn_daemon(
             stderr=subprocess.STDOUT,
             **_detach_popen_kwargs(),
         )
-    pid_file.write_text(str(proc.pid), encoding="utf-8")
+    # pid は watchdog/status が読み戻して liveness 判定に使う。atomic に差し替えて
+    # daemon 群の管理 state を全て torn-write 安全にそろえる（C37 sweep の運用層分）。
+    atomic_write_text(pid_file, str(proc.pid))
     if record_enabled:
         set_enabled(name, True, args=args, platform_home=platform_home)
     logger.info("daemon '%s' started (pid=%s)", name, proc.pid)
