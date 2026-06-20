@@ -3136,6 +3136,28 @@ def test_revenue_daemon_start_passes_target_args(tmp_path, monkeypatch):
     assert "--target=0.0" in captured["args"]
 
 
+def test_metrics_efficiency_api(tmp_path, monkeypatch):
+    """組織別 ROI 効率とランクを返す（discovery #7）。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("HighROI", "x"))
+    psm.save_organization(create_default_organization("LowROI", "y"))
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("HighROI", "impressions", 100)
+    store.record("HighROI", "revenue", 500)  # ROI 5.0
+    store.record("LowROI", "impressions", 1000)
+    store.record("LowROI", "revenue", 100)  # ROI 0.1
+
+    resp = client.get("/api/metrics/efficiency")
+    assert resp.status_code == 200, resp.text
+    by_name = {o["org_name"]: o for o in resp.json()["orgs"]}
+    assert by_name["HighROI"]["roi"] > by_name["LowROI"]["roi"]
+    assert by_name["HighROI"]["efficiency_rank"] < by_name["LowROI"]["efficiency_rank"]
+
+
 def test_combined_execution_history_tolerates_null_timestamp(monkeypatch):
     """複数ソース由来 record の timestamp が null でも履歴の並べ替えが落ちない（500 回避）。
 

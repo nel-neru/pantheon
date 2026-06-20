@@ -2622,6 +2622,49 @@ async def api_revenue_metrics() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/metrics/efficiency", tags=["metrics"])
+async def api_metrics_efficiency() -> Dict[str, Any]:
+    """組織別の収益効率（ROI = revenue/reach）とランクを返す。
+
+    どの org がリーチを効率よく収益化しているか/リーチを無駄にしているかを一望できる。
+    ``recommend_allocation`` の ROI 計算（決定論）を再利用し、効率ランク（ROI 降順 1 始まり）を付す。
+    """
+    from core.metrics.portfolio import recommend_allocation
+
+    psm = _psm()
+    store = _outcome_store()
+    org_stats: List[Dict[str, Any]] = []
+    for org in psm.load_organizations():
+        if getattr(org, "is_system", False):
+            continue
+        summary = store.summary_for_org(org.name)
+        org_stats.append(
+            {
+                "org_name": org.name,
+                "revenue": summary.total_revenue,
+                "reach": summary.total_reach,
+                "posts": summary.by_metric.get("posts", {}).get("sum", 0.0),
+            }
+        )
+    alloc = {a["org_name"]: a for a in recommend_allocation(org_stats)}
+    # ROI 降順でランク付け（同 ROI は org 名で安定化）。
+    ranked = sorted(
+        org_stats, key=lambda s: (-alloc.get(s["org_name"], {}).get("roi", 0.0), s["org_name"])
+    )
+    orgs_payload = [
+        {
+            "org_name": s["org_name"],
+            "revenue": s["revenue"],
+            "reach": s["reach"],
+            "roi": alloc.get(s["org_name"], {}).get("roi", 0.0),
+            "action": alloc.get(s["org_name"], {}).get("action", "grow_audience"),
+            "efficiency_rank": rank,
+        }
+        for rank, s in enumerate(ranked, start=1)
+    ]
+    return {"orgs": orgs_payload, "count": len(orgs_payload)}
+
+
 @app.get("/api/metrics/revenue/report", tags=["metrics"])
 async def api_revenue_report(org_name: Optional[str] = None) -> Dict[str, Any]:
     """収益の月次（YYYY-MM）簡易レポート。``org_name`` 指定で単一 org、省略で全 org 横断。"""
