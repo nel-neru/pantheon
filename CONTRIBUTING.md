@@ -36,8 +36,9 @@ cd web/frontend && npm test                  # フロントエンド (vitest)
 
 - 新機能・修正には必ず `tests/` にテストを追加してください
   （`tmp_path` + `get_platform_home` monkeypatch パターン推奨）。
-- **Windows では 2 件の既知失敗**（chmod 0o600 由来）があります。
-  これらはベースラインであり、回帰ではありません（詳細は CLAUDE.md）。
+- **Windows では既知失敗は 0 件**です。chmod 0o600 由来の 2 件のテストは
+  Windows では skip され、Linux CI では実行されて pass します。
+  したがって、いかなる失敗も回帰です（詳細は CLAUDE.md）。
 
 ## コーディング規約
 

@@ -18,7 +18,7 @@ paths:
 
 - Add tests under `tests/` using pytest; mirror the `tmp_path` + `monkeypatch.setattr("...get_platform_home", lambda: tmp_path)` fixture pattern (see `tests/conftest.py`).
 - Run: `.venv/Scripts/python.exe -m pytest tests/ -q`. Do not break full-suite collection.
-- 2 Windows failures are pre-existing (chmod 0o600) — not regressions (see CLAUDE.md).
+- Windows backend baseline is now **0 known failures** — any failure is a regression. The 2 chmod 0o600 tests are `skipif(win32)` (skipped on Windows, run & pass on Linux CI) (see CLAUDE.md).
 - Relative paths returned by repo-scanning code are POSIX-normalized (`.as_posix()`, never `str()` on a relative `Path`) so results are identical across Windows/POSIX.
 
 ## Adding things (from AGENTS.md "new-feature recipe")
