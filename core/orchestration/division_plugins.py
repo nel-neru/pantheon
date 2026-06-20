@@ -73,6 +73,29 @@ def get_division_plugin(plugin_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def get_division_plugin_by_category(
+    category: str, *, preferred_id: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """カテゴリ（audience/monetization/operations/content/full_funnel）で 1 つの事業部
+    プラグインを選ぶ。``department`` 定義を持つものに限る。無ければ None。
+
+    ``preferred_id`` を渡すと、そのカタログ entry を最優先する（カテゴリ一致は問わない）。
+    これにより「カテゴリ別に自動選択しつつ、特定ジャンルでは正規プラグインを固定」できる
+    （例: monetization は ``note_monetization`` を優先しつつ、未知ジャンルではカテゴリ一致で代替）。
+    決定論的（カタログ出現順の先頭）。
+    """
+    plugins = load_division_plugins()
+    if preferred_id:
+        for p in plugins:
+            if p.get("id") == preferred_id and isinstance(p.get("department"), dict):
+                return p
+    target = str(category or "").strip().lower()
+    for p in plugins:
+        if str(p.get("category") or "").lower() == target and isinstance(p.get("department"), dict):
+            return p
+    return None
+
+
 def add_division_plugin(org: Organization, plugin_id: str) -> Division:
     """事業部プラグインを Organization に追加し、追加した Division を返す。
 

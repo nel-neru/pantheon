@@ -138,49 +138,102 @@ class HQInterventionProposer:
         outcome_proposal = self._intervention_from_outcomes(org)
         if outcome_proposal is not None:
             proposals.append(outcome_proposal)
-        # Phase 1: 「リーチ有・収益0」の org に *具体的な収益化事業部* の新設を提案する
+        # Phase 1 / P16: 診断した *構造ギャップ* に対し具体的な事業部プラグインの新設を提案する
         #          （目標設定＝why に対し、事業部プラグイン追加＝how。自己拡大の出口）。
-        monetization_proposal = self._intervention_add_monetization_division(org)
-        if monetization_proposal is not None:
-            proposals.append(monetization_proposal)
+        #          収益化に限らず、リーチ0なら集客、収益0なら収益化、と gap 別に選ぶ。
+        gap_proposal = self._intervention_add_division_for_gap(org)
+        if gap_proposal is not None:
+            proposals.append(gap_proposal)
         return proposals
 
-    def _intervention_add_monetization_division(
+    def _intervention_add_division_for_gap(
         self, org: Organization
     ) -> Optional[ImprovementProposal]:
-        """成果ベースの *構造* 介入: 収益化事業部が未設置の収益0 org に追加を提案する。
+        """成果ベースの *構造* 介入: 診断した構造ギャップに合う事業部プラグインの新設を提案する（P16）。
 
-        ``_intervention_from_outcomes`` の SET_GOAL（目標化）を補完する具体策。事業部
-        プラグイン（``core.orchestration.division_plugins``）の department 定義を ADD_DIVISION
-        の spec に変換して提案する（承認→構造介入 executor で適用）。
+        従来は収益化事業部（``note_monetization``）ハードコード一択だったが、org の成果と
+        既存事業部から *最も差し迫ったギャップ* を判定し、カテゴリ別に事業部プラグインを選ぶ:
+
+        - 収益化ギャップ: リーチ有・収益0・収益化事業部なし → monetization カテゴリ
+          （``note_monetization`` を優先）。``target_ref=add_monetization_division``（従来挙動を保持）。
+        - 集客ギャップ: 活動はあるがリーチ0・収益0・集客事業部なし → audience カテゴリ。
+          ``target_ref=add_audience_division``。
+
+        いずれも ``_intervention_from_outcomes`` の SET_GOAL（why）を補完する how。
+        事業部プラグインの department 定義を ADD_DIVISION の spec に変換して提案する。
         """
         from core.metrics.outcomes import OutcomeStore
-        from core.orchestration.division_plugins import get_division_plugin
+        from core.orchestration.division_plugins import get_division_plugin_by_category
 
         summary = OutcomeStore(platform_home=self._psm.platform_home).summary_for_org(org.name)
         if summary.event_count == 0:
             return None
-        if not (summary.total_reach > 0 and summary.total_revenue <= 0):
-            return None
-        # 既に収益化事業部があるなら構造追加はしない（目標設定の方に委ねる＝二重提案を避ける）。
-        if any(d.type == DivisionType.MONETIZATION for d in org.divisions):
-            return None
-        plugin = get_division_plugin("note_monetization")
-        if plugin is None or not isinstance(plugin.get("department"), dict):
-            return None
+        div_types = {d.type for d in org.divisions}
+
+        # 収益化ギャップ（従来挙動・note_monetization を優先して事業部名を安定させる）。
+        if (
+            summary.total_reach > 0
+            and summary.total_revenue <= 0
+            and DivisionType.MONETIZATION not in div_types
+        ):
+            plugin = get_division_plugin_by_category(
+                "monetization", preferred_id="note_monetization"
+            )
+            if plugin is not None:
+                return self._build_gap_intervention(
+                    org,
+                    plugin,
+                    title=f"[HQ介入] {org.name} に収益化事業部を新設（成果ベース）",
+                    description=(
+                        f"成果分析: リーチ {summary.total_reach:.0f} に対し収益 0、"
+                        "かつ収益化事業部が未設置。"
+                        f"事業部プラグイン『{plugin.get('label', plugin['id'])}』を追加して"
+                        "獲得を収益へ転換する（マーケットプレイスからも追加可能）。"
+                    ),
+                    target_ref="add_monetization_division",
+                )
+
+        # 集客ギャップ（新規・P16）: 活動はあるが獲得導線が無い org に集客事業部を提案する。
+        if (
+            summary.total_reach <= 0
+            and summary.total_revenue <= 0
+            and DivisionType.AUDIENCE_DEVELOPMENT not in div_types
+        ):
+            plugin = get_division_plugin_by_category("audience")
+            if plugin is not None:
+                return self._build_gap_intervention(
+                    org,
+                    plugin,
+                    title=f"[HQ介入] {org.name} に集客事業部を新設（成果ベース）",
+                    description=(
+                        f"成果分析: 活動 {summary.event_count} 件に対しリーチ・収益とも 0、"
+                        "かつ集客事業部が未設置。"
+                        f"事業部プラグイン『{plugin.get('label', plugin['id'])}』を追加して"
+                        "獲得導線（フォロワー/流入）を作る（マーケットプレイスからも追加可能）。"
+                    ),
+                    target_ref="add_audience_division",
+                )
+        return None
+
+    def _build_gap_intervention(
+        self,
+        org: Organization,
+        plugin: Dict[str, Any],
+        *,
+        title: str,
+        description: str,
+        target_ref: str,
+    ) -> ImprovementProposal:
+        """事業部プラグインを ADD_DIVISION 構造介入提案へ変換する（ギャップ別介入の共通部）。"""
         div_spec = _plugin_department_to_division_spec(plugin["department"])
         return build_intervention_proposal(
             target_org=org,
             intervention_type=StructuralInterventionType.ADD_DIVISION.value,
-            title=f"[HQ介入] {org.name} に収益化事業部を新設（成果ベース）",
-            description=(
-                f"成果分析: リーチ {summary.total_reach:.0f} に対し収益 0、かつ収益化事業部が未設置。"
-                f"事業部プラグイン『{plugin.get('label', plugin['id'])}』を追加して"
-                "獲得を収益へ転換する（マーケットプレイスからも追加可能）。"
-            ),
+            title=title,
+            description=description,
             intervention_spec={"division": div_spec, "plugin_id": plugin["id"]},
             source_org_name=self._source,
-            target_ref="add_monetization_division",
+            target_ref=target_ref,
         )
 
     def _intervention_from_outcomes(self, org: Organization) -> Optional[ImprovementProposal]:
