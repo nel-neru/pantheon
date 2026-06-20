@@ -1752,6 +1752,10 @@ def test_update_settings_persists_model(tmp_path, monkeypatch):
     assert json.loads(settings_file.read_text(encoding="utf-8"))["llm_model"] == "claude-opus-4-8"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX file permissions (chmod 0o600) are a no-op on Windows; enforced on POSIX/CI only",
+)
 def test_update_settings_sets_restrictive_permissions(tmp_path, monkeypatch):
     settings_file = tmp_path / "settings.json"
     monkeypatch.setattr(server, "_settings_file", lambda: settings_file)
