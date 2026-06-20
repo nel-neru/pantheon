@@ -3106,6 +3106,36 @@ def test_daemons_start_and_stop_roundtrip(tmp_path, monkeypatch):
     assert registry.load_enabled(platform_home=tmp_path)["content"]["enabled"] is False
 
 
+def test_revenue_daemon_start_passes_target_args(tmp_path, monkeypatch):
+    """revenue daemon を Web から起動すると --target/--source-org-name/--min-reach が渡る（P14）。"""
+    import core.runtime.daemon_registry as registry
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_spawn(name, *, args=()):
+        captured["name"] = name
+        captured["args"] = list(args)
+        return {"status": "started", "pid": 4242, "log_path": "x"}
+
+    monkeypatch.setattr(registry, "spawn_daemon", fake_spawn)
+
+    resp = client.post(
+        "/api/daemons/revenue/start",
+        json={"target": 50000, "source_org": "HQ", "min_reach": 100},
+    )
+    assert resp.status_code == 200, resp.text
+    args = captured["args"]
+    assert "--target=50000.0" in args
+    assert "--source-org-name=HQ" in args
+    assert "--min-reach=100.0" in args
+
+    # target 未指定は idle 安全既定（--target=0.0）
+    resp2 = client.post("/api/daemons/revenue/start", json={})
+    assert resp2.status_code == 200
+    assert "--target=0.0" in captured["args"]
+
+
 def test_combined_execution_history_tolerates_null_timestamp(monkeypatch):
     """複数ソース由来 record の timestamp が null でも履歴の並べ替えが落ちない（500 回避）。
 

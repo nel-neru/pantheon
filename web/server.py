@@ -503,6 +503,10 @@ class DaemonsActionRequest(ApiRequestModel):
 
     interval: int | None = Field(default=None, ge=1)
     max_files: int | None = Field(default=None, ge=1, le=1000)
+    # revenue daemon 用（target>0 で自律経営 cadence を起動する・P14）。
+    target: float | None = Field(default=None, ge=0)
+    source_org: str | None = Field(default=None, max_length=120)
+    min_reach: float | None = Field(default=None, ge=0)
 
 
 class TaskQueueRequest(ApiRequestModel):
@@ -2055,6 +2059,13 @@ async def api_daemons_start(name: str, req: DaemonsActionRequest | None = None) 
     args = [f"--interval={req.interval or spec.default_interval}"]
     if name == "improvement":
         args.append(f"--max-files={req.max_files or 10}")
+    if name == "revenue":
+        # target>0 で自律経営 cadence（ポートフォリオ提案＋HQ介入）が起動する。
+        # CLI（pantheon daemons start revenue --target …）と同じ desired-state に記録され、
+        # watchdog/再起動でも復元される。未指定は idle 安全既定（分析ログのみ）。
+        args.append(f"--target={req.target if req.target is not None else 0.0}")
+        args.append(f"--source-org-name={req.source_org or 'HQ'}")
+        args.append(f"--min-reach={req.min_reach if req.min_reach is not None else 0.0}")
     result = spawn_daemon(name, args=args)
     return {"name": name, **result}
 
