@@ -121,7 +121,10 @@ class RateLimitGate:
             return None
         try:
             data = json.loads(raw)
-        except ValueError:
+        except ValueError as exc:
+            # 破損（torn write/手編集）で全プロセス共有のレート制限状態が黙って消えると
+            # 観測不能になるため、クリア前に warn する（state/manager 等の規約に合わせる）。
+            logger.warning("rate_limit_state.json corrupted: %s — clearing", exc)
             self.clear()
             return None
         if not isinstance(data, dict) or not data.get("limited"):

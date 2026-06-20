@@ -203,7 +203,8 @@ class LoadBalancer:
         self._loads[agent_id] = max(0, self.get_load(agent_id) - 1)
 
     def get_load(self, agent_id: str) -> int:
-        return int(self._loads.get(agent_id, 0))
+        # _loads は常に int 値のみ（増減は算術のみ）。冗長な int() を外して不変条件を明示する。
+        return self._loads.get(agent_id, 0)
 
     def is_overloaded(self, agent_id: str) -> bool:
         return self.get_load(agent_id) >= self.max_tasks_per_agent
