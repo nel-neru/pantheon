@@ -223,9 +223,10 @@ class CapabilityGapAnalyzer:
 
     def mark_analysis_run(self, last_run_path: Path) -> None:
         """Persist the current analysis timestamp."""
-        path = Path(last_run_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（torn timestamp で毎サイクル再分析しトークンを浪費しないため）。
+        atomic_write_text(Path(last_run_path), datetime.now(timezone.utc).isoformat())
 
     # ------------------------------------------------------------------ #
     # 内部実装                                                             #

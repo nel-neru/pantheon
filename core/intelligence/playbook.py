@@ -140,7 +140,10 @@ class PlaybookStore:
         return entries
 
     def _save(self, entries: List[PlaybookEntry]) -> None:
-        self.playbooks_path.write_text(
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（Playbook カタログの partial write による学び消失を防ぐ）。
+        atomic_write_text(
+            self.playbooks_path,
             json.dumps([asdict(e) for e in entries], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )

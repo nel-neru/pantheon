@@ -577,11 +577,11 @@ export function RevenuePage() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-4 text-sm">
-                    {intel.latest_change_pct !== null ? (
+                    {Number.isFinite(intel.latest_change_pct) ? (
                       <span className="text-muted">
                         前月比{' '}
                         <span className="font-medium">
-                          {intel.latest_change_pct > 0 ? '+' : ''}
+                          {(intel.latest_change_pct as number) > 0 ? '+' : ''}
                           {intel.latest_change_pct}%
                         </span>
                       </span>

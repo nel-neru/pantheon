@@ -128,9 +128,11 @@ class HumanTaskStore:
         return out
 
     def _save(self, tasks: List[HumanTask]) -> None:
-        self.path.write_text(
-            json.dumps([asdict(t) for t in tasks], ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（承認キュー（人間タスク）の partial write による消失を防ぐ）。
+        atomic_write_text(
+            self.path, json.dumps([asdict(t) for t in tasks], ensure_ascii=False, indent=2)
         )
 
 

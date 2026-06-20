@@ -178,6 +178,84 @@ export async function getUsageSummary(): Promise<UsageSummaryResponse> {
   return api<UsageSummaryResponse>('GET', '/api/usage/summary')
 }
 
+// ─── Observability ───────────────────────────────────────────────────────────
+
+export type ObservabilitySummary = {
+  trace_count: number
+  total_cost_usd: number
+  avg_quality: number | null
+  error_traces: number
+  traces: ObservabilityTrace[]
+}
+
+export type ObservabilityTrace = {
+  trace_id: string
+  name: string
+  task_type: string | null
+  pattern: string | null
+  started_at: string | null
+  span_count: number
+  elapsed_ms: number | null
+  status: string
+  total_cost_usd: number
+  input_tokens: number
+  output_tokens: number
+  quality_score: number | null
+}
+
+export type ObservabilityTracesResponse = {
+  traces: ObservabilityTrace[]
+}
+
+export async function getObservabilitySummary(limit = 20): Promise<ObservabilitySummary> {
+  return api<ObservabilitySummary>('GET', `/api/observability/summary?limit=${limit}`)
+}
+
+export async function getObservabilityTraces(limit = 20): Promise<ObservabilityTracesResponse> {
+  return api<ObservabilityTracesResponse>('GET', `/api/observability/traces?limit=${limit}`)
+}
+
+// ─── Business performance ─────────────────────────────────────────────────────
+
+export type BusinessPerformance = {
+  business: Business
+  member_org_count: number
+  total_revenue: number
+  total_reach: number
+  revenue_trend: string
+  forecast_next: number
+  handoff_count: number
+  handoff_success_rate: number
+  kpi_status: Record<string, string>
+}
+
+export async function getBusinessPerformance(id: string): Promise<BusinessPerformance> {
+  return api<BusinessPerformance>('GET', `/api/businesses/${encodeURIComponent(id)}/performance`)
+}
+
+// ─── Design styles / personas ─────────────────────────────────────────────────
+
+export type DesignStyle = {
+  id: string
+  name: string
+  description?: string | null
+  palette?: string | null
+}
+
+export type Persona = {
+  id: string
+  name: string
+  role: string
+}
+
+export async function listDesignStyles(): Promise<DesignStyle[]> {
+  return api<DesignStyle[]>('GET', '/api/design-styles')
+}
+
+export async function listPersonas(): Promise<Persona[]> {
+  return api<Persona[]>('GET', '/api/personas')
+}
+
 /**
  * SSE ストリーミング POST ヘルパー。
  * バックエンドの text/event-stream レスポンスを chunk 単位で読み取り、

@@ -130,7 +130,7 @@ class PromptEvolutionEngine:
 
     def _save(self) -> None:
         payload = {"experiments": [asdict(experiment) for experiment in self._experiments.values()]}
-        self.experiments_file.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（A/B 実験データの partial write による静かな消失を防ぐ）。
+        atomic_write_text(self.experiments_file, json.dumps(payload, ensure_ascii=False, indent=2))

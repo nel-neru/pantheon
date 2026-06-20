@@ -93,10 +93,10 @@ class SkillProficiencyManager:
             agent_id: {skill_name: record.to_dict() for skill_name, record in skills.items()}
             for agent_id, skills in self._records.items()
         }
-        self.store_file.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（スキル熟達データの partial write による静かな消失を防ぐ）。
+        atomic_write_text(self.store_file, json.dumps(payload, ensure_ascii=False, indent=2))
 
     def _deserialize(
         self, data: dict[str, dict[str, dict[str, Any]]]

@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Coins,
   GitMerge,
+  Heart,
   Plus,
   Target,
   Trash2,
@@ -14,6 +15,7 @@ import {
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
+import type { BusinessPerformance } from '@/lib/api'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PageHeader } from '@/components/PageHeader'
@@ -86,6 +88,11 @@ export function BusinessesPage() {
   const [outcomesId, setOutcomesId] = useState<string | null>(null)
   const [outcomes, setOutcomes] = useState<BusinessOutcomes | null>(null)
   const [outcomesLoading, setOutcomesLoading] = useState(false)
+
+  // Per-business performance (health) panel
+  const [perfId, setPerfId] = useState<string | null>(null)
+  const [perf, setPerf] = useState<BusinessPerformance | null>(null)
+  const [perfLoading, setPerfLoading] = useState(false)
 
   // Confirm dialog
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
@@ -164,6 +171,26 @@ export function BusinessesPage() {
       setOutcomesLoading(false)
     }
   }, [outcomesId])
+
+  const handleViewPerformance = useCallback(async (id: string) => {
+    if (perfId === id) {
+      setPerfId(null)
+      setPerf(null)
+      return
+    }
+    setPerfId(id)
+    setPerfLoading(true)
+    try {
+      const res = await api<BusinessPerformance>('GET', `/api/businesses/${encodeURIComponent(id)}/performance`)
+      setPerf(res ?? null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'ヘルスの取得に失敗しました。')
+      setPerfId(null)
+      setPerf(null)
+    } finally {
+      setPerfLoading(false)
+    }
+  }, [perfId])
 
   const handleCompose = useCallback(
     (biz: Business) => {
@@ -413,6 +440,18 @@ export function BusinessesPage() {
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
+                      onClick={() => void handleViewPerformance(biz.id)}
+                    >
+                      {perfId === biz.id ? (
+                        <ChevronDown size={14} />
+                      ) : (
+                        <Heart size={14} />
+                      )}
+                      ヘルスを見る
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
                       onClick={() => handleCompose(biz)}
                       title="保留中のハンドオフルートを実体化する"
                     >
@@ -443,6 +482,73 @@ export function BusinessesPage() {
                       削除
                     </button>
                   </div>
+
+                  {/* Performance (health) panel */}
+                  {perfId === biz.id && (
+                    <div className="rounded-xl border border-white/10 p-3 flex flex-col gap-3">
+                      {perfLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-muted">
+                          <div className="spinner" />
+                          ヘルスを読み込み中…
+                        </div>
+                      ) : perf ? (
+                        <>
+                          <div className="flex items-center gap-2 text-sm font-semibold">
+                            <Heart size={14} />
+                            ヘルスサマリー
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                            <div className="flex flex-col gap-1">
+                              <div className="metric-label">収益トレンド</div>
+                              <span className="badge badge-neutral self-start">{perf.revenue_trend || '—'}</span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <div className="metric-label">翌月予測収益</div>
+                              <div className="text-lg font-bold">
+                                ¥{formatNumber(num(perf.forecast_next))}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <div className="metric-label">累計収益</div>
+                              <div className="text-lg font-bold">
+                                ¥{formatNumber(num(perf.total_revenue))}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <div className="metric-label">累計リーチ</div>
+                              <div className="text-lg font-bold">
+                                {formatNumber(num(perf.total_reach))}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <div className="metric-label">ハンドオフ成功率</div>
+                              <div className="text-lg font-bold">
+                                {Number.isFinite(Number(perf.handoff_success_rate))
+                                  ? `${(Number(perf.handoff_success_rate) * 100).toFixed(0)}%`
+                                  : '—'}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <div className="metric-label">加盟組織数</div>
+                              <div className="text-lg font-bold">{num(perf.member_org_count)}</div>
+                            </div>
+                          </div>
+                          {Object.keys(perf.kpi_status).length > 0 && (
+                            <div className="flex flex-col gap-1">
+                              <div className="text-xs text-muted font-medium">KPI ステータス</div>
+                              <div className="flex flex-wrap gap-2">
+                                {Object.entries(perf.kpi_status).map(([kpi, status]) => (
+                                  <span key={kpi} className="badge badge-neutral text-xs">
+                                    {kpi}: {status}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  )}
 
                   {/* Outcomes panel */}
                   {outcomesId === biz.id && (
