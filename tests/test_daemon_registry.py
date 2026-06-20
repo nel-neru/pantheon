@@ -5,8 +5,6 @@ subprocess は決して実起動しない: Popen / terminate_pid を monkeypatch
 
 from __future__ import annotations
 
-import sys
-
 import pytest
 
 import core.runtime.daemon_registry as registry
