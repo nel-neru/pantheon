@@ -192,6 +192,32 @@ async def cmd_business_archive(args: argparse.Namespace, *, get_psm: Any) -> Non
     await cmd_business_update(args, get_psm=get_psm)
 
 
+async def cmd_business_from_proposal(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """承認済み new_business 提案を Organization+Business に組成する（フライホイール actuate）。"""
+    from core.orchestration.business_application import (
+        find_new_business_proposal,
+        scaffold_business_from_proposal,
+    )
+
+    psm = get_psm()
+    proposal = find_new_business_proposal(psm, args.org, args.id)
+    if proposal is None:
+        print(f"[ERROR] new_business 提案 '{args.id}' が org '{args.org}' に見つかりません")
+        sys.exit(1)
+    try:
+        result = scaffold_business_from_proposal(proposal, psm=psm)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+    org = psm.load_organization_by_name(args.org)
+    if org is not None:
+        psm.get_org_state_manager(org).update_proposal_status(str(proposal.get("id", "")), "done")
+    print(f"\n[OK] 提案から事業を組成しました: {result['business_name']}")
+    print(f"  会社    : {result['org_name']}（{'再利用' if result['reused_org'] else '新規'}）")
+    print(f"  事業部  : {', '.join(result['divisions']) or '(なし)'}")
+    print("  次: pantheon business compose " + result["business_name"] + " でハンドオフ実体化")
+
+
 async def cmd_business_delete(args: argparse.Namespace, *, get_psm: Any) -> None:
     """Business を削除する（member 会社や成果データには触れない）。"""
     store = _store()
@@ -261,3 +287,10 @@ def register(subparsers: Any) -> None:
     del_p = sub.add_parser("delete", help="事業を削除（会社/成果データには触れない）")
     del_p.add_argument("id", help="Business 名 または id")
     del_p.set_defaults(handler_name="cmd_business_delete")
+
+    fp = sub.add_parser(
+        "from-proposal", help="承認済み new_business 提案から会社＋事業を組成（actuate）"
+    )
+    fp.add_argument("--org", required=True, help="提案を保持する Organization 名（例: HQ）")
+    fp.add_argument("--id", required=True, help="new_business 提案 id（先頭一致可）")
+    fp.set_defaults(handler_name="cmd_business_from_proposal")

@@ -85,6 +85,14 @@ def _proposal_for(trend: TrendItem, payload: Dict[str, Any]):
         dedupe_key=dedupe_key,
         target_kind="org_structure",
         source_org_name="TrendIntelligence",
+        # 承認後の自動組成（business_application）が確実に読めるよう構造化して載せる
+        # （description テキストの脆いパースに頼らない）。
+        intervention_spec={
+            "kind": "new_business",
+            "name": name,
+            "genre": str(payload.get("genre") or ""),
+            "divisions": list(divisions),
+        },
     )
 
 

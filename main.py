@@ -25,6 +25,7 @@ from commands.business import cmd_business_archive as _cmd_business_archive_impl
 from commands.business import cmd_business_compose as _cmd_business_compose_impl
 from commands.business import cmd_business_create as _cmd_business_create_impl
 from commands.business import cmd_business_delete as _cmd_business_delete_impl
+from commands.business import cmd_business_from_proposal as _cmd_business_from_proposal_impl
 from commands.business import cmd_business_list as _cmd_business_list_impl
 from commands.business import cmd_business_outcomes as _cmd_business_outcomes_impl
 from commands.business import cmd_business_pause as _cmd_business_pause_impl
@@ -286,6 +287,10 @@ async def cmd_business_archive(args) -> None:
 
 async def cmd_business_delete(args) -> None:
     await _cmd_business_delete_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_from_proposal(args) -> None:
+    await _cmd_business_from_proposal_impl(args, get_psm=_get_psm)
 
 
 async def cmd_plugin_list(args) -> None:
@@ -821,6 +826,7 @@ HANDLERS = {
     "cmd_business_pause": cmd_business_pause,
     "cmd_business_archive": cmd_business_archive,
     "cmd_business_delete": cmd_business_delete,
+    "cmd_business_from_proposal": cmd_business_from_proposal,
     "cmd_plugin_list": cmd_plugin_list,
     "cmd_plugin_add_division": cmd_plugin_add_division,
     "cmd_plugin_scaffold_division": cmd_plugin_scaffold_division,

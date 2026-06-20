@@ -476,6 +476,13 @@ class BusinessCreateRequest(ApiRequestModel):
     kpis: List[str] = Field(default_factory=list, max_length=64)
 
 
+class BusinessFromProposalRequest(ApiRequestModel):
+    """承認済み new_business 提案から Business+Organization を組成するリクエスト。"""
+
+    org_name: str = Field(min_length=1, max_length=120)  # 提案を保持する org（例: HQ）
+    proposal_id: str = Field(min_length=1, max_length=80)  # 提案 id（先頭一致可）
+
+
 class BusinessUpdateRequest(ApiRequestModel):
     """Business の部分更新（None のフィールドは変更しない）。"""
 
@@ -4395,6 +4402,35 @@ async def api_delete_business(business_id: str) -> Dict[str, Any]:
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
     return {"ok": True, "deleted": business_id}
+
+
+@app.post("/api/businesses/from-proposal", tags=["businesses"])
+async def api_business_from_proposal(req: BusinessFromProposalRequest) -> Dict[str, Any]:
+    """承認済み new_business 提案を 1 アクションで Organization+Business に組成する（actuate）。
+
+    提案は人手承認後に呼ばれる前提（HITL 維持）。組成後に提案を done にする。
+    """
+    from core.orchestration.business_application import (
+        find_new_business_proposal,
+        scaffold_business_from_proposal,
+    )
+
+    psm = _psm()
+    proposal = find_new_business_proposal(psm, req.org_name, req.proposal_id)
+    if proposal is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"new_business 提案 '{req.proposal_id}' が org '{req.org_name}' に見つかりません",
+        )
+    try:
+        result = scaffold_business_from_proposal(proposal, psm=psm)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # 組成完了 → 提案を done に（再組成は org/Business 名で冪等）。
+    org = psm.load_organization_by_name(req.org_name)
+    if org is not None:
+        psm.get_org_state_manager(org).update_proposal_status(str(proposal.get("id", "")), "done")
+    return result
 
 
 @app.get("/api/businesses/{business_id}/performance", tags=["businesses"])
