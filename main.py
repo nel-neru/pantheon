@@ -728,6 +728,12 @@ async def cmd_revenue_goal_status(args) -> None:
     await _impl(args)
 
 
+async def cmd_revenue_integrity(args) -> None:
+    from commands.revenue import cmd_revenue_integrity as _impl
+
+    await _impl(args)
+
+
 async def cmd_db_sync(args) -> None:
     from commands.db import cmd_db_sync as _impl
 
@@ -930,6 +936,7 @@ HANDLERS = {
     "cmd_revenue_forecast": cmd_revenue_forecast,
     "cmd_revenue_attribution": cmd_revenue_attribution,
     "cmd_revenue_goal_status": cmd_revenue_goal_status,
+    "cmd_revenue_integrity": cmd_revenue_integrity,
     "cmd_db_sync": cmd_db_sync,
     "cmd_db_stats": cmd_db_stats,
     "cmd_inbox_list": cmd_inbox_list,

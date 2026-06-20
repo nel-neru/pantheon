@@ -48,6 +48,31 @@ def test_outcome_actor_audit_fields(tmp_path):
     assert legacy[0].actor == "" and legacy[0].value == 5.0
 
 
+def test_revenue_integrity_confirmed_only(tmp_path):
+    """assess_revenue_integrity は記録済み実イベントのみを確定収益に数える（偽データ防止）。"""
+    from core.metrics.revenue_integrity import (
+        NO_CONFIRMED_REVENUE_WARNING,
+        assess_revenue_integrity,
+    )
+
+    store = OutcomeStore(platform_home=tmp_path)
+    # 確定データ無し → has_confirmed_data False ＋ 警告
+    empty = assess_revenue_integrity(store)
+    assert empty["has_confirmed_data"] is False
+    assert empty["confirmed_revenue"] == 0.0
+    assert empty["warning"] == NO_CONFIRMED_REVENUE_WARNING
+
+    store.record("Co", "revenue", 1000, source="note")
+    store.record("Co", "revenue", 500, source="affiliate")
+    store.record("Co", "impressions", 9999, source="note")  # 非収益は確定収益に含めない
+
+    integ = assess_revenue_integrity(store, "Co")
+    assert integ["confirmed_revenue"] == 1500.0
+    assert integ["recorded_event_count"] == 2
+    assert integ["has_confirmed_data"] is True and integ["warning"] == ""
+    assert set(integ["confirmed_sources"]) == {"note", "affiliate"}
+
+
 def test_revenue_by_channel_attribution(tmp_path):
     """revenue_by_channel が source 別に収益を降順集計する（全体/org/集合・date 絞り）（拡張 #2A）。"""
     store = OutcomeStore(platform_home=tmp_path)

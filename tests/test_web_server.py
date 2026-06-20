@@ -3313,6 +3313,36 @@ def test_revenue_goal_status_api(tmp_path, monkeypatch):
     assert client.get("/api/hq/revenue/goal-status").status_code == 422
 
 
+def test_revenue_integrity_api_and_estimate_flags(tmp_path, monkeypatch):
+    """確定収益 API＋予測系の estimate フラグ（偽データで収益化を虚偽しない原則）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    # 確定データ無し → warning が付く
+    empty = client.get("/api/metrics/revenue/integrity").json()
+    assert empty["has_confirmed_data"] is False and empty["warning"]
+
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 1000, source="note", occurred_at="2026-01-15")
+    store.record("Co", "revenue", 2000, source="note", occurred_at="2026-02-15")
+
+    integ = client.get("/api/metrics/revenue/integrity").json()
+    assert integ["confirmed_revenue"] == 3000 and integ["has_confirmed_data"] is True
+
+    # 予測系は estimate=True ＋ 免責を必ず返す（確定収益と誤認させない）
+    for path in (
+        "/api/metrics/revenue/intelligence",
+        "/api/metrics/revenue/projection?target=10000",
+        "/api/metrics/revenue/forecast-extended?months=3",
+        "/api/hq/revenue/goal-status?target=10000",
+    ):
+        body = client.get(path).json()
+        assert body.get("estimate") is True, path
+        assert body.get("disclaimer"), path
+
+
 def test_revenue_attribution_api(tmp_path, monkeypatch):
     """GET /api/revenue/attribution がチャネル別 %内訳を返す（org / business ロールアップ）（拡張 #2A）。"""
     from core.metrics.outcomes import OutcomeStore

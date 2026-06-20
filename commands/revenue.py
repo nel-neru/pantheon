@@ -151,6 +151,22 @@ async def cmd_revenue_goal_status(args: argparse.Namespace) -> None:
         print(f"  到達見込み  : 約 {s['months_to_target']} か月後")
 
 
+async def cmd_revenue_integrity(args: argparse.Namespace) -> None:
+    """確定収益（記録済み実データのみ）とデータ整合性を表示する（予測は含めない）。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.metrics.revenue_integrity import assess_revenue_integrity
+
+    integ = assess_revenue_integrity(OutcomeStore(), getattr(args, "org", None) or None)
+    print("\n収益データ整合性（確定＝記録済み実イベントのみ）\n")
+    print(f"  確定収益    : {integ['confirmed_revenue']:,.0f} 円")
+    print(f"  実イベント数: {integ['recorded_event_count']} 件")
+    print(f"  確認チャネル: {', '.join(integ['confirmed_sources']) or '(なし)'}")
+    if integ["warning"]:
+        print(f"\n  ⚠️ {integ['warning']}")
+    else:
+        print("\n  ✅ 確定収益データあり。予測・見通しは別途『概算』として扱われます。")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("revenue", help="収益の自動収集・レポート・分析")
     sub = parser.add_subparsers(dest="revenue_command", required=True)
@@ -179,3 +195,7 @@ def register(subparsers: Any) -> None:
     sp = sub.add_parser("goal-status", help="月次目標への到達状況と backpressure（未達の圧）")
     sp.add_argument("--target", type=float, required=True, help="月次収益目標（円）")
     sp.set_defaults(handler_name="cmd_revenue_goal_status")
+
+    sp = sub.add_parser("integrity", help="確定収益（記録済み実データのみ）とデータ整合性を表示")
+    sp.add_argument("--org", default=None, help="対象 Organization（省略で全 org 横断）")
+    sp.set_defaults(handler_name="cmd_revenue_integrity")

@@ -2675,6 +2675,19 @@ async def api_revenue_metrics() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/metrics/revenue/integrity", tags=["metrics"])
+async def api_revenue_integrity(org_name: Optional[str] = None) -> Dict[str, Any]:
+    """確定収益（記録済み実イベントのみ）とデータ整合性。予測・射影は一切含めない。
+
+    GUI の「確定収益」バッジの単一ソース。確定データが無ければ ``warning`` を返し、予測を
+    実利益と誤認させない（偽データ/疑似モックで収益化を虚偽しない原則の実装）。
+    """
+    from core.metrics.revenue_integrity import assess_revenue_integrity
+
+    integrity = assess_revenue_integrity(_outcome_store(), org_name)
+    return {"org_name": org_name, **integrity}
+
+
 @app.get("/api/metrics/efficiency", tags=["metrics"])
 async def api_metrics_efficiency() -> Dict[str, Any]:
     """組織別の収益効率（ROI = revenue/reach）とランクを返す。
@@ -2748,12 +2761,14 @@ async def api_revenue_intelligence(
 
     ``start_date``/``end_date``（YYYY-MM-DD）で対象期間を絞り、期間別のトレンド比較を可能にする。
     """
+    from core.metrics.revenue_integrity import ESTIMATE_DISCLAIMER
     from core.metrics.revenue_intelligence import analyze_revenue
 
     store = _outcome_store()
     by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
     analysis = analyze_revenue(by_month)
-    return {"org_name": org_name, **analysis}
+    # forecast_next は予測（概算）。確定収益と誤認させないため明示する。
+    return {"org_name": org_name, "estimate": True, "disclaimer": ESTIMATE_DISCLAIMER, **analysis}
 
 
 @app.get("/api/metrics/revenue/projection", tags=["metrics"])
@@ -2768,12 +2783,13 @@ async def api_revenue_projection(
     回帰 run-rate を外挿する決定論計算（LLM 非依存）。「自律経営プラン」の手前で
     「今のペースで目標に届くか／いつ届くか」を一目で示す。
     """
+    from core.metrics.revenue_integrity import ESTIMATE_DISCLAIMER
     from core.metrics.revenue_intelligence import project_to_target
 
     store = _outcome_store()
     by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
     projection = project_to_target(by_month, target)
-    return {"org_name": org_name, **projection}
+    return {"org_name": org_name, "estimate": True, "disclaimer": ESTIMATE_DISCLAIMER, **projection}
 
 
 @app.get("/api/metrics/revenue/forecast-extended", tags=["metrics"])
@@ -2784,13 +2800,20 @@ async def api_revenue_forecast_extended(
     end_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """OLS 回帰による多か月（既定 12）収益予測（slope/R²/予測系列）。決定論・LLM 非依存。"""
+    from core.metrics.revenue_integrity import ESTIMATE_DISCLAIMER
     from core.metrics.revenue_intelligence import analyze_revenue_extended
 
     horizon = max(1, min(int(months), 36))
     store = _outcome_store()
     by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
     analysis = analyze_revenue_extended(by_month, horizon=horizon)
-    return {"org_name": org_name, "horizon": horizon, **analysis}
+    return {
+        "org_name": org_name,
+        "horizon": horizon,
+        "estimate": True,
+        "disclaimer": ESTIMATE_DISCLAIMER,
+        **analysis,
+    }
 
 
 @app.get("/api/revenue/attribution", tags=["metrics"])
@@ -2839,12 +2862,14 @@ async def api_revenue_goal_status(
     end_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """月次目標への到達状況と backpressure（未達の圧 on_track/mild/strong）。Autopilot/Dashboard 用。"""
+    from core.metrics.revenue_integrity import ESTIMATE_DISCLAIMER
     from core.metrics.revenue_intelligence import compute_goal_status
 
     store = _outcome_store()
     by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
     status = compute_goal_status(by_month, target)
-    return {"org_name": org_name, **status}
+    # forecast/backpressure は予測ベース。確定収益(current)とは別物であることを明示する。
+    return {"org_name": org_name, "estimate": True, "disclaimer": ESTIMATE_DISCLAIMER, **status}
 
 
 @app.get("/api/portfolio/overview", tags=["hq"])
