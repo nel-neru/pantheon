@@ -2533,11 +2533,12 @@ async def api_publishing_disconnect(platform: str) -> Dict[str, Any]:
 
 
 @app.get("/api/inbox", tags=["inbox"])
-async def api_inbox() -> Dict[str, Any]:
+async def api_inbox(sort: str = "revenue", min_roi: float = 0.0) -> Dict[str, Any]:
     """承認インボックス: 保留中の提案＋handoff＋投稿待ちを 1 つの優先度付きキューに集約する。
 
-    収益インパクト（revenue_impact: 収益化に直結する HQ 提案ほど高い）と優先度で並べ替え、
-    収益を動かすアクションを上位に押し上げる（Phase 1 収益駆動の提案キュー）。
+    各項目に effort_hours / roi_score（労力加重 ROI）を付与する。``sort`` で並べ替え:
+    revenue（既定・収益インパクト→優先度）/ roi（高収益・低労力先）/ effort（低労力先）/ urgency。
+    ``min_roi`` で低 ROI を間引く。収益を動かすアクションを上位に押し上げる収益駆動キュー。
     """
     from core.metrics.revenue_intelligence import revenue_impact_rank
 
@@ -2617,15 +2618,14 @@ async def api_inbox() -> Dict[str, Any]:
             }
         )
 
-    # 収益インパクト → 優先度の順でキューを並べ替え（収益を動かすアクションを上位へ）。
-    _priority_rank = {"high": 3, "medium": 2, "low": 1}
-    items.sort(
-        key=lambda i: (
-            i.get("revenue_impact", 0),
-            _priority_rank.get(str(i.get("priority", "medium")), 2),
-        ),
-        reverse=True,
-    )
+    # 労力加重 ROI を各項目に付与し、指定キーで並べ替える（既定 revenue=従来の収益インパクト順）。
+    from core.metrics.effort_ranker import annotate_inbox_item, sort_inbox
+
+    for item in items:
+        annotate_inbox_item(item)
+    if min_roi > 0:
+        items = [i for i in items if i.get("roi_score", 0.0) >= min_roi]
+    items = sort_inbox(items, sort=sort)
 
     counts = {
         "proposal": sum(1 for i in items if i["kind"] == "proposal"),

@@ -112,6 +112,17 @@ async def cmd_inbox_list(args: argparse.Namespace) -> None:
     min_impact = getattr(args, "min_impact", None)
     if min_impact is not None:
         items = [i for i in items if int(i.get("revenue_impact", 0)) >= min_impact]
+
+    # 労力加重 ROI を付与し、--sort（既定 roi=高収益・低労力先）で並べ替え、--min-roi で間引く。
+    from core.metrics.effort_ranker import annotate_inbox_item, sort_inbox
+
+    for item in items:
+        annotate_inbox_item(item)
+    min_roi = getattr(args, "min_roi", None)
+    if min_roi is not None:
+        items = [i for i in items if i.get("roi_score", 0.0) >= min_roi]
+    items = sort_inbox(items, sort=getattr(args, "sort", None) or "roi")
+
     if not items:
         print("承認待ちはありません（条件に一致する項目がありません）。")
         return
@@ -120,16 +131,13 @@ async def cmd_inbox_list(args: argparse.Namespace) -> None:
     for i in items:
         counts[i["kind"]] = counts.get(i["kind"], 0) + 1
     summary = " / ".join(f"{k}:{v}" for k, v in sorted(counts.items()))
-    print(f"\n承認インボックス（{len(items)} 件 — {summary}）\n")
-    _hint = {
-        "proposal": "proposal apply",
-        "handoff": "handoff approve",
-        "publish": "publish jobs run/confirm",
-        "human_task": "人手対応",
-    }
+    print(
+        f"\n承認インボックス（{len(items)} 件 — {summary}・sort={getattr(args, 'sort', None) or 'roi'}）\n"
+    )
     for i in items:
         print(
-            f"  [{i['kind']:<10}] ★{i['revenue_impact']} ({i['priority']:<6}) "
+            f"  [{i['kind']:<10}] ROI {i.get('roi_score', 0):>5} "
+            f"(★{i['revenue_impact']} {i['priority']:<6} {i.get('effort_hours', 0)}h) "
             f"{i['title']}  ({i['org_name']})  id={i['id']}"
         )
     print("\n承認: 種別ごとに pantheon approve / handoff approve / publish jobs run … で実行")
@@ -157,5 +165,18 @@ def register(subparsers: Any) -> None:
         type=int,
         default=None,
         help="収益インパクト下限（0/1/2）でフィルタ",
+    )
+    list_p.add_argument(
+        "--sort",
+        default="roi",
+        choices=["roi", "revenue", "urgency", "effort"],
+        help="並べ替え（既定 roi=高収益・低労力先）",
+    )
+    list_p.add_argument(
+        "--min-roi",
+        dest="min_roi",
+        type=float,
+        default=None,
+        help="ROIスコア下限でフィルタ",
     )
     list_p.set_defaults(handler_name="cmd_inbox_list")

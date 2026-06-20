@@ -2832,6 +2832,54 @@ def test_publishing_login_dedupes_concurrent_flows(tmp_path, monkeypatch):
     assert res.json()["status"] == "login_in_progress"
 
 
+def test_inbox_roi_annotation_and_sort(tmp_path, monkeypatch):
+    """/api/inbox が roi_score/effort_hours を付与し ?sort=roi で並べ替える（拡張）。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    from core.humans.human_tasks import enqueue_human_task
+
+    enqueue_human_task("承認する", platform_home=tmp_path, kind="company_setup", org_name="Co")
+
+    body = client.get("/api/inbox?sort=roi").json()
+    assert body["items"], body
+    first = body["items"][0]
+    assert "roi_score" in first and "effort_hours" in first
+    # roi 降順で並んでいる
+    rois = [i["roi_score"] for i in body["items"]]
+    assert rois == sorted(rois, reverse=True)
+    # min_roi で間引ける（極端に高い閾値で空に）
+    empty = client.get("/api/inbox?sort=roi&min_roi=99999").json()
+    assert empty["items"] == []
+
+
+def test_effort_ranker_pure_scoring():
+    """ROIスコアは収益インパクト×優先度/労力で高収益・低労力を上位にする。"""
+    from core.metrics.effort_ranker import compute_roi_score, estimate_effort_hours, sort_inbox
+
+    quick_high = {
+        "kind": "publish",
+        "category": "external_action",
+        "revenue_impact": 2,
+        "priority": "high",
+    }
+    slow_low = {
+        "kind": "proposal",
+        "category": "new_business",
+        "revenue_impact": 1,
+        "priority": "medium",
+    }
+    for it in (quick_high, slow_low):
+        it["effort_hours"] = estimate_effort_hours(it)
+        it["roi_score"] = compute_roi_score(
+            it["revenue_impact"], it["priority"], it["effort_hours"]
+        )
+    assert quick_high["roi_score"] > slow_low["roi_score"]
+    ordered = sort_inbox([slow_low, quick_high], sort="roi")
+    assert ordered[0] is quick_high
+    # effort ソートは低労力先
+    assert sort_inbox([slow_low, quick_high], sort="effort")[0] is quick_high
+
+
 def test_inbox_aggregates_publish_jobs(tmp_path, monkeypatch):
     from core.publishing.publish_jobs import PublishJob, PublishJobStore
 
