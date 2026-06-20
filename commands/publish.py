@@ -1,14 +1,19 @@
-"""`pantheon publish` - 投稿基盤のブラウザセッション接続管理（Track E）。
+"""`pantheon publish` - 投稿基盤のブラウザセッション接続管理＋投稿ジョブの実行（Track E）。
 
 資格情報は保存しない: ``connect`` はヘッドフルブラウザを開き、ユーザー自身が
 ログインしたら Playwright の storage_state（cookie 等）だけを
-``~/.pantheon/browser_sessions/<platform>/`` に保存する。投稿ジョブ自体の
-作成・実行は承認ゲート（content_asset 提案の承認）経由のみで、この CLI からは行わない。
+``~/.pantheon/browser_sessions/<platform>/`` に保存する。
+
+``publish jobs run/confirm`` は GUI（``/api/publish-jobs/{id}/run|confirm``）と同じ
+``core.publishing.runner`` を呼ぶ。**承認ゲートと auto_gate はそのまま維持**される
+（auto OFF の既定では実送信されず handed_off＝人手の最終公開待ちへ降格する）ため、
+headless/自律パスからも安全に「下書き→人手公開→確認」を進められる（パリティのため CLI を開く）。
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from typing import Any
 
 # argparse の choices 用（core を import せず CLI 起動を軽く保つ）。
@@ -79,6 +84,89 @@ async def cmd_publish_auto(args: argparse.Namespace) -> None:
         print("  切替: pantheon publish auto on | off")
 
 
+def _publish_job_store():
+    from core.publishing.publish_jobs import PublishJobStore
+
+    return PublishJobStore()
+
+
+async def cmd_publish_jobs_list(args: argparse.Namespace) -> None:
+    """投稿ジョブ一覧（任意で --status / --org 絞り込み）。"""
+    jobs = _publish_job_store().list_jobs()
+    status = getattr(args, "status", None)
+    org_name = getattr(args, "org_name", None)
+    if status:
+        jobs = [j for j in jobs if j.status == status]
+    if org_name:
+        jobs = [j for j in jobs if j.org_name == org_name]
+    if not jobs:
+        print("投稿ジョブはありません。")
+        return
+    print(f"\n投稿ジョブ一覧（{len(jobs)} 件）\n")
+    for j in jobs:
+        print(
+            f"  {j.job_id[:8]}  [{j.status:<10}] {j.platform:<10} {j.org_name}"
+            f"  {j.title or '(無題)'}"
+        )
+    print("\n実行: pantheon publish jobs run <id> / 公開確認: pantheon publish jobs confirm <id>")
+
+
+async def cmd_publish_jobs_run(args: argparse.Namespace) -> None:
+    """投稿ジョブを実行する（--dry-run でプレビューのみ・auto_gate と承認ゲートは維持）。"""
+    from core.platform.state import get_platform_home
+    from core.publishing.runner import run_publish_job
+
+    store = _publish_job_store()
+    job = store.get_job(args.job_id)
+    if job is None:
+        print(f"[ERROR] 投稿ジョブ '{args.job_id}' が見つかりません")
+        sys.exit(1)
+    if job.status == "handed_off" and not args.dry_run:
+        # GUI と同じ防御: handed_off は再実行不可（出口は confirm のみ）。
+        print(
+            "[ERROR] 人手の最終公開待ち（handed_off）のジョブは再実行できません。"
+            "公開済みなら pantheon publish jobs confirm <id> で確定してください"
+        )
+        sys.exit(1)
+    result = await run_publish_job(
+        job, store=store, platform_home=get_platform_home(), dry_run=args.dry_run
+    )
+    if result.get("ok"):
+        if result.get("handed_off"):
+            print("[OK] 下書きを引き渡しました（人手で公開→ confirm で確定してください）")
+        else:
+            print(f"[OK] {result.get('detail') or result.get('url') or '実行しました'}")
+    else:
+        print(f"[NG] {result.get('error') or result.get('detail') or '失敗しました'}")
+        sys.exit(1)
+
+
+async def cmd_publish_jobs_confirm(args: argparse.Namespace) -> None:
+    """handed_off（人手の公開待ち）のジョブを公開済みとして確定し成果を記録する。"""
+    from core.platform.state import get_platform_home
+    from core.publishing.runner import confirm_handed_off
+
+    store = _publish_job_store()
+    if store.get_job(args.job_id) is None:
+        print(f"[ERROR] 投稿ジョブ '{args.job_id}' が見つかりません")
+        sys.exit(1)
+    result = confirm_handed_off(
+        args.job_id, store=store, platform_home=get_platform_home(), result_url=args.url or ""
+    )
+    if not result.get("ok"):
+        print(f"[ERROR] {result.get('error') or '確認できません'}")
+        sys.exit(1)
+    print(f"[OK] 公開を確認しました{('：' + result['url']) if result.get('url') else ''}")
+
+
+async def cmd_publish_jobs_delete(args: argparse.Namespace) -> None:
+    """投稿ジョブを削除する。"""
+    if not _publish_job_store().delete_job(args.job_id):
+        print(f"[ERROR] 投稿ジョブ '{args.job_id}' が見つかりません")
+        sys.exit(1)
+    print(f"[OK] 削除しました: {args.job_id}")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser(
         "publish",
@@ -109,3 +197,29 @@ def register(subparsers: Any) -> None:
         help="状態/有効化/無効化",
     )
     sp.set_defaults(handler_name="cmd_publish_auto")
+
+    jobs_p = sub.add_parser(
+        "jobs", help="投稿ジョブの一覧/実行/公開確認/削除（承認ゲート・auto_gate は維持）"
+    )
+    jobs_sub = jobs_p.add_subparsers(dest="publish_jobs_command", required=True)
+
+    jl = jobs_sub.add_parser("list", help="投稿ジョブ一覧（--status / --org で絞り込み）")
+    jl.add_argument(
+        "--status", default=None, help="status で絞り込み（queued/handed_off/published…）"
+    )
+    jl.add_argument("--org", default=None, dest="org_name", help="org_name で絞り込み")
+    jl.set_defaults(handler_name="cmd_publish_jobs_list")
+
+    jr = jobs_sub.add_parser("run", help="投稿ジョブを実行（--dry-run でプレビュー）")
+    jr.add_argument("job_id", help="投稿ジョブ id")
+    jr.add_argument("--dry-run", action="store_true", dest="dry_run", help="送信せずプレビューのみ")
+    jr.set_defaults(handler_name="cmd_publish_jobs_run")
+
+    jc = jobs_sub.add_parser("confirm", help="handed_off のジョブを公開済みとして確定")
+    jc.add_argument("job_id", help="投稿ジョブ id")
+    jc.add_argument("--url", default="", help="実際に公開した URL（任意・成果に紐づけ）")
+    jc.set_defaults(handler_name="cmd_publish_jobs_confirm")
+
+    jd = jobs_sub.add_parser("delete", help="投稿ジョブを削除")
+    jd.add_argument("job_id", help="投稿ジョブ id")
+    jd.set_defaults(handler_name="cmd_publish_jobs_delete")

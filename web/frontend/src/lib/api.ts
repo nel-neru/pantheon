@@ -30,6 +30,114 @@ export async function api<T = unknown>(
   return res.json() as T
 }
 
+// ─── Typed convenience wrappers ──────────────────────────────────────────────
+
+export type BusinessHandoffRoute = {
+  from_org: string
+  to_org: string
+  kind: string
+}
+
+export type Business = {
+  id: string
+  name: string
+  purpose: string
+  member_orgs: string[]
+  roles: Record<string, string>
+  handoff_routes: BusinessHandoffRoute[]
+  kpis: string[]
+  status: string
+  created_at: string
+}
+
+export type BusinessOutcomes = {
+  business: Business
+  member_orgs: string[]
+  by_metric: Record<string, number>
+  event_count: number
+  total_revenue: number
+  total_reach: number
+}
+
+export async function listBusinesses(): Promise<{ businesses: Business[] }> {
+  return api<{ businesses: Business[] }>('GET', '/api/businesses')
+}
+
+export async function createBusiness(body: {
+  name: string
+  purpose?: string
+  member_orgs?: string[]
+  roles?: Record<string, string>
+  handoff_routes?: BusinessHandoffRoute[]
+  kpis?: string[]
+}): Promise<Business> {
+  return api<Business>('POST', '/api/businesses', body)
+}
+
+export async function getBusiness(id: string): Promise<Business> {
+  return api<Business>('GET', `/api/businesses/${encodeURIComponent(id)}`)
+}
+
+export async function getBusinessOutcomes(id: string): Promise<BusinessOutcomes> {
+  return api<BusinessOutcomes>('GET', `/api/businesses/${encodeURIComponent(id)}/outcomes`)
+}
+
+export async function composeBusiness(id: string): Promise<{ created: number; handoff_ids: string[] }> {
+  return api<{ created: number; handoff_ids: string[] }>('POST', `/api/businesses/${encodeURIComponent(id)}/compose`)
+}
+
+export async function patchBusiness(
+  id: string,
+  body: {
+    name?: string
+    purpose?: string
+    status?: 'active' | 'paused' | 'archived'
+    member_orgs?: string[]
+    roles?: Record<string, string>
+    kpis?: string[]
+  }
+): Promise<Business> {
+  return api<Business>('PATCH', `/api/businesses/${encodeURIComponent(id)}`, body)
+}
+
+export async function deleteBusiness(id: string): Promise<{ ok: boolean; deleted: boolean }> {
+  return api<{ ok: boolean; deleted: boolean }>('DELETE', `/api/businesses/${encodeURIComponent(id)}`)
+}
+
+export type WindowUsageSummary = {
+  window_hours: number
+  calls: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  total_tokens: number
+  total_cost_usd: number
+  measured_calls: number
+  estimated_calls: number
+}
+
+export type UsageSummaryResponse = {
+  usage: {
+    session_5h: WindowUsageSummary
+    weekly_7d: WindowUsageSummary
+  }
+  governor: {
+    enabled: boolean
+    level: string
+    window_hours: number
+    window_tokens: number
+    soft_limit_tokens: number
+    hard_limit_tokens: number
+  }
+  rate_limited: boolean
+  retry_at?: string | null
+  rate_limit_scope?: string | null
+}
+
+export async function getUsageSummary(): Promise<UsageSummaryResponse> {
+  return api<UsageSummaryResponse>('GET', '/api/usage/summary')
+}
+
 /**
  * SSE ストリーミング POST ヘルパー。
  * バックエンドの text/event-stream レスポンスを chunk 単位で読み取り、

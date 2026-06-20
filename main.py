@@ -674,6 +674,48 @@ async def cmd_db_stats(args) -> None:
     await _impl(args)
 
 
+async def cmd_inbox_list(args) -> None:
+    from commands.inbox import cmd_inbox_list as _impl
+
+    await _impl(args)
+
+
+async def cmd_content_list(args) -> None:
+    from commands.content import cmd_content_list as _impl
+
+    await _impl(args)
+
+
+async def cmd_content_create(args) -> None:
+    from commands.content import cmd_content_create as _impl
+
+    await _impl(args)
+
+
+async def cmd_content_run(args) -> None:
+    from commands.content import cmd_content_run as _impl
+
+    await _impl(args)
+
+
+async def cmd_content_enable(args) -> None:
+    from commands.content import cmd_content_enable as _impl
+
+    await _impl(args)
+
+
+async def cmd_content_disable(args) -> None:
+    from commands.content import cmd_content_disable as _impl
+
+    await _impl(args)
+
+
+async def cmd_content_delete(args) -> None:
+    from commands.content import cmd_content_delete as _impl
+
+    await _impl(args)
+
+
 async def cmd_publish_connect(args) -> None:
     from commands.publish import cmd_publish_connect as _impl
 
@@ -694,6 +736,30 @@ async def cmd_publish_disconnect(args) -> None:
 
 async def cmd_publish_auto(args) -> None:
     from commands.publish import cmd_publish_auto as _impl
+
+    await _impl(args)
+
+
+async def cmd_publish_jobs_list(args) -> None:
+    from commands.publish import cmd_publish_jobs_list as _impl
+
+    await _impl(args)
+
+
+async def cmd_publish_jobs_run(args) -> None:
+    from commands.publish import cmd_publish_jobs_run as _impl
+
+    await _impl(args)
+
+
+async def cmd_publish_jobs_confirm(args) -> None:
+    from commands.publish import cmd_publish_jobs_confirm as _impl
+
+    await _impl(args)
+
+
+async def cmd_publish_jobs_delete(args) -> None:
+    from commands.publish import cmd_publish_jobs_delete as _impl
 
     await _impl(args)
 
@@ -788,10 +854,21 @@ HANDLERS = {
     "cmd_revenue_intelligence": cmd_revenue_intelligence,
     "cmd_db_sync": cmd_db_sync,
     "cmd_db_stats": cmd_db_stats,
+    "cmd_inbox_list": cmd_inbox_list,
+    "cmd_content_list": cmd_content_list,
+    "cmd_content_create": cmd_content_create,
+    "cmd_content_run": cmd_content_run,
+    "cmd_content_enable": cmd_content_enable,
+    "cmd_content_disable": cmd_content_disable,
+    "cmd_content_delete": cmd_content_delete,
     "cmd_publish_connect": cmd_publish_connect,
     "cmd_publish_status": cmd_publish_status,
     "cmd_publish_disconnect": cmd_publish_disconnect,
     "cmd_publish_auto": cmd_publish_auto,
+    "cmd_publish_jobs_list": cmd_publish_jobs_list,
+    "cmd_publish_jobs_run": cmd_publish_jobs_run,
+    "cmd_publish_jobs_confirm": cmd_publish_jobs_confirm,
+    "cmd_publish_jobs_delete": cmd_publish_jobs_delete,
 }
 
 

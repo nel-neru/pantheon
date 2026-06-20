@@ -25,6 +25,7 @@ import {
   Sparkles,
   Sun,
   Target,
+  Gauge,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -55,6 +56,8 @@ import { RevenuePage } from '@/pages/RevenuePage'
 import { SessionsPage } from '@/pages/SessionsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { StudioPage } from '@/pages/StudioPage'
+import { BusinessesPage } from '@/pages/BusinessesPage'
+import { UsagePage } from '@/pages/UsagePage'
 
 type NavItem = {
   to: string
@@ -120,6 +123,7 @@ const navGroups: NavGroup[] = [
       { to: '/content', label: 'コンテンツ予約', icon: CalendarClock },
       { to: '/handoffs', label: '引き渡し', icon: ArrowRightLeft },
       { to: '/revenue', label: '収益', icon: Coins },
+      { to: '/businesses', label: '事業', icon: Building2 },
     ],
   },
   {
@@ -131,6 +135,7 @@ const navGroups: NavGroup[] = [
       { to: '/sessions', label: 'セッション', icon: Boxes },
       { to: '/board', label: '作業ボード', icon: KanbanSquare },
       { to: '/data', label: 'データ管理', icon: Database },
+      { to: '/usage', label: '使用量', icon: Gauge },
       { to: '/settings', label: '設定', icon: Settings },
       { to: '/help', label: 'ヘルプ', icon: HelpCircle },
     ],
@@ -760,6 +765,8 @@ export default function App() {
         <Route path="/sessions" element={<SessionsPage />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/data" element={<DataPage />} />
+        <Route path="/businesses" element={<BusinessesPage />} />
+        <Route path="/usage" element={<UsagePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
