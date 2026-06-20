@@ -87,3 +87,19 @@ async def test_start_non_revenue_omits_revenue_flags(captured_spawn):
     assert not any(a.startswith("--source-org-name") for a in extra)
     assert not any(a.startswith("--min-reach") for a in extra)
     assert not any(a.startswith("--target") for a in extra)
+
+
+async def test_execute_approved_default_off_not_forwarded(captured_spawn):
+    """既定オフ: --execute-approved は付かず、runner も execute_approved=False（HITL 据え置き）。"""
+    await daemons.cmd_daemons_start(_start_ns(target=1000.0))
+    extra = captured_spawn[0]["args"]
+    assert "--execute-approved" not in extra
+    assert build_parser().parse_args(extra).execute_approved is False
+
+
+async def test_execute_approved_flag_forwards_and_parses_back(captured_spawn):
+    """opt-in: --execute-approved が CLI→runner へ 1:1 で渡り、parse で True になる（drift guard）。"""
+    await daemons.cmd_daemons_start(_start_ns(target=1000.0, execute_approved=True))
+    extra = captured_spawn[0]["args"]
+    assert "--execute-approved" in extra
+    assert build_parser().parse_args(extra).execute_approved is True

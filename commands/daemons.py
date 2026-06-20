@@ -82,6 +82,9 @@ async def cmd_daemons_start(args: argparse.Namespace) -> None:
             extra.append(f"--target={args.target}")
             extra.append(f"--source-org-name={args.source_org}")
             extra.append(f"--min-reach={args.min_reach}")
+            # opt-in（既定オフ・getattr 後方互換）: 承認済みハンドオフの自律実行。
+            if getattr(args, "execute_approved", False):
+                extra.append("--execute-approved")
         result = spawn_daemon(name, args=extra)
         print(f"[{name}] {result['status']} (pid={result['pid']}, log={result['log_path']})")
 
@@ -213,6 +216,12 @@ def register(subparsers: Any) -> None:
         type=float,
         default=0.0,
         help="revenue のみ: ポートフォリオ提案で考慮する収益源の最小リーチ（0=フィルタ無し）",
+    )
+    sp.add_argument(
+        "--execute-approved",
+        action="store_true",
+        dest="execute_approved",
+        help="revenue のみ: 承認済みクロス Org ハンドオフを毎サイクル自律実行（既定オフ・HITL維持）",
     )
     sp.set_defaults(handler_name="cmd_daemons_start")
 

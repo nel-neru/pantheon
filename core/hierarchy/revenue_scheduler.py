@@ -61,6 +61,7 @@ class RevenueScheduler:
         source_org_name: str = "HQ",
         min_reach: float = 0.0,
         collect: bool = True,
+        execute_approved: bool = False,
         **_kwargs: Any,
     ):
         from core.platform.state import PlatformStateManager
@@ -73,6 +74,10 @@ class RevenueScheduler:
         self._min_reach = float(min_reach)
         # 各サイクルで接続済みソース（CSV/実API）から収益を自動取り込みする（冪等・トークンゼロ）。
         self._collect = bool(collect)
+        # opt-in（既定オフ）: 承認済み（=人間ゲート通過済み）クロス Org ハンドオフを毎サイクル
+        # 自律で実体化→consumed まで前進させる。フライホイールが「承認後に止まる」のを解消する
+        # actuate。下流ブリーフは受け手 org で human_required のまま＝HITL は回避しない。
+        self._execute_approved = bool(execute_approved)
         self._running = False
         self._cycle_count = 0
         self._status = STATUS_STOPPED
@@ -160,10 +165,22 @@ class RevenueScheduler:
             except Exception as exc:  # noqa: BLE001
                 logger.info("HQ intervention cadence failed: %s", exc)
 
+        # 承認済みワークの自律実行（opt-in・既定オフ）: 承認済みハンドオフを実体化→consumed へ。
+        # target に依存せず、明示的に有効化された場合のみ動く（HITL は維持＝承認済みのみ対象）。
+        handoffs_executed = 0
+        if self._execute_approved:
+            try:
+                from core.hierarchy.handoff_executor import execute_approved_handoffs
+
+                results = execute_approved_handoffs(psm=self._psm)
+                handoffs_executed = sum(1 for r in results if r.get("status") == "consumed")
+            except Exception as exc:  # noqa: BLE001
+                logger.info("approved-handoff execution failed: %s", exc)
+
         # 可視化（§12「寝てる間に改善が進んでた」）: 何か起きたサイクルだけ通知センターへ要約を残す。
         total_new = int(scan.get("proposals", 0)) + hq_created
         trend = analysis.get("trend")
-        if total_new > 0 or trend == "declining":
+        if total_new > 0 or handoffs_executed > 0 or trend == "declining":
             try:
                 from core.notifications import NotificationCenter
 
@@ -172,7 +189,7 @@ class RevenueScheduler:
                     message=(
                         f"自律経営サイクル#{self._cycle_count}: 提案 {total_new} 件起票"
                         f"（ポートフォリオ {int(scan.get('proposals', 0))} / HQ介入 {hq_created}）"
-                        f"・収益トレンド {trend}"
+                        f"・承認済みハンドオフ実行 {handoffs_executed} 件・収益トレンド {trend}"
                     ),
                     org_name=self._source_org_name,
                 )
@@ -189,6 +206,7 @@ class RevenueScheduler:
             "revenue_recorded": recorded,
             "proposals": scan.get("proposals", 0),
             "hq_proposals": hq_created,
+            "handoffs_executed": handoffs_executed,
             "scanned": scan.get("scanned", 0),
             "scan_skipped": self._target <= 0,
         }
