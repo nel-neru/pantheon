@@ -150,3 +150,24 @@ def test_inbox_aggregates_human_tasks_and_proposals(tmp_path, monkeypatch):
     items = _collect_inbox(tmp_path)
     human = [i for i in items if i["kind"] == "human_task"]
     assert any("価格を承認" in i["title"] for i in human)
+
+
+async def test_inbox_list_category_and_impact_filters(tmp_path, monkeypatch, capsys):
+    """inbox list の --category / --min-impact フィルタ（finding 16）。"""
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    from commands.inbox import _collect_inbox, cmd_inbox_list
+    from core.humans.human_tasks import enqueue_human_task
+
+    enqueue_human_task("承認して", platform_home=tmp_path, kind="company_setup", org_name="Co")
+    items = _collect_inbox(tmp_path)
+    assert any(i.get("category") == "company_setup" for i in items)
+
+    await cmd_inbox_list(argparse.Namespace(kind=None, category="company_setup", min_impact=None))
+    assert "承認して" in capsys.readouterr().out
+
+    await cmd_inbox_list(argparse.Namespace(kind=None, category="nonexistent", min_impact=None))
+    assert "一致する項目がありません" in capsys.readouterr().out
+
+    # human_task は revenue_impact=1 なので --min-impact 2 で除外される
+    await cmd_inbox_list(argparse.Namespace(kind=None, category=None, min_impact=2))
+    assert "承認して" not in capsys.readouterr().out

@@ -39,6 +39,7 @@ def _collect_inbox(platform_home: Any) -> List[Dict[str, Any]]:
                         "id": str(p.get("id", "")),
                         "org_name": org.name,
                         "title": p.get("title", ""),
+                        "category": p.get("category", "general"),
                         "priority": p.get("priority", "medium"),
                         "revenue_impact": revenue_impact_rank(p),
                     }
@@ -53,6 +54,7 @@ def _collect_inbox(platform_home: Any) -> List[Dict[str, Any]]:
                 "id": getattr(h, "handoff_id", ""),
                 "org_name": getattr(h, "target_org", ""),
                 "title": getattr(h, "title", ""),
+                "category": "cross_org_handoff",
                 "priority": getattr(h, "priority", "medium"),
                 "revenue_impact": 1,
             }
@@ -67,6 +69,7 @@ def _collect_inbox(platform_home: Any) -> List[Dict[str, Any]]:
                 "id": j.job_id,
                 "org_name": j.org_name,
                 "title": j.title or j.platform,
+                "category": "external_action",
                 "priority": "high",
                 "revenue_impact": 1,
             }
@@ -79,6 +82,7 @@ def _collect_inbox(platform_home: Any) -> List[Dict[str, Any]]:
                 "id": t.task_id,
                 "org_name": t.org_name,
                 "title": t.title,
+                "category": getattr(t, "kind", "") or "human_task",
                 "priority": "high",
                 "revenue_impact": 1,
             }
@@ -102,8 +106,14 @@ async def cmd_inbox_list(args: argparse.Namespace) -> None:
     kind_filter = getattr(args, "kind", None)
     if kind_filter:
         items = [i for i in items if i["kind"] == kind_filter]
+    category_filter = getattr(args, "category", None)
+    if category_filter:
+        items = [i for i in items if i.get("category") == category_filter]
+    min_impact = getattr(args, "min_impact", None)
+    if min_impact is not None:
+        items = [i for i in items if int(i.get("revenue_impact", 0)) >= min_impact]
     if not items:
-        print("承認待ちはありません（インボックスは空です）。")
+        print("承認待ちはありません（条件に一致する項目がありません）。")
         return
 
     counts: Dict[str, int] = {}
@@ -135,5 +145,17 @@ def register(subparsers: Any) -> None:
         default=None,
         choices=["proposal", "handoff", "publish", "human_task"],
         help="種別で絞り込み",
+    )
+    list_p.add_argument(
+        "--category",
+        default=None,
+        help="カテゴリで絞り込み（例: structural_intervention / content_asset / general）",
+    )
+    list_p.add_argument(
+        "--min-impact",
+        dest="min_impact",
+        type=int,
+        default=None,
+        help="収益インパクト下限（0/1/2）でフィルタ",
     )
     list_p.set_defaults(handler_name="cmd_inbox_list")
