@@ -2749,6 +2749,26 @@ async def api_revenue_intelligence(
     return {"org_name": org_name, **analysis}
 
 
+@app.get("/api/metrics/revenue/projection", tags=["metrics"])
+async def api_revenue_projection(
+    target: float,
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """月次目標 ``target`` への到達射影（現トレンドで何か月か・到達可否・3か月後予測）。
+
+    回帰 run-rate を外挿する決定論計算（LLM 非依存）。「自律経営プラン」の手前で
+    「今のペースで目標に届くか／いつ届くか」を一目で示す。
+    """
+    from core.metrics.revenue_intelligence import project_to_target
+
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
+    projection = project_to_target(by_month, target)
+    return {"org_name": org_name, **projection}
+
+
 @app.get("/api/hq/portfolio", tags=["hq"])
 async def api_hq_portfolio() -> Dict[str, Any]:
     """ポートフォリオ資源配分・連携の HQ 提案（収益/リーチから invest/monetize/送客 等を提案）。"""

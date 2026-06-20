@@ -101,6 +101,70 @@ def analyze_revenue(by_month: Dict[str, float]) -> RevenueAnalysis:
     )
 
 
+class TargetProjection(TypedDict):
+    target: float
+    current: float  # 直近月の収益
+    slope_per_month: float  # 月次の平均増減（最小二乗回帰の傾き）
+    on_track: bool  # 現トレンドで到達見込みか
+    months_to_target: Optional[int]  # 到達までの月数（到達済み=0 / 到達不能=None）
+    projected_3mo: float  # 3か月後の予測収益
+
+
+def _linear_slope(series: List[float]) -> float:
+    """月次系列の最小二乗回帰の傾き（= 月あたり平均増減）。2点未満は 0.0。
+
+    単月のスパイク/ディップに左右されにくい run-rate トレンドを返す（単純差分より頑健）。
+    """
+    n = len(series)
+    if n < 2:
+        return 0.0
+    mean_x = (n - 1) / 2.0
+    mean_y = sum(series) / n
+    denom = sum((i - mean_x) ** 2 for i in range(n))
+    if denom == 0:
+        return 0.0
+    num = sum((i - mean_x) * (series[i] - mean_y) for i in range(n))
+    return num / denom
+
+
+def project_to_target(by_month: Dict[str, float], target: float) -> TargetProjection:
+    """月次収益の trajectory から「月次目標 ``target`` に何か月で到達するか」を射影する。
+
+    現トレンド（最小二乗回帰の傾き）を run-rate として外挿する決定論関数（LLM 非依存）。
+    - 既に ``current >= target`` → 到達済み（months_to_target=0, on_track=True）。
+    - 傾き <= 0 かつ未達 → 現トレンドでは到達不能（months_to_target=None, on_track=False）。
+    - それ以外 → ``ceil((target - current) / slope)`` か月後に到達見込み（on_track=True）。
+    ``projected_3mo`` は 3 か月後の線形予測（下限 0）。
+    """
+    import math
+
+    months = _real_months(by_month)
+    series = [float(by_month[m]) for m in months]
+    current = series[-1] if series else 0.0
+    slope = round(_linear_slope(series), 2)
+    tgt = float(target)
+
+    if current >= tgt:
+        months_to = 0
+        on_track = True
+    elif slope <= 0:
+        months_to = None
+        on_track = False
+    else:
+        months_to = math.ceil((tgt - current) / slope)
+        on_track = True
+
+    projected_3mo = round(max(0.0, current + slope * 3), 2)
+    return TargetProjection(
+        target=tgt,
+        current=current,
+        slope_per_month=slope,
+        on_track=on_track,
+        months_to_target=months_to,
+        projected_3mo=projected_3mo,
+    )
+
+
 # 収益インパクトのランク（提案キューの優先順位付け）。
 REVENUE_IMPACT_HIGH = 2  # 直接収益化（収益化事業部追加・収益化目標など）
 REVENUE_IMPACT_MEDIUM = 1  # 収益に近い（集客/コンテンツ＝リーチ→収益の入口）

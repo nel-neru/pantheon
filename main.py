@@ -694,6 +694,12 @@ async def cmd_revenue_intelligence(args) -> None:
     await _impl(args)
 
 
+async def cmd_revenue_projection(args) -> None:
+    from commands.revenue import cmd_revenue_projection as _impl
+
+    await _impl(args)
+
+
 async def cmd_db_sync(args) -> None:
     from commands.db import cmd_db_sync as _impl
 
@@ -890,6 +896,7 @@ HANDLERS = {
     "cmd_revenue_collect": cmd_revenue_collect,
     "cmd_revenue_report": cmd_revenue_report,
     "cmd_revenue_intelligence": cmd_revenue_intelligence,
+    "cmd_revenue_projection": cmd_revenue_projection,
     "cmd_db_sync": cmd_db_sync,
     "cmd_db_stats": cmd_db_stats,
     "cmd_inbox_list": cmd_inbox_list,

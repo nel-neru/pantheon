@@ -74,6 +74,24 @@ async def cmd_revenue_intelligence(args: argparse.Namespace) -> None:
     print(f"  データ月数  : {len(analysis['months'])}")
 
 
+async def cmd_revenue_projection(args: argparse.Namespace) -> None:
+    """月次目標への到達射影（現トレンドで何か月か）を表示する。"""
+    from core.metrics.revenue_intelligence import project_to_target
+
+    proj = project_to_target(_revenue_by_month(), args.target)
+    print("\n収益プロジェクション（現トレンドの外挿・概算）\n")
+    print(f"  目標(月次)  : {proj['target']:,.0f} 円")
+    print(f"  直近月収益  : {proj['current']:,.0f} 円")
+    print(f"  月次トレンド: {proj['slope_per_month']:+,.0f} 円/月")
+    if proj["months_to_target"] == 0:
+        print("  到達状況    : ✅ 既に目標到達")
+    elif proj["months_to_target"] is None:
+        print("  到達状況    : ⚠️ 現トレンドでは到達見込みなし（トレンドが横ばい/下降）")
+    else:
+        print(f"  到達状況    : 📈 現ペースで約 {proj['months_to_target']} か月後に到達見込み")
+    print(f"  3か月後予測 : {proj['projected_3mo']:,.0f} 円")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("revenue", help="収益の自動収集・レポート・分析")
     sub = parser.add_subparsers(dest="revenue_command", required=True)
@@ -86,3 +104,7 @@ def register(subparsers: Any) -> None:
 
     sp = sub.add_parser("intelligence", help="収益トレンド・翌月予測を表示（analyze_revenue）")
     sp.set_defaults(handler_name="cmd_revenue_intelligence")
+
+    sp = sub.add_parser("projection", help="月次目標への到達射影（現トレンドで何か月か）")
+    sp.add_argument("--target", type=float, required=True, help="月次収益目標（円）")
+    sp.set_defaults(handler_name="cmd_revenue_projection")

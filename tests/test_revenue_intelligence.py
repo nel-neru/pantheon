@@ -76,6 +76,34 @@ def test_insufficient_data_band_is_point():
     assert a["forecast_lower"] == a["forecast_next"] == a["forecast_upper"] == 1000.0
 
 
+def test_project_to_target_reachable_growing():
+    """上昇トレンドなら目標到達までの月数を回帰 run-rate で射影する（新能力）。"""
+    from core.metrics.revenue_intelligence import project_to_target
+
+    # +100/月の一定トレンド、直近 300、目標 600 → あと 3 か月。
+    p = project_to_target({"2026-01": 100, "2026-02": 200, "2026-03": 300}, 600)
+    assert p["current"] == 300
+    assert p["slope_per_month"] == 100.0
+    assert p["on_track"] is True
+    assert p["months_to_target"] == 3
+    assert p["projected_3mo"] == 600.0
+
+
+def test_project_to_target_already_met():
+    from core.metrics.revenue_intelligence import project_to_target
+
+    p = project_to_target({"2026-01": 500, "2026-02": 1200}, 1000)
+    assert p["months_to_target"] == 0 and p["on_track"] is True
+
+
+def test_project_to_target_declining_is_unreachable():
+    from core.metrics.revenue_intelligence import project_to_target
+
+    p = project_to_target({"2026-01": 500, "2026-02": 400, "2026-03": 300}, 1000)
+    assert p["on_track"] is False and p["months_to_target"] is None
+    assert p["slope_per_month"] < 0
+
+
 def test_revenue_by_month_date_range_filter(tmp_path):
     """revenue_by_month が start_date/end_date で期間を絞る（finding 24）。"""
     from core.metrics.outcomes import OutcomeStore

@@ -3206,6 +3206,26 @@ def test_business_performance_api(tmp_path, monkeypatch):
     assert client.get("/api/businesses/Nope/performance").status_code == 404
 
 
+def test_revenue_projection_api(tmp_path, monkeypatch):
+    """GET /api/metrics/revenue/projection が目標到達射影を返す（新能力）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, occurred_at="2026-01-15")
+    store.record("Co", "revenue", 200, occurred_at="2026-02-15")
+    store.record("Co", "revenue", 300, occurred_at="2026-03-15")
+
+    resp = client.get("/api/metrics/revenue/projection?target=600")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["target"] == 600 and body["on_track"] is True
+    assert body["months_to_target"] == 3
+    # target は必須（欠落は 422）
+    assert client.get("/api/metrics/revenue/projection").status_code == 422
+
+
 def test_metrics_efficiency_api(tmp_path, monkeypatch):
     """組織別 ROI 効率とランクを返す（discovery #7）。"""
     from core.metrics.outcomes import OutcomeStore
