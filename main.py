@@ -85,6 +85,16 @@ from commands.version import cmd_version as _cmd_version_impl
 from core.paths import resource_root
 from core.platform.state import PlatformStateManager
 
+# Windows のコンソール/リダイレクト先は既定が cp932 で、em-dash 等の非 cp932 文字を
+# print すると UnicodeEncodeError でクラッシュする（CLI コマンドの実害。例: daemons
+# watchdog install の print(err)）。標準出力を UTF-8 に張り替え、エンコード不能文字は
+# 置換して決して落ちないようにする（best-effort。端末が無い/再設定不可なら無視）。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError, OSError):
+        pass
+
 PROJECT_ROOT = resource_root()
 
 
