@@ -15,6 +15,7 @@ wmux の work セッションへ着火する）。
 from __future__ import annotations
 
 import argparse
+import sys
 from typing import Any
 
 # argparse choices 用（core を import せず CLI 起動を軽く保つ）。
@@ -86,6 +87,37 @@ async def cmd_tasks_drain(args: argparse.Namespace) -> None:
     print(f"\n着火 {fired} 件 / 処理 {len(results)} 件")
 
 
+async def cmd_tasks_get(args: argparse.Namespace) -> None:
+    """単一タスクの詳細を表示する（GET /api/tasks/{id} 相当）。"""
+    from core.orchestration.task_queue import TaskQueue
+
+    task = TaskQueue().get_task(args.task_id)
+    if task is None:
+        print(f"[ERROR] タスク '{args.task_id}' が見つかりません")
+        sys.exit(1)
+    print(f"\nタスク {task['id']}")
+    for key in ("status", "type", "org_name", "priority", "created_at", "updated_at"):
+        if key in task:
+            print(f"  {key:<11}: {task.get(key)}")
+    desc = (task.get("description") or "").strip()
+    if desc:
+        print(f"  description: {desc}")
+
+
+async def cmd_tasks_cancel(args: argparse.Namespace) -> None:
+    """保留タスクをキャンセルする（DELETE /api/tasks/{id} 相当）。"""
+    from core.orchestration.task_queue import TaskQueue
+
+    queue = TaskQueue()
+    if queue.get_task(args.task_id) is None:
+        print(f"[ERROR] タスク '{args.task_id}' が見つかりません")
+        sys.exit(1)
+    if queue.cancel_task(args.task_id):
+        print(f"[OK] タスク '{args.task_id}' をキャンセルしました")
+    else:
+        print(f"[INFO] タスク '{args.task_id}' はキャンセルできません（実行中/完了済み）")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser(
         "tasks",
@@ -104,6 +136,14 @@ def register(subparsers: Any) -> None:
     sp.add_argument("--org", default=None, help="Organization 名で絞り込む")
     sp.add_argument("--status", default=None, help="状態で絞り込む（pending/running/done/...）")
     sp.set_defaults(handler_name="cmd_tasks_list")
+
+    sp = sub.add_parser("get", help="単一タスクの詳細を表示（GET /api/tasks/{id} 相当）")
+    sp.add_argument("task_id", help="タスク id")
+    sp.set_defaults(handler_name="cmd_tasks_get")
+
+    sp = sub.add_parser("cancel", help="保留タスクをキャンセル（DELETE /api/tasks/{id} 相当）")
+    sp.add_argument("task_id", help="タスク id")
+    sp.set_defaults(handler_name="cmd_tasks_cancel")
 
     sp = sub.add_parser("drain", help="保留タスクを並列で着火（headless 実行経路）")
     sp.add_argument("--org", default=None, help="この Organization のタスクだけ着火する")

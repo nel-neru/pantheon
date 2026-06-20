@@ -173,6 +173,34 @@ async def test_inbox_list_category_and_impact_filters(tmp_path, monkeypatch, cap
     assert "承認して" not in capsys.readouterr().out
 
 
+async def test_tasks_get_and_cancel_cli(tmp_path, monkeypatch, capsys):
+    """tasks get/cancel が単一タスク操作を CLI に開く（GET/DELETE /api/tasks/{id} 相当）。"""
+    import main
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    from commands.tasks import cmd_tasks_cancel, cmd_tasks_get
+    from core.orchestration.task_queue import TaskQueue
+
+    parser = build_parser()
+    assert parser.parse_args(["tasks", "get", "x"]).handler_name == "cmd_tasks_get"
+    assert parser.parse_args(["tasks", "cancel", "x"]).handler_name == "cmd_tasks_cancel"
+    assert "cmd_tasks_get" in main.HANDLERS and "cmd_tasks_cancel" in main.HANDLERS
+
+    q = TaskQueue()  # get_platform_home（monkeypatch 済み）→ tmp_path
+    task = q.add_task(task_type="custom", org_name="Co", description="やること", priority=5)
+    tid = task["id"]
+
+    await cmd_tasks_get(argparse.Namespace(task_id=tid))
+    assert "status" in capsys.readouterr().out
+
+    await cmd_tasks_cancel(argparse.Namespace(task_id=tid))
+    assert q.get_task(tid)["status"] == "cancelled"
+
+    # 不在は SystemExit
+    with pytest.raises(SystemExit):
+        await cmd_tasks_get(argparse.Namespace(task_id="nope"))
+
+
 async def test_skills_list_cli(capsys):
     """orchestration skills が SkillLoader レジストリを一覧する（GET /api/skills 相当）。"""
     import main

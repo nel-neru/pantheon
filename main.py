@@ -586,6 +586,18 @@ async def cmd_tasks_drain(args) -> None:
     await _impl(args)
 
 
+async def cmd_tasks_get(args) -> None:
+    from commands.tasks import cmd_tasks_get as _impl
+
+    await _impl(args)
+
+
+async def cmd_tasks_cancel(args) -> None:
+    from commands.tasks import cmd_tasks_cancel as _impl
+
+    await _impl(args)
+
+
 async def cmd_daemons_status(args) -> None:
     from commands.daemons import cmd_daemons_status as _impl
 
@@ -860,6 +872,8 @@ HANDLERS = {
     "cmd_tasks_add": cmd_tasks_add,
     "cmd_tasks_list": cmd_tasks_list,
     "cmd_tasks_drain": cmd_tasks_drain,
+    "cmd_tasks_get": cmd_tasks_get,
+    "cmd_tasks_cancel": cmd_tasks_cancel,
     "cmd_daemons_status": cmd_daemons_status,
     "cmd_daemons_start": cmd_daemons_start,
     "cmd_daemons_stop": cmd_daemons_stop,
