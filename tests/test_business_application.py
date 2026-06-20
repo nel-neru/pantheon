@@ -71,6 +71,68 @@ def test_scaffold_rejects_non_new_business():
         scaffold_business_from_proposal({"category": "content_asset"}, psm=None)
 
 
+def test_cli_approve_scaffolds_new_business(tmp_path):
+    """CLI 承認（cmd_proposal_apply）が new_business 提案を会社+事業へ組成する（Gap A 根治）。
+
+    以前は file_path 無しの new_business が「meta-level 提案」として承認前に棄却され、
+    Web（POST /api/businesses/from-proposal）からしか事業化できなかった。PolicyEngine は
+    is_meta carve-out で通過させ（REJECT でなく HUMAN_REQUIRED）、専用 executor に委任する。
+    """
+    import asyncio
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from commands.org import cmd_proposal_apply
+    from core.models.organization import ImprovementProposal
+    from core.org_factory import create_default_organization
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    hq = create_default_organization("HQ", "本社")
+    psm.save_organization(hq)
+    sm = psm.get_org_state_manager(hq)
+    prop = ImprovementProposal(
+        review_id=uuid4(),
+        title="[新規会社候補] AI動画解説",
+        description="d",
+        category="new_business",
+        status="proposed",
+        is_meta=True,
+        target_kind="org_structure",
+        intervention_spec={
+            "kind": "new_business",
+            "name": "AI動画解説社",
+            "genre": "ai_video",
+            "divisions": ["audience_development", "monetization"],
+        },
+    )
+    sm.save_improvement_proposal(prop)
+
+    args = SimpleNamespace(
+        org_name="HQ",
+        proposal_id=str(prop.id)[:8],
+        yes=True,
+        github_token=None,
+        github_repo=None,
+    )
+    asyncio.run(
+        cmd_proposal_apply(
+            args,
+            confirm_action=lambda *a, **k: True,
+            get_orchestrator=lambda: None,  # new_business 経路では使わない
+            get_psm=lambda: psm,
+            require_api_key=lambda *a, **k: None,  # 同上（LLM 非依存）
+        )
+    )
+
+    # 会社 + 事業が立ち上がる（CLI 承認から到達できる）
+    assert psm.load_organization_by_name("AI動画解説社") is not None
+    biz = BusinessStore(platform_home=tmp_path).get("AI動画解説社")
+    assert biz is not None and biz.member_orgs == ["AI動画解説社"]
+    # 提案は done に遷移（再棄却されない）
+    done = [p for p in sm.get_all_improvement_proposals() if str(p["id"]) == str(prop.id)]
+    assert done and done[0]["status"] == "done"
+
+
 def test_from_proposal_api_end_to_end(tmp_path, monkeypatch):
     """承認済み提案 → POST /api/businesses/from-proposal で組成し提案を done にする。"""
     from uuid import uuid4
