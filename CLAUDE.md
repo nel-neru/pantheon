@@ -38,10 +38,12 @@ Bash-tool equivalents use forward slashes: `.venv/Scripts/python -m pytest tests
 
 ## Test baseline — DO NOT treat these as regressions
 
-On Windows the full backend suite has **2 long-standing failures** unrelated to any change
-(verified against a clean tree). Only NEW failures beyond these count:
+On Windows the full backend suite has **0 known failures** — ANY failure is a regression.
+The 2 former chmod failures now carry `@pytest.mark.skipif(sys.platform=="win32")` because POSIX
+`chmod 0o600` is a no-op on Windows, so they are SKIPPED there and RUN + PASS on Linux CI:
 
-- POSIX `chmod 0o600` not honored on Windows: `test_get_settings_warns_on_open_permissions`,
+- POSIX `chmod 0o600` not honored on Windows (now skipped on Windows, pass on Linux CI):
+  `test_get_settings_warns_on_open_permissions`,
   `test_update_settings_sets_restrictive_permissions`
 
 (4 former path-separator failures were fixed 2026-06-12 by normalizing relative paths to
@@ -70,8 +72,8 @@ uniqueness keys collided within one Windows clock tick; now disambiguated. If th
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - **Merging a completed work branch into `main`** is systematized via
   `node scripts/merge_to_main.mjs` (or the `/merge-to-main` command). Run it **from the work
-  branch when its work is done**: it gates on the backend tests (only the known baseline
-  failures allowed — no new regressions), fast-forwards `main` to `origin/main`, merges the
+  branch when its work is done**: it gates on the backend tests (0 known Windows failures — the 2
+  chmod tests skip there and pass on Linux CI — so no new regressions), fast-forwards `main` to `origin/main`, merges the
   work branch `--no-ff`, and pushes (never `--force`; aborts cleanly on conflict). Flags:
   `--no-test`, `--stay`, `--delete-branch`, `--dry-run`. The per-turn auto-commit still only
   ever touches work branches; promotion to `main` stays this one deliberate step.

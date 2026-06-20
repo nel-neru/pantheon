@@ -16,8 +16,9 @@ When invoked (optionally scoped to a flow id/name in the prompt):
 2. For each flow, run its `verification` tests with the project venv:
    `.venv/Scripts/python.exe -m pytest <files> -q` (Bash; forward slashes ok). Frontend flows:
    `cd web/frontend && npm test` only if relevant.
-3. Distinguish REAL failures from the **2 known pre-existing Windows failures** (chmod 0o600)
-   documented in CLAUDE.md — never report those as regressions; anything else is real.
+3. The Windows backend baseline is **0 known failures** — ANY failure is a regression. (The 2
+   chmod-0o600 tests that were formerly "known failures" are now `skipif win32`: they SKIP on
+   Windows and RUN+PASS on Linux CI.) See CLAUDE.md.
 4. For each `known_issue`, open the cited `file` and judge whether it is **still present** or
    **already fixed** (cite file:line evidence). Do not guess — read the code.
 5. Re-derive an honest status per flow:

@@ -1,5 +1,5 @@
 ---
-description: Run and triage Pantheon's full test suites, separating real regressions from the 2 known pre-existing Windows failures.
+description: Run and triage Pantheon's full test suites; on Windows there are now 0 known failures (any failure is a regression), so flag real regressions vs the 2 chmod tests that merely skip on Windows and pass on Linux CI.
 argument-hint: "[optional: backend | frontend | all]   default all"
 ---
 
