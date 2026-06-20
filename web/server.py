@@ -2769,6 +2769,23 @@ async def api_revenue_projection(
     return {"org_name": org_name, **projection}
 
 
+@app.get("/api/metrics/revenue/forecast-extended", tags=["metrics"])
+async def api_revenue_forecast_extended(
+    months: int = 12,
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """OLS 回帰による多か月（既定 12）収益予測（slope/R²/予測系列）。決定論・LLM 非依存。"""
+    from core.metrics.revenue_intelligence import analyze_revenue_extended
+
+    horizon = max(1, min(int(months), 36))
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
+    analysis = analyze_revenue_extended(by_month, horizon=horizon)
+    return {"org_name": org_name, "horizon": horizon, **analysis}
+
+
 @app.get("/api/hq/portfolio", tags=["hq"])
 async def api_hq_portfolio() -> Dict[str, Any]:
     """ポートフォリオ資源配分・連携の HQ 提案（収益/リーチから invest/monetize/送客 等を提案）。"""

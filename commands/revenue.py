@@ -92,6 +92,25 @@ async def cmd_revenue_projection(args: argparse.Namespace) -> None:
     print(f"  3か月後予測 : {proj['projected_3mo']:,.0f} 円")
 
 
+async def cmd_revenue_forecast(args: argparse.Namespace) -> None:
+    """OLS 回帰で多か月の収益予測を表示する（slope/R²/予測系列）。"""
+    from core.metrics.revenue_intelligence import analyze_revenue_extended
+
+    horizon = max(1, min(int(args.months), 36))
+    a = analyze_revenue_extended(_revenue_by_month(), horizon=horizon)
+    if not a["series"]:
+        print("[revenue] 収益記録がありません（pantheon revenue collect / hq outcomes record）")
+        return
+    print(f"\n多か月収益予測（OLS 回帰・{horizon} か月先まで）\n")
+    print(
+        f"  月次トレンド: {a['slope_per_month']:+,.0f} 円/月  当てはまり(R²): {a['r_squared']:.2f}"
+    )
+    print(f"  トレンド    : {a['trend']}")
+    print("  予測:")
+    for i, v in enumerate(a["forecast"], start=1):
+        print(f"    +{i:>2}か月後: {v:,.0f} 円")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("revenue", help="収益の自動収集・レポート・分析")
     sub = parser.add_subparsers(dest="revenue_command", required=True)
@@ -108,3 +127,7 @@ def register(subparsers: Any) -> None:
     sp = sub.add_parser("projection", help="月次目標への到達射影（現トレンドで何か月か）")
     sp.add_argument("--target", type=float, required=True, help="月次収益目標（円）")
     sp.set_defaults(handler_name="cmd_revenue_projection")
+
+    sp = sub.add_parser("forecast", help="OLS 回帰で多か月の収益予測（slope/R²/予測系列）")
+    sp.add_argument("--months", type=int, default=12, help="予測する月数（既定 12・最大 36）")
+    sp.set_defaults(handler_name="cmd_revenue_forecast")

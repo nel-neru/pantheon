@@ -76,6 +76,28 @@ def test_insufficient_data_band_is_point():
     assert a["forecast_lower"] == a["forecast_next"] == a["forecast_upper"] == 1000.0
 
 
+def test_analyze_revenue_extended_perfect_linear():
+    """完全線形系列は R²=1.0、傾きを正しく外挿する（多か月 OLS 予測）。"""
+    from core.metrics.revenue_intelligence import analyze_revenue_extended
+
+    a = analyze_revenue_extended({"2026-01": 100, "2026-02": 200, "2026-03": 300}, horizon=3)
+    assert a["slope_per_month"] == 100.0
+    assert a["r_squared"] == 1.0
+    assert a["trend"] == "growing"
+    assert a["forecast"] == [400.0, 500.0, 600.0]
+
+
+def test_analyze_revenue_extended_floors_at_zero_and_insufficient():
+    from core.metrics.revenue_intelligence import analyze_revenue_extended
+
+    # 急減トレンドでも予測は 0 未満にならない
+    a = analyze_revenue_extended({"2026-01": 300, "2026-02": 100}, horizon=5)
+    assert all(v >= 0.0 for v in a["forecast"])
+    # 1 点は insufficient
+    b = analyze_revenue_extended({"2026-01": 500}, horizon=3)
+    assert b["trend"] == "insufficient"
+
+
 def test_project_to_target_reachable_growing():
     """上昇トレンドなら目標到達までの月数を回帰 run-rate で射影する（新能力）。"""
     from core.metrics.revenue_intelligence import project_to_target

@@ -110,6 +110,75 @@ class TargetProjection(TypedDict):
     projected_3mo: float  # 3か月後の予測収益
 
 
+class ExtendedRevenueAnalysis(TypedDict):
+    months: List[str]
+    series: List[float]
+    slope_per_month: float  # OLS 回帰の傾き（月あたり平均増減）
+    intercept: float
+    r_squared: float  # 当てはまりの良さ（0..1, 1=完全線形）
+    trend: str
+    forecast: List[float]  # 次 horizon か月の予測（下限 0）
+
+
+def _ols(series: List[float]) -> tuple[float, float, float]:
+    """月次系列に最小二乗回帰を当て (slope, intercept, r_squared) を返す（stdlib のみ）。
+
+    2 点未満は (0.0, last|0, 0.0)。分散ゼロ（全点同値）は slope=0/intercept=mean/r2=1.0。
+    scipy/numpy 非依存（requirements に無い）で revenue クリティカルパスを再現可能に保つ。
+    """
+    n = len(series)
+    if n == 0:
+        return (0.0, 0.0, 0.0)
+    if n == 1:
+        return (0.0, series[0], 0.0)
+    mean_x = (n - 1) / 2.0
+    mean_y = sum(series) / n
+    ss_xx = sum((i - mean_x) ** 2 for i in range(n))
+    ss_xy = sum((i - mean_x) * (series[i] - mean_y) for i in range(n))
+    ss_yy = sum((y - mean_y) ** 2 for y in series)
+    if ss_xx == 0:
+        return (0.0, mean_y, 0.0)
+    slope = ss_xy / ss_xx
+    intercept = mean_y - slope * mean_x
+    # R² = 説明された分散 / 全分散。全点同値（ss_yy=0）は完全当てはめ扱い。
+    r_squared = 1.0 if ss_yy == 0 else max(0.0, min(1.0, (ss_xy**2) / (ss_xx * ss_yy)))
+    return (slope, intercept, r_squared)
+
+
+def analyze_revenue_extended(
+    by_month: Dict[str, float], horizon: int = 12
+) -> ExtendedRevenueAnalysis:
+    """月次収益に OLS を当て、``horizon`` か月先までの予測系列を返す（決定論・LLM 非依存）。
+
+    既存 ``analyze_revenue``（1か月先＋信頼バンド）はそのまま残し、これは多か月計画
+    （四半期/年）と目標実現性のストレステスト用の上位互換。予測は線形外挿で下限 0。
+    """
+    months = _real_months(by_month)
+    series = [float(by_month[m]) for m in months]
+    slope, intercept, r2 = _ols(series)
+    n = len(series)
+    forecast = [round(max(0.0, slope * (n - 1 + k) + intercept), 2) for k in range(1, horizon + 1)]
+
+    if n < 2:
+        trend = "insufficient"
+    elif slope > TREND_THRESHOLD * (sum(series) / n or 1):
+        trend = "growing"
+    elif slope < -TREND_THRESHOLD * (sum(series) / n or 1):
+        trend = "declining"
+    else:
+        trend = "flat"
+
+    return ExtendedRevenueAnalysis(
+        months=months,
+        series=series,
+        slope_per_month=round(slope, 2),
+        intercept=round(intercept, 2),
+        r_squared=round(r2, 4),
+        trend=trend,
+        forecast=forecast,
+    )
+
+
 def _linear_slope(series: List[float]) -> float:
     """月次系列の最小二乗回帰の傾き（= 月あたり平均増減）。2点未満は 0.0。
 
