@@ -2831,6 +2831,22 @@ async def api_revenue_attribution(
     return {"scope": scope, "total_revenue": total, "channels": channels}
 
 
+@app.get("/api/hq/revenue/goal-status", tags=["hq"])
+async def api_revenue_goal_status(
+    target: float,
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """月次目標への到達状況と backpressure（未達の圧 on_track/mild/strong）。Autopilot/Dashboard 用。"""
+    from core.metrics.revenue_intelligence import compute_goal_status
+
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
+    status = compute_goal_status(by_month, target)
+    return {"org_name": org_name, **status}
+
+
 @app.get("/api/hq/portfolio", tags=["hq"])
 async def api_hq_portfolio() -> Dict[str, Any]:
     """ポートフォリオ資源配分・連携の HQ 提案（収益/リーチから invest/monetize/送客 等を提案）。"""

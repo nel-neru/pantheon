@@ -3254,6 +3254,25 @@ def test_business_performance_api(tmp_path, monkeypatch):
     assert client.get("/api/businesses/Nope/performance").status_code == 404
 
 
+def test_revenue_goal_status_api(tmp_path, monkeypatch):
+    """GET /api/hq/revenue/goal-status が到達状況＋backpressure を返す（拡張 #7）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, occurred_at="2026-01-15")
+    store.record("Co", "revenue", 200, occurred_at="2026-02-15")
+    store.record("Co", "revenue", 300, occurred_at="2026-03-15")
+
+    body = client.get("/api/hq/revenue/goal-status?target=2000").json()
+    assert body["target"] == 2000
+    assert body["backpressure_level"] == "strong"
+    assert body["forecast_gap"] > 0
+    # target 必須（欠落 422）
+    assert client.get("/api/hq/revenue/goal-status").status_code == 422
+
+
 def test_revenue_attribution_api(tmp_path, monkeypatch):
     """GET /api/revenue/attribution がチャネル別 %内訳を返す（org / business ロールアップ）（拡張 #2A）。"""
     from core.metrics.outcomes import OutcomeStore

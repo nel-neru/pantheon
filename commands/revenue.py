@@ -128,6 +128,29 @@ async def cmd_revenue_attribution(args: argparse.Namespace) -> None:
     print(f"\n  合計: {total:,.0f} 円")
 
 
+async def cmd_revenue_goal_status(args: argparse.Namespace) -> None:
+    """月次目標への到達状況と backpressure（未達の圧）を表示する。"""
+    from core.metrics.revenue_intelligence import compute_goal_status
+
+    s = compute_goal_status(_revenue_by_month(), args.target)
+    label = {
+        "on_track": "✅ 順調（予測が目標以上）",
+        "mild": "🟡 やや未達",
+        "strong": "🔴 大きく未達（要構造介入）",
+    }
+    print("\n収益ゴールステータス\n")
+    print(f"  目標(月次)  : {s['target']:,.0f} 円  到達率: {s['attainment_pct']:.0f}%")
+    print(f"  直近月収益  : {s['current']:,.0f} 円  翌月予測: {s['forecast_next']:,.0f} 円")
+    print(f"  予測ギャップ: {s['forecast_gap']:,.0f} 円")
+    print(f"  backpressure: {label.get(s['backpressure_level'], s['backpressure_level'])}")
+    if s["months_to_target"] == 0:
+        print("  到達見込み  : 既に到達")
+    elif s["months_to_target"] is None:
+        print("  到達見込み  : 現トレンドでは到達見込みなし")
+    else:
+        print(f"  到達見込み  : 約 {s['months_to_target']} か月後")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("revenue", help="収益の自動収集・レポート・分析")
     sub = parser.add_subparsers(dest="revenue_command", required=True)
@@ -152,3 +175,7 @@ def register(subparsers: Any) -> None:
     sp = sub.add_parser("attribution", help="収益をチャネル（source）別に内訳表示")
     sp.add_argument("--org", default=None, help="対象 Organization（省略で全 org 横断）")
     sp.set_defaults(handler_name="cmd_revenue_attribution")
+
+    sp = sub.add_parser("goal-status", help="月次目標への到達状況と backpressure（未達の圧）")
+    sp.add_argument("--target", type=float, required=True, help="月次収益目標（円）")
+    sp.set_defaults(handler_name="cmd_revenue_goal_status")

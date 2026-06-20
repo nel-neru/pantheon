@@ -76,6 +76,23 @@ def test_insufficient_data_band_is_point():
     assert a["forecast_lower"] == a["forecast_next"] == a["forecast_upper"] == 1000.0
 
 
+def test_compute_goal_status_levels():
+    """backpressure: 予測>=target=on_track / >=0.8*target=mild / 未満=strong。"""
+    from core.metrics.revenue_intelligence import compute_goal_status
+
+    # +100/月、直近 300 → 翌月予測 ~400+。target 300 は on_track。
+    on_track = compute_goal_status({"2026-01": 100, "2026-02": 200, "2026-03": 300}, 300)
+    assert on_track["backpressure_level"] == "on_track"
+    assert on_track["attainment_pct"] == 100.0
+    # target 2000 は予測が大きく下回る → strong
+    strong = compute_goal_status({"2026-01": 100, "2026-02": 200, "2026-03": 300}, 2000)
+    assert strong["backpressure_level"] == "strong"
+    assert strong["forecast_gap"] > 0
+    # 横ばいで target がすぐ上 → mild レンジ
+    mild = compute_goal_status({"2026-01": 850, "2026-02": 850, "2026-03": 850}, 1000)
+    assert mild["backpressure_level"] == "mild"
+
+
 def test_analyze_revenue_extended_perfect_linear():
     """完全線形系列は R²=1.0、傾きを正しく外挿する（多か月 OLS 予測）。"""
     from core.metrics.revenue_intelligence import analyze_revenue_extended

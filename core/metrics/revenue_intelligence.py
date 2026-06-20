@@ -196,6 +196,58 @@ def _linear_slope(series: List[float]) -> float:
     return num / denom
 
 
+class GoalStatus(TypedDict):
+    target: float
+    current: float  # 直近月収益
+    forecast_next: float  # 翌月予測（analyze_revenue）
+    gap: float  # target - current（現状の不足）
+    forecast_gap: float  # target - forecast_next（予測でも残る不足）
+    attainment_pct: float  # current / target * 100
+    backpressure_level: str  # on_track | mild | strong（目標未達の圧の強さ）
+    months_to_target: Optional[int]  # 現トレンドでの到達月数（project_to_target 由来）
+    trend: str
+
+
+# backpressure（目標未達の圧）の閾値: 予測が目標のこの割合を下回ると "strong"。
+_BACKPRESSURE_MILD = 1.0  # 予測 >= target なら on_track
+_BACKPRESSURE_STRONG = 0.8  # 予測 < target*0.8 なら strong（要構造介入レベル）
+
+
+def compute_goal_status(by_month: Dict[str, float], target: float) -> GoalStatus:
+    """月次目標に対する到達状況と backpressure（未達の圧）を算出する（決定論・LLM 非依存）。
+
+    analyze_revenue（翌月予測）＋ project_to_target（到達月数）を合成し、Revenue Goal Autopilot や
+    Dashboard が「目標に対しどれだけ・どの強さで未達か」を一目で判断できる状態を返す。
+    backpressure_level: 予測>=target=on_track / 予測>=target*0.8=mild / それ未満=strong。
+    """
+    analysis = analyze_revenue(by_month)
+    current = analysis["series"][-1] if analysis["series"] else 0.0
+    forecast_next = float(analysis["forecast_next"])
+    tgt = float(target)
+    projection = project_to_target(by_month, tgt)
+
+    if tgt <= 0:
+        level = "on_track"
+    elif forecast_next >= tgt * _BACKPRESSURE_MILD:
+        level = "on_track"
+    elif forecast_next >= tgt * _BACKPRESSURE_STRONG:
+        level = "mild"
+    else:
+        level = "strong"
+
+    return GoalStatus(
+        target=tgt,
+        current=current,
+        forecast_next=forecast_next,
+        gap=round(tgt - current, 2),
+        forecast_gap=round(tgt - forecast_next, 2),
+        attainment_pct=round(current / tgt * 100, 1) if tgt > 0 else 0.0,
+        backpressure_level=level,
+        months_to_target=projection["months_to_target"],
+        trend=analysis["trend"],
+    )
+
+
 def project_to_target(by_month: Dict[str, float], target: float) -> TargetProjection:
     """月次収益の trajectory から「月次目標 ``target`` に何か月で到達するか」を射影する。
 
