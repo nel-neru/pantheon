@@ -77,6 +77,36 @@ def test_build_command_non_frozen_revenue():
     ]
 
 
+def test_windowless_python_prefers_sibling_pythonw_on_windows(tmp_path):
+    """On Windows, daemons launch via the sibling pythonw.exe when it exists.
+
+    Portable (os_name injected) so the pythonw branch is exercised on Linux CI too —
+    the build_command assertions above only pin structure and never reach this branch
+    there (where _windowless_python is identically sys.executable).
+    """
+    py = tmp_path / "python.exe"
+    pyw = tmp_path / "pythonw.exe"
+    py.write_text("", encoding="utf-8")
+    pyw.write_text("", encoding="utf-8")
+    assert registry._windowless_python(str(py), os_name="nt") == str(pyw)
+
+
+def test_windowless_python_falls_back_when_pythonw_missing(tmp_path):
+    """No sibling pythonw.exe → return the given interpreter unchanged (no crash)."""
+    py = tmp_path / "python.exe"
+    py.write_text("", encoding="utf-8")
+    assert registry._windowless_python(str(py), os_name="nt") == str(py)
+
+
+def test_windowless_python_noop_off_windows(tmp_path):
+    """Off Windows the gate is skipped — even if a pythonw.exe sibling exists."""
+    py = tmp_path / "python"
+    pyw = tmp_path / "pythonw.exe"
+    py.write_text("", encoding="utf-8")
+    pyw.write_text("", encoding="utf-8")
+    assert registry._windowless_python(str(py), os_name="posix") == str(py)
+
+
 def test_build_command_frozen_uses_revenue_flag(monkeypatch):
     # 凍結 exe では -m モジュールではなく frozen_flag のサブコマンドへ分岐する
     monkeypatch.setattr(registry.sys, "frozen", True, raising=False)
