@@ -65,6 +65,7 @@ from commands.org import cmd_org_scan as _cmd_org_scan_impl
 from commands.org import cmd_org_show as _cmd_org_show_impl
 from commands.org import cmd_proposal_apply as _cmd_proposal_apply_impl
 from commands.org import cmd_proposal_reject as _cmd_proposal_reject_impl
+from commands.org import cmd_proposal_rollback as _cmd_proposal_rollback_impl
 from commands.org import cmd_proposal_show as _cmd_proposal_show_impl
 from commands.org import cmd_proposals as _cmd_proposals_impl
 from commands.org import cmd_query as _cmd_query_impl
@@ -338,6 +339,10 @@ async def cmd_proposal_show(args) -> None:
 
 async def cmd_proposal_reject(args) -> None:
     await _cmd_proposal_reject_impl(args, confirm_action=_confirm_action, get_psm=_get_psm)
+
+
+async def cmd_proposal_rollback(args) -> None:
+    await _cmd_proposal_rollback_impl(args, confirm_action=_confirm_action)
 
 
 async def cmd_proposal_apply(args) -> None:
@@ -791,6 +796,7 @@ HANDLERS = {
     "cmd_proposals": cmd_proposals,
     "cmd_proposal_show": cmd_proposal_show,
     "cmd_proposal_reject": cmd_proposal_reject,
+    "cmd_proposal_rollback": cmd_proposal_rollback,
     "cmd_proposal_apply": cmd_proposal_apply,
     "cmd_query": cmd_query,
     "cmd_approve": cmd_approve,

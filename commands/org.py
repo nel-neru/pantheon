@@ -484,6 +484,27 @@ async def cmd_proposal_show(args: argparse.Namespace, *, get_psm: Any) -> None:
     print()
 
 
+async def cmd_proposal_rollback(args: argparse.Namespace, *, confirm_action: Any) -> None:
+    """適用済み提案の実装を SafeChangeExecutor のバックアップから巻き戻す（self-extension 用）。
+
+    これまで ``rollback_implementation`` は実装済みだが呼び出し経路ゼロのデッドコードだった。
+    手作業のファイル復旧をせずに、まずい自己拡張の適用を元に戻せるようにする。
+    """
+    from core.intelligence.self_extension_pipeline import rollback_implementation
+
+    if not confirm_action(
+        f"提案 '{args.proposal_id}' の適用を巻き戻しますか?",
+        assume_yes=getattr(args, "yes", False),
+    ):
+        print("[INFO] 巻き戻しを中止しました。")
+        return
+    if rollback_implementation(args.proposal_id):
+        print(f"[OK] 提案 '{args.proposal_id}' の実装を巻き戻しました。")
+    else:
+        print(f"[ERROR] 巻き戻せませんでした（対象/バックアップ無し）: {args.proposal_id}")
+        sys.exit(1)
+
+
 async def cmd_proposal_reject(
     args: argparse.Namespace, *, confirm_action: Any, get_psm: Any
 ) -> None:
@@ -895,6 +916,13 @@ def register(subparsers: Any) -> None:
     proposal_apply.add_argument("--github-token", default=None, help="GitHub トークン")
     proposal_apply.add_argument("--yes", action="store_true", help="確認を省略して適用する")
     proposal_apply.set_defaults(handler_name="cmd_proposal_apply")
+
+    proposal_rollback = proposal_sub.add_parser(
+        "rollback", help="適用済み提案の実装をバックアップから巻き戻す（self-extension）"
+    )
+    proposal_rollback.add_argument("proposal_id", help="提案 ID（先頭一致可）")
+    proposal_rollback.add_argument("--yes", action="store_true", help="確認を省略して巻き戻す")
+    proposal_rollback.set_defaults(handler_name="cmd_proposal_rollback")
 
     approve_parser = subparsers.add_parser("approve", help="改善提案を承認してコードに適用")
     approve_parser.add_argument("proposal_id", help="承認する提案の ID（先頭 8 文字以上）")

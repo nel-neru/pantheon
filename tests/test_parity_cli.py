@@ -171,3 +171,30 @@ async def test_inbox_list_category_and_impact_filters(tmp_path, monkeypatch, cap
     # human_task は revenue_impact=1 なので --min-impact 2 で除外される
     await cmd_inbox_list(argparse.Namespace(kind=None, category=None, min_impact=2))
     assert "承認して" not in capsys.readouterr().out
+
+
+async def test_proposal_rollback_cli(tmp_path, monkeypatch):
+    """proposal rollback CLI が dead だった rollback_implementation を配線する（finding 19）。"""
+    import main
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    assert "cmd_proposal_rollback" in main.HANDLERS
+    parser = build_parser()
+    assert (
+        parser.parse_args(["proposal", "rollback", "abc"]).handler_name == "cmd_proposal_rollback"
+    )
+
+    from commands.org import cmd_proposal_rollback
+
+    # 対象が無い → rollback_implementation False → SystemExit（観測可能な失敗）
+    with pytest.raises(SystemExit):
+        await cmd_proposal_rollback(
+            argparse.Namespace(proposal_id="nope", yes=True),
+            confirm_action=lambda *a, **k: True,
+        )
+
+    # 確認を拒否 → 何もせず正常終了（巻き戻さない）
+    await cmd_proposal_rollback(
+        argparse.Namespace(proposal_id="nope", yes=False),
+        confirm_action=lambda *a, **k: False,
+    )
