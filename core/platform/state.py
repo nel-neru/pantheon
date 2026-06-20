@@ -250,7 +250,10 @@ class PlatformStateManager:
             return None
         try:
             return Organization.model_validate_json(path.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — 破損 1 件で全体を壊さない
+            # 黙って None を返すと「不在」と「破損」が区別できず ops が気付けない。
+            # load_organizations と同じく観測可能化する（dedupe 付き warn）。
+            warn_skipped_org_file(path, exc)
             return None
 
     def remove_organization(self, org_id: str) -> bool:

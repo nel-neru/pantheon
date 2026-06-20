@@ -177,10 +177,12 @@ class OrchestrationPatternStore:
 
     def _save(self) -> None:
         path = self._store_file
-        path.parent.mkdir(parents=True, exist_ok=True)
+        from core.persistence import atomic_write_text
+
         data = {
             "version": "1.0.0",
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "records": [r.to_dict() for r in self._records],
         }
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        # 原子的に書く（オーケストレーション学習記録の torn write による消失を防ぐ）。
+        atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))

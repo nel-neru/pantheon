@@ -55,9 +55,11 @@ def main() -> None:
         return
 
     # pid ファイルは status 表示（pantheon daemons status / API）用に併記する。
+    # 原子的に書く（書き込み中クラッシュで partial pid を残し cleanup チェックを誤らせない）。
+    from core.persistence import atomic_write_text
+
     pid_file = pid_path("watchdog")
-    pid_file.parent.mkdir(parents=True, exist_ok=True)
-    pid_file.write_text(str(os.getpid()), encoding="utf-8")
+    atomic_write_text(pid_file, str(os.getpid()))
 
     try:
         asyncio.run(WatchdogRunner(poll_seconds=args.poll).run())

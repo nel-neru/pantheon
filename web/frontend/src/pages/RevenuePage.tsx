@@ -1,19 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  AlertOctagon,
   AlertTriangle,
+  BarChart2,
   CalendarDays,
   Coins,
+  Download,
   Eye,
   Lightbulb,
+  Play,
   Plus,
   Send,
+  ShieldCheck,
+  Square,
   Target,
   TrendingUp,
+  Upload,
+  Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
+import { api, type RevenueIntegrity, type RevenueProjection, type RevenueEfficiencyResponse } from '@/lib/api'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { PageHeader } from '@/components/PageHeader'
 import { RefreshButton } from '@/components/RefreshButton'
@@ -136,6 +144,7 @@ export function RevenuePage() {
   const [report, setReport] = useState<RevenueReport | null>(null)
   const [intel, setIntel] = useState<RevenueIntelligence | null>(null)
   const [portfolio, setPortfolio] = useState<PortfolioProposal[]>([])
+  const [integrity, setIntegrity] = useState<RevenueIntegrity | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -153,19 +162,59 @@ export function RevenuePage() {
   const [planPreview, setPlanPreview] = useState<PlanPreview | null>(null)
   const [previewing, setPreviewing] = useState(false)
 
+  // 目標到達の見通し（GET /api/metrics/revenue/projection）
+  const [projection, setProjection] = useState<RevenueProjection | null>(null)
+  const [projectionLoading, setProjectionLoading] = useState(false)
+
+  // 収益効率ランキング（GET /api/metrics/efficiency）
+  const [efficiency, setEfficiency] = useState<RevenueEfficiencyResponse | null>(null)
+  const [efficiencyLoading, setEfficiencyLoading] = useState(false)
+  const [efficiencyError, setEfficiencyError] = useState<string | null>(null)
+
+  // P14 収益デーモン制御
+  const [daemonRunning, setDaemonRunning] = useState<boolean | null>(null)
+  const [daemonTarget, setDaemonTarget] = useState('')
+  const [daemonBusy, setDaemonBusy] = useState(false)
+
+  // P22 CSV インポート
+  const [importText, setImportText] = useState('')
+  const [importing, setImporting] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [result, rep, ai, pf] = await Promise.all([
+      type DaemonsStatusShape = { daemons: Record<string, { running?: unknown }> }
+      const [result, rep, ai, pf, daemonStatus, integrityRes] = await Promise.all([
         api<RevenueMetrics>('GET', '/api/metrics/revenue'),
         api<RevenueReport>('GET', '/api/metrics/revenue/report'),
         api<RevenueIntelligence>('GET', '/api/metrics/revenue/intelligence'),
         api<{ proposals: PortfolioProposal[] }>('GET', '/api/hq/portfolio'),
+        api<DaemonsStatusShape>('GET', '/api/daemons/status').catch(() => null),
+        api<RevenueIntegrity>('GET', '/api/metrics/revenue/integrity').catch(() => null),
       ])
       setData(result ?? null)
       setReport(rep ?? null)
       setIntel(ai ?? null)
       setPortfolio(Array.isArray(pf?.proposals) ? pf.proposals : [])
+      // daemon 状態を coerce（free-form payload）
+      const rev = daemonStatus?.daemons?.['revenue']
+      setDaemonRunning(rev ? Boolean(rev.running) : false)
+      // 確定収益整合性（free-form payload を防御的に coerce）
+      if (integrityRes) {
+        const num = (x: unknown): number => (Number.isFinite(Number(x)) ? Number(x) : 0)
+        setIntegrity({
+          org_name: integrityRes.org_name ?? null,
+          confirmed_revenue: num(integrityRes.confirmed_revenue),
+          recorded_event_count: Math.round(num(integrityRes.recorded_event_count)),
+          has_confirmed_data: Boolean(integrityRes.has_confirmed_data),
+          confirmed_sources: Array.isArray(integrityRes.confirmed_sources)
+            ? integrityRes.confirmed_sources.map(String)
+            : [],
+          warning: String(integrityRes.warning ?? ''),
+        })
+      } else {
+        setIntegrity(null)
+      }
       setError(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : '収益メトリクスの読み込みに失敗しました。'
@@ -173,11 +222,35 @@ export function RevenuePage() {
       setReport(null)
       setIntel(null)
       setPortfolio([])
+      setIntegrity(null)
       setError(message)
       toast.error(message)
     } finally {
       setLoading(false)
     }
+
+    // 収益効率ランキングを並行フェッチ（エラーはカード内でフォールバック表示）
+    setEfficiencyLoading(true)
+    setEfficiencyError(null)
+    api<RevenueEfficiencyResponse>('GET', '/api/metrics/efficiency')
+      .then((res) => {
+        const num = (x: unknown): number => (Number.isFinite(Number(x)) ? Number(x) : 0)
+        setEfficiency({
+          count: num(res?.count),
+          orgs: (Array.isArray(res?.orgs) ? res.orgs : []).map((o) => ({
+            org_name: String(o?.org_name ?? ''),
+            revenue: num(o?.revenue),
+            reach: num(o?.reach),
+            roi: num(o?.roi),
+            action: String(o?.action ?? ''),
+            efficiency_rank: num(o?.efficiency_rank),
+          })),
+        })
+      })
+      .catch((err) => {
+        setEfficiencyError(err instanceof Error ? err.message : '効率ランキングの読み込みに失敗しました。')
+      })
+      .finally(() => setEfficiencyLoading(false))
   }, [])
 
   useEffect(() => {
@@ -286,6 +359,112 @@ export function RevenuePage() {
     }
   }, [targetInput])
 
+  // 目標到達の見通し（targetInput 変更時にフェッチ）
+  const fetchProjection = useCallback(async (targetVal: string) => {
+    const target = Number(targetVal)
+    if (!targetVal.trim() || !Number.isFinite(target) || target <= 0) {
+      setProjection(null)
+      return
+    }
+    setProjectionLoading(true)
+    try {
+      const res = await api<Partial<RevenueProjection>>('GET', `/api/metrics/revenue/projection?target=${encodeURIComponent(String(target))}`)
+      const num = (x: unknown): number => (Number.isFinite(Number(x)) ? Number(x) : 0)
+      setProjection({
+        org_name: String(res?.org_name ?? ''),
+        target: num(res?.target),
+        current: num(res?.current),
+        slope_per_month: num(res?.slope_per_month),
+        on_track: Boolean(res?.on_track),
+        months_to_target: res?.months_to_target === null ? null : typeof res?.months_to_target === 'undefined' ? null : num(res.months_to_target),
+        projected_3mo: num(res?.projected_3mo),
+      })
+    } catch {
+      setProjection(null)
+    } finally {
+      setProjectionLoading(false)
+    }
+  }, [])
+
+  // P14 — 収益デーモン起動（月次目標を送信）
+  const startDaemon = useCallback(async () => {
+    const target = Number(daemonTarget)
+    const hasTarget = daemonTarget.trim() !== '' && Number.isFinite(target) && target > 0
+    setDaemonBusy(true)
+    try {
+      await api('POST', '/api/daemons/revenue/start', hasTarget ? { target } : {})
+      setDaemonRunning(true)
+      toast.success(
+        hasTarget
+          ? `収益デーモンを起動しました（月次目標: ${formatYen(target)}）。`
+          : '収益デーモンをアイドル安全モードで起動しました。'
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '収益デーモンの起動に失敗しました。')
+    } finally {
+      setDaemonBusy(false)
+    }
+  }, [daemonTarget])
+
+  // P14 — 収益デーモン停止
+  const stopDaemon = useCallback(async () => {
+    setDaemonBusy(true)
+    try {
+      await api('POST', '/api/daemons/revenue/stop')
+      setDaemonRunning(false)
+      toast.success('収益デーモンを停止しました。')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '収益デーモンの停止に失敗しました。')
+    } finally {
+      setDaemonBusy(false)
+    }
+  }, [])
+
+  // P22 — CSV/JSON インポート（テキストエリアの内容を /api/outcomes/import に送信）
+  const runImport = useCallback(async () => {
+    const text = importText.trim()
+    if (!text) {
+      toast.error('インポートするデータを入力してください。')
+      return
+    }
+    setImporting(true)
+    try {
+      // JSON 配列もしくは CSV（1行目はヘッダ）を受け付ける
+      let rows: Record<string, unknown>[]
+      const firstChar = text[0]
+      if (firstChar === '[' || firstChar === '{') {
+        // JSON パス
+        const parsed: unknown = JSON.parse(text)
+        rows = Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : [parsed as Record<string, unknown>]
+      } else {
+        // CSV パス: 1行目ヘッダ、以降はデータ行
+        const lines = text.split(/\r?\n/).filter((l) => l.trim())
+        if (lines.length < 2) throw new Error('CSV にはヘッダ行とデータ行が必要です。')
+        const headers = lines[0].split(',').map((h) => h.trim())
+        rows = lines.slice(1).map((line) => {
+          const values = line.split(',')
+          const record: Record<string, unknown> = {}
+          headers.forEach((h, idx) => {
+            record[h] = values[idx]?.trim() ?? ''
+          })
+          return record
+        })
+      }
+      const res = await api<{ imported: number; skipped: number; orgs: string[] }>(
+        'POST',
+        '/api/outcomes/import',
+        { rows }
+      )
+      toast.success(`${res.imported} 件をインポートしました（スキップ: ${res.skipped} 件）。`)
+      setImportText('')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'インポートに失敗しました。')
+    } finally {
+      setImporting(false)
+    }
+  }, [importText, load])
+
   const orgs = data?.orgs ?? []
   const alerts = orgs.filter((o) => o.reach_but_no_revenue)
 
@@ -300,6 +479,32 @@ export function RevenuePage() {
     const prev = months[i - 1][1]
     if (prev === 0) return null
     return Math.round(((months[i][1] - prev) / prev) * 1000) / 10
+  }
+
+  // P22 — CSV エクスポート（月次テーブルをクライアントサイド Blob で出力）
+  // months / calcDelta の後に定義することで TDZ エラーを回避。
+  const exportCsv = () => {
+    if (months.length === 0) {
+      toast.error('エクスポートするデータがありません。')
+      return
+    }
+    const csvRows = [
+      ['月', '収益(¥)', '前月比(%)'],
+      ...months.map(([month, total], i) => {
+        const delta = calcDelta(i)
+        const safeTotal = Math.round(Number.isFinite(total) ? total : 0)
+        return [month, String(safeTotal), delta === null ? '' : String(delta)]
+      }),
+    ]
+    const csv = csvRows.map((r) => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'revenue_monthly.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('CSV をエクスポートしました。')
   }
 
   // priority 降順ソートされたポートフォリオ提案
@@ -327,6 +532,60 @@ export function RevenuePage() {
           loadingText="収益メトリクスを読み込み中…"
           errorTitle="収益メトリクスの読み込みに失敗しました"
         >
+          {/* ── 確定収益データなし警告バナー ─────────────────────────────── */}
+          {integrity !== null && !integrity.has_confirmed_data && (
+            <div
+              id="no-confirmed-revenue-banner"
+              role="alert"
+              className="flex items-start gap-3 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3"
+            >
+              <AlertOctagon size={18} className="mt-0.5 shrink-0 text-yellow-400" />
+              <div className="flex flex-col gap-0.5">
+                <div className="font-semibold text-sm text-yellow-300">確定収益データがありません</div>
+                <div className="text-xs text-yellow-200/80">{integrity.warning}</div>
+              </div>
+            </div>
+          )}
+
+          {/* ── 確定収益（記録済み実データ）カード ──────────────────────── */}
+          {integrity !== null && (
+            <div id="confirmed-revenue-card" className="card border border-green-500/30 bg-green-500/5">
+              <div className="card-body flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-green-400" />
+                  <div className="font-semibold text-green-300">確定収益（記録済み実データ）</div>
+                  <span className="badge badge-green text-xs">実績のみ</span>
+                </div>
+                <p className="text-xs text-muted">
+                  OutcomeStore に記録された実イベント由来の金額のみを集計します。予測・見通し・概算は含まれません。
+                </p>
+                <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+                  <span>
+                    <span className="text-muted">確定収益合計: </span>
+                    <span className="font-semibold text-green-300" id="confirmed-revenue-total">
+                      {formatYen(integrity.confirmed_revenue)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="text-muted">収益イベント件数: </span>
+                    <span className="font-medium" id="confirmed-revenue-count">
+                      {integrity.recorded_event_count.toLocaleString('ja-JP')}件
+                    </span>
+                  </span>
+                </div>
+                {integrity.confirmed_sources.length > 0 && (
+                  <div className="flex flex-wrap gap-1" id="confirmed-revenue-sources">
+                    {integrity.confirmed_sources.map((src) => (
+                      <span key={src} className="badge badge-neutral text-xs">
+                        {src}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* KPI カード（3種） */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="card">
@@ -438,39 +697,54 @@ export function RevenuePage() {
 
           {/* 収益トレンド（insufficient のときも淡色で表示） */}
           {intel ? (
-            <div id="trend-card" className="card">
-              <div className="card-body flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={16} />
-                  <div className="font-semibold">収益トレンド（全組織）</div>
-                  <span className={`badge ${TREND_BADGE[intel.trend]}`}>
-                    {TREND_LABEL[intel.trend]}
-                  </span>
-                </div>
-                {intel.trend === 'insufficient' ? (
-                  <div className="text-sm text-muted">
-                    データ蓄積中です。2ヶ月以上の記録が揃うと予測が始まります。
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-4 text-sm">
-                    {intel.latest_change_pct !== null ? (
-                      <span className="text-muted">
-                        前月比{' '}
-                        <span className="font-medium">
-                          {intel.latest_change_pct > 0 ? '+' : ''}
-                          {intel.latest_change_pct}%
-                        </span>
-                      </span>
-                    ) : null}
-                    <span className="text-muted" id="trend-forecast">
-                      翌月予測{' '}
-                      <span className="font-medium">{formatYen(intel.forecast_next)}</span>
-                      <span className="text-muted text-xs ml-1" title="過去月次データの線形近似による点予測。実績との乖離が生じる場合があります。">
-                        （概算）
-                      </span>
+            <div id="trend-card" className="card border border-white/5 opacity-90">
+              <div className="card-body flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={16} />
+                    <div className="font-semibold">収益トレンド（全組織）</div>
+                    <span className={`badge ${TREND_BADGE[intel.trend]}`}>
+                      {TREND_LABEL[intel.trend]}
+                    </span>
+                    <span
+                      id="trend-estimate-label"
+                      className="badge badge-yellow text-xs"
+                      title="概算・確定収益ではありません"
+                    >
+                      予測
                     </span>
                   </div>
-                )}
+                  {intel.trend === 'insufficient' ? (
+                    <div className="text-sm text-muted">
+                      データ蓄積中です。2ヶ月以上の記録が揃うと予測が始まります。
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4 text-sm">
+                      {Number.isFinite(intel.latest_change_pct) ? (
+                        <span className="text-muted">
+                          前月比{' '}
+                          <span className="font-medium">
+                            {(intel.latest_change_pct as number) > 0 ? '+' : ''}
+                            {intel.latest_change_pct}%
+                          </span>
+                        </span>
+                      ) : null}
+                      <span className="text-muted" id="trend-forecast">
+                        翌月予測{' '}
+                        <span className="font-medium">{formatYen(intel.forecast_next)}</span>
+                        <span className="text-muted text-xs ml-1" title="過去月次データの線形近似による点予測。実績との乖離が生じる場合があります。">
+                          （概算）
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div
+                  id="trend-disclaimer"
+                  className="text-xs text-muted border-t border-white/5 pt-1 mt-1"
+                >
+                  概算・確定収益ではありません
+                </div>
               </div>
             </div>
           ) : null}
@@ -536,7 +810,10 @@ export function RevenuePage() {
                   min={0}
                   placeholder="月次目標額（円）"
                   value={targetInput}
-                  onChange={(e) => setTargetInput(e.target.value)}
+                  onChange={(e) => {
+                    setTargetInput(e.target.value)
+                    void fetchProjection(e.target.value)
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void runTargetPlan()
                   }}
@@ -621,12 +898,129 @@ export function RevenuePage() {
             </div>
           </div>
 
+          {/* 目標到達の見通し（projection card） */}
+          {(projection !== null || projectionLoading) && (
+            <div id="projection-card" className="card border border-white/5 opacity-90">
+              <div className="card-body flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Target size={16} />
+                  <div className="font-semibold">目標到達の見通し</div>
+                  <span
+                    id="projection-estimate-label"
+                    className="badge badge-yellow text-xs"
+                    title="概算・確定収益ではありません"
+                  >
+                    予測
+                  </span>
+                  {projectionLoading && (
+                    <span className="text-sm text-muted">計算中…</span>
+                  )}
+                </div>
+                {projection !== null && !projectionLoading && (
+                  <>
+                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                      <span>
+                        <span className="text-muted">現状（月次）: </span>
+                        <span className="font-medium">{formatYen(projection.current)}</span>
+                      </span>
+                      <span>
+                        <span className="text-muted">月次トレンド: </span>
+                        <span className={`font-medium ${projection.slope_per_month >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {projection.slope_per_month >= 0 ? '+' : ''}{formatYen(Math.round(projection.slope_per_month))}/月
+                        </span>
+                      </span>
+                      <span>
+                        <span className="text-muted">3か月後予測: </span>
+                        <span className="font-medium">{formatYen(projection.projected_3mo)}</span>
+                      </span>
+                    </div>
+                    <div className="text-sm font-medium">
+                      {projection.months_to_target === 0
+                        ? '✅ 目標達成済み'
+                        : projection.months_to_target === null
+                          ? '⚠️ 現トレンドでは到達見込みなし'
+                          : `📈 約${projection.months_to_target}か月で到達見込み`}
+                    </div>
+                  </>
+                )}
+                <div
+                  id="projection-disclaimer"
+                  className="text-xs text-muted border-t border-white/5 pt-1 mt-1"
+                >
+                  概算・確定収益ではありません
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* P14: 自律経営（収益デーモン）コントロール */}
+          <div id="daemon-control-card" className="card">
+            <div className="card-body flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Zap size={16} />
+                <div className="font-semibold">自律経営（収益デーモン）</div>
+                {daemonRunning === true ? (
+                  <span className="badge badge-green">稼働中</span>
+                ) : daemonRunning === false ? (
+                  <span className="badge badge-neutral">停止中</span>
+                ) : null}
+              </div>
+              <p className="text-muted text-sm">
+                月次目標を設定してデーモンを起動すると、自律的にポートフォリオ提案・HQ介入を繰り返す
+                継続ループが動きます（目標省略 = アイドル安全モード）。停止はいつでもできます。
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  id="daemon-target-input"
+                  className="input w-48"
+                  type="number"
+                  min={0}
+                  placeholder="月次目標額（円）任意"
+                  value={daemonTarget}
+                  onChange={(e) => setDaemonTarget(e.target.value)}
+                />
+                <button
+                  id="daemon-start-button"
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={daemonBusy || daemonRunning === true}
+                  onClick={() => void startDaemon()}
+                >
+                  <Play size={14} />
+                  {daemonBusy ? '処理中…' : '起動'}
+                </button>
+                <button
+                  id="daemon-stop-button"
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={daemonBusy || daemonRunning === false}
+                  onClick={() => void stopDaemon()}
+                >
+                  <Square size={14} />
+                  停止
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* 月次収益レポート（month キーソート＋前月比列） */}
           <div id="monthly-report-card" className="card">
             <div className="card-body flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <CalendarDays size={16} />
-                <div className="font-semibold">月次収益レポート（全組織）</div>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <CalendarDays size={16} />
+                  <div className="font-semibold">月次収益レポート（全組織）</div>
+                </div>
+                <button
+                  id="export-csv-button"
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={months.length === 0}
+                  onClick={exportCsv}
+                >
+                  <Download size={14} />
+                  エクスポート (CSV)
+                </button>
               </div>
               {months.length === 0 ? (
                 <div className="text-sm text-muted">月次データが蓄積されると表示されます。</div>
@@ -662,6 +1056,40 @@ export function RevenuePage() {
                   </tbody>
                 </table>
               )}
+            </div>
+          </div>
+
+          {/* P22: CSV/JSON インポート */}
+          <div id="import-card" className="card">
+            <div className="card-body flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Upload size={16} />
+                <div className="font-semibold">成果データを一括インポート</div>
+              </div>
+              <p className="text-muted text-sm">
+                CSV（1行目: ヘッダ）または JSON 配列を貼り付けて一括取り込みします。
+                CSV ヘッダ例: <code>org_name,metric,value,note</code>
+              </p>
+              <textarea
+                id="import-textarea"
+                className="input font-mono text-xs"
+                rows={4}
+                placeholder={'org_name,metric,value,note\nMy Co,revenue,5000,6月分'}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+              />
+              <div className="flex justify-end">
+                <button
+                  id="import-button"
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={importing || !importText.trim()}
+                  onClick={() => void runImport()}
+                >
+                  <Upload size={14} />
+                  {importing ? 'インポート中…' : 'インポート'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -701,6 +1129,50 @@ export function RevenuePage() {
               </div>
             </div>
           ) : null}
+
+          {/* 収益効率ランキング */}
+          <div id="efficiency-card" className="card">
+            <div className="card-body flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <BarChart2 size={16} />
+                <div className="font-semibold">収益効率ランキング</div>
+              </div>
+              {efficiencyLoading ? (
+                <div className="text-sm text-muted">読み込み中…</div>
+              ) : efficiencyError ? (
+                <div className="text-sm text-muted">{efficiencyError}</div>
+              ) : !efficiency || efficiency.orgs.length === 0 ? (
+                <div className="text-sm text-muted">データがありません。成果を記録すると表示されます。</div>
+              ) : (
+                <table id="efficiency-table" className="data-table">
+                  <thead>
+                    <tr>
+                      <th>順位</th>
+                      <th>組織</th>
+                      <th className="text-right">ROI (¥/リーチ)</th>
+                      <th className="text-right">収益(¥)</th>
+                      <th className="text-right">リーチ</th>
+                      <th>推奨アクション</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...efficiency.orgs]
+                      .sort((a, b) => a.efficiency_rank - b.efficiency_rank)
+                      .map((o) => (
+                        <tr key={o.org_name}>
+                          <td className="font-medium text-muted">#{o.efficiency_rank}</td>
+                          <td className="font-medium">{o.org_name}</td>
+                          <td className="text-right">{formatYen(Math.round((Number.isFinite(o.roi) ? o.roi : 0) * 100) / 100)}</td>
+                          <td className="text-right">{formatYen(o.revenue)}</td>
+                          <td className="text-right">{formatNumber(o.reach)}</td>
+                          <td className="text-sm">{o.action || '—'}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
 
           {/* 組織別テーブル / 空状態 */}
           <div className="card">

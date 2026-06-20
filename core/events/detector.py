@@ -86,11 +86,12 @@ class EventDetector:
         return {}
 
     def _save_commit_cache(self) -> None:
-        cache_file = self._cache_path()
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（毎ヒートビート polled・クラッシュ中の torn write でキャッシュ破損を防ぐ）。
+        atomic_write_text(
+            self._cache_path(),
             json.dumps(self._last_commits, ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
     # ---- イベント検知 ----

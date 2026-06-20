@@ -44,6 +44,25 @@ def test_skill_proficiency_record_use_increments(tmp_path):
     assert record.success_count == 1
 
 
+def test_skill_proficiency_from_dict_coerces_corrupt_numeric_fields():
+    """null/非数値の数値フィールドでも安全に既定へ coerce する（破損 JSON 耐性・discovery wave2）。"""
+    rec = SkillProficiencyRecord.from_dict(
+        {
+            "agent_id": "a",
+            "skill_name": "s",
+            "proficiency": None,  # null → 既定 1.0
+            "use_count": "bad",  # 非数値 → 0
+            "success_count": None,  # null → 0
+        }
+    )
+    assert rec.proficiency == 1.0 and rec.use_count == 0 and rec.success_count == 0
+    # 妥当値はそのまま通す
+    ok = SkillProficiencyRecord.from_dict(
+        {"agent_id": "a", "skill_name": "s", "proficiency": 42.5, "use_count": 3}
+    )
+    assert ok.proficiency == 42.5 and ok.use_count == 3
+
+
 def test_skill_proficiency_success_increases_score(tmp_path):
     manager = SkillProficiencyManager(platform_home=tmp_path)
 

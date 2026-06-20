@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { countChars, readingStats, splitIntoThread, X_LIMIT } from '@/lib/contentFormat'
 import { PageHeader } from '@/components/PageHeader'
+import { StylePersonaReference } from '@/components/StylePersonaReference'
 
 // ナビゲーション経由で渡される下書きデータの型。
 // InboxPage・ContentSchedulePage から useNavigate(state) で受け渡す。
@@ -323,6 +324,8 @@ export function StudioPage() {
             )
           })}
         </div>
+
+        <StylePersonaReference />
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="card">

@@ -269,6 +269,68 @@ def test_hq_no_add_division_when_monetization_exists(tmp_path):
     assert [p for p in proposals if p.target_ref == "monetization_from_outcomes"]
 
 
+def test_hq_proposal_counts_includes_all_terminal_statuses(tmp_path):
+    """受理=done/applied/approved…、却下=rejected/failed/cancelled を正しく数える（診断整合）。"""
+    import json
+
+    from core.hierarchy.hq_interventions import HQInterventionProposer
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("CountOrg", "content", status=OrganizationStatus.ACTIVE)
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    imp = sm.state_dir / "improvements"
+    imp.mkdir(parents=True, exist_ok=True)
+    statuses = {
+        "a": "done",
+        "b": "applied",
+        "c": "approved",
+        "d": "rejected",
+        "e": "failed",
+        "f": "cancelled",
+        "g": "proposed",  # 終端でない → どちらにも数えない
+    }
+    for fid, st in statuses.items():
+        (imp / f"{fid}.json").write_text(json.dumps({"id": fid, "status": st}), encoding="utf-8")
+
+    accepted, rejected = HQInterventionProposer(psm, source_org_name="HQ")._proposal_counts(sm)
+    assert accepted == 3  # done / applied / approved
+    assert rejected == 3  # rejected / failed / cancelled
+
+
+def test_hq_gap_proposes_audience_division_when_no_reach(tmp_path):
+    """活動はあるがリーチ0・収益0・集客事業部なし → 集客事業部の ADD_DIVISION を提案する（P16）。"""
+    from core.hierarchy.hq_interventions import HQInterventionProposer
+    from core.models.organization import DivisionType
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("AudienceGap", "content", status=OrganizationStatus.ACTIVE)
+    org.autonomy_score = 75.0
+    psm.save_organization(org)
+    # 活動（posts）はあるがリーチ（impressions/clicks）も収益も 0。
+    store = OutcomeStore(platform_home=psm.platform_home)
+    store.record("AudienceGap", "posts", 5)
+
+    proposals = HQInterventionProposer(psm, source_org_name="HQ").propose_for_org(org)
+    add_aud = [p for p in proposals if p.target_ref == "add_audience_division"]
+    assert add_aud, "リーチ0で集客事業部が無ければ集客事業部の ADD_DIVISION が出るはず"
+    p = add_aud[0]
+    assert p.intervention_type == "add_division"
+    assert p.intervention_spec["division"]["teams"][0]["agents"][0]["skills"]
+    # 収益化ギャップ（reach>0 前提）は出ない（リーチ0のため）
+    assert not [pp for pp in proposals if pp.target_ref == "add_monetization_division"]
+    # AUDIENCE_DEVELOPMENT 事業部が既設なら集客ギャップは出ない（二重提案を避ける）
+    from core.orchestration.division_plugins import get_division_plugin_by_category
+    from core.org_factory import _build_division
+
+    aud_plugin = get_division_plugin_by_category("audience")
+    org.add_division(_build_division(aud_plugin["department"]))
+    assert any(d.type == DivisionType.AUDIENCE_DEVELOPMENT for d in org.divisions)
+    psm.save_organization(org)
+    proposals2 = HQInterventionProposer(psm, source_org_name="HQ").propose_for_org(org)
+    assert not [p for p in proposals2 if p.target_ref == "add_audience_division"]
+
+
 # --------------------------------------------------------------------------- #
 # レビュー指摘の回帰テスト（堅牢性）                                            #
 # --------------------------------------------------------------------------- #

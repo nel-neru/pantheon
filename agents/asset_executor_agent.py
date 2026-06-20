@@ -58,6 +58,11 @@ class AssetExecutorAgent(BaseAgent):
         return AgentResult(
             success=True,
             output=summary,
-            thinking_process=f"資産を {summary.get('mode')} で適用: {summary.get('file_path')}",
-            execution_log=f"{summary.get('file_path')} ({summary.get('bytes_written')} bytes)",
+            thinking_process=(
+                f"資産を {summary.get('mode', 'unknown')} で適用: "
+                f"{summary.get('file_path', '<unknown>')}"
+            ),
+            execution_log=(
+                f"{summary.get('file_path', '<unknown>')} ({summary.get('bytes_written', 0)} bytes)"
+            ),
         )

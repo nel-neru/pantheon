@@ -13,19 +13,34 @@ from typing import Any
 
 
 async def cmd_plugin_list(args: argparse.Namespace, *, get_psm: Any) -> None:
-    """会社プラグイン / 事業部プラグインのカタログを一覧表示する。"""
-    from core.orchestration.division_plugins import load_company_plugins, load_division_plugins
+    """会社プラグイン（install できる manifest）/ 事業部プラグインのカタログを一覧表示する。"""
+    from core.orchestration.company_plugins import load_company_plugin_manifests
+    from core.orchestration.division_plugins import (
+        load_company_archetypes,
+        load_division_plugins,
+    )
 
-    company = load_company_plugins()
+    manifests = load_company_plugin_manifests()
+    archetypes = load_company_archetypes()
     division = load_division_plugins()
 
-    print("\n会社プラグイン（org create --genre / テンプレートのアーキタイプ）\n")
-    if not company:
+    # 会社プラグイン = install-company で「丸ごと起動できる」manifest（list と install を一致させる）。
+    print("\n会社プラグイン（install-company で丸ごと起動できる）\n")
+    if not manifests:
         print("  (なし)")
-    for plugin in company:
-        print(
-            f"  - {plugin['id']:<20} {plugin.get('label', '')}（{plugin.get('division_count', 0)} 事業部）"
-        )
+    for m in manifests:
+        divisions = ", ".join(str(d) for d in (m.get("divisions") or []))
+        print(f"  - {m['id']:<20} {m.get('label', '')} [{m.get('genre', '')}]")
+        if divisions:
+            print(f"      事業部: {divisions}")
+    if manifests:
+        print('\n  起動: pantheon plugin install-company --id <id> [--name "会社名"]')
+
+    # アーキタイプは org create --genre 用の参考（install はできない）。混同させない。
+    if archetypes:
+        print("\n会社アーキタイプ（参考・org create --genre 用 / install 不可）\n")
+        for a in archetypes:
+            print(f"  - {a['id']:<20} {a.get('label', '')}（{a.get('division_count', 0)} 事業部）")
 
     print("\n事業部プラグイン（既存 org に追加できる事業部）\n")
     if not division:
@@ -135,6 +150,56 @@ async def cmd_plugin_scaffold_division(args: argparse.Namespace, *, get_psm: Any
     print(f"\n[OK] '{entry['id']}' を {path.name} に追記しました（pantheon plugin list で確認）。")
 
 
+async def cmd_plugin_scaffold_company(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """テンプレから会社プラグイン manifest の雛形を生成する（表示、または --write でカタログ追記）。
+
+    scaffold-division の会社版。divisions 未指定なら --category のプリセット（default_divisions）
+    から既定の事業部名を与える。--write で config/company_plugins.yaml に追記し、以後
+    `pantheon plugin install-company --id <id>` で丸ごと起動できる（list==install）。
+    """
+    import yaml
+
+    from core.orchestration.company_plugins import get_company_plugin_manifest
+    from core.orchestration.plugin_templates import scaffold_company_plugin
+    from core.paths import resource_path
+
+    manifest = scaffold_company_plugin(
+        args.id,
+        args.label,
+        args.genre,
+        divisions=list(args.division or []) or None,
+        category=args.category or None,
+        initial_kpis=list(args.kpi or []),
+        human_tasks=list(getattr(args, "human_task", []) or []),
+        weekly_review=args.weekly_review or "",
+    )
+    print(f"\n[scaffold] 会社プラグイン '{manifest['id']}' [{manifest.get('genre', '')}]")
+    print(f"  事業部 : {', '.join(manifest['divisions'])}")
+    print(f"  初期KPI: {', '.join(manifest['initial_kpis']) or '(なし)'}")
+
+    if not args.write:
+        print("\n--- カタログへ追加する manifest（--write で自動追記）---\n")
+        print(yaml.safe_dump([manifest], allow_unicode=True, sort_keys=False))
+        return
+
+    if get_company_plugin_manifest(manifest["id"]) is not None:
+        print(f"\n[INFO] id '{manifest['id']}' は既にカタログに存在します（追記しません）。")
+        return
+
+    path = resource_path("config", "company_plugins.yaml")
+    dumped = yaml.safe_dump([manifest], allow_unicode=True, sort_keys=False)
+    # `plugins:` リストの要素として 2 スペース字下げして追記する（空行はそのまま）。
+    indented = "".join(
+        ("  " + line if line.strip() else line) for line in dumped.splitlines(keepends=True)
+    )
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("\n" + indented)
+    print(
+        f"\n[OK] '{manifest['id']}' を {path.name} に追記しました"
+        f"（pantheon plugin install-company --id {manifest['id']} で起動）。"
+    )
+
+
 def register(subparsers: Any) -> None:
     plugin_parser = subparsers.add_parser("plugin", help="2階層プラグイン（会社/事業部）の管理")
     plugin_sub = plugin_parser.add_subparsers(dest="plugin_command", required=True)
@@ -183,3 +248,38 @@ def register(subparsers: Any) -> None:
         "--write", action="store_true", help="division_plugins.yaml にテンプレ形で追記する"
     )
     scaffold_parser.set_defaults(handler_name="cmd_plugin_scaffold_division")
+
+    scaffold_company_parser = plugin_sub.add_parser(
+        "scaffold-company",
+        help="テンプレから会社プラグイン manifest の雛形を生成（--write でカタログ追記）",
+    )
+    scaffold_company_parser.add_argument("--id", required=True, help="会社プラグイン id（一意）")
+    scaffold_company_parser.add_argument("--label", required=True, help="表示名（会社名）")
+    scaffold_company_parser.add_argument(
+        "--genre", required=True, help="ジャンル（例: digital_content / affiliate_marketing）"
+    )
+    scaffold_company_parser.add_argument(
+        "--category",
+        default="",
+        help="divisions 未指定時の既定構成: audience/monetization/full_funnel/operations/content",
+    )
+    scaffold_company_parser.add_argument(
+        "--division", action="append", default=[], help="事業部名（繰り返し可・省略時はプリセット）"
+    )
+    scaffold_company_parser.add_argument(
+        "--kpi", action="append", default=[], help="初期KPI（繰り返し可）"
+    )
+    scaffold_company_parser.add_argument(
+        "--human-task",
+        dest="human_task",
+        action="append",
+        default=[],
+        help="人間タスク（繰り返し可）",
+    )
+    scaffold_company_parser.add_argument(
+        "--weekly-review", default="", help="週次レビュー方針（省略可）"
+    )
+    scaffold_company_parser.add_argument(
+        "--write", action="store_true", help="company_plugins.yaml に manifest を追記する"
+    )
+    scaffold_company_parser.set_defaults(handler_name="cmd_plugin_scaffold_company")

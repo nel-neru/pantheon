@@ -73,6 +73,29 @@ def get_division_plugin(plugin_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def get_division_plugin_by_category(
+    category: str, *, preferred_id: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """カテゴリ（audience/monetization/operations/content/full_funnel）で 1 つの事業部
+    プラグインを選ぶ。``department`` 定義を持つものに限る。無ければ None。
+
+    ``preferred_id`` を渡すと、そのカタログ entry を最優先する（カテゴリ一致は問わない）。
+    これにより「カテゴリ別に自動選択しつつ、特定ジャンルでは正規プラグインを固定」できる
+    （例: monetization は ``note_monetization`` を優先しつつ、未知ジャンルではカテゴリ一致で代替）。
+    決定論的（カタログ出現順の先頭）。
+    """
+    plugins = load_division_plugins()
+    if preferred_id:
+        for p in plugins:
+            if p.get("id") == preferred_id and isinstance(p.get("department"), dict):
+                return p
+    target = str(category or "").strip().lower()
+    for p in plugins:
+        if str(p.get("category") or "").lower() == target and isinstance(p.get("department"), dict):
+            return p
+    return None
+
+
 def add_division_plugin(org: Organization, plugin_id: str) -> Division:
     """事業部プラグインを Organization に追加し、追加した Division を返す。
 
@@ -91,11 +114,15 @@ def add_division_plugin(org: Organization, plugin_id: str) -> Division:
     return division
 
 
-def load_company_plugins() -> List[Dict[str, Any]]:
-    """会社プラグインのアーキタイプを `config/departments/*.yaml` から列挙する。
+def load_company_archetypes() -> List[Dict[str, Any]]:
+    """会社「アーキタイプ」を `config/departments/*.yaml` から列挙する（install 不可・参考表示用）。
 
-    各 yaml を「会社プラグイン」として id（ファイル名）/ label / 部門数で表現する。
-    実際の会社作成は `pantheon org create --genre` 経由（このカタログは GUI 表示用の薄いラベル）。
+    各 yaml を id（ファイル名）/ label / 部門数で表現する薄いカタログ。これは
+    `pantheon org create --genre` 用の参考アーキタイプであり、**`install-company` で起動できる
+    会社プラグイン（manifest）とは別物**である（install できるのは
+    ``core.orchestration.company_plugins.load_company_plugin_manifests`` の方）。
+    両者を混同させない（list したものが install できないという footgun を避ける）ため、
+    `plugin list` / GET /api/company-plugins は manifest を主に見せ、本関数はアーキタイプ参照に限る。
     """
     out: List[Dict[str, Any]] = []
     departments_dir = resource_path("config", DEPARTMENTS_DIR)

@@ -327,7 +327,16 @@ class PolicyEngine:
         segments = self._path_segments(file_path)
 
         # 1) 絶対パス または `..` セグメント = ワークスペース外への脱出 → 強い境界（REJECT）。
-        if os.path.isabs(file_path) or ".." in segments:
+        # cross-platform 安全化: 元パスだけでなく正規化後（\\→/）も isabs 判定する
+        # （Linux の posixpath.isabs は `\\foo` を相対扱いし境界を抜けてしまうため）。
+        # ドライブレター（``C:\\``）も OS 非依存で絶対とみなす。
+        is_drive_abs = len(file_path) >= 2 and file_path[0].isalpha() and file_path[1] == ":"
+        if (
+            os.path.isabs(file_path)
+            or os.path.isabs(normalized)
+            or is_drive_abs
+            or ".." in segments
+        ):
             return PolicyVerdict(
                 decision=ApprovalDecision.REJECT,
                 reason="external 組織は自ワークスペース外（絶対パス/親ディレクトリ）を変更できません",

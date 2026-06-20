@@ -26,7 +26,18 @@ class SkillProficiencyRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SkillProficiencyRecord":
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        # 数値フィールドは破損 JSON（null/非数値）でも安全に coerce する（後続の比較/加算で
+        # TypeError を起こしレコードが黙って消えるのを防ぐ）。文字列フィールドはそのまま。
+        from core.persistence import coerce_float, coerce_int
+
+        known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        if "proficiency" in known:
+            known["proficiency"] = coerce_float(known["proficiency"], 1.0)
+        if "use_count" in known:
+            known["use_count"] = coerce_int(known["use_count"], 0)
+        if "success_count" in known:
+            known["success_count"] = coerce_int(known["success_count"], 0)
+        return cls(**known)
 
 
 class SkillProficiencyManager:
@@ -93,10 +104,10 @@ class SkillProficiencyManager:
             agent_id: {skill_name: record.to_dict() for skill_name, record in skills.items()}
             for agent_id, skills in self._records.items()
         }
-        self.store_file.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（スキル熟達データの partial write による静かな消失を防ぐ）。
+        atomic_write_text(self.store_file, json.dumps(payload, ensure_ascii=False, indent=2))
 
     def _deserialize(
         self, data: dict[str, dict[str, dict[str, Any]]]

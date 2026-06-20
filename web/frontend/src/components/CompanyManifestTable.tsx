@@ -58,6 +58,11 @@ export type CompanyManifestTableProps = {
   emptyHint?: string
   /** 再試行コールバック（エラー状態で表示される再試行ボタン） */
   onRetry?: () => void
+  /**
+   * 内部 ConfirmDialog をバイパスして呼び出し側で確認フローを制御したいとき使う。
+   * 指定すると「作成」ボタンクリック時に onInstall ではなくこちらが呼ばれる（ダイアログなし）。
+   */
+  onRequestInstall?: (manifest: CompanyManifest) => void
   /** インストール実行コールバック。ConfirmDialog 確認後に呼ばれる */
   onInstall: (manifest: CompanyManifest) => Promise<void>
 }
@@ -84,6 +89,7 @@ export function CompanyManifestTable({
   emptyTitle,
   emptyHint,
   onRetry,
+  onRequestInstall,
   onInstall,
 }: CompanyManifestTableProps) {
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
@@ -124,6 +130,10 @@ export function CompanyManifestTable({
         </>
       )
 
+    if (onRequestInstall) {
+      onRequestInstall(m)
+      return
+    }
     setConfirm({ title, description, confirmLabel: resolvedConfirmLabel, run: () => onInstall(m) })
   }
 

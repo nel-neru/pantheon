@@ -304,16 +304,23 @@ def _save_session(session: dict[str, Any]) -> None:
     _ensure_chat_sessions_dir()
     session["updated_at"] = datetime.now(timezone.utc).isoformat()
     path = _get_session_path(session["id"])
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(session, f, ensure_ascii=False, indent=2)
+    # 原子的に書く（プロセス強制終了でも切り詰めた壊れセッション JSON を残さない）。
+    atomic_write_text(path, json.dumps(session, ensure_ascii=False, indent=2))
 
 
-def _list_sessions() -> list[dict[str, Any]]:
+def _list_sessions(limit: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
     _ensure_chat_sessions_dir()
-    sessions = []
-    for path in sorted(
+    # mtime 降順でソートしてから limit/offset で先に切り、必要分だけ json.load する
+    # （数千セッションでも全件 load+parse しない＝メモリ churn 抑制）。
+    paths = sorted(
         _chat_sessions_dir().glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
-    ):
+    )
+    if offset:
+        paths = paths[offset:]
+    if limit is not None:
+        paths = paths[:limit]
+    sessions = []
+    for path in paths:
         try:
             with path.open(encoding="utf-8") as f:
                 session = json.load(f)
@@ -469,6 +476,24 @@ class BusinessCreateRequest(ApiRequestModel):
     kpis: List[str] = Field(default_factory=list, max_length=64)
 
 
+class BusinessFromProposalRequest(ApiRequestModel):
+    """承認済み new_business 提案から Business+Organization を組成するリクエスト。"""
+
+    org_name: str = Field(min_length=1, max_length=120)  # 提案を保持する org（例: HQ）
+    proposal_id: str = Field(min_length=1, max_length=80)  # 提案 id（先頭一致可）
+
+
+class BusinessUpdateRequest(ApiRequestModel):
+    """Business の部分更新（None のフィールドは変更しない）。"""
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    purpose: Optional[str] = Field(default=None, max_length=2000)
+    status: Optional[str] = Field(default=None, max_length=32)
+    member_orgs: Optional[List[str]] = Field(default=None, max_length=64)
+    roles: Optional[Dict[str, str]] = Field(default=None)
+    kpis: Optional[List[str]] = Field(default=None, max_length=64)
+
+
 class AnalyzeRequest(ApiRequestModel):
     org_name: str = Field(min_length=1, max_length=120)
     max_files: int = Field(default=15, ge=1, le=50)
@@ -492,6 +517,10 @@ class DaemonsActionRequest(ApiRequestModel):
 
     interval: int | None = Field(default=None, ge=1)
     max_files: int | None = Field(default=None, ge=1, le=1000)
+    # revenue daemon 用（target>0 で自律経営 cadence を起動する・P14）。
+    target: float | None = Field(default=None, ge=0)
+    source_org: str | None = Field(default=None, max_length=120)
+    min_reach: float | None = Field(default=None, ge=0)
 
 
 class TaskQueueRequest(ApiRequestModel):
@@ -2044,6 +2073,13 @@ async def api_daemons_start(name: str, req: DaemonsActionRequest | None = None) 
     args = [f"--interval={req.interval or spec.default_interval}"]
     if name == "improvement":
         args.append(f"--max-files={req.max_files or 10}")
+    if name == "revenue":
+        # target>0 で自律経営 cadence（ポートフォリオ提案＋HQ介入）が起動する。
+        # CLI（pantheon daemons start revenue --target …）と同じ desired-state に記録され、
+        # watchdog/再起動でも復元される。未指定は idle 安全既定（分析ログのみ）。
+        args.append(f"--target={req.target if req.target is not None else 0.0}")
+        args.append(f"--source-org-name={req.source_org or 'HQ'}")
+        args.append(f"--min-reach={req.min_reach if req.min_reach is not None else 0.0}")
     result = spawn_daemon(name, args=args)
     return {"name": name, **result}
 
@@ -2201,6 +2237,45 @@ async def api_run_content_job(job_id: str) -> Dict[str, Any]:
     result = await run_content_job(job, _psm())
     store.mark_run(job_id, status=result.get("status", "done"), detail=result.get("detail", ""))
     return result
+
+
+@app.get("/api/content-jobs/health", tags=["content"])
+async def api_content_jobs_health() -> Dict[str, Any]:
+    """コンテンツ生成ジョブの健全性サマリ（成功率・要対応・滞留の検知）。
+
+    last_status=="generated" を成功とみなし、実行済み（run_count>0）ジョブ中の成功率を出す。
+    サイレント失敗（"scheduled" のまま滞留・繰り返しエラー）を一望できる。
+    """
+    jobs = _content_job_store().list_jobs()
+    by_status: Dict[str, int] = {}
+    succeeded = ran = 0
+    failures: List[Dict[str, Any]] = []
+    for j in jobs:
+        by_status[j.last_status] = by_status.get(j.last_status, 0) + 1
+        if j.run_count > 0:
+            ran += 1
+            if j.last_status == "generated":
+                succeeded += 1
+            else:
+                failures.append(
+                    {
+                        "job_id": j.job_id,
+                        "org_name": j.org_name,
+                        "last_status": j.last_status,
+                        "last_detail": j.last_detail,
+                        "last_run_at": j.last_run_at,
+                    }
+                )
+    failures.sort(key=lambda f: f.get("last_run_at") or "", reverse=True)
+    return {
+        "total_jobs": len(jobs),
+        "enabled_jobs": sum(1 for j in jobs if j.enabled),
+        "jobs_due_now": sum(1 for j in jobs if j.is_due()),
+        "total_runs": sum(j.run_count for j in jobs),
+        "generation_success_rate": round(succeeded / ran, 4) if ran else None,
+        "jobs_by_status": by_status,
+        "recent_failures": failures[:5],
+    }
 
 
 @app.get("/api/content-daemon/status", tags=["content"])
@@ -2465,11 +2540,12 @@ async def api_publishing_disconnect(platform: str) -> Dict[str, Any]:
 
 
 @app.get("/api/inbox", tags=["inbox"])
-async def api_inbox() -> Dict[str, Any]:
+async def api_inbox(sort: str = "revenue", min_roi: float = 0.0) -> Dict[str, Any]:
     """承認インボックス: 保留中の提案＋handoff＋投稿待ちを 1 つの優先度付きキューに集約する。
 
-    収益インパクト（revenue_impact: 収益化に直結する HQ 提案ほど高い）と優先度で並べ替え、
-    収益を動かすアクションを上位に押し上げる（Phase 1 収益駆動の提案キュー）。
+    各項目に effort_hours / roi_score（労力加重 ROI）を付与する。``sort`` で並べ替え:
+    revenue（既定・収益インパクト→優先度）/ roi（高収益・低労力先）/ effort（低労力先）/ urgency。
+    ``min_roi`` で低 ROI を間引く。収益を動かすアクションを上位に押し上げる収益駆動キュー。
     """
     from core.metrics.revenue_intelligence import revenue_impact_rank
 
@@ -2549,15 +2625,14 @@ async def api_inbox() -> Dict[str, Any]:
             }
         )
 
-    # 収益インパクト → 優先度の順でキューを並べ替え（収益を動かすアクションを上位へ）。
-    _priority_rank = {"high": 3, "medium": 2, "low": 1}
-    items.sort(
-        key=lambda i: (
-            i.get("revenue_impact", 0),
-            _priority_rank.get(str(i.get("priority", "medium")), 2),
-        ),
-        reverse=True,
-    )
+    # 労力加重 ROI を各項目に付与し、指定キーで並べ替える（既定 revenue=従来の収益インパクト順）。
+    from core.metrics.effort_ranker import annotate_inbox_item, sort_inbox
+
+    for item in items:
+        annotate_inbox_item(item)
+    if min_roi > 0:
+        items = [i for i in items if i.get("roi_score", 0.0) >= min_roi]
+    items = sort_inbox(items, sort=sort)
 
     counts = {
         "proposal": sum(1 for i in items if i["kind"] == "proposal"),
@@ -2600,11 +2675,74 @@ async def api_revenue_metrics() -> Dict[str, Any]:
     }
 
 
-@app.get("/api/metrics/revenue/report", tags=["metrics"])
-async def api_revenue_report(org_name: Optional[str] = None) -> Dict[str, Any]:
-    """収益の月次（YYYY-MM）簡易レポート。``org_name`` 指定で単一 org、省略で全 org 横断。"""
+@app.get("/api/metrics/revenue/integrity", tags=["metrics"])
+async def api_revenue_integrity(org_name: Optional[str] = None) -> Dict[str, Any]:
+    """確定収益（記録済み実イベントのみ）とデータ整合性。予測・射影は一切含めない。
+
+    GUI の「確定収益」バッジの単一ソース。確定データが無ければ ``warning`` を返し、予測を
+    実利益と誤認させない（偽データ/疑似モックで収益化を虚偽しない原則の実装）。
+    """
+    from core.metrics.revenue_integrity import assess_revenue_integrity
+
+    integrity = assess_revenue_integrity(_outcome_store(), org_name)
+    return {"org_name": org_name, **integrity}
+
+
+@app.get("/api/metrics/efficiency", tags=["metrics"])
+async def api_metrics_efficiency() -> Dict[str, Any]:
+    """組織別の収益効率（ROI = revenue/reach）とランクを返す。
+
+    どの org がリーチを効率よく収益化しているか/リーチを無駄にしているかを一望できる。
+    ``recommend_allocation`` の ROI 計算（決定論）を再利用し、効率ランク（ROI 降順 1 始まり）を付す。
+    """
+    from core.metrics.portfolio import recommend_allocation
+
+    psm = _psm()
     store = _outcome_store()
-    by_month = store.revenue_by_month(org_name)
+    org_stats: List[Dict[str, Any]] = []
+    for org in psm.load_organizations():
+        if getattr(org, "is_system", False):
+            continue
+        summary = store.summary_for_org(org.name)
+        org_stats.append(
+            {
+                "org_name": org.name,
+                "revenue": summary.total_revenue,
+                "reach": summary.total_reach,
+                "posts": summary.by_metric.get("posts", {}).get("sum", 0.0),
+            }
+        )
+    alloc = {a["org_name"]: a for a in recommend_allocation(org_stats)}
+    # ROI 降順でランク付け（同 ROI は org 名で安定化）。
+    ranked = sorted(
+        org_stats, key=lambda s: (-alloc.get(s["org_name"], {}).get("roi", 0.0), s["org_name"])
+    )
+    orgs_payload = [
+        {
+            "org_name": s["org_name"],
+            "revenue": s["revenue"],
+            "reach": s["reach"],
+            "roi": alloc.get(s["org_name"], {}).get("roi", 0.0),
+            "action": alloc.get(s["org_name"], {}).get("action", "grow_audience"),
+            "efficiency_rank": rank,
+        }
+        for rank, s in enumerate(ranked, start=1)
+    ]
+    return {"orgs": orgs_payload, "count": len(orgs_payload)}
+
+
+@app.get("/api/metrics/revenue/report", tags=["metrics"])
+async def api_revenue_report(
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """収益の月次（YYYY-MM）簡易レポート。``org_name`` 指定で単一 org、省略で全 org 横断。
+
+    ``start_date``/``end_date``（YYYY-MM-DD）で期間を絞れる（期間比較ダッシュボード用）。
+    """
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
     return {
         "org_name": org_name,
         "by_month": by_month,
@@ -2614,14 +2752,193 @@ async def api_revenue_report(org_name: Optional[str] = None) -> Dict[str, Any]:
 
 
 @app.get("/api/metrics/revenue/intelligence", tags=["metrics"])
-async def api_revenue_intelligence(org_name: Optional[str] = None) -> Dict[str, Any]:
-    """収益インテリジェンス: 月次系列から前月比・トレンド・翌月予測を返す。"""
+async def api_revenue_intelligence(
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """収益インテリジェンス: 月次系列から前月比・トレンド・翌月予測を返す。
+
+    ``start_date``/``end_date``（YYYY-MM-DD）で対象期間を絞り、期間別のトレンド比較を可能にする。
+    """
+    from core.metrics.revenue_integrity import ESTIMATE_DISCLAIMER
     from core.metrics.revenue_intelligence import analyze_revenue
 
     store = _outcome_store()
-    by_month = store.revenue_by_month(org_name)
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
     analysis = analyze_revenue(by_month)
-    return {"org_name": org_name, **analysis}
+    # forecast_next は予測（概算）。確定収益と誤認させないため明示する。
+    return {"org_name": org_name, "estimate": True, "disclaimer": ESTIMATE_DISCLAIMER, **analysis}
+
+
+@app.get("/api/metrics/revenue/projection", tags=["metrics"])
+async def api_revenue_projection(
+    target: float,
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """月次目標 ``target`` への到達射影（現トレンドで何か月か・到達可否・3か月後予測）。
+
+    回帰 run-rate を外挿する決定論計算（LLM 非依存）。「自律経営プラン」の手前で
+    「今のペースで目標に届くか／いつ届くか」を一目で示す。
+    """
+    from core.metrics.revenue_integrity import ESTIMATE_DISCLAIMER
+    from core.metrics.revenue_intelligence import project_to_target
+
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
+    projection = project_to_target(by_month, target)
+    return {"org_name": org_name, "estimate": True, "disclaimer": ESTIMATE_DISCLAIMER, **projection}
+
+
+@app.get("/api/metrics/revenue/forecast-extended", tags=["metrics"])
+async def api_revenue_forecast_extended(
+    months: int = 12,
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """OLS 回帰による多か月（既定 12）収益予測（slope/R²/予測系列）。決定論・LLM 非依存。"""
+    from core.metrics.revenue_integrity import ESTIMATE_DISCLAIMER
+    from core.metrics.revenue_intelligence import analyze_revenue_extended
+
+    horizon = max(1, min(int(months), 36))
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
+    analysis = analyze_revenue_extended(by_month, horizon=horizon)
+    return {
+        "org_name": org_name,
+        "horizon": horizon,
+        "estimate": True,
+        "disclaimer": ESTIMATE_DISCLAIMER,
+        **analysis,
+    }
+
+
+@app.get("/api/revenue/attribution", tags=["metrics"])
+async def api_revenue_attribution(
+    org_name: Optional[str] = None,
+    business_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """収益のチャネル（source）別アトリビューション。``business_id`` 指定で member 横断ロールアップ。
+
+    どの導線（note/X/affiliate/manual…）が収益を生むかを %内訳で示す（配分判断の材料）。
+    """
+    store = _outcome_store()
+    scope = "all"
+    if business_id:
+        business = _business_store().get(business_id)
+        if business is None:
+            raise HTTPException(
+                status_code=404, detail=f"Business '{business_id}' が見つかりません"
+            )
+        by_channel = store.revenue_by_channel(
+            business.member_orgs, start_date=start_date, end_date=end_date
+        )
+        scope = f"business:{business.name}"
+    else:
+        by_channel = store.revenue_by_channel(org_name, start_date=start_date, end_date=end_date)
+        scope = f"org:{org_name}" if org_name else "all"
+    total = sum(by_channel.values())
+    channels = [
+        {
+            "channel": ch,
+            "revenue": amount,
+            "pct": round(amount / total * 100, 1) if total else 0.0,
+        }
+        for ch, amount in by_channel.items()
+    ]
+    return {"scope": scope, "total_revenue": total, "channels": channels}
+
+
+@app.get("/api/hq/revenue/goal-status", tags=["hq"])
+async def api_revenue_goal_status(
+    target: float,
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """月次目標への到達状況と backpressure（未達の圧 on_track/mild/strong）。Autopilot/Dashboard 用。"""
+    from core.metrics.revenue_integrity import ESTIMATE_DISCLAIMER
+    from core.metrics.revenue_intelligence import compute_goal_status
+
+    store = _outcome_store()
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
+    status = compute_goal_status(by_month, target)
+    # forecast/backpressure は予測ベース。確定収益(current)とは別物であることを明示する。
+    return {"org_name": org_name, "estimate": True, "disclaimer": ESTIMATE_DISCLAIMER, **status}
+
+
+@app.get("/api/portfolio/overview", tags=["hq"])
+async def api_portfolio_overview() -> Dict[str, Any]:
+    """統合コマンドセンター: 全 org の ROI/percentile/推奨アクション＋ポートフォリオ機会の集約。
+
+    既存の純粋コア（recommend_allocation / build_benchmark_snapshot）と OutcomeStore を合成した
+    読み取り専用の意思決定サマリ。/Revenue・/Businesses・/Proposals を行き来せず一望できる。
+    """
+    from core.metrics.benchmarking import build_benchmark_snapshot
+    from core.metrics.portfolio import recommend_allocation
+
+    psm = _psm()
+    store = _outcome_store()
+    org_stats: List[Dict[str, Any]] = []
+    for org in psm.load_organizations():
+        if getattr(org, "is_system", False):
+            continue
+        summary = store.summary_for_org(org.name)
+        org_stats.append(
+            {
+                "org_name": org.name,
+                "revenue": summary.total_revenue,
+                "reach": summary.total_reach,
+                "posts": summary.by_metric.get("posts", {}).get("sum", 0.0),
+            }
+        )
+    alloc = {a["org_name"]: a for a in recommend_allocation(org_stats)}
+    bench = {b["org_name"]: b for b in build_benchmark_snapshot(org_stats)}
+    orgs = []
+    for s in org_stats:
+        name = s["org_name"]
+        b = bench.get(name, {})
+        a = alloc.get(name, {})
+        orgs.append(
+            {
+                "org_name": name,
+                "revenue": s["revenue"],
+                "reach": s["reach"],
+                "roi": b.get("roi", a.get("roi", 0.0)),
+                "action": a.get("action", "grow_audience"),
+                "revenue_percentile": b.get("revenue_percentile", 0.0),
+                "roi_percentile": b.get("roi_percentile", 0.0),
+                "flag": b.get("flag", ""),
+            }
+        )
+    orgs.sort(key=lambda o: o["roi"], reverse=True)
+
+    pending_handoffs = len(_handoff_store().list_handoffs(status="pending"))
+    new_business_candidates = 0
+    for org in psm.load_organizations():
+        try:
+            sm = psm.get_org_state_manager(org)
+            new_business_candidates += sum(
+                1
+                for p in sm.get_pending_improvement_proposals(limit=50)
+                if p.get("category") == "new_business"
+            )
+        except Exception:  # noqa: BLE001 — 1 組織の読み取り失敗で全体を落とさない
+            continue
+
+    return {
+        "orgs": orgs,
+        "org_count": len(orgs),
+        "total_revenue": sum(s["revenue"] for s in org_stats),
+        "total_reach": sum(s["reach"] for s in org_stats),
+        "pending_handoffs": pending_handoffs,
+        "new_business_candidates": new_business_candidates,
+    }
 
 
 @app.get("/api/hq/portfolio", tags=["hq"])
@@ -2805,10 +3122,14 @@ async def api_list_division_plugins() -> Dict[str, Any]:
 
 @app.get("/api/company-plugins", tags=["plugins"])
 async def api_list_company_plugins() -> Dict[str, Any]:
-    """会社プラグインのアーキタイプ（org create --genre 相当の Organization テンプレ）。"""
-    from core.orchestration.division_plugins import load_company_plugins
+    """install できる会社プラグイン（manifest）の一覧。
 
-    return {"plugins": load_company_plugins()}
+    ``/api/company-plugins/{id}/install`` で起動できる id と一致させる（list したものが
+    install できる）。リッチな manifest 全文は ``/api/company-plugin-manifests`` でも取得可能。
+    """
+    from core.orchestration.company_plugins import load_company_plugin_manifests
+
+    return {"plugins": load_company_plugin_manifests()}
 
 
 @app.post("/api/organizations/{org_name}/divisions", tags=["plugins"])
@@ -3757,8 +4078,14 @@ def _policy_engine() -> PolicyEngine:
 
 
 def _git_remote_github_repo(repo_path: Path) -> str | None:
-    """target_repo の origin リモートから owner/repo を推定する（best-effort）。"""
+    """target_repo の origin リモートから owner/repo を推定する（best-effort）。
+
+    パースは ``github_integration.repo_resolver.parse_github_owner_repo`` に集約
+    （host 厳密検証つき・偽装ホスト受理を防ぐ）。subprocess は本モジュール側で実行する
+    （テストが server.subprocess を monkeypatch するため）。
+    """
     from core.runtime.process_utils import no_window_kwargs
+    from github_integration.repo_resolver import parse_github_owner_repo
 
     try:
         result = subprocess.run(
@@ -3770,14 +4097,7 @@ def _git_remote_github_repo(repo_path: Path) -> str | None:
         )
     except Exception:  # noqa: BLE001 - git 不在/非リポジトリ等は推定不能として扱う
         return None
-    url = (result.stdout or "").strip()
-    if not url or "github.com" not in url:
-        return None
-    tail = url.removesuffix(".git").split("github.com", 1)[-1].lstrip(":/")
-    parts = [segment for segment in tail.split("/") if segment]
-    if len(parts) >= 2:
-        return f"{parts[0]}/{parts[1]}"
-    return None
+    return parse_github_owner_repo(result.stdout or "")
 
 
 def _resolve_github_repo(org: Any, repo_path: Path) -> str | None:
@@ -4188,6 +4508,142 @@ async def api_compose_business(business_id: str) -> Dict[str, Any]:
     return {"created": len(created), "handoff_ids": [h.handoff_id for h in created]}
 
 
+# 状態は active / paused / archived のみ（status を「飾り」から実効化する・P17）。
+_BUSINESS_STATUSES = ("active", "paused", "archived")
+
+
+@app.patch("/api/businesses/{business_id}", tags=["businesses"])
+async def api_update_business(business_id: str, req: BusinessUpdateRequest) -> Dict[str, Any]:
+    """Business を部分更新する（name/purpose/status/member_orgs/roles/kpis）。"""
+    store = _business_store()
+    business = store.get(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+    if req.status is not None and req.status not in _BUSINESS_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status は {'/'.join(_BUSINESS_STATUSES)} のいずれかです",
+        )
+    if req.name is not None and req.name != business.name:
+        clash = store.get(req.name)
+        if clash is not None and str(clash.id) != str(business.id):
+            raise HTTPException(status_code=409, detail=f"Business '{req.name}' はすでに存在します")
+        business.name = req.name
+    if req.purpose is not None:
+        business.purpose = req.purpose
+    if req.status is not None:
+        business.status = req.status
+    if req.member_orgs is not None:
+        business.member_orgs = list(req.member_orgs)
+    if req.roles is not None:
+        business.roles = dict(req.roles)
+    if req.kpis is not None:
+        business.kpis = list(req.kpis)
+    store.save(business)
+    return business.model_dump(mode="json")
+
+
+@app.delete("/api/businesses/{business_id}", tags=["businesses"])
+async def api_delete_business(business_id: str) -> Dict[str, Any]:
+    """Business を削除する（member 会社や成果データには触れない）。"""
+    deleted = _business_store().delete(business_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+    return {"ok": True, "deleted": business_id}
+
+
+@app.post("/api/businesses/from-proposal", tags=["businesses"])
+async def api_business_from_proposal(req: BusinessFromProposalRequest) -> Dict[str, Any]:
+    """承認済み new_business 提案を 1 アクションで Organization+Business に組成する（actuate）。
+
+    提案は人手承認後に呼ばれる前提（HITL 維持）。組成後に提案を done にする。
+    """
+    from core.orchestration.business_application import (
+        find_new_business_proposal,
+        scaffold_business_from_proposal,
+    )
+
+    psm = _psm()
+    proposal = find_new_business_proposal(psm, req.org_name, req.proposal_id)
+    if proposal is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"new_business 提案 '{req.proposal_id}' が org '{req.org_name}' に見つかりません",
+        )
+    try:
+        result = scaffold_business_from_proposal(proposal, psm=psm)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # 組成完了 → 提案を done に（再組成は org/Business 名で冪等）。
+    org = psm.load_organization_by_name(req.org_name)
+    if org is not None:
+        psm.get_org_state_manager(org).update_proposal_status(str(proposal.get("id", "")), "done")
+    return result
+
+
+@app.get("/api/businesses/{business_id}/performance", tags=["businesses"])
+async def api_business_performance(business_id: str) -> Dict[str, Any]:
+    """Business のヘルスサマリ（収益トレンド/handoff 成功率/KPI 状況）を 1 画面分で返す。
+
+    member org を個別ドリルせずに事業全体の健康度を見るための集約（既存の OutcomeStore /
+    revenue_intelligence / OrgHandoffStore を合成するだけ・新規ドメインロジックなし）。
+    """
+    from core.hierarchy.org_handoff import (
+        HANDOFF_APPROVED,
+        HANDOFF_CONSUMED,
+        HANDOFF_REJECTED,
+        OrgHandoffStore,
+    )
+    from core.metrics.outcomes import OutcomeStore
+    from core.metrics.revenue_intelligence import analyze_revenue
+
+    business = _business_store().get(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+
+    home = _psm().platform_home
+    store = OutcomeStore(platform_home=home)
+    summary = store.summary_for_orgs(business.member_orgs, label=business.name)
+
+    # member 横断で月次収益を合算し、トレンド/予測を出す。
+    combined: Dict[str, float] = {}
+    for org in business.member_orgs:
+        for month, val in store.revenue_by_month(org).items():
+            combined[month] = combined.get(month, 0.0) + val
+    analysis = analyze_revenue(combined)
+
+    # handoff の成功率（却下を除く実行可能 handoff のうち pending を越えて進んだ割合）。
+    members = set(business.member_orgs)
+    handoffs = [
+        h
+        for h in OrgHandoffStore(platform_home=home).list_handoffs()
+        if h.source_org in members or h.target_org in members
+    ]
+    progressed = sum(1 for h in handoffs if h.status in (HANDOFF_APPROVED, HANDOFF_CONSUMED))
+    actionable = sum(1 for h in handoffs if h.status != HANDOFF_REJECTED)
+    success_rate = round(progressed / actionable, 4) if actionable else 0.0
+
+    # KPI は目標値を持たないので「データ追跡できているか」を正直に返す（met と詐称しない）。
+    kpi_status: Dict[str, str] = {}
+    metrics_present = set(summary.by_metric)
+    for kpi in business.kpis:
+        key = str(kpi).strip().lower()
+        tracked = any(key in m or m in key for m in metrics_present) if key else False
+        kpi_status[kpi] = "tracked" if tracked else "no_data"
+
+    return {
+        "business": business.name,
+        "member_org_count": len(business.member_orgs),
+        "total_revenue": summary.total_revenue,
+        "total_reach": summary.total_reach,
+        "revenue_trend": analysis["trend"],
+        "forecast_next": analysis["forecast_next"],
+        "handoff_count": len(handoffs),
+        "handoff_success_rate": success_rate,
+        "kpi_status": kpi_status,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Cross-org handoff（集客→販売→収益化の引き渡し / 承認ボタン）                    #
 # --------------------------------------------------------------------------- #
@@ -4572,6 +5028,26 @@ async def api_import_outcomes(body: OutcomeImportRequest) -> Dict[str, Any]:
     }
 
 
+@app.get("/api/outcomes/export", tags=["outcomes"])
+async def api_export_outcomes(
+    org_name: Optional[str] = None,
+    metric: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """成果イベントを CSV で書き出す（外部 BI/分析向け・curl > file.csv で保存可能）。
+
+    注: この固定パスは ``/api/outcomes/{org_name}`` より先に登録する（後だと "export" が
+    org_name として食われてシャドウされる）。
+    """
+    from fastapi.responses import PlainTextResponse
+
+    csv_text = _outcome_store().export_events_csv(
+        org_name, metric=metric, start_date=start_date, end_date=end_date
+    )
+    return PlainTextResponse(content=csv_text, media_type="text/csv")
+
+
 @app.get("/api/outcomes/{org_name}", tags=["outcomes"])
 async def api_outcome_summary(org_name: str) -> Dict[str, Any]:
     store = _outcome_store()
@@ -4580,6 +5056,7 @@ async def api_outcome_summary(org_name: str) -> Dict[str, Any]:
         "org_name": org_name,
         "event_count": summary.event_count,
         "by_metric": summary.by_metric,
+        "by_source": summary.by_source,  # 収益チャネル別内訳（note/x/affiliate/manual…）
         "total_reach": summary.total_reach,
         "total_revenue": summary.total_revenue,
     }
@@ -5004,8 +5481,17 @@ async def api_chat(body: ChatRequest) -> Dict[str, str]:
 
 
 @app.get("/api/chat/sessions")
-async def list_chat_sessions() -> Dict[str, list[dict[str, Any]]]:
-    return {"sessions": _list_sessions()}
+async def list_chat_sessions(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+    """チャットセッション一覧（mtime 降順）。limit/offset でページング（既定 100 件）。"""
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    total = sum(1 for _ in _chat_sessions_dir().glob("*.json"))
+    return {
+        "sessions": _list_sessions(limit=limit, offset=offset),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @app.post("/api/chat/sessions")

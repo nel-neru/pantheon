@@ -109,6 +109,52 @@ it('「この会社を作成」は確認ダイアログを開き、確認後に 
   )
 })
 
+it('「この会社を作成」ダイアログで会社名とパスを入力すると POST body に含める', async () => {
+  wireApi()
+  renderWithRouter(<MarketplacePage />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'この会社を作成' }))
+
+  const dialog = await screen.findByRole('dialog')
+  // 会社名（任意）フィールドに入力
+  fireEvent.change(within(dialog).getByPlaceholderText('note 販売会社'), {
+    target: { value: 'カスタム会社名' },
+  })
+  // ワークスペースパスに入力
+  fireEvent.change(within(dialog).getByPlaceholderText('/path/to/workspace'), {
+    target: { value: '/home/user/myrepo' },
+  })
+
+  fireEvent.click(within(dialog).getByRole('button', { name: 'この会社を作成' }))
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/company-plugins/note_sales/install', {
+      name: 'カスタム会社名',
+      repo_path: '/home/user/myrepo',
+    })
+  )
+})
+
+it('「この会社を作成」ダイアログで会社名のみ入力すると name のみ body に含める', async () => {
+  wireApi()
+  renderWithRouter(<MarketplacePage />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'この会社を作成' }))
+
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.change(within(dialog).getByPlaceholderText('note 販売会社'), {
+    target: { value: 'My Custom Corp' },
+  })
+
+  fireEvent.click(within(dialog).getByRole('button', { name: 'この会社を作成' }))
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('POST', '/api/company-plugins/note_sales/install', {
+      name: 'My Custom Corp',
+    })
+  )
+})
+
 it('「この会社を作成」でキャンセルすると install API を呼ばない', async () => {
   wireApi()
   renderWithRouter(<MarketplacePage />)

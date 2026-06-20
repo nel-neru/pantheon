@@ -34,8 +34,16 @@ async def cmd_orchestration_history(args: argparse.Namespace) -> None:
     store = OrchestrationPatternStore()
     records = list(store._records)
 
+    # --task-type / --pattern で絞り込む（高ボリュームの履歴を狙って見るため）。
+    task_type_filter = getattr(args, "task_type", None)
+    pattern_filter = getattr(args, "pattern", None)
+    if task_type_filter:
+        records = [r for r in records if r.task_type == task_type_filter]
+    if pattern_filter:
+        records = [r for r in records if r.pattern == pattern_filter]
+
     if not records:
-        print("\n[INFO] 実行履歴がまだありません。")
+        print("\n[INFO] 実行履歴がまだありません（またはフィルタに一致しません）。")
         print("   pantheon analyze --org-name <name> で分析を実行してください。")
         return
 
@@ -391,6 +399,27 @@ async def cmd_agent_list(args: argparse.Namespace, *, get_psm: Any) -> None:
     print(f"{'═' * 72}\n")
 
 
+async def cmd_skills_list(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """スキルレジストリ（SkillLoader）を一覧表示する（GET /api/skills の CLI 版）。"""
+    from core.loaders.skill_loader import SkillLoader
+
+    skills = sorted(SkillLoader().all(), key=lambda s: s.id)
+    if not skills:
+        print("スキルが登録されていません。")
+        return
+    print(f"\n{'═' * 72}")
+    print(f"  Skill Registry（{len(skills)} 件）")
+    print(f"{'═' * 72}")
+    for s in skills:
+        tags = ", ".join(s.tags) if s.tags else ""
+        print(f"  {s.id:<24} {s.name}")
+        if s.description:
+            print(f"      {s.description}")
+        if tags:
+            print(f"      tags: {tags}")
+    print(f"{'═' * 72}\n")
+
+
 def register(subparsers: Any) -> None:
     agent_parser = subparsers.add_parser("agent", help="エージェントの状態・実績を表示")
     agent_sub = agent_parser.add_subparsers(dest="agent_command", required=True)
@@ -412,7 +441,14 @@ def register(subparsers: Any) -> None:
     analyze.set_defaults(handler_name="cmd_orchestration_analyze")
 
     history = orch_sub.add_parser("history", help="過去のオーケストレーション実行履歴を表示")
+    history.add_argument("--task-type", dest="task_type", default=None, help="task_type で絞り込み")
+    history.add_argument("--pattern", default=None, help="pattern で絞り込み")
     history.set_defaults(handler_name="cmd_orchestration_history")
+
+    skills_p = orch_sub.add_parser(
+        "skills", help="スキルレジストリを一覧表示（GET /api/skills と同等）"
+    )
+    skills_p.set_defaults(handler_name="cmd_skills_list")
 
     capabilities = orch_sub.add_parser(
         "capabilities", help="現在のエージェント能力一覧と未充足ギャップを表示"

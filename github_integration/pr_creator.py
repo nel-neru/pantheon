@@ -91,7 +91,13 @@ async def create_improvement_pr(
 
     default_branch = repo.get_branch(repo.default_branch)
     if hasattr(repo, "create_git_ref"):
-        repo.create_git_ref(f"refs/heads/{branch_name}", default_branch.commit.sha)
+        try:
+            repo.create_git_ref(f"refs/heads/{branch_name}", default_branch.commit.sha)
+        except GithubException as exc:
+            # 既に同名ブランチがある（同提案の並行 PR 作成等）= 422。冪等なので握りつぶして
+            # 既存ブランチ上のファイル操作へ進む。それ以外（401/403/5xx）は真因を表に出す。
+            if getattr(exc, "status", None) != 422:
+                raise
 
     try:
         file_obj = repo.get_contents(file_path, ref=repo.default_branch)

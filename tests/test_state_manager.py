@@ -318,6 +318,74 @@ class TestRepoStateManager:
         assert {s["session_id"] for s in sessions} == {"session-1"}
         assert any("broken.json" in rec.message for rec in caplog.records)
 
+    def test_load_current_state_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        state_manager.current_state_file.write_text("{not json", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            st = state_manager.load_current_state()
+        assert st["status"] == "initialized"  # 既定へフォールバック（クラッシュしない）
+        assert any("current_state" in rec.message for rec in caplog.records)
+
+    def test_load_session_context_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        (state_manager.sessions_dir / "sess-x.json").write_text("{not json", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            ctx = state_manager.load_session_context("sess-x")
+        assert ctx is None
+        assert any("sess-x" in rec.message for rec in caplog.records)
+
+    def test_update_proposal_fields_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        improvements_dir = state_manager.state_dir / "improvements"
+        improvements_dir.mkdir(exist_ok=True)
+        (improvements_dir / "broken-prop.json").write_text("{not json", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            ok = state_manager.update_proposal_fields("broken-prop", status="done")
+        assert ok is False  # 関数契約（bool）を守る・クラッシュしない
+        assert any("broken-prop" in rec.message for rec in caplog.records)
+
+    def test_timestamp_sort_key_is_chronological_not_lexicographic(self):
+        from core.state.manager import _timestamp_sort_key
+
+        # 20:00Z は 15:00Z（=+09:00 の 翌日0時）より後の瞬間だが、文字列だと "…03…" の方が大きい。
+        later_instant = _timestamp_sort_key("2026-01-02T20:00:00Z")
+        earlier_instant = _timestamp_sort_key("2026-01-03T00:00:00+09:00")
+        assert later_instant > earlier_instant  # 時系列で正しく比較される
+        # naive は UTC 扱い（aware）、空/解析不能は最古
+        assert _timestamp_sort_key("2026-01-01T00:00:00").tzinfo is not None
+        assert _timestamp_sort_key("") == _timestamp_sort_key("garbage")
+
+    def test_get_all_improvement_proposals_chronological_with_mixed_tz(self, state_manager):
+        improvements_dir = state_manager.state_dir / "improvements"
+        improvements_dir.mkdir(exist_ok=True)
+        (improvements_dir / "old.json").write_text(
+            json.dumps(
+                {
+                    "id": "old",
+                    "status": "proposed",
+                    "title": "古い",
+                    "created_at": "2026-01-03T00:00:00+09:00",
+                }  # = 2026-01-02T15:00:00Z
+            ),
+            encoding="utf-8",
+        )
+        (improvements_dir / "new.json").write_text(
+            json.dumps(
+                {
+                    "id": "new",
+                    "status": "proposed",
+                    "title": "新しい",
+                    "created_at": "2026-01-02T20:00:00Z",
+                }  # 後の瞬間
+            ),
+            encoding="utf-8",
+        )
+        ordered = [p["title"] for p in state_manager.get_all_improvement_proposals()]
+        assert ordered == ["新しい", "古い"]  # 辞書順なら逆になるが時系列で正しい
+
     def test_safe_mtime_tolerates_missing_file(self, tmp_path):
         # glob と sort の間でファイルが消えても、ソートキーは落ちず最古（0.0）扱いにする。
         from core.state.manager import _safe_mtime

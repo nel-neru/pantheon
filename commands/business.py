@@ -132,6 +132,103 @@ async def cmd_business_compose(args: argparse.Namespace, *, get_psm: Any) -> Non
     print("承認: pantheon handoff list / handoff approve <id>")
 
 
+# 状態は active / paused / archived のみ（status を実効化する・P17）。
+BUSINESS_STATUSES = ("active", "paused", "archived")
+
+
+async def cmd_business_update(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """Business を部分更新する（name/purpose/status/会社の追加削除/KPI 追加）。"""
+    store = _store()
+    b = store.get(args.id)
+    if b is None:
+        print(f"[ERROR] Business '{args.id}' が見つかりません")
+        sys.exit(1)
+    if args.status and args.status not in BUSINESS_STATUSES:
+        print(f"[ERROR] status は {'/'.join(BUSINESS_STATUSES)} のいずれかです")
+        sys.exit(1)
+    if args.name and args.name != b.name:
+        clash = store.get(args.name)
+        if clash is not None and str(clash.id) != str(b.id):
+            print(f"[ERROR] Business '{args.name}' はすでに存在します")
+            sys.exit(1)
+        b.name = args.name
+    if args.purpose is not None:
+        b.purpose = args.purpose
+    if args.status:
+        b.status = args.status
+    for org in getattr(args, "add_org", []) or []:
+        if org and org not in b.member_orgs:
+            b.member_orgs.append(org)
+    for org in getattr(args, "remove_org", []) or []:
+        if org in b.member_orgs:
+            b.member_orgs.remove(org)
+    for kpi in getattr(args, "add_kpi", []) or []:
+        if kpi and kpi not in b.kpis:
+            b.kpis.append(kpi)
+    store.save(b)
+    print(f"\n[OK] Business '{b.name}' を更新しました [{b.status}]")
+    print(f"  会社: {', '.join(b.member_orgs) or '(なし)'} / KPI: {len(b.kpis)}")
+
+
+async def cmd_business_pause(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """Business を一時停止する（status=paused）。"""
+    args.name = None
+    args.purpose = None
+    args.status = "paused"
+    args.add_org = []
+    args.remove_org = []
+    args.add_kpi = []
+    await cmd_business_update(args, get_psm=get_psm)
+
+
+async def cmd_business_archive(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """Business をアーカイブする（status=archived）。"""
+    args.name = None
+    args.purpose = None
+    args.status = "archived"
+    args.add_org = []
+    args.remove_org = []
+    args.add_kpi = []
+    await cmd_business_update(args, get_psm=get_psm)
+
+
+async def cmd_business_from_proposal(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """承認済み new_business 提案を Organization+Business に組成する（フライホイール actuate）。"""
+    from core.orchestration.business_application import (
+        find_new_business_proposal,
+        scaffold_business_from_proposal,
+    )
+
+    psm = get_psm()
+    proposal = find_new_business_proposal(psm, args.org, args.id)
+    if proposal is None:
+        print(f"[ERROR] new_business 提案 '{args.id}' が org '{args.org}' に見つかりません")
+        sys.exit(1)
+    try:
+        result = scaffold_business_from_proposal(proposal, psm=psm)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+    org = psm.load_organization_by_name(args.org)
+    if org is not None:
+        psm.get_org_state_manager(org).update_proposal_status(str(proposal.get("id", "")), "done")
+    print(f"\n[OK] 提案から事業を組成しました: {result['business_name']}")
+    print(f"  会社    : {result['org_name']}（{'再利用' if result['reused_org'] else '新規'}）")
+    print(f"  事業部  : {', '.join(result['divisions']) or '(なし)'}")
+    print("  次: pantheon business compose " + result["business_name"] + " でハンドオフ実体化")
+
+
+async def cmd_business_delete(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """Business を削除する（member 会社や成果データには触れない）。"""
+    store = _store()
+    b = store.get(args.id)
+    if b is None:
+        print(f"[ERROR] Business '{args.id}' が見つかりません")
+        sys.exit(1)
+    store.delete(args.id)
+    print(f"\n[OK] Business '{b.name}' を削除しました（id={b.id}）")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="会社の合成で事業（Business）を扱う")
     sub = parser.add_subparsers(dest="business_command", required=True)
@@ -166,3 +263,34 @@ def register(subparsers: Any) -> None:
     comp_p = sub.add_parser("compose", help="ルートから保留ハンドオフを作成（合成の実体化）")
     comp_p.add_argument("id", help="Business 名 または id")
     comp_p.set_defaults(handler_name="cmd_business_compose")
+
+    upd_p = sub.add_parser("update", help="事業を部分更新（name/purpose/status/会社/KPI）")
+    upd_p.add_argument("id", help="Business 名 または id")
+    upd_p.add_argument("--name", default=None, help="事業名の変更")
+    upd_p.add_argument("--purpose", default=None, help="目的の変更")
+    upd_p.add_argument("--status", default=None, help="状態: active/paused/archived")
+    upd_p.add_argument("--add-org", dest="add_org", action="append", default=[], help="会社を追加")
+    upd_p.add_argument(
+        "--remove-org", dest="remove_org", action="append", default=[], help="会社を削除"
+    )
+    upd_p.add_argument("--add-kpi", dest="add_kpi", action="append", default=[], help="KPI を追加")
+    upd_p.set_defaults(handler_name="cmd_business_update")
+
+    pause_p = sub.add_parser("pause", help="事業を一時停止（status=paused）")
+    pause_p.add_argument("id", help="Business 名 または id")
+    pause_p.set_defaults(handler_name="cmd_business_pause")
+
+    arch_p = sub.add_parser("archive", help="事業をアーカイブ（status=archived）")
+    arch_p.add_argument("id", help="Business 名 または id")
+    arch_p.set_defaults(handler_name="cmd_business_archive")
+
+    del_p = sub.add_parser("delete", help="事業を削除（会社/成果データには触れない）")
+    del_p.add_argument("id", help="Business 名 または id")
+    del_p.set_defaults(handler_name="cmd_business_delete")
+
+    fp = sub.add_parser(
+        "from-proposal", help="承認済み new_business 提案から会社＋事業を組成（actuate）"
+    )
+    fp.add_argument("--org", required=True, help="提案を保持する Organization 名（例: HQ）")
+    fp.add_argument("--id", required=True, help="new_business 提案 id（先頭一致可）")
+    fp.set_defaults(handler_name="cmd_business_from_proposal")

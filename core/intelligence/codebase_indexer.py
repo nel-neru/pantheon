@@ -232,9 +232,10 @@ class CodebaseIndexer:
         return data if isinstance(data, dict) else None
 
     def _save_index(self, index: Dict[str, Any]) -> None:
-        self.index_path.write_text(
-            json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（index は全置換 JSON・並行/クラッシュで切り詰めると索引が消える）。
+        atomic_write_text(self.index_path, json.dumps(index, ensure_ascii=False, indent=2))
 
 
 def get_stale_files(index_path: Path, repo_root: Path) -> list[Path]:
@@ -284,7 +285,9 @@ def invalidate_cache(index_path: Path, file_paths: list[Path]) -> None:
         if Path(rel_path).as_posix() in normalized:
             files.pop(rel_path, None)
     data["total_files"] = len(files)
-    index_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    from core.persistence import atomic_write_text
+
+    atomic_write_text(index_file, json.dumps(data, ensure_ascii=False, indent=2))
 
 
 # ------------------------------------------------------------------ #

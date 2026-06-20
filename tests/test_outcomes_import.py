@@ -12,6 +12,126 @@ from core.metrics.outcomes import OutcomeStore
 from core.platform.state import PlatformStateManager
 
 
+def test_summary_by_source_breakdown(tmp_path):
+    """by_source が収益チャネル別に metric を内訳化する（finding 8）。"""
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Note Sales", "revenue", 1000, source="note")
+    store.record("Note Sales", "revenue", 400, source="affiliate")
+    store.record("Note Sales", "clicks", 50, source="note")
+    store.record("Note Sales", "revenue", 200)  # source 空 → "(unknown)"
+
+    summary = store.summary_for_org("Note Sales")
+    # 全体合算は従来どおり
+    assert summary.by_metric["revenue"]["sum"] == 1600
+    assert summary.total_revenue == 1600
+    # チャネル別内訳
+    assert summary.by_source["note"]["revenue"]["sum"] == 1000
+    assert summary.by_source["note"]["clicks"]["sum"] == 50
+    assert summary.by_source["affiliate"]["revenue"]["sum"] == 400
+    assert summary.by_source["(unknown)"]["revenue"]["sum"] == 200
+
+
+def test_outcome_actor_audit_fields(tmp_path):
+    """record が actor/actor_type を保持し、旧 JSON（フィールド無し）も既定で読める（finding 26）。"""
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, actor="web:manual", actor_type="manual")
+    e = store.list_events("Co")[0]
+    assert e.actor == "web:manual" and e.actor_type == "manual"
+
+    # 旧スキーマ（actor 無し）レコードも例外なく読める＝後方互換
+    import json
+
+    store.outcomes_path.write_text(
+        json.dumps([{"org_name": "Co", "metric": "revenue", "value": 5}]), encoding="utf-8"
+    )
+    legacy = store.list_events("Co")
+    assert legacy[0].actor == "" and legacy[0].value == 5.0
+
+
+def test_revenue_integrity_confirmed_only(tmp_path):
+    """assess_revenue_integrity は記録済み実イベントのみを確定収益に数える（偽データ防止）。"""
+    from core.metrics.revenue_integrity import (
+        NO_CONFIRMED_REVENUE_WARNING,
+        assess_revenue_integrity,
+    )
+
+    store = OutcomeStore(platform_home=tmp_path)
+    # 確定データ無し → has_confirmed_data False ＋ 警告
+    empty = assess_revenue_integrity(store)
+    assert empty["has_confirmed_data"] is False
+    assert empty["confirmed_revenue"] == 0.0
+    assert empty["warning"] == NO_CONFIRMED_REVENUE_WARNING
+
+    store.record("Co", "revenue", 1000, source="note")
+    store.record("Co", "revenue", 500, source="affiliate")
+    store.record("Co", "impressions", 9999, source="note")  # 非収益は確定収益に含めない
+
+    integ = assess_revenue_integrity(store, "Co")
+    assert integ["confirmed_revenue"] == 1500.0
+    assert integ["recorded_event_count"] == 2
+    assert integ["has_confirmed_data"] is True and integ["warning"] == ""
+    assert set(integ["confirmed_sources"]) == {"note", "affiliate"}
+
+
+def test_revenue_by_channel_attribution(tmp_path):
+    """revenue_by_channel が source 別に収益を降順集計する（全体/org/集合・date 絞り）（拡張 #2A）。"""
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("VideoCo", "revenue", 1000, source="note", occurred_at="2026-01-10")
+    store.record("VideoCo", "revenue", 400, source="affiliate", occurred_at="2026-02-10")
+    store.record("AffCo", "revenue", 250, source="affiliate", occurred_at="2026-01-10")
+    store.record("VideoCo", "clicks", 999, source="note")  # 非収益は無視
+
+    # 全 org 横断（降順）
+    allch = store.revenue_by_channel()
+    assert allch == {"note": 1000.0, "affiliate": 650.0}
+    # 単一 org
+    assert store.revenue_by_channel("AffCo") == {"affiliate": 250.0}
+    # Business ロールアップ（org 集合）
+    assert store.revenue_by_channel(["VideoCo", "AffCo"]) == {"note": 1000.0, "affiliate": 650.0}
+    # 日付絞り（1月のみ）
+    assert store.revenue_by_channel(start_date="2026-01-01", end_date="2026-01-31") == {
+        "note": 1000.0,
+        "affiliate": 250.0,
+    }
+
+
+def test_export_events_csv_filters_and_header(tmp_path):
+    """export_events_csv が metric/日付で絞り、ヘッダ付き CSV を返す（finding 21）。"""
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 1000, source="note", occurred_at="2026-01-10")
+    store.record("Co", "revenue", 2000, source="note", occurred_at="2026-03-10")
+    store.record("Co", "clicks", 50, occurred_at="2026-01-10")
+
+    full = store.export_events_csv("Co")
+    assert full.splitlines()[0].startswith("org_name,metric,value")
+    assert len([ln for ln in full.splitlines() if ln]) == 4  # header + 3
+
+    # metric フィルタ
+    rev = store.export_events_csv("Co", metric="revenue")
+    assert len([ln for ln in rev.splitlines() if ln]) == 3  # header + 2 revenue
+    # 日付範囲（1月のみ）
+    jan = store.export_events_csv(
+        "Co", metric="revenue", start_date="2026-01-01", end_date="2026-01-31"
+    )
+    assert "1000" in jan and "2000" not in jan
+
+
+def test_export_outcomes_api_not_shadowed_by_org_route(tmp_path, monkeypatch):
+    """GET /api/outcomes/export が {org_name} ルートにシャドウされず CSV を返す（finding 21）。"""
+    from fastapi.testclient import TestClient
+
+    import web.server as server
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: PlatformStateManager(platform_home=tmp_path))
+    OutcomeStore(platform_home=tmp_path).record("Co", "revenue", 500, occurred_at="2026-01-10")
+
+    resp = TestClient(server.app).get("/api/outcomes/export?org_name=Co")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+    assert "org_name,metric,value" in resp.text and "revenue" in resp.text
+
+
 def test_record_many_imports_and_skips_invalid(tmp_path):
     store = OutcomeStore(platform_home=tmp_path)
     rows = [

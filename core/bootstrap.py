@@ -88,7 +88,16 @@ def bootstrap_platform(core_repo_path: Optional[Path] = None) -> "PlatformStateM
     if not policy_path.exists():
         from core.policy.engine import PolicyEngine
 
-        PolicyEngine().save_default_policy(policy_path)
-        logger.info("Default policy.yaml created at %s", policy_path)
+        # ポリシー生成失敗（権限/ディスク/破損）でプラットフォーム起動全体を止めない。
+        # ポリシー欠如は致命でなく、evaluate() 時に既定へフォールバックする。
+        try:
+            PolicyEngine().save_default_policy(policy_path)
+            logger.info("Default policy.yaml created at %s", policy_path)
+        except Exception as exc:  # noqa: BLE001 — 起動を止めず観測可能化する
+            logger.warning(
+                "Failed to create default policy at %s: %s — continuing with empty policy",
+                policy_path,
+                exc,
+            )
 
     return psm

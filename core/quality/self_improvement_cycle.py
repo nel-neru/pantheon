@@ -91,9 +91,11 @@ class SelfImprovementCycle:
                 *improvements,
             ],
         )
-        self.version_file.write_text(
-            json.dumps(asdict(version), ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（version 状態の partial write で 1.0.0 に巻き戻り改善履歴を失うのを防ぐ）。
+        atomic_write_text(
+            self.version_file, json.dumps(asdict(version), ensure_ascii=False, indent=2)
         )
         with self.history_file.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")

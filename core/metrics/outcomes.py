@@ -37,6 +37,10 @@ class OutcomeEvent:
     unit: str = ""
     source: str = ""
     note: str = ""
+    # 監査用: 誰が/何が記録したか（web:manual / cli:system / collector:<src> 等）。
+    # 任意・後方互換（旧 JSON は既定 "" で読める）。
+    actor: str = ""
+    actor_type: str = ""
     event_id: str = ""
     occurred_at: str = ""
     recorded_at: str = ""
@@ -54,11 +58,38 @@ class OutcomeEvent:
             self.occurred_at = self.recorded_at
 
 
+def _aggregate_events(
+    events: List["OutcomeEvent"],
+) -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, Dict[str, float]]]]:
+    """イベント列を by_metric と by_source（source→metric→stats）へ集計する（共通部）。
+
+    by_source はどの収益チャネル（note/x/affiliate/manual…）が成果を駆動しているかを
+    可視化するための内訳（同じ metric でも source 別に分けて見える）。source 空は "(unknown)"。
+    """
+    by_metric: Dict[str, Dict[str, float]] = {}
+    by_source: Dict[str, Dict[str, Dict[str, float]]] = {}
+    for event in events:
+        stats = by_metric.setdefault(event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0})
+        stats["sum"] += event.value
+        stats["count"] += 1
+        stats["last"] = event.value
+        src = event.source or "(unknown)"
+        s_stats = by_source.setdefault(src, {}).setdefault(
+            event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0}
+        )
+        s_stats["sum"] += event.value
+        s_stats["count"] += 1
+        s_stats["last"] = event.value
+    return by_metric, by_source
+
+
 @dataclass
 class OutcomeSummary:
     org_name: str
     by_metric: Dict[str, Dict[str, float]] = field(default_factory=dict)
     event_count: int = 0
+    # 収益チャネル（source）別の内訳: source -> metric -> {sum,count,last}。
+    by_source: Dict[str, Dict[str, Dict[str, float]]] = field(default_factory=dict)
 
     @property
     def total_revenue(self) -> float:
@@ -98,6 +129,8 @@ class OutcomeStore:
         unit: str = "",
         source: str = "",
         note: str = "",
+        actor: str = "",
+        actor_type: str = "",
         occurred_at: str = "",
         dedupe_on_source: bool = False,
     ) -> OutcomeEvent:
@@ -106,6 +139,8 @@ class OutcomeStore:
         ``dedupe_on_source=True`` は同じ ``source`` のイベントが既にあれば追記せず
         既存を返す（冪等）。「1 回しか起きない事象」（例: 投稿の公開確認）を
         ジョブ固有の source で記録するときの二重計上ガード。
+
+        ``actor``/``actor_type`` は監査用（誰が記録したか）。省略可。
         """
         event = OutcomeEvent(
             org_name=org_name,
@@ -114,6 +149,8 @@ class OutcomeStore:
             unit=unit,
             source=source,
             note=note,
+            actor=actor,
+            actor_type=actor_type,
             occurred_at=occurred_at,
         )
         events = self._load()
@@ -169,45 +206,134 @@ class OutcomeStore:
 
     def summary_for_org(self, org_name: str) -> OutcomeSummary:
         events = self.list_events(org_name)
-        by_metric: Dict[str, Dict[str, float]] = {}
-        for event in events:
-            stats = by_metric.setdefault(event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0})
-            stats["sum"] += event.value
-            stats["count"] += 1
-            stats["last"] = event.value
-        return OutcomeSummary(org_name=org_name, by_metric=by_metric, event_count=len(events))
+        by_metric, by_source = _aggregate_events(events)
+        return OutcomeSummary(
+            org_name=org_name,
+            by_metric=by_metric,
+            event_count=len(events),
+            by_source=by_source,
+        )
 
     def summary_for_orgs(self, org_names: Iterable[str], *, label: str = "") -> OutcomeSummary:
         """複数 org の成果を 1 つに合算する（Business 単位のロールアップ用）。"""
         names = {str(n) for n in (org_names or [])}
         events = [e for e in self._load() if e.org_name in names]
-        by_metric: Dict[str, Dict[str, float]] = {}
-        for event in events:
-            stats = by_metric.setdefault(event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0})
-            stats["sum"] += event.value
-            stats["count"] += 1
-            stats["last"] = event.value
+        by_metric, by_source = _aggregate_events(events)
         return OutcomeSummary(
             org_name=label or ",".join(sorted(names)),
             by_metric=by_metric,
             event_count=len(events),
+            by_source=by_source,
         )
 
-    def revenue_by_month(self, org_name: Optional[str] = None) -> Dict[str, float]:
+    def export_events_csv(
+        self,
+        org_name: Optional[str] = None,
+        *,
+        metric: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> str:
+        """成果イベントを CSV 文字列で書き出す（外部 BI/分析へのエクスポート用）。
+
+        ``org_name``/``metric`` 省略で全件。``start_date``/``end_date``（YYYY-MM-DD）は
+        ``occurred_at`` の日付部分で範囲フィルタ（境界含む）。壊れた日付は範囲判定で除外せず
+        通す（silent-drop で集計母数を歪めない）。ヘッダ行付き。
+        """
+        import csv
+        import io
+
+        metric_key = (metric or "").strip().lower()
+        rows = []
+        for e in self.list_events(org_name):
+            if metric_key and e.metric != metric_key:
+                continue
+            day = (e.occurred_at or e.recorded_at or "")[:10]
+            if start_date and day and day < start_date:
+                continue
+            if end_date and day and day > end_date:
+                continue
+            rows.append(e)
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(
+            ["org_name", "metric", "value", "unit", "source", "note", "occurred_at", "recorded_at"]
+        )
+        for e in rows:
+            writer.writerow(
+                [
+                    e.org_name,
+                    e.metric,
+                    e.value,
+                    e.unit,
+                    e.source,
+                    e.note,
+                    e.occurred_at,
+                    e.recorded_at,
+                ]
+            )
+        return buf.getvalue()
+
+    def revenue_by_month(
+        self,
+        org_name: Optional[str] = None,
+        *,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, float]:
         """収益メトリクス（REVENUE_METRICS）を ``YYYY-MM`` バケットで合計する簡易レポート。
 
         ``org_name`` 省略時は全 org を横断集計する。``occurred_at`` の先頭7文字を月キーに使い、
         日付が読めないイベントは ``"unknown"`` バケットへ寄せて集計を壊さない。戻り値は
         月キーの昇順（``"unknown"`` は末尾）に並べた ``{month: 合計}``。
+
+        ``start_date``/``end_date``（YYYY-MM-DD）を渡すと ``occurred_at`` の日付で範囲を絞る
+        （境界含む）。期間比較（直近 N か月 vs 全期間）のトレンド分析に使う。
         """
         buckets: Dict[str, float] = {}
         for event in self.list_events(org_name):
             if event.metric not in REVENUE_METRICS:
                 continue
+            day = (event.occurred_at or event.recorded_at or "")[:10]
+            if start_date and day and day < start_date:
+                continue
+            if end_date and day and day > end_date:
+                continue
             stamp = (event.occurred_at or event.recorded_at or "")[:7]
             month = stamp if len(stamp) == 7 and stamp[4] == "-" else "unknown"
             buckets[month] = buckets.get(month, 0.0) + event.value
         return {key: buckets[key] for key in sorted(buckets, key=lambda k: (k == "unknown", k))}
+
+    def revenue_by_channel(
+        self,
+        org_names: Optional[Iterable[str]] = None,
+        *,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, float]:
+        """収益（REVENUE_METRICS）を **チャネル（source）別**に合計する（収益アトリビューション）。
+
+        ``org_names`` 省略=全 org 横断 / 単一名(str) / 名前の集合(Business のロールアップ)。
+        source 空は ``"(unknown)"``。降順 ``{channel: 合計}``。どの導線（note/X/affiliate/manual…）が
+        収益を生んでいるかを可視化し、配分判断の材料にする。
+        """
+        names: Optional[set] = None
+        if org_names is not None:
+            names = {str(org_names)} if isinstance(org_names, str) else {str(n) for n in org_names}
+        totals: Dict[str, float] = {}
+        for event in self._load():
+            if event.metric not in REVENUE_METRICS:
+                continue
+            if names is not None and event.org_name not in names:
+                continue
+            day = (event.occurred_at or event.recorded_at or "")[:10]
+            if start_date and day and day < start_date:
+                continue
+            if end_date and day and day > end_date:
+                continue
+            src = event.source or "(unknown)"
+            totals[src] = totals.get(src, 0.0) + event.value
+        return dict(sorted(totals.items(), key=lambda kv: kv[1], reverse=True))
 
     # ---- 内部 ----
 
@@ -230,7 +356,10 @@ class OutcomeStore:
         return events
 
     def _save(self, events: List[OutcomeEvent]) -> None:
-        self.outcomes_path.write_text(
+        # 原子的に書く（毎 record の全置換書き込みが torn すると収益データが丸ごと壊れるため）。
+        from core.persistence import atomic_write_text
+
+        atomic_write_text(
+            self.outcomes_path,
             json.dumps([asdict(e) for e in events], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )

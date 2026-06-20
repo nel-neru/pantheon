@@ -17,6 +17,7 @@ AGENT_WORKFLOW_DESIGN, PROMPT_ENGINEERING, TOOL_INTEGRATION, etc.）の
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import List
@@ -172,7 +173,10 @@ class GenericSkillAgent(BaseAgent):
                 ),
             ]
             tool_spec = self._build_tool_spec()
-            response = llm.complete(messages, tool_spec=tool_spec)
+            # complete() は内部で claude subprocess を同期実行する（数秒ブロックしうる）。
+            # async run() の中で直接呼ぶとイベントループを止め並行タスクを停滞させるため、
+            # スレッドへオフロードする（complete の契約は変えず＝注入 double とも互換）。
+            response = await asyncio.to_thread(llm.complete, messages, tool_spec=tool_spec)
             response = self._maybe_reflexion(response, task, messages, llm, tool_spec)
             data = extract_json_object(response)
             if not isinstance(data, dict):

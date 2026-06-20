@@ -364,6 +364,39 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('link', { name: /全件を見る/ })).toBeInTheDocument()
   })
 
+  it('デーモンがレート制限中のとき黄色バッジを表示する', async () => {
+    mockApi.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path === '/api/platform/status') return platform
+      if (method === 'GET' && path === '/api/settings') return settings
+      if (method === 'GET' && path === '/api/organizations') return []
+      if (method === 'GET' && path === '/api/daemon/status') {
+        return {
+          running: false,
+          pid: null,
+          log_path: null,
+          rate_limited: true,
+          retry_at: '2026-06-20T16:00:00Z',
+          rate_limit_scope: 'output_tokens',
+        }
+      }
+      if (method === 'GET' && path === '/api/tasks') return emptyTaskQueue
+      if (method === 'GET' && path === '/api/execution-history?limit=40') return emptyHistory
+      throw new Error(`Unexpected request: ${method} ${path}`)
+    })
+
+    renderWithRouter(<DashboardPage />)
+
+    expect(await screen.findByText(/レート制限で自動停止/)).toBeInTheDocument()
+  })
+
+  it('デーモンがレート制限でないときバッジを出さない', async () => {
+    setupDefaultMock()
+    renderWithRouter(<DashboardPage />)
+
+    await screen.findByText('組織がありません')
+    expect(screen.queryByText(/レート制限で自動停止/)).not.toBeInTheDocument()
+  })
+
   it('shows empty velocity chart state when no data', async () => {
     setupDefaultMock()
     renderWithRouter(<DashboardPage />)

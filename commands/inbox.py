@@ -1,0 +1,182 @@
+"""`pantheon inbox` — 統合承認インボックス（提案＋handoff＋投稿待ち＋人間タスク）を CLI で見る。
+
+GUI の唯一の承認ハブ ``/inbox``（``/api/inbox``）と同じ集約・並び（収益インパクト→優先度）を
+CLI・自律パスへ開く。これまで CLI は「/inbox で確認」と促すだけで統合キューを列挙できず、
+承認は種別ごと（proposal / handoff / human-task / publish）に別コマンドが必要だった。
+
+本コマンドは **読み取り（list）**を提供する。承認アクションは種別ごとの既存コマンドで行う:
+proposal → ``pantheon approve`` / ``proposal apply|reject``、handoff → ``pantheon handoff approve``、
+publish → ``pantheon publish jobs run|confirm``（list の各行に種別と id を出すので辿れる）。
+"""
+
+from __future__ import annotations
+
+import argparse
+from typing import Any, Dict, List
+
+_PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def _collect_inbox(platform_home: Any) -> List[Dict[str, Any]]:
+    """提案/handoff/publish/human-task を 1 つの優先度付きキューへ集約する（/api/inbox と同じ）。"""
+    from core.hierarchy.org_handoff import OrgHandoffStore
+    from core.humans.human_tasks import HumanTaskStore
+    from core.metrics.revenue_intelligence import revenue_impact_rank
+    from core.platform.state import PlatformStateManager
+    from core.publishing.publish_jobs import PublishJobStore
+
+    psm = PlatformStateManager(platform_home=platform_home)
+    home = psm.platform_home
+    items: List[Dict[str, Any]] = []
+
+    for org in psm.load_organizations():
+        try:
+            sm = psm.get_org_state_manager(org)
+            for p in sm.get_pending_improvement_proposals(limit=50):
+                items.append(
+                    {
+                        "kind": "proposal",
+                        "id": str(p.get("id", "")),
+                        "org_name": org.name,
+                        "title": p.get("title", ""),
+                        "category": p.get("category", "general"),
+                        "priority": p.get("priority", "medium"),
+                        "revenue_impact": revenue_impact_rank(p),
+                    }
+                )
+        except Exception:  # noqa: BLE001 — 1 組織の読み取り失敗で全体を落とさない
+            continue
+
+    for h in OrgHandoffStore(platform_home=home).list_handoffs(status="pending"):
+        items.append(
+            {
+                "kind": "handoff",
+                "id": getattr(h, "handoff_id", ""),
+                "org_name": getattr(h, "target_org", ""),
+                "title": getattr(h, "title", ""),
+                "category": "cross_org_handoff",
+                "priority": getattr(h, "priority", "medium"),
+                "revenue_impact": 1,
+            }
+        )
+
+    for j in PublishJobStore(platform_home=home).list_jobs():
+        if j.status not in ("queued", "handed_off"):
+            continue
+        items.append(
+            {
+                "kind": "publish",
+                "id": j.job_id,
+                "org_name": j.org_name,
+                "title": j.title or j.platform,
+                "category": "external_action",
+                "priority": "high",
+                "revenue_impact": 1,
+            }
+        )
+
+    for t in HumanTaskStore(platform_home=home).list_tasks("open"):
+        items.append(
+            {
+                "kind": "human_task",
+                "id": t.task_id,
+                "org_name": t.org_name,
+                "title": t.title,
+                "category": getattr(t, "kind", "") or "human_task",
+                "priority": "high",
+                "revenue_impact": 1,
+            }
+        )
+
+    items.sort(
+        key=lambda i: (
+            i.get("revenue_impact", 0),
+            _PRIORITY_RANK.get(str(i.get("priority", "medium")), 2),
+        ),
+        reverse=True,
+    )
+    return items
+
+
+async def cmd_inbox_list(args: argparse.Namespace) -> None:
+    """統合承認インボックスを一覧表示する（収益インパクト→優先度の順）。"""
+    from core.platform.state import get_platform_home
+
+    items = _collect_inbox(get_platform_home())
+    kind_filter = getattr(args, "kind", None)
+    if kind_filter:
+        items = [i for i in items if i["kind"] == kind_filter]
+    category_filter = getattr(args, "category", None)
+    if category_filter:
+        items = [i for i in items if i.get("category") == category_filter]
+    min_impact = getattr(args, "min_impact", None)
+    if min_impact is not None:
+        items = [i for i in items if int(i.get("revenue_impact", 0)) >= min_impact]
+
+    # 労力加重 ROI を付与し、--sort（既定 roi=高収益・低労力先）で並べ替え、--min-roi で間引く。
+    from core.metrics.effort_ranker import annotate_inbox_item, sort_inbox
+
+    for item in items:
+        annotate_inbox_item(item)
+    min_roi = getattr(args, "min_roi", None)
+    if min_roi is not None:
+        items = [i for i in items if i.get("roi_score", 0.0) >= min_roi]
+    items = sort_inbox(items, sort=getattr(args, "sort", None) or "roi")
+
+    if not items:
+        print("承認待ちはありません（条件に一致する項目がありません）。")
+        return
+
+    counts: Dict[str, int] = {}
+    for i in items:
+        counts[i["kind"]] = counts.get(i["kind"], 0) + 1
+    summary = " / ".join(f"{k}:{v}" for k, v in sorted(counts.items()))
+    print(
+        f"\n承認インボックス（{len(items)} 件 — {summary}・sort={getattr(args, 'sort', None) or 'roi'}）\n"
+    )
+    for i in items:
+        print(
+            f"  [{i['kind']:<10}] ROI {i.get('roi_score', 0):>5} "
+            f"(★{i['revenue_impact']} {i['priority']:<6} {i.get('effort_hours', 0)}h) "
+            f"{i['title']}  ({i['org_name']})  id={i['id']}"
+        )
+    print("\n承認: 種別ごとに pantheon approve / handoff approve / publish jobs run … で実行")
+
+
+def register(subparsers: Any) -> None:
+    parser = subparsers.add_parser("inbox", help="統合承認インボックスを一覧（GUI /inbox と同等）")
+    sub = parser.add_subparsers(dest="inbox_command", required=True)
+
+    list_p = sub.add_parser("list", help="承認待ち（提案/handoff/投稿/人間タスク）を一覧")
+    list_p.add_argument(
+        "--kind",
+        default=None,
+        choices=["proposal", "handoff", "publish", "human_task"],
+        help="種別で絞り込み",
+    )
+    list_p.add_argument(
+        "--category",
+        default=None,
+        help="カテゴリで絞り込み（例: structural_intervention / content_asset / general）",
+    )
+    list_p.add_argument(
+        "--min-impact",
+        dest="min_impact",
+        type=int,
+        default=None,
+        help="収益インパクト下限（0/1/2）でフィルタ",
+    )
+    list_p.add_argument(
+        "--sort",
+        default="roi",
+        choices=["roi", "revenue", "urgency", "effort"],
+        help="並べ替え（既定 roi=高収益・低労力先）",
+    )
+    list_p.add_argument(
+        "--min-roi",
+        dest="min_roi",
+        type=float,
+        default=None,
+        help="ROIスコア下限でフィルタ",
+    )
+    list_p.set_defaults(handler_name="cmd_inbox_list")

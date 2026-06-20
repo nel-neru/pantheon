@@ -218,6 +218,15 @@ def test_goal_scheduler_submit_and_status():
     execution = scheduler.submit_goal("security", "Improve auth")
     assert execution.status == "pending"
     assert "pending=1" in scheduler.get_status_summary()
+    # started_at は submit 時点では未設定（実行開始時刻のセマンティクス）。
+    assert execution.started_at == ""
+    # start_execution で running 遷移＋実行開始時刻が刻まれる。
+    assert scheduler.start_execution(execution.execution_id) is True
+    assert execution.status == "running" and execution.started_at != ""
+    # complete_execution で終了時刻が刻まれる。
+    assert scheduler.complete_execution(execution.execution_id) is True
+    assert execution.status == "completed" and execution.completed_at != ""
+    assert scheduler.start_execution("exec:nope") is False
 
 
 def test_load_balancer_tracks_load():

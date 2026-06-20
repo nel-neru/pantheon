@@ -95,12 +95,13 @@ def _parse_relative(text: str, now: datetime) -> Optional[datetime]:
         return None
     n = int(m.group(1))
     unit = m.group(2).lower()
+    # 正規表現が将来ドリフトして想定外の unit を拾っても KeyError で落ちないよう .get で守る。
     delta = {
         "second": timedelta(seconds=n),
         "minute": timedelta(minutes=n),
         "hour": timedelta(hours=n),
         "day": timedelta(days=n),
-    }[unit]
+    }.get(unit, DEFAULT_BACKOFF)
     return now + delta
 
 

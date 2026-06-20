@@ -17,6 +17,34 @@ def _bank(tmp_path, monkeypatch) -> MemoryBank:
     return MemoryBank(tmp_path)
 
 
+def test_memory_cli_capture_and_list_parity(tmp_path, monkeypatch, capsys):
+    """pantheon memory capture/list が GUI /api/memory/playbook と同じ MemoryBank を叩く（finding 18）。"""
+    import argparse
+
+    import main
+    from commands.memory import cmd_memory_capture, cmd_memory_list
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    assert "cmd_memory_capture" in main.HANDLERS and "cmd_memory_list" in main.HANDLERS
+
+    cmd_memory_capture(
+        argparse.Namespace(
+            title="X投稿は朝が伸びる", content="9時投稿でCTR+30%", category="growth", org_name="Co"
+        )
+    )
+    # 冪等: 同じ title/category/org は二重追加しない
+    cmd_memory_capture(
+        argparse.Namespace(
+            title="X投稿は朝が伸びる", content="dup", category="growth", org_name="Co"
+        )
+    )
+    assert len(MemoryBank(tmp_path).recall(category="growth")) == 1
+
+    cmd_memory_list(argparse.Namespace(category="growth", limit=10, verbose=True))
+    out = capsys.readouterr().out
+    assert "X投稿は朝が伸びる" in out and "9時投稿" in out
+
+
 # ------------------------------------------------------------------ #
 # MemoryBank
 # ------------------------------------------------------------------ #

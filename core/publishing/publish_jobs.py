@@ -100,7 +100,11 @@ class PublishJobStore:
             return []
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            # 破損で全投稿ジョブが黙って消えると「未定義」と区別できないため観測可能化する。
+            from core.platform.state import warn_skipped_state_file
+
+            warn_skipped_state_file(self.path, exc, kind="PublishJob")
             return []
         return data if isinstance(data, list) else []
 

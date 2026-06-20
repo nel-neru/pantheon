@@ -290,6 +290,9 @@ class AbstractGoalPipeline:
             "achieved" if verification.overall_achieved else "not achieved",
         )
 
+        # 達成度が低ければ再計画 meta 提案を Meta-Improvement 組織の承認キューへ積む（反復収束）。
+        self._maybe_propose_replanning(goal, verification)
+
         return PipelineResult(
             raw_text=raw_goal_text,
             goal=goal,
@@ -298,3 +301,36 @@ class AbstractGoalPipeline:
             execution_progress=progress,
             verification=verification,
         )
+
+    def _maybe_propose_replanning(self, goal: Any, verification: Any) -> None:
+        """達成度が低ければ再計画 meta 提案を Meta-Improvement 組織へ積む（best-effort・冪等）。
+
+        proposer が None（達成済み/サイクル上限）なら何もしない。Meta 組織が無い/保存失敗でも
+        pipeline 本体は止めない（再計画は補助機能）。同 dedupe_key の既存提案は積まない。
+        """
+        try:
+            from core.goals.goal_replanning_proposer import propose_replanning
+
+            proposal = propose_replanning(goal, verification)
+            if proposal is None:
+                return
+            from core.platform.state import PlatformStateManager
+
+            psm = PlatformStateManager(platform_home=self._resolve_platform_home())
+            try:
+                from core.bootstrap import META_ORG_NAME
+
+                meta_name = META_ORG_NAME
+            except Exception:  # noqa: BLE001
+                meta_name = "Meta-Improvement Organization"
+            meta = psm.load_organization_by_name(meta_name)
+            if meta is None:
+                return
+            sm = psm.get_org_state_manager(meta)
+            existing = {p.get("dedupe_key") for p in sm.get_all_improvement_proposals(limit=500)}
+            if proposal.dedupe_key in existing:
+                return
+            sm.save_improvement_proposal(proposal)
+            logger.info("Goal replanning proposal enqueued: %s", proposal.dedupe_key)
+        except Exception:  # noqa: BLE001 — 再計画提案の失敗で pipeline 本体を止めない
+            logger.warning("goal replanning proposal failed", exc_info=True)

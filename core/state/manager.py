@@ -24,6 +24,9 @@ from core.persistence import atomic_write_text
 if TYPE_CHECKING:
     from core.models.organization import ImprovementProposal, Organization, QualityReview
 
+# get_cross_org_state は件数概要に使うだけなので保留タスクの取得上限を設ける（unbounded ロード回避）。
+_CROSS_ORG_PENDING_PREVIEW = 100
+
 
 def _safe_mtime(path: Path) -> float:
     """ソートキー用の堅牢な mtime。glob と sort の間でファイルが消えても落ちない
@@ -32,6 +35,22 @@ def _safe_mtime(path: Path) -> float:
         return path.stat().st_mtime
     except OSError:
         return 0.0
+
+
+def _timestamp_sort_key(value: Any) -> datetime:
+    """created_at/timestamp を比較可能な aware datetime に正規化する（時系列ソートの単一ソース）。
+
+    文字列の辞書順比較だと "…Z" と "…+00:00" のような同一時刻の別表記が誤順になるため、
+    datetime に解析して時系列順を保証する。naive（utcnow 時代/外部編集/移行データ）は UTC とみなして
+    aware に揃える（[[naive-tz-coercion-convention]]）。解析不能/空は最古（datetime.min, UTC）扱い。
+    """
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 class RepoStateManager:
@@ -74,10 +93,19 @@ class RepoStateManager:
         )
 
     def load_current_state(self) -> Dict[str, Any]:
-        if self.current_state_file.exists():
+        default = {"organization": self.org_name, "status": "initialized"}
+        if not self.current_state_file.exists():
+            return default
+        # 破損（daemon クラッシュ中の partial write 等）でも黙って状態消失させず、観測可能に
+        # 既定へフォールバックする（同クラスの get_recent_decisions 等と同じ規約）。
+        try:
             with open(self.current_state_file, "r", encoding="utf-8") as f:
                 return json.load(f)
-        return {"organization": self.org_name, "status": "initialized"}
+        except (OSError, ValueError) as exc:
+            from core.platform.state import warn_skipped_state_file
+
+            warn_skipped_state_file(self.current_state_file, exc, kind="現在状態")
+            return default
 
     def record_decision(
         self,
@@ -113,18 +141,9 @@ class RepoStateManager:
                 warn_skipped_state_file(f, exc, kind="決定")
                 continue
 
-        def sort_key(decision: Dict[str, Any]) -> datetime:
-            timestamp = str(decision.get("timestamp", ""))
-            try:
-                parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            except ValueError:
-                return datetime.min.replace(tzinfo=timezone.utc)
-            # naive な legacy timestamp（utcnow 時代/外部編集/移行データ）は UTC とみなして
-            # aware に揃える。未 coerce だと aware フォールバックや Z 付き timestamp と混在した
-            # とき sorted() の naive<aware 比較が TypeError でクラッシュする。
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-
-        return sorted(decisions, key=sort_key, reverse=True)[:limit]
+        return sorted(
+            decisions, key=lambda d: _timestamp_sort_key(d.get("timestamp")), reverse=True
+        )[:limit]
 
     # ============================================================
     # Quality Review & Improvement Proposal 永続化
@@ -165,7 +184,7 @@ class RepoStateManager:
                 proposals.append(data)
         # ファイル名は uuid4（時系列でソート不可）なので created_at 降順で並べてから
         # limit で切り詰める。これにより「新しい提案 limit 件」が安定して返る。
-        proposals.sort(key=lambda d: str(d.get("created_at", "")), reverse=True)
+        proposals.sort(key=lambda d: _timestamp_sort_key(d.get("created_at")), reverse=True)
         return proposals[:limit]
 
     def get_all_improvement_proposals(self, limit: int = 1000) -> list[Dict[str, Any]]:
@@ -189,7 +208,7 @@ class RepoStateManager:
                 continue
         # ファイル名は uuid4（時系列でソート不可）なので created_at 降順で並べてから
         # limit で切り詰める。docstring の「新しい順」を実際に保証する。
-        proposals.sort(key=lambda d: str(d.get("created_at", "")), reverse=True)
+        proposals.sort(key=lambda d: _timestamp_sort_key(d.get("created_at")), reverse=True)
         return proposals[:limit]
 
     def save_proposal(self, proposal: "ImprovementProposal") -> bool:
@@ -223,8 +242,16 @@ class RepoStateManager:
             return False
         for f in improvements_dir.glob("*.json"):
             if f.stem == proposal_id:
-                with open(f, "r", encoding="utf-8") as fp:
-                    data = json.load(fp)
+                # 対象提案が破損していても関数契約（bool 返却）を守って観測可能に False を返す
+                # （未捕捉例外で update フロー全体をクラッシュさせない）。
+                try:
+                    with open(f, "r", encoding="utf-8") as fp:
+                        data = json.load(fp)
+                except (OSError, ValueError) as exc:
+                    from core.platform.state import warn_skipped_state_file
+
+                    warn_skipped_state_file(f, exc, kind="改善提案")
+                    return False
                 data.update(updates)
                 data["last_updated"] = datetime.now(timezone.utc).isoformat()
                 atomic_write_text(f, json.dumps(data, ensure_ascii=False, indent=2))
@@ -285,8 +312,16 @@ class RepoStateManager:
         path = self.sessions_dir / f"{session_id}.json"
         if not path.exists():
             return None
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        # 破損（並行アクセス中の partial write 等）でも黙ってセッション消失させず観測可能にする
+        # （list_session_contexts と同じ規約）。
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError) as exc:
+            from core.platform.state import warn_skipped_state_file
+
+            warn_skipped_state_file(path, exc, kind="セッション")
+            return None
 
     def list_session_contexts(self) -> list[Dict[str, Any]]:
         """保存済みセッションコンテキストの一覧を返す。"""
@@ -314,7 +349,8 @@ class RepoStateManager:
         from core.orchestration.task_queue import TaskQueue
 
         queue = TaskQueue()
+        # 概要表示用なので上限を設けて in-memory ロードを抑える（unbounded 取得を避ける）。
         return {
-            "pending_tasks": len(queue.get_pending_tasks(limit=None)),
+            "pending_tasks": len(queue.get_pending_tasks(limit=_CROSS_ORG_PENDING_PREVIEW)),
             "recent_tasks": queue.list_tasks(limit=5),
         }

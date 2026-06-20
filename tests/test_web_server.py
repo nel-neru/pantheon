@@ -1016,6 +1016,30 @@ def test_business_api_crud_outcomes_compose(tmp_path, monkeypatch):
     assert comp.status_code == 200 and comp.json()["created"] == 1
 
 
+def test_business_api_update_and_delete(tmp_path, monkeypatch):
+    """PATCH で部分更新（status 実効化）/ DELETE で削除（P10/P17）。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    client.post("/api/businesses", json={"name": "Biz", "member_orgs": ["A"]})
+
+    # PATCH: status と purpose を更新
+    patched = client.patch("/api/businesses/Biz", json={"status": "paused", "purpose": "停止中"})
+    assert patched.status_code == 200, patched.text
+    body = patched.json()
+    assert body["status"] == "paused" and body["purpose"] == "停止中"
+
+    # 不正な status は 400
+    assert client.patch("/api/businesses/Biz", json={"status": "bogus"}).status_code == 400
+    # 未知は 404
+    assert client.patch("/api/businesses/Nope", json={"status": "active"}).status_code == 404
+
+    # DELETE: 削除できる / 2 回目は 404
+    assert client.delete("/api/businesses/Biz").status_code == 200
+    assert client.get("/api/businesses/Biz").status_code == 404
+    assert client.delete("/api/businesses/Biz").status_code == 404
+
+
 def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
     """Web: 本文生成エンドポイントが受け手 org に本文ドラフト提案を作る（claude 不在＝決定論）。"""
     from core.org_factory import create_default_organization
@@ -1251,6 +1275,21 @@ def test_chat_session_crud(tmp_path, monkeypatch):
 
     missing_resp = client.get(f"/api/chat/sessions/{session_id}")
     assert missing_resp.status_code == 404
+
+
+def test_chat_sessions_pagination(tmp_path, monkeypatch):
+    """/api/chat/sessions が limit/offset でページングし total を返す（discovery #27）。"""
+    _set_chat_sessions_dir(tmp_path, monkeypatch)
+    for i in range(5):
+        client.post("/api/chat/sessions", json={"name": f"S{i}"})
+
+    page = client.get("/api/chat/sessions?limit=2&offset=0").json()
+    assert page["total"] == 5
+    assert page["limit"] == 2 and page["offset"] == 0
+    assert len(page["sessions"]) == 2
+
+    page2 = client.get("/api/chat/sessions?limit=2&offset=4").json()
+    assert len(page2["sessions"]) == 1  # 5 件中の末尾 1 件
 
 
 def test_update_chat_session_name(tmp_path, monkeypatch):
@@ -2793,6 +2832,54 @@ def test_publishing_login_dedupes_concurrent_flows(tmp_path, monkeypatch):
     assert res.json()["status"] == "login_in_progress"
 
 
+def test_inbox_roi_annotation_and_sort(tmp_path, monkeypatch):
+    """/api/inbox が roi_score/effort_hours を付与し ?sort=roi で並べ替える（拡張）。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    from core.humans.human_tasks import enqueue_human_task
+
+    enqueue_human_task("承認する", platform_home=tmp_path, kind="company_setup", org_name="Co")
+
+    body = client.get("/api/inbox?sort=roi").json()
+    assert body["items"], body
+    first = body["items"][0]
+    assert "roi_score" in first and "effort_hours" in first
+    # roi 降順で並んでいる
+    rois = [i["roi_score"] for i in body["items"]]
+    assert rois == sorted(rois, reverse=True)
+    # min_roi で間引ける（極端に高い閾値で空に）
+    empty = client.get("/api/inbox?sort=roi&min_roi=99999").json()
+    assert empty["items"] == []
+
+
+def test_effort_ranker_pure_scoring():
+    """ROIスコアは収益インパクト×優先度/労力で高収益・低労力を上位にする。"""
+    from core.metrics.effort_ranker import compute_roi_score, estimate_effort_hours, sort_inbox
+
+    quick_high = {
+        "kind": "publish",
+        "category": "external_action",
+        "revenue_impact": 2,
+        "priority": "high",
+    }
+    slow_low = {
+        "kind": "proposal",
+        "category": "new_business",
+        "revenue_impact": 1,
+        "priority": "medium",
+    }
+    for it in (quick_high, slow_low):
+        it["effort_hours"] = estimate_effort_hours(it)
+        it["roi_score"] = compute_roi_score(
+            it["revenue_impact"], it["priority"], it["effort_hours"]
+        )
+    assert quick_high["roi_score"] > slow_low["roi_score"]
+    ordered = sort_inbox([slow_low, quick_high], sort="roi")
+    assert ordered[0] is quick_high
+    # effort ソートは低労力先
+    assert sort_inbox([slow_low, quick_high], sort="effort")[0] is quick_high
+
+
 def test_inbox_aggregates_publish_jobs(tmp_path, monkeypatch):
     from core.publishing.publish_jobs import PublishJob, PublishJobStore
 
@@ -3080,6 +3167,244 @@ def test_daemons_start_and_stop_roundtrip(tmp_path, monkeypatch):
     assert killed["pid"] == 7777
     # 明示 stop で desired state は OFF（watchdog は復元しない）
     assert registry.load_enabled(platform_home=tmp_path)["content"]["enabled"] is False
+
+
+def test_revenue_daemon_start_passes_target_args(tmp_path, monkeypatch):
+    """revenue daemon を Web から起動すると --target/--source-org-name/--min-reach が渡る（P14）。"""
+    import core.runtime.daemon_registry as registry
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_spawn(name, *, args=()):
+        captured["name"] = name
+        captured["args"] = list(args)
+        return {"status": "started", "pid": 4242, "log_path": "x"}
+
+    monkeypatch.setattr(registry, "spawn_daemon", fake_spawn)
+
+    resp = client.post(
+        "/api/daemons/revenue/start",
+        json={"target": 50000, "source_org": "HQ", "min_reach": 100},
+    )
+    assert resp.status_code == 200, resp.text
+    args = captured["args"]
+    assert "--target=50000.0" in args
+    assert "--source-org-name=HQ" in args
+    assert "--min-reach=100.0" in args
+
+    # target 未指定は idle 安全既定（--target=0.0）
+    resp2 = client.post("/api/daemons/revenue/start", json={})
+    assert resp2.status_code == 200
+    assert "--target=0.0" in captured["args"]
+
+
+def test_content_jobs_health_api(tmp_path, monkeypatch):
+    """content-jobs/health が成功率・状態内訳・失敗を集約する（discovery #25）。"""
+    from core.content.content_jobs import ContentJob, ContentJobStore
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = ContentJobStore(platform_home=tmp_path)
+    ok = store.add_job(ContentJob(org_name="Co", kind="content_brief"))
+    store.mark_run(ok.job_id, status="generated")
+    bad = store.add_job(ContentJob(org_name="Co", kind="content_brief"))
+    store.mark_run(bad.job_id, status="no_workspace", detail="repo 未設定")
+    store.add_job(ContentJob(org_name="Co", kind="content_brief"))  # 未実行
+
+    resp = client.get("/api/content-jobs/health")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total_jobs"] == 3
+    assert body["generation_success_rate"] == 0.5  # 2 実行中 1 成功
+    assert any(f["last_status"] == "no_workspace" for f in body["recent_failures"])
+
+
+def test_business_performance_api(tmp_path, monkeypatch):
+    """Business のヘルスサマリ（収益トレンド/handoff 成功率/KPI 状況）を返す（discovery #9）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    client.post(
+        "/api/businesses",
+        json={
+            "name": "BizPerf",
+            "member_orgs": ["VideoCo", "AffCo"],
+            "kpis": ["revenue", "未追跡KPI"],
+        },
+    )
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("AffCo", "revenue", 1000, occurred_at="2026-01-15")
+    store.record("AffCo", "revenue", 1500, occurred_at="2026-02-15")
+    store.record("VideoCo", "impressions", 5000)
+
+    resp = client.get("/api/businesses/BizPerf/performance")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["member_org_count"] == 2
+    assert body["total_revenue"] == 2500
+    assert body["total_reach"] == 5000
+    assert body["revenue_trend"] in {"growing", "flat", "declining", "insufficient"}
+    assert body["kpi_status"]["revenue"] == "tracked"
+    assert body["kpi_status"]["未追跡KPI"] == "no_data"
+    # 未知の business は 404
+    assert client.get("/api/businesses/Nope/performance").status_code == 404
+
+
+def test_benchmark_snapshot_percentiles_and_flags():
+    """build_benchmark_snapshot がコホート内 percentile と外れ値フラグを付ける（拡張 #4）。"""
+    from core.metrics.benchmarking import build_benchmark_snapshot
+
+    snap = build_benchmark_snapshot(
+        [
+            {"org_name": "Top", "revenue": 10000, "reach": 100},  # 高収益・高 ROI
+            {"org_name": "Mid", "revenue": 1000, "reach": 1000},
+            {"org_name": "Burner", "revenue": 100, "reach": 100000},  # 収益あるが ROI 最下位
+        ]
+    )
+    by = {r["org_name"]: r for r in snap}
+    assert by["Top"]["flag"] == "top_performer"  # revenue_percentile>=90
+    assert by["Burner"]["flag"] == "underperformer"  # revenue>0 & roi_percentile<=25
+    assert snap[0]["org_name"] == "Top"  # 収益降順
+
+
+def test_portfolio_overview_api(tmp_path, monkeypatch):
+    """GET /api/portfolio/overview が全 org の ROI/percentile/action＋機会数を集約（拡張 #4）。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("HighROI", "x"))
+    psm.save_organization(create_default_organization("LowROI", "y"))
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("HighROI", "impressions", 100)
+    store.record("HighROI", "revenue", 500)
+    store.record("LowROI", "impressions", 1000)
+    store.record("LowROI", "revenue", 100)
+
+    body = client.get("/api/portfolio/overview").json()
+    assert body["org_count"] == 2 and body["total_revenue"] == 600
+    # ROI 降順（HighROI が先頭）
+    assert body["orgs"][0]["org_name"] == "HighROI"
+    assert "roi" in body["orgs"][0] and "action" in body["orgs"][0]
+    assert "pending_handoffs" in body and "new_business_candidates" in body
+
+
+def test_revenue_goal_status_api(tmp_path, monkeypatch):
+    """GET /api/hq/revenue/goal-status が到達状況＋backpressure を返す（拡張 #7）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, occurred_at="2026-01-15")
+    store.record("Co", "revenue", 200, occurred_at="2026-02-15")
+    store.record("Co", "revenue", 300, occurred_at="2026-03-15")
+
+    body = client.get("/api/hq/revenue/goal-status?target=2000").json()
+    assert body["target"] == 2000
+    assert body["backpressure_level"] == "strong"
+    assert body["forecast_gap"] > 0
+    # target 必須（欠落 422）
+    assert client.get("/api/hq/revenue/goal-status").status_code == 422
+
+
+def test_revenue_integrity_api_and_estimate_flags(tmp_path, monkeypatch):
+    """確定収益 API＋予測系の estimate フラグ（偽データで収益化を虚偽しない原則）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    # 確定データ無し → warning が付く
+    empty = client.get("/api/metrics/revenue/integrity").json()
+    assert empty["has_confirmed_data"] is False and empty["warning"]
+
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 1000, source="note", occurred_at="2026-01-15")
+    store.record("Co", "revenue", 2000, source="note", occurred_at="2026-02-15")
+
+    integ = client.get("/api/metrics/revenue/integrity").json()
+    assert integ["confirmed_revenue"] == 3000 and integ["has_confirmed_data"] is True
+
+    # 予測系は estimate=True ＋ 免責を必ず返す（確定収益と誤認させない）
+    for path in (
+        "/api/metrics/revenue/intelligence",
+        "/api/metrics/revenue/projection?target=10000",
+        "/api/metrics/revenue/forecast-extended?months=3",
+        "/api/hq/revenue/goal-status?target=10000",
+    ):
+        body = client.get(path).json()
+        assert body.get("estimate") is True, path
+        assert body.get("disclaimer"), path
+
+
+def test_revenue_attribution_api(tmp_path, monkeypatch):
+    """GET /api/revenue/attribution がチャネル別 %内訳を返す（org / business ロールアップ）（拡張 #2A）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("VideoCo", "revenue", 750, source="note")
+    store.record("AffCo", "revenue", 250, source="affiliate")
+    client.post("/api/businesses", json={"name": "SVA", "member_orgs": ["VideoCo", "AffCo"]})
+
+    body = client.get("/api/revenue/attribution").json()
+    assert body["total_revenue"] == 1000
+    top = body["channels"][0]
+    assert top["channel"] == "note" and top["pct"] == 75.0
+    # business ロールアップ
+    biz = client.get("/api/revenue/attribution?business_id=SVA").json()
+    assert biz["scope"] == "business:SVA" and biz["total_revenue"] == 1000
+    # 未知 business は 404
+    assert client.get("/api/revenue/attribution?business_id=Nope").status_code == 404
+
+
+def test_revenue_projection_api(tmp_path, monkeypatch):
+    """GET /api/metrics/revenue/projection が目標到達射影を返す（新能力）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, occurred_at="2026-01-15")
+    store.record("Co", "revenue", 200, occurred_at="2026-02-15")
+    store.record("Co", "revenue", 300, occurred_at="2026-03-15")
+
+    resp = client.get("/api/metrics/revenue/projection?target=600")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["target"] == 600 and body["on_track"] is True
+    assert body["months_to_target"] == 3
+    # target は必須（欠落は 422）
+    assert client.get("/api/metrics/revenue/projection").status_code == 422
+
+
+def test_metrics_efficiency_api(tmp_path, monkeypatch):
+    """組織別 ROI 効率とランクを返す（discovery #7）。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("HighROI", "x"))
+    psm.save_organization(create_default_organization("LowROI", "y"))
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("HighROI", "impressions", 100)
+    store.record("HighROI", "revenue", 500)  # ROI 5.0
+    store.record("LowROI", "impressions", 1000)
+    store.record("LowROI", "revenue", 100)  # ROI 0.1
+
+    resp = client.get("/api/metrics/efficiency")
+    assert resp.status_code == 200, resp.text
+    by_name = {o["org_name"]: o for o in resp.json()["orgs"]}
+    assert by_name["HighROI"]["roi"] > by_name["LowROI"]["roi"]
+    assert by_name["HighROI"]["efficiency_rank"] < by_name["LowROI"]["efficiency_rank"]
 
 
 def test_combined_execution_history_tolerates_null_timestamp(monkeypatch):

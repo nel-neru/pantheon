@@ -85,8 +85,10 @@ class ContextCompactor:
             return self._budgets.fit_context(context, task_type)
 
         try:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(compacted, encoding="utf-8")
+            from core.persistence import atomic_write_text
+
+            # 原子的に書く（圧縮キャッシュの torn write で毎回再圧縮しトークンを浪費しないため）。
+            atomic_write_text(cache_path, compacted)
         except OSError as exc:  # pragma: no cover - キャッシュ失敗は致命でない
             logger.debug("failed to cache compaction: %s", exc)
         return compacted

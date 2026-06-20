@@ -219,6 +219,42 @@ def test_install_video_production_archetype(tmp_path):
     assert len(org.divisions) >= 1
 
 
+def test_install_division_category_overrides_keyword_inference(tmp_path):
+    """divisions の dict {name, category} は category から正しい型を組む（P20・generic 退避を回避）。"""
+    from core.models.organization import DivisionType
+    from core.platform.state import PlatformStateManager
+
+    catalog = tmp_path / "company_plugins.yaml"
+    catalog.write_text(
+        yaml.safe_dump(
+            {
+                "plugins": [
+                    {
+                        "id": "typed_co",
+                        "label": "型付き会社",
+                        "genre": "x",
+                        "initial_kpis": ["k"],
+                        "divisions": [
+                            # キーワードに当たらない名前でも category で monetization になる。
+                            {"name": "プロダクトQ", "category": "monetization"},
+                            # 文字列は従来どおりキーワード推定（集客→audience_development）。
+                            "集客部",
+                        ],
+                    }
+                ]
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    psm = PlatformStateManager(platform_home=tmp_path)
+    result = install_company_plugin("typed_co", psm=psm, catalog_path=catalog)
+    org = psm.load_organization_by_name(result["org_name"])
+    types = {d.name: d.type for d in org.divisions}
+    assert types["プロダクトQ"] == DivisionType.MONETIZATION  # category 指定が効く
+    assert types["集客部"] == DivisionType.AUDIENCE_DEVELOPMENT  # 文字列はキーワード推定
+
+
 def test_cli_install_company_wired():
     """会社プラグイン install が CLI からも叩ける（GUI 専用だった差を解消）。"""
     from commands import build_parser

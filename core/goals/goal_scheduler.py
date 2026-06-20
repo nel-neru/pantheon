@@ -27,14 +27,34 @@ class GoalScheduler:
         self._executions: list[GoalExecution] = []
 
     def submit_goal(self, goal_type: str, description: str) -> GoalExecution:
+        # started_at は「実行開始時刻」。submit 時点は status="pending"（未実行）なので
+        # ここでは刻まない（誤って投入時刻が実行開始時刻として記録され、タイミング分析が
+        # 狂うのを防ぐ）。実行開始時に start_execution() で刻む。
         execution = GoalExecution(
             execution_id=f"exec:{uuid4().hex[:8]}",
             goal_type=goal_type,
             description=description,
-            started_at=datetime.now(timezone.utc).isoformat(),
         )
         self._executions.append(execution)
         return execution
+
+    def start_execution(self, execution_id: str) -> bool:
+        """対象を running に遷移し、実行開始時刻（started_at）を刻む。見つからなければ False。"""
+        for execution in self._executions:
+            if execution.execution_id == execution_id:
+                execution.status = "running"
+                execution.started_at = datetime.now(timezone.utc).isoformat()
+                return True
+        return False
+
+    def complete_execution(self, execution_id: str, *, status: str = "completed") -> bool:
+        """対象を終了状態に遷移し、完了時刻（completed_at）を刻む。見つからなければ False。"""
+        for execution in self._executions:
+            if execution.execution_id == execution_id:
+                execution.status = status
+                execution.completed_at = datetime.now(timezone.utc).isoformat()
+                return True
+        return False
 
     def get_active_executions(self) -> list[GoalExecution]:
         return [

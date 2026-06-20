@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
-import { beforeEach, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RevenuePage } from '../RevenuePage'
 import { mockApi } from '@/test/mocks'
@@ -53,16 +53,82 @@ const emptyMetrics: Metrics = { orgs: [], total_revenue: 0, total_reach: 0 }
 const emptyReport: Report = { by_month: {}, total_revenue: 0 }
 const insufficientIntel: Intel = { trend: 'insufficient', latest_change_pct: null, forecast_next: 0 }
 
-/** mockApi をパス別に応答させる（load は revenue / report / intelligence / hq portfolio を並列取得）。 */
-function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
+const daemonsStatus = {
+  daemons: {
+    revenue: { name: 'revenue', running: false, pid: null, last_heartbeat: null },
+  },
+}
+
+const daemonsStatusRunning = {
+  daemons: {
+    revenue: { name: 'revenue', running: true, pid: 1234, last_heartbeat: '2026-06-20T10:00:00Z' },
+  },
+}
+
+const integrityWithData = {
+  org_name: null,
+  confirmed_revenue: 12000,
+  recorded_event_count: 3,
+  has_confirmed_data: true,
+  confirmed_sources: ['manual', 'affiliate'],
+  warning: '',
+}
+
+const integrityNoData = {
+  org_name: null,
+  confirmed_revenue: 0,
+  recorded_event_count: 0,
+  has_confirmed_data: false,
+  confirmed_sources: [],
+  warning: '確定収益データがありません。表示中の予測・見通しは参考値であり、実利益として扱わないでください。',
+}
+
+type ProjectionOpts =
+  | { case: 'reachable'; months: number }
+  | { case: 'unreachable' }
+  | { case: 'met' }
+
+const efficiencyDefault = {
+  orgs: [
+    { org_name: 'Affiliate Revenue', revenue: 12000, reach: 2000, roi: 6, action: '強化投資', efficiency_rank: 1 },
+    { org_name: 'Note Sales', revenue: 0, reach: 5000, roi: 0, action: '収益化優先', efficiency_rank: 2 },
+  ],
+  count: 2,
+}
+
+function makeProjection(p: ProjectionOpts) {
+  const base = { org_name: '', target: 100000, current: 2000, slope_per_month: 500, projected_3mo: 3500 }
+  if (p.case === 'met') return { ...base, on_track: true, months_to_target: 0 }
+  if (p.case === 'unreachable') return { ...base, slope_per_month: -100, on_track: false, months_to_target: null }
+  return { ...base, on_track: true, months_to_target: p.months }
+}
+
+/** mockApi をパス別に応答させる（load は revenue / report / intelligence / hq portfolio / daemons / integrity を並列取得）。 */
+function wireApi(opts?: {
+  metrics?: Metrics
+  report?: Report
+  intel?: Intel
+  daemonRunning?: boolean
+  projection?: ProjectionOpts
+  integrity?: typeof integrityWithData | typeof integrityNoData | null
+}) {
   const m = opts?.metrics ?? metrics
   const r = opts?.report ?? report
   const ai = opts?.intel ?? intel
-  mockApi.mockImplementation((_method: string, path: string) => {
+  const ds = opts?.daemonRunning ? daemonsStatusRunning : daemonsStatus
+  const projectionCase = opts?.projection ?? { case: 'reachable', months: 6 }
+  // integrity defaults to "has data" fixture; pass null to simulate API failure
+  const integ = 'integrity' in (opts ?? {}) ? opts!.integrity : integrityWithData
+  mockApi.mockImplementation((_method: string, path: string, body?: unknown) => {
     if (path === '/api/metrics/revenue') return Promise.resolve(m)
     if (path === '/api/metrics/revenue/report') return Promise.resolve(r)
     if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(ai)
     if (path === '/api/hq/portfolio') return Promise.resolve(portfolio)
+    if (path === '/api/daemons/status') return Promise.resolve(ds)
+    if (path === '/api/metrics/revenue/integrity') {
+      if (integ === null) return Promise.reject(new Error('integrity fetch failed'))
+      return Promise.resolve(integ)
+    }
     if (path === '/api/hq/portfolio/scan') return Promise.resolve({ proposals: 2 })
     if (path.startsWith('/api/hq/portfolio/plan')) {
       return Promise.resolve({
@@ -79,10 +145,21 @@ function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
         ],
       })
     }
+    if (path.startsWith('/api/metrics/revenue/projection')) {
+      return Promise.resolve(makeProjection(projectionCase))
+    }
+    if (path === '/api/metrics/efficiency') return Promise.resolve(efficiencyDefault)
     if (path === '/api/outcomes') return Promise.resolve({ ok: true, event: {} })
+    if (path === '/api/daemons/revenue/start') return Promise.resolve({ name: 'revenue', status: 'started' })
+    if (path === '/api/daemons/revenue/stop') return Promise.resolve({ name: 'revenue', status: 'stopped' })
+    if (path === '/api/outcomes/import') {
+      const b = body as { rows?: unknown[] } | undefined
+      return Promise.resolve({ imported: b?.rows?.length ?? 0, skipped: 0, orgs: ['My Co'] })
+    }
     return Promise.resolve({})
   })
 }
+
 
 // ── 基本表示 ──────────────────────────────────────────────────────────────────
 
@@ -363,4 +440,387 @@ it('API が null/欠落レスポンスを返してもクラッシュしない', 
   // null レスポンスでもクラッシュせずページが描画される
   // data=null なので KPI は「—」または 0 で表示される（空状態含む）
   expect(await screen.findByText('成果データがありません')).toBeInTheDocument()
+})
+
+// ── P14 収益デーモン制御 ──────────────────────────────────────────────────────
+
+describe('P14 収益デーモン制御カード', () => {
+  it('カードが描画される', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('自律経営（収益デーモン）')).toBeInTheDocument()
+  })
+
+  it('daemon 停止中 → 「停止中」バッジを表示する', async () => {
+    wireApi({ daemonRunning: false })
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('停止中')).toBeInTheDocument()
+  })
+
+  it('daemon 稼働中 → 「稼働中」バッジを表示する', async () => {
+    wireApi({ daemonRunning: true })
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('稼働中')).toBeInTheDocument()
+  })
+
+  it('「起動」ボタンで POST /api/daemons/revenue/start を呼ぶ（目標なし）', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営（収益デーモン）')
+    fireEvent.click(screen.getByRole('button', { name: '起動' }))
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('POST', '/api/daemons/revenue/start', {})
+    )
+  })
+
+  it('月次目標を入力して起動すると target を送信する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営（収益デーモン）')
+    fireEvent.change(screen.getByPlaceholderText('月次目標額（円）任意'), {
+      target: { value: '50000' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '起動' }))
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('POST', '/api/daemons/revenue/start', { target: 50000 })
+    )
+  })
+
+  it('「停止」ボタンで POST /api/daemons/revenue/stop を呼ぶ', async () => {
+    wireApi({ daemonRunning: true })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営（収益デーモン）')
+    fireEvent.click(screen.getByRole('button', { name: '停止' }))
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('POST', '/api/daemons/revenue/stop')
+    )
+  })
+})
+
+// ── P22 CSV インポート＋エクスポート ─────────────────────────────────────────
+
+describe('P22 CSV インポート', () => {
+  it('インポートカードが描画される', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('成果データを一括インポート')).toBeInTheDocument()
+  })
+
+  it('CSV テキストを入力してインポートボタンで /api/outcomes/import を呼ぶ', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('成果データを一括インポート')
+
+    const textarea = screen.getByPlaceholderText(/org_name,metric,value,note/)
+    fireEvent.change(textarea, {
+      target: { value: 'org_name,metric,value\nMy Co,revenue,5000' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'インポート' }))
+
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith(
+        'POST',
+        '/api/outcomes/import',
+        expect.objectContaining({ rows: expect.any(Array) })
+      )
+    )
+  })
+
+  it('JSON 配列をインポートすると rows にそのまま渡す', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('成果データを一括インポート')
+
+    const jsonInput = JSON.stringify([{ org_name: 'My Co', metric: 'revenue', value: 8000 }])
+    const textarea = screen.getByPlaceholderText(/org_name,metric,value,note/)
+    fireEvent.change(textarea, { target: { value: jsonInput } })
+    fireEvent.click(screen.getByRole('button', { name: 'インポート' }))
+
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('POST', '/api/outcomes/import', {
+        rows: [{ org_name: 'My Co', metric: 'revenue', value: 8000 }],
+      })
+    )
+  })
+})
+
+describe('P22 CSV エクスポート', () => {
+  it('月次データがあるとき「エクスポート (CSV)」ボタンを有効化する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('月次収益レポート（全組織）')
+    const btn = screen.getByRole('button', { name: /エクスポート \(CSV\)/ })
+    expect(btn).not.toBeDisabled()
+  })
+
+  it('月次データが空のとき「エクスポート (CSV)」ボタンを無効化する', async () => {
+    wireApi({ report: emptyReport })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('月次収益レポート（全組織）')
+    const btn = screen.getByRole('button', { name: /エクスポート \(CSV\)/ })
+    expect(btn).toBeDisabled()
+  })
+
+  it('エクスポートボタンクリックで URL.createObjectURL を呼ぶ', async () => {
+    const createObjectURL = vi.fn().mockReturnValue('blob:test')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(globalThis.URL, 'createObjectURL', { value: createObjectURL, writable: true })
+    Object.defineProperty(globalThis.URL, 'revokeObjectURL', { value: revokeObjectURL, writable: true })
+
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('月次収益レポート（全組織）')
+    fireEvent.click(screen.getByRole('button', { name: /エクスポート \(CSV\)/ }))
+    expect(createObjectURL).toHaveBeenCalled()
+  })
+})
+
+// ── 目標到達の見通し（projection card） ─────────────────────────────────────
+
+describe('目標到達の見通し（projection card）', () => {
+  it('目標入力前は projection card を描画しない', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営プラン（月収益目標）')
+    expect(screen.queryByText('目標到達の見通し')).not.toBeInTheDocument()
+  })
+
+  it('到達可能ケース: 目標を入力すると「約Nか月で到達見込み」を表示する', async () => {
+    wireApi({ projection: { case: 'reachable', months: 6 } })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営プラン（月収益目標）')
+
+    fireEvent.change(screen.getByPlaceholderText('月次目標額（円）'), { target: { value: '100000' } })
+
+    expect(await screen.findByText('目標到達の見通し')).toBeInTheDocument()
+    expect(await screen.findByText('📈 約6か月で到達見込み')).toBeInTheDocument()
+  })
+
+  it('到達不可ケース: months_to_target=null のとき「現トレンドでは到達見込みなし」を表示する', async () => {
+    wireApi({ projection: { case: 'unreachable' } })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営プラン（月収益目標）')
+
+    fireEvent.change(screen.getByPlaceholderText('月次目標額（円）'), { target: { value: '100000' } })
+
+    expect(await screen.findByText(/現トレンドでは到達見込みなし/)).toBeInTheDocument()
+  })
+
+  it('達成済みケース: months_to_target=0 のとき「目標達成済み」を表示する', async () => {
+    wireApi({ projection: { case: 'met' } })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営プラン（月収益目標）')
+
+    fireEvent.change(screen.getByPlaceholderText('月次目標額（円）'), { target: { value: '100000' } })
+
+    expect(await screen.findByText(/目標達成済み/)).toBeInTheDocument()
+  })
+
+  it('月次トレンドと3か月後予測を表示する', async () => {
+    wireApi({ projection: { case: 'reachable', months: 6 } })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営プラン（月収益目標）')
+
+    fireEvent.change(screen.getByPlaceholderText('月次目標額（円）'), { target: { value: '100000' } })
+
+    // slope_per_month=500 → +¥500/月, projected_3mo=3500 → ¥3,500
+    expect(await screen.findByText(/\+¥500\/月/)).toBeInTheDocument()
+    expect(await screen.findByText('¥3,500')).toBeInTheDocument()
+  })
+
+  it('目標が空のとき GET /api/metrics/revenue/projection を呼ばない', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営プラン（月収益目標）')
+
+    // 空入力では projection fetch を呼ばない
+    fireEvent.change(screen.getByPlaceholderText('月次目標額（円）'), { target: { value: '' } })
+    expect(mockApi).not.toHaveBeenCalledWith('GET', expect.stringContaining('/api/metrics/revenue/projection'))
+  })
+})
+
+// ── 収益効率ランキング（efficiency card） ───────────────────────────────────
+
+describe('収益効率ランキング（efficiency card）', () => {
+  it('収益効率ランキングカードを表示する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('収益効率ランキング')).toBeInTheDocument()
+  })
+
+  it('efficiency_rank 昇順でランキングを表示する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('収益効率ランキング')
+
+    // #1 が #2 より先に描画される
+    const rows = await screen.findAllByText(/#[12]/)
+    expect(rows[0].textContent).toBe('#1')
+    expect(rows[1].textContent).toBe('#2')
+  })
+
+  it('各行に roi・revenue・reach・action を表示する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('収益効率ランキング')
+
+    // ROI=6 → ¥6, revenue=12000 → ¥12,000
+    expect(await screen.findByText('強化投資')).toBeInTheDocument()
+    expect(await screen.findByText('収益化優先')).toBeInTheDocument()
+  })
+
+  it('空データのとき「データがありません」を表示する', async () => {
+    mockApi.mockImplementation((_method: string, path: string) => {
+      if (path === '/api/metrics/revenue') return Promise.resolve(metrics)
+      if (path === '/api/metrics/revenue/report') return Promise.resolve(report)
+      if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(intel)
+      if (path === '/api/hq/portfolio') return Promise.resolve(portfolio)
+      if (path === '/api/daemons/status') return Promise.resolve(daemonsStatus)
+      if (path === '/api/metrics/revenue/integrity') return Promise.resolve(integrityWithData)
+      if (path === '/api/metrics/efficiency') return Promise.resolve({ orgs: [], count: 0 })
+      return Promise.resolve({})
+    })
+    renderWithRouter(<RevenuePage />)
+    // 効率カード内の「データがありません」を id で特定する
+    expect(await screen.findByText('データがありません。成果を記録すると表示されます。')).toBeInTheDocument()
+  })
+
+  it('efficiency API エラー時にエラーメッセージをカード内に表示する', async () => {
+    mockApi.mockImplementation((_method: string, path: string) => {
+      if (path === '/api/metrics/revenue') return Promise.resolve(metrics)
+      if (path === '/api/metrics/revenue/report') return Promise.resolve(report)
+      if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(intel)
+      if (path === '/api/hq/portfolio') return Promise.resolve(portfolio)
+      if (path === '/api/daemons/status') return Promise.resolve(daemonsStatus)
+      if (path === '/api/metrics/efficiency') return Promise.reject(new Error('効率ランキングの読み込みに失敗しました。'))
+      return Promise.resolve({})
+    })
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('効率ランキングの読み込みに失敗しました。')).toBeInTheDocument()
+  })
+
+  it('numeric フィールドが欠落していてもクラッシュしない（数値 coerce）', async () => {
+    mockApi.mockImplementation((_method: string, path: string) => {
+      if (path === '/api/metrics/revenue') return Promise.resolve(metrics)
+      if (path === '/api/metrics/revenue/report') return Promise.resolve(report)
+      if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(intel)
+      if (path === '/api/hq/portfolio') return Promise.resolve(portfolio)
+      if (path === '/api/daemons/status') return Promise.resolve(daemonsStatus)
+      if (path === '/api/metrics/efficiency') return Promise.resolve({
+        orgs: [{ org_name: 'Broken Org', revenue: null, reach: undefined, roi: 'bad', action: '', efficiency_rank: 1 }],
+        count: 1,
+      })
+      return Promise.resolve({})
+    })
+    renderWithRouter(<RevenuePage />)
+    // クラッシュしないこと、組織名が表示されること
+    expect(await screen.findByText('Broken Org')).toBeInTheDocument()
+  })
+})
+
+// ── 確定収益データ整合性 (revenue integrity) ──────────────────────────────────
+
+describe('確定収益データ整合性カード', () => {
+  it('確定収益合計と件数を表示する', async () => {
+    wireApi({ integrity: integrityWithData })
+    renderWithRouter(<RevenuePage />)
+    // 確定収益カードの合計: ¥12,000
+    expect(await screen.findByText('確定収益（記録済み実データ）')).toBeInTheDocument()
+    expect(screen.getByText(/確定収益合計/)).toBeInTheDocument()
+    // ¥12,000 は KPI カードにも出るので confirmed-revenue-total id で特定
+    const totalEl = document.getElementById('confirmed-revenue-total')
+    expect(totalEl?.textContent).toContain('12,000')
+    // 件数: 3件
+    const countEl = document.getElementById('confirmed-revenue-count')
+    expect(countEl?.textContent).toContain('3')
+  })
+
+  it('confirmed_sources をチップ（badge）として表示する', async () => {
+    wireApi({ integrity: integrityWithData })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('確定収益（記録済み実データ）')
+    // 'manual' と 'affiliate' がソースチップとして表示される
+    expect(screen.getByText('manual')).toBeInTheDocument()
+    expect(screen.getByText('affiliate')).toBeInTheDocument()
+  })
+
+  it('has_confirmed_data=false のとき警告バナーを表示する', async () => {
+    wireApi({ integrity: integrityNoData })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('確定収益（記録済み実データ）')
+    // 警告バナーが表示される（role=alert）
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // バナー見出し（複数マッチ回避に getAllByText を使用）
+    const matches = screen.getAllByText(/確定収益データがありません/)
+    expect(matches.length).toBeGreaterThan(0)
+    // バナー内の warning テキストが含まれる
+    expect(screen.getByText(/実利益として扱わないでください/)).toBeInTheDocument()
+  })
+
+  it('has_confirmed_data=true のとき警告バナーを表示しない', async () => {
+    wireApi({ integrity: integrityWithData })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('確定収益（記録済み実データ）')
+    // role=alert のバナーは出てはいけない
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('integrity API が失敗してもページがクラッシュしない（.catch で absorb される）', async () => {
+    wireApi({ integrity: null })
+    renderWithRouter(<RevenuePage />)
+    // integrity カード自体は非表示だがページは壊れない
+    expect(await screen.findByText('収益ダッシュボード')).toBeInTheDocument()
+    expect(screen.queryByText('確定収益（記録済み実データ）')).not.toBeInTheDocument()
+  })
+
+  it('confirmed_revenue が null/NaN のとき安全に「—」を表示する（数値 coerce）', async () => {
+    wireApi({
+      integrity: {
+        ...integrityWithData,
+        confirmed_revenue: null as unknown as number,
+        recorded_event_count: undefined as unknown as number,
+      },
+    })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('確定収益（記録済み実データ）')
+    // coerce で 0 になり ¥0 または — を表示（クラッシュしない）
+    expect(screen.getByText('確定収益（記録済み実データ）')).toBeInTheDocument()
+  })
+})
+
+// ── 予測セクションの「概算」ラベル ────────────────────────────────────────────
+
+describe('予測セクションの概算ラベル', () => {
+  it('収益トレンドカードに「予測」バッジを表示する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('収益トレンド（全組織）')
+    // 「予測」バッジが trend カード内に存在する
+    const trendEstimateLabel = document.getElementById('trend-estimate-label')
+    expect(trendEstimateLabel).toBeInTheDocument()
+    expect(trendEstimateLabel?.textContent).toBe('予測')
+  })
+
+  it('収益トレンドカードに「概算・確定収益ではありません」免責文を表示する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('収益トレンド（全組織）')
+    const disclaimer = document.getElementById('trend-disclaimer')
+    expect(disclaimer).toBeInTheDocument()
+    expect(disclaimer?.textContent).toContain('概算・確定収益ではありません')
+  })
+
+  it('目標到達の見通しカードに「予測」バッジと免責文を表示する', async () => {
+    wireApi({ projection: { case: 'reachable', months: 4 } })
+    renderWithRouter(<RevenuePage />)
+    // projection card は targetInput を入力後に表示される。先にページが描画されるのを待つ
+    await screen.findByText('自律経営プラン（月収益目標）')
+    fireEvent.change(screen.getByPlaceholderText('月次目標額（円）'), { target: { value: '80000' } })
+
+    expect(await screen.findByText('目標到達の見通し')).toBeInTheDocument()
+    const projLabel = document.getElementById('projection-estimate-label')
+    expect(projLabel?.textContent).toBe('予測')
+    const projDisclaimer = document.getElementById('projection-disclaimer')
+    expect(projDisclaimer?.textContent).toContain('概算・確定収益ではありません')
+  })
 })

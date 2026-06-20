@@ -54,6 +54,114 @@ def test_unknown_bucket_excluded():
     assert a["trend"] == "growing"
 
 
+def test_forecast_confidence_band_brackets_point_estimate():
+    """予測バンドは点推定を挟み、下限は 0 未満にならない（finding 15）。"""
+    a = analyze_revenue({"2026-01": 100, "2026-02": 150, "2026-03": 225})
+    assert a["forecast_lower"] <= a["forecast_next"] <= a["forecast_upper"]
+    assert a["forecast_lower"] >= 0.0
+
+
+def test_forecast_band_widens_with_volatility():
+    """成長率のばらつきが大きいほどバンドは広い（一定成長はスプレッド 0）。"""
+    steady = analyze_revenue({"2026-01": 100, "2026-02": 110, "2026-03": 121})  # +10% 一定
+    volatile = analyze_revenue({"2026-01": 100, "2026-02": 200, "2026-03": 210})  # +100%,+5%
+    steady_width = steady["forecast_upper"] - steady["forecast_lower"]
+    volatile_width = volatile["forecast_upper"] - volatile["forecast_lower"]
+    assert steady_width == 0.0  # 一定成長 → ばらつき無し
+    assert volatile_width > steady_width
+
+
+def test_insufficient_data_band_is_point():
+    a = analyze_revenue({"2026-06": 1000})
+    assert a["forecast_lower"] == a["forecast_next"] == a["forecast_upper"] == 1000.0
+
+
+def test_compute_goal_status_levels():
+    """backpressure: 予測>=target=on_track / >=0.8*target=mild / 未満=strong。"""
+    from core.metrics.revenue_intelligence import compute_goal_status
+
+    # +100/月、直近 300 → 翌月予測 ~400+。target 300 は on_track。
+    on_track = compute_goal_status({"2026-01": 100, "2026-02": 200, "2026-03": 300}, 300)
+    assert on_track["backpressure_level"] == "on_track"
+    assert on_track["attainment_pct"] == 100.0
+    # target 2000 は予測が大きく下回る → strong
+    strong = compute_goal_status({"2026-01": 100, "2026-02": 200, "2026-03": 300}, 2000)
+    assert strong["backpressure_level"] == "strong"
+    assert strong["forecast_gap"] > 0
+    # 横ばいで target がすぐ上 → mild レンジ
+    mild = compute_goal_status({"2026-01": 850, "2026-02": 850, "2026-03": 850}, 1000)
+    assert mild["backpressure_level"] == "mild"
+
+
+def test_analyze_revenue_extended_perfect_linear():
+    """完全線形系列は R²=1.0、傾きを正しく外挿する（多か月 OLS 予測）。"""
+    from core.metrics.revenue_intelligence import analyze_revenue_extended
+
+    a = analyze_revenue_extended({"2026-01": 100, "2026-02": 200, "2026-03": 300}, horizon=3)
+    assert a["slope_per_month"] == 100.0
+    assert a["r_squared"] == 1.0
+    assert a["trend"] == "growing"
+    assert a["forecast"] == [400.0, 500.0, 600.0]
+
+
+def test_analyze_revenue_extended_floors_at_zero_and_insufficient():
+    from core.metrics.revenue_intelligence import analyze_revenue_extended
+
+    # 急減トレンドでも予測は 0 未満にならない
+    a = analyze_revenue_extended({"2026-01": 300, "2026-02": 100}, horizon=5)
+    assert all(v >= 0.0 for v in a["forecast"])
+    # 1 点は insufficient
+    b = analyze_revenue_extended({"2026-01": 500}, horizon=3)
+    assert b["trend"] == "insufficient"
+
+
+def test_project_to_target_reachable_growing():
+    """上昇トレンドなら目標到達までの月数を回帰 run-rate で射影する（新能力）。"""
+    from core.metrics.revenue_intelligence import project_to_target
+
+    # +100/月の一定トレンド、直近 300、目標 600 → あと 3 か月。
+    p = project_to_target({"2026-01": 100, "2026-02": 200, "2026-03": 300}, 600)
+    assert p["current"] == 300
+    assert p["slope_per_month"] == 100.0
+    assert p["on_track"] is True
+    assert p["months_to_target"] == 3
+    assert p["projected_3mo"] == 600.0
+
+
+def test_project_to_target_already_met():
+    from core.metrics.revenue_intelligence import project_to_target
+
+    p = project_to_target({"2026-01": 500, "2026-02": 1200}, 1000)
+    assert p["months_to_target"] == 0 and p["on_track"] is True
+
+
+def test_project_to_target_declining_is_unreachable():
+    from core.metrics.revenue_intelligence import project_to_target
+
+    p = project_to_target({"2026-01": 500, "2026-02": 400, "2026-03": 300}, 1000)
+    assert p["on_track"] is False and p["months_to_target"] is None
+    assert p["slope_per_month"] < 0
+
+
+def test_revenue_by_month_date_range_filter(tmp_path):
+    """revenue_by_month が start_date/end_date で期間を絞る（finding 24）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, occurred_at="2026-01-10")
+    store.record("Co", "revenue", 200, occurred_at="2026-02-10")
+    store.record("Co", "revenue", 400, occurred_at="2026-03-10")
+
+    full = store.revenue_by_month("Co")
+    assert full == {"2026-01": 100, "2026-02": 200, "2026-03": 400}
+    # 2 月以降のみ
+    feb_on = store.revenue_by_month("Co", start_date="2026-02-01")
+    assert feb_on == {"2026-02": 200, "2026-03": 400}
+    # 1〜2 月のみ
+    jan_feb = store.revenue_by_month("Co", start_date="2026-01-01", end_date="2026-02-28")
+    assert jan_feb == {"2026-01": 100, "2026-02": 200}
+
+
 def test_revenue_impact_rank_high_medium_none():
     from core.metrics.revenue_intelligence import revenue_impact_rank
 

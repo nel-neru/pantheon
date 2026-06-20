@@ -99,8 +99,9 @@ class CodebaseExplorerAgent(BaseAgent):
                 output=payload,
                 thinking_process=f"{Path(repo_path_str).name} のコードベースを {mode} モードで調査",
                 execution_log=(
-                    f"Index: {payload['index_stats'].get('total_files', 0)}ファイル, "
-                    f"Context: ~{payload['estimated_tokens']}トークン, {payload['elapsed_ms']}ms"
+                    f"Index: {payload.get('index_stats', {}).get('total_files', 0)}ファイル, "
+                    f"Context: ~{payload.get('estimated_tokens', 0)}トークン, "
+                    f"{payload.get('elapsed_ms', 0)}ms"
                 ),
             )
         except Exception as exc:
