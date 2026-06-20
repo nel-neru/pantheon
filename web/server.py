@@ -308,12 +308,19 @@ def _save_session(session: dict[str, Any]) -> None:
     atomic_write_text(path, json.dumps(session, ensure_ascii=False, indent=2))
 
 
-def _list_sessions() -> list[dict[str, Any]]:
+def _list_sessions(limit: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
     _ensure_chat_sessions_dir()
-    sessions = []
-    for path in sorted(
+    # mtime 降順でソートしてから limit/offset で先に切り、必要分だけ json.load する
+    # （数千セッションでも全件 load+parse しない＝メモリ churn 抑制）。
+    paths = sorted(
         _chat_sessions_dir().glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
-    ):
+    )
+    if offset:
+        paths = paths[offset:]
+    if limit is not None:
+        paths = paths[:limit]
+    sessions = []
+    for path in paths:
         try:
             with path.open(encoding="utf-8") as f:
                 session = json.load(f)
@@ -5254,8 +5261,17 @@ async def api_chat(body: ChatRequest) -> Dict[str, str]:
 
 
 @app.get("/api/chat/sessions")
-async def list_chat_sessions() -> Dict[str, list[dict[str, Any]]]:
-    return {"sessions": _list_sessions()}
+async def list_chat_sessions(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+    """チャットセッション一覧（mtime 降順）。limit/offset でページング（既定 100 件）。"""
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    total = sum(1 for _ in _chat_sessions_dir().glob("*.json"))
+    return {
+        "sessions": _list_sessions(limit=limit, offset=offset),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @app.post("/api/chat/sessions")

@@ -1277,6 +1277,21 @@ def test_chat_session_crud(tmp_path, monkeypatch):
     assert missing_resp.status_code == 404
 
 
+def test_chat_sessions_pagination(tmp_path, monkeypatch):
+    """/api/chat/sessions が limit/offset でページングし total を返す（discovery #27）。"""
+    _set_chat_sessions_dir(tmp_path, monkeypatch)
+    for i in range(5):
+        client.post("/api/chat/sessions", json={"name": f"S{i}"})
+
+    page = client.get("/api/chat/sessions?limit=2&offset=0").json()
+    assert page["total"] == 5
+    assert page["limit"] == 2 and page["offset"] == 0
+    assert len(page["sessions"]) == 2
+
+    page2 = client.get("/api/chat/sessions?limit=2&offset=4").json()
+    assert len(page2["sessions"]) == 1  # 5 件中の末尾 1 件
+
+
 def test_update_chat_session_name(tmp_path, monkeypatch):
     _set_chat_sessions_dir(tmp_path, monkeypatch)
 
