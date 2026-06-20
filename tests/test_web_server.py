@@ -3136,6 +3136,29 @@ def test_revenue_daemon_start_passes_target_args(tmp_path, monkeypatch):
     assert "--target=0.0" in captured["args"]
 
 
+def test_content_jobs_health_api(tmp_path, monkeypatch):
+    """content-jobs/health が成功率・状態内訳・失敗を集約する（discovery #25）。"""
+    from core.content.content_jobs import ContentJob, ContentJobStore
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = ContentJobStore(platform_home=tmp_path)
+    ok = store.add_job(ContentJob(org_name="Co", kind="content_brief"))
+    store.mark_run(ok.job_id, status="generated")
+    bad = store.add_job(ContentJob(org_name="Co", kind="content_brief"))
+    store.mark_run(bad.job_id, status="no_workspace", detail="repo 未設定")
+    store.add_job(ContentJob(org_name="Co", kind="content_brief"))  # 未実行
+
+    resp = client.get("/api/content-jobs/health")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total_jobs"] == 3
+    assert body["generation_success_rate"] == 0.5  # 2 実行中 1 成功
+    assert any(f["last_status"] == "no_workspace" for f in body["recent_failures"])
+
+
 def test_business_performance_api(tmp_path, monkeypatch):
     """Business のヘルスサマリ（収益トレンド/handoff 成功率/KPI 状況）を返す（discovery #9）。"""
     from core.metrics.outcomes import OutcomeStore

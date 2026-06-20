@@ -2225,6 +2225,45 @@ async def api_run_content_job(job_id: str) -> Dict[str, Any]:
     return result
 
 
+@app.get("/api/content-jobs/health", tags=["content"])
+async def api_content_jobs_health() -> Dict[str, Any]:
+    """コンテンツ生成ジョブの健全性サマリ（成功率・要対応・滞留の検知）。
+
+    last_status=="generated" を成功とみなし、実行済み（run_count>0）ジョブ中の成功率を出す。
+    サイレント失敗（"scheduled" のまま滞留・繰り返しエラー）を一望できる。
+    """
+    jobs = _content_job_store().list_jobs()
+    by_status: Dict[str, int] = {}
+    succeeded = ran = 0
+    failures: List[Dict[str, Any]] = []
+    for j in jobs:
+        by_status[j.last_status] = by_status.get(j.last_status, 0) + 1
+        if j.run_count > 0:
+            ran += 1
+            if j.last_status == "generated":
+                succeeded += 1
+            else:
+                failures.append(
+                    {
+                        "job_id": j.job_id,
+                        "org_name": j.org_name,
+                        "last_status": j.last_status,
+                        "last_detail": j.last_detail,
+                        "last_run_at": j.last_run_at,
+                    }
+                )
+    failures.sort(key=lambda f: f.get("last_run_at") or "", reverse=True)
+    return {
+        "total_jobs": len(jobs),
+        "enabled_jobs": sum(1 for j in jobs if j.enabled),
+        "jobs_due_now": sum(1 for j in jobs if j.is_due()),
+        "total_runs": sum(j.run_count for j in jobs),
+        "generation_success_rate": round(succeeded / ran, 4) if ran else None,
+        "jobs_by_status": by_status,
+        "recent_failures": failures[:5],
+    }
+
+
 @app.get("/api/content-daemon/status", tags=["content"])
 async def api_content_daemon_status() -> Dict[str, Any]:
     return _content_daemon_status_payload()
