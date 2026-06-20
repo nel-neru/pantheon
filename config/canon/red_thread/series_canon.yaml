@@ -1,0 +1,43 @@
+# RED THREAD シリーズ正典 — 世界設定・赤い糸ルール・連載アーク・ledger。
+#
+# 各話は独立して見られるが、約 serialized_arc_ratio 話に1話が背景の謎
+# （誰が赤い糸を置くのか）を密かに進める。episode_brief はここを参照し、
+# 1話目から連続性が成立した状態でエピソードを起票する。
+
+premise: >-
+  どこにでもある静かな港町。毎話、優しく見える日常の場面が、たった一つの twist で
+  別の意味へ反転する。画面のどこかに必ず一本の赤い糸が映り込み、視聴者の「探す」遊びになる。
+
+red_thread_rules:
+  - 毎フレームのどこかに赤い糸を一本だけ配置する（時に装飾、時に twist の蝶番）
+  - 赤い糸は thread_red のみ。他に純赤は使わない（視線誘導を独占させる）
+  - twist は「優しい導入 → 一つの再文脈化」の2ビート厳守。台詞ゼロ
+
+structure:
+  beats: 2                     # kind setup -> one recontextualizing twist
+  shorts_max_seconds: 45
+  longform_minutes: [8, 12]
+  longform_recipe: 既出ミニ話 5-8 本 + 新作 feature 1 本のアンソロジー
+
+arc:
+  title: 30話アーク
+  acts:
+    - { name: Thread Appears（糸が現れる）, episodes: "1-10" }
+    - { name: Thread Tested（糸が試される）, episodes: "11-20" }
+    - { name: Thread Unwinds（糸がほどける）, episodes: "21-30" }
+
+serialized_arc_ratio: 5        # 約5話に1話が arc を進める
+
+# 初期エピソード企画（連続性を1話目から成立させる種）。残りは企画・カノン事業部が
+# arc に沿って自動で起票する。logline は : や引用符を避けたプレーン記述。
+backlog:
+  - { ep: 1, logline: 灯台守が毎晩灯す光は帰らぬ船を待つ赤い糸の先の誰かへ向いていた, advances_arc: true,  cast: [lighthouse_keeper] }
+  - { ep: 2, logline: 迷子が赤い糸をたぐると糸の先は自宅ではなく老猫の隠れ家だった,       advances_arc: false, cast: [lost_kid, old_cat] }
+  - { ep: 3, logline: 親切な異邦人が落とし物を返すが返したのは品物ではなく忘れた記憶だった, advances_arc: true,  cast: [stranger] }
+  - { ep: 4, logline: 老猫が毎朝同じ窓辺に座る理由は赤い糸で結ばれた約束の相手を待つため,   advances_arc: false, cast: [old_cat] }
+  - { ep: 5, logline: 港の灯が一斉に消えた夜に赤い糸だけが町中を静かに繋いでいた,           advances_arc: true,  cast: [lighthouse_keeper, stranger] }
+
+# 連載の伏線 payoff 追跡。新エントリは Series-Bible Keeper が追記し、
+# 「The Longest Thread が過去5話を繋ぐ」等のコールバックを正確にする。
+ledger:
+  - { episode: 1, plants: 赤い糸の起点は灯台, pays_off_in: [] }

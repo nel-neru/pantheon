@@ -144,6 +144,41 @@ def _division_spec_from_entry(entry: Any) -> Optional[Dict[str, Any]]:
     return _division_spec_from_name(name)
 
 
+def _seed_canon(workspace: Path, template: str) -> int:
+    """``config/canon/<template>/*.yaml`` を ``<workspace>/canon/`` へ複製する（best-effort）。
+
+    収益モデル会社に「独自性・継続性」を初日から永続 state として持たせるための汎用機構
+    （manifest の ``canon_template`` キーで任意指定・後方互換）。例: RED THREAD のスタイル
+    バイブル / キャラ登録簿 / シリーズ正典。既存ファイルは**上書きしない**（運用中の改訂を
+    保護＝冪等）。失敗しても install を止めない。複製した枚数を返す。
+    """
+    name = str(template).strip()
+    if not name:
+        return 0
+    try:
+        src = resource_path("config", "canon", name)
+    except Exception:  # noqa: BLE001 — リソース解決失敗で install を止めない
+        return 0
+    if not src.exists() or not src.is_dir():
+        return 0
+    dest = workspace / "canon"
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return 0
+    copied = 0
+    for f in sorted(src.glob("*.yaml")):
+        target = dest / f.name
+        if target.exists():
+            continue  # 既存は保護（改訂を踏まない）
+        try:
+            target.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+            copied += 1
+        except OSError:
+            continue
+    return copied
+
+
 def install_company_plugin(
     plugin_id: str,
     *,
@@ -196,6 +231,10 @@ def install_company_plugin(
         ws.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
+
+    # カノンテンプレート（スタイルバイブル/キャラ登録簿/シリーズ正典 等）をワークスペースへ
+    # 展開する。manifest に canon_template があるときだけ働く（任意・後方互換）。
+    canon_files = _seed_canon(ws, str(manifest.get("canon_template") or ""))
 
     purpose = str(manifest.get("description") or "").strip() or f"{org_name}（会社プラグイン）"
     org = Organization(
@@ -251,4 +290,5 @@ def install_company_plugin(
         "initial_kpis": list(manifest.get("initial_kpis") or []),
         "management_mode": org.management_mode,
         "workspace_path": org.workspace_path,
+        "canon_files": canon_files,
     }

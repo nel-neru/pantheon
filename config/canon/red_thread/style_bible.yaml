@@ -1,0 +1,52 @@
+# RED THREAD（赤い糸）スタイルバイブル — 不変のアートディレクション。
+#
+# 全エピソードの全カット画像プロンプトに、この style_suffix とネガティブプロンプトを
+# 必ず注入することで「AI臭」と絵柄の崩れを設計段階で排除する。
+# = 独自性（署名スタイルの一貫性）の moat。company plugin install 時に org workspace の
+# canon/ へ複製され、episode_brief 生成が毎カット参照する（編集は canon 改訂で行う）。
+
+series_title: RED THREAD（赤い糸）
+medium: limited-palette risograph / paper-cut flat illustration
+
+# 全画像プロンプト末尾に verbatim で連結する署名スタイル文字列（この一貫性がブランド）。
+style_suffix: >-
+  limited-palette risograph paper-cut flat illustration, bold ink-weighted outlines,
+  flat two-tone cel shading, heavy offset-print paper grain, muted warm paper background,
+  a single vivid red thread motif, cinematic minimal composition, theatrical staging,
+  wordless storytelling, authored editorial illustration
+
+# 固定パレット（純赤は thread_red のみ＝赤い糸が視線を独占する）。
+palette:
+  paper: "#F3EBD9"
+  ink: "#241F1C"
+  thread_red: "#D7263D"
+  shadow_teal: "#2E4A4A"
+  accent_gold: "#E0A458"
+
+line_rule: ink-weighted uneven outline ~3px, slightly hand-drawn imperfection
+shading_rule: two-tone flat cel shading, no smooth gradients
+grain_rule: heavy offset-print paper grain overlay on every frame
+
+composition_motifs:
+  - 余白を活かし焦点は一つ（negative space with one focal subject）
+  - 赤い糸は必ず画面の一辺から入ってくる
+  - eye-level かやや煽りの劇場的ステージング
+
+# 全プロンプトに注入する除外語（generic AI look と崩れを排除）。
+negative_prompt_bank:
+  - 3d render, photorealistic, glossy, plastic skin
+  - extra fingers, deformed hands, mangled anatomy
+  - watermark, signature, on-image text, caption, letters
+  - busy cluttered background, oversaturated neon
+  - generic anime, smooth airbrushed gradient
+
+aspect_ratios:
+  long_form: "16:9"
+  shorts: "9:16"
+
+# N話ごとに過去3カットを参照セットへ再注入し、累積ドリフトを抑える。
+reanchor_every_n_episodes: 10
+
+# Phase 2: 良カット30-60枚で Flux スタイル LoRA を学習し、署名スタイルを「重み」化する
+# （参照プロンプト方式 → 学習済み重み方式へ graduate）。
+phase_2_lora_graduation: train a Flux style LoRA on 30-60 best frames for an un-clonable signature
