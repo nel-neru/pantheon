@@ -76,6 +76,25 @@ def test_insufficient_data_band_is_point():
     assert a["forecast_lower"] == a["forecast_next"] == a["forecast_upper"] == 1000.0
 
 
+def test_revenue_by_month_date_range_filter(tmp_path):
+    """revenue_by_month が start_date/end_date で期間を絞る（finding 24）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, occurred_at="2026-01-10")
+    store.record("Co", "revenue", 200, occurred_at="2026-02-10")
+    store.record("Co", "revenue", 400, occurred_at="2026-03-10")
+
+    full = store.revenue_by_month("Co")
+    assert full == {"2026-01": 100, "2026-02": 200, "2026-03": 400}
+    # 2 月以降のみ
+    feb_on = store.revenue_by_month("Co", start_date="2026-02-01")
+    assert feb_on == {"2026-02": 200, "2026-03": 400}
+    # 1〜2 月のみ
+    jan_feb = store.revenue_by_month("Co", start_date="2026-01-01", end_date="2026-02-28")
+    assert jan_feb == {"2026-01": 100, "2026-02": 200}
+
+
 def test_revenue_impact_rank_high_medium_none():
     from core.metrics.revenue_intelligence import revenue_impact_rank
 

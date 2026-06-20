@@ -2705,10 +2705,17 @@ async def api_metrics_efficiency() -> Dict[str, Any]:
 
 
 @app.get("/api/metrics/revenue/report", tags=["metrics"])
-async def api_revenue_report(org_name: Optional[str] = None) -> Dict[str, Any]:
-    """収益の月次（YYYY-MM）簡易レポート。``org_name`` 指定で単一 org、省略で全 org 横断。"""
+async def api_revenue_report(
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """収益の月次（YYYY-MM）簡易レポート。``org_name`` 指定で単一 org、省略で全 org 横断。
+
+    ``start_date``/``end_date``（YYYY-MM-DD）で期間を絞れる（期間比較ダッシュボード用）。
+    """
     store = _outcome_store()
-    by_month = store.revenue_by_month(org_name)
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
     return {
         "org_name": org_name,
         "by_month": by_month,
@@ -2718,12 +2725,19 @@ async def api_revenue_report(org_name: Optional[str] = None) -> Dict[str, Any]:
 
 
 @app.get("/api/metrics/revenue/intelligence", tags=["metrics"])
-async def api_revenue_intelligence(org_name: Optional[str] = None) -> Dict[str, Any]:
-    """収益インテリジェンス: 月次系列から前月比・トレンド・翌月予測を返す。"""
+async def api_revenue_intelligence(
+    org_name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """収益インテリジェンス: 月次系列から前月比・トレンド・翌月予測を返す。
+
+    ``start_date``/``end_date``（YYYY-MM-DD）で対象期間を絞り、期間別のトレンド比較を可能にする。
+    """
     from core.metrics.revenue_intelligence import analyze_revenue
 
     store = _outcome_store()
-    by_month = store.revenue_by_month(org_name)
+    by_month = store.revenue_by_month(org_name, start_date=start_date, end_date=end_date)
     analysis = analyze_revenue(by_month)
     return {"org_name": org_name, **analysis}
 

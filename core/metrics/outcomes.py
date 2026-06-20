@@ -264,16 +264,30 @@ class OutcomeStore:
             )
         return buf.getvalue()
 
-    def revenue_by_month(self, org_name: Optional[str] = None) -> Dict[str, float]:
+    def revenue_by_month(
+        self,
+        org_name: Optional[str] = None,
+        *,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, float]:
         """収益メトリクス（REVENUE_METRICS）を ``YYYY-MM`` バケットで合計する簡易レポート。
 
         ``org_name`` 省略時は全 org を横断集計する。``occurred_at`` の先頭7文字を月キーに使い、
         日付が読めないイベントは ``"unknown"`` バケットへ寄せて集計を壊さない。戻り値は
         月キーの昇順（``"unknown"`` は末尾）に並べた ``{month: 合計}``。
+
+        ``start_date``/``end_date``（YYYY-MM-DD）を渡すと ``occurred_at`` の日付で範囲を絞る
+        （境界含む）。期間比較（直近 N か月 vs 全期間）のトレンド分析に使う。
         """
         buckets: Dict[str, float] = {}
         for event in self.list_events(org_name):
             if event.metric not in REVENUE_METRICS:
+                continue
+            day = (event.occurred_at or event.recorded_at or "")[:10]
+            if start_date and day and day < start_date:
+                continue
+            if end_date and day and day > end_date:
                 continue
             stamp = (event.occurred_at or event.recorded_at or "")[:7]
             month = stamp if len(stamp) == 7 and stamp[4] == "-" else "unknown"
