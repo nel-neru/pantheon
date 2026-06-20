@@ -139,13 +139,16 @@ it('実測・推定呼び出し数を表示する', async () => {
 it('レート制限中は警告カードを表示する', async () => {
   mockApi.mockResolvedValue(rateLimitedData)
   renderWithRouter(<UsagePage />)
-  expect(await screen.findByText('レート制限中')).toBeInTheDocument()
+  // Both the alert card heading and the governor badge show this text; use findAllBy
+  const els = await screen.findAllByText('レート制限中')
+  expect(els.length).toBeGreaterThan(0)
 })
 
 it('レート制限スコープと再開時刻を表示する', async () => {
   mockApi.mockResolvedValue(rateLimitedData)
   renderWithRouter(<UsagePage />)
-  await screen.findByText('レート制限中')
+  const els = await screen.findAllByText('レート制限中')
+  expect(els.length).toBeGreaterThan(0)
   expect(screen.getByText(/output_tokens/)).toBeInTheDocument()
 })
 

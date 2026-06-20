@@ -242,10 +242,18 @@ it('「削除」ボタンで確認ダイアログを開く', async () => {
 })
 
 it('削除を確認すると DELETE /api/businesses/{id} を呼ぶ', async () => {
-  wireApi()
+  // Set up mock BEFORE rendering: initial GET returns both, DELETE returns ok, reload returns one
+  let callCount = 0
   mockApi.mockImplementation((_method: string, path: string) => {
+    if (_method === 'GET' && path === '/api/businesses') {
+      callCount++
+      // First load: both businesses; reload after delete: only bizB
+      return callCount <= 1
+        ? Promise.resolve({ businesses: [bizA, bizB] })
+        : Promise.resolve({ businesses: [bizB] })
+    }
     if (_method === 'DELETE') return Promise.resolve({ ok: true, deleted: true })
-    return Promise.resolve({ businesses: [bizB] })
+    return Promise.resolve({})
   })
   renderWithRouter(<BusinessesPage />)
   await screen.findByText('AIコンテンツ事業')
