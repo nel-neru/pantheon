@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from core.persistence import atomic_write_text
+from core.persistence import atomic_write_text, coerce_float, coerce_int, coerce_sort_str
 
 
 def _temp_orphans(directory) -> list:
@@ -114,3 +114,44 @@ def test_platform_state_save_uses_atomic_write(tmp_path):
 
     assert mgr.load_platform_config()["workspaces_root"] == "C:/tmp"
     assert list(tmp_path.rglob("*.tmp")) == []
+
+
+# --------------------------------------------------------------------------- #
+# 生 JSON 由来の値を防御的に coerce するヘルパ（read-side の単一実装）。
+# knowledge/manager・orchestration/task_queue・hierarchy/handoff_optimizer に
+# 散在していた 3 つの重複定義をここへ集約したため、直接ユニットテストで固定する。
+# --------------------------------------------------------------------------- #
+
+
+def test_coerce_int_none_and_non_numeric_fall_to_default():
+    assert coerce_int(None, 5) == 5
+    assert coerce_int("high", 5) == 5  # 非数値文字列も default
+    assert coerce_int([], 5) == 5  # 非数値型も default
+
+
+def test_coerce_int_preserves_zero_unlike_or_default():
+    """0 は有効値として保持される（``value or default`` 罠＝``0 or 5 == 5`` を踏まない）。"""
+    assert coerce_int(0, 5) == 0
+    assert coerce_int("0", 5) == 0  # 数値文字列の 0 も保持
+
+
+def test_coerce_int_parses_valid_numbers_and_defaults_to_zero():
+    assert coerce_int(7) == 7
+    assert coerce_int("42") == 42
+    assert coerce_int(None) == 0  # default 引数は 0
+
+
+def test_coerce_float_none_and_non_numeric_fall_to_default():
+    assert coerce_float(None) == 0.0
+    assert coerce_float("x") == 0.0
+    assert coerce_float(None, 1.5) == 1.5
+    assert coerce_float("3.14") == 3.14
+    assert coerce_float(0) == 0.0  # 0 を保持
+
+
+def test_coerce_sort_str_null_and_non_str():
+    assert coerce_sort_str(None) == ""
+    assert coerce_sort_str("") == ""  # falsy も空文字
+    assert coerce_sort_str(0) == ""  # falsy 数値も空文字（比較安全）
+    assert coerce_sort_str("2026-06-20") == "2026-06-20"
+    assert coerce_sort_str(123) == "123"  # 非 str は文字列化

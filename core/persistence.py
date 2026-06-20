@@ -16,6 +16,52 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
+
+
+def coerce_int(value: Any, default: int = 0) -> int:
+    """raw な永続 JSON 由来の値を安全に int 化する（null/非数値は ``default`` へ倒す）。
+
+    disk から生 JSON で読まれた dict は legacy/手編集/外部生成で値が ``null`` や非数値
+    文字列になりうる。``int(None)``/``int("high")`` はソートキーやメトリクス算出中に
+    TypeError/ValueError を送出し、try/except に包まれた 24/7 デーモンの drain ループ等を
+    **静かに止める**（[[get-default-none-footgun]]）。
+
+    **重要**: ``0`` は有効値なので ``value or default`` は使えない（``0 or 5 == 5`` で 0 を
+    破壊する）。``is None`` ＋ try/except で coerce すること。書き込み側の原子性
+    （``atomic_write_text``）と対になる、読み取り側の防御ヘルパ。
+    """
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def coerce_float(value: Any, default: float = 0.0) -> float:
+    """raw な永続 JSON 由来の値を安全に float 化する（null/非数値は ``default`` へ倒す）。
+
+    quality_score / reach / revenue 等の数値メトリクスも disk の生 JSON 由来で ``null``/
+    非数値になりうる。``float(None)`` は昇格判定や handoff 推奨の算出を丸ごと落とす。
+    ``coerce_int`` と対の ``is None`` ＋ try/except で coerce する。
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def coerce_sort_str(value: Any) -> str:
+    """raw な永続 JSON 由来の値を比較安全な str へ coerce する（null/非 str を空文字へ）。
+
+    created_at/timestamp 等のソートキーが ``null`` だと ``None < str`` の TypeError で
+    ソート全体が落ちる。``str(value) if value else ""`` で null/falsy を ""、非 str を
+    文字列化して比較を安全化する。
+    """
+    return str(value) if value else ""
 
 
 def atomic_write_text(path: Path | str, text: str, *, encoding: str = "utf-8") -> None:

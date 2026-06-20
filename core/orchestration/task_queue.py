@@ -14,7 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, TextIO
 
-from core.persistence import atomic_write_text
+from core.persistence import atomic_write_text, coerce_int, coerce_sort_str
 from core.platform.state import get_platform_home
 
 logger = logging.getLogger(__name__)
@@ -33,32 +33,6 @@ _FILE_LOCK = threading.RLock()
 # 1 バイト領域（オフセット 0）をロック/アンロックすることで両プロセスが同一領域で競合する。
 _LOCK_REGION_BYTES = 1
 _LOCK_ACQUIRE_TIMEOUT_S = 30.0  # 取得に失敗し続けた場合は best-effort で続行（下記参照）
-
-
-def _coerce_int(value: Any, default: int) -> int:
-    """raw JSON 由来の値を安全に int 化する（null/非数値文字列は default へ倒す）。
-
-    タスク dict は disk から生 JSON として読まれるため、priority が legacy/手編集/外部生成で
-    ``null`` や非数値文字列になりうる。``int(None)``/``int("high")`` はソートキー算出中に
-    TypeError/ValueError を送出し、それが try/except に包まれた **24/7 デーモンの drain ループ**
-    を静かに止める。**重要**: priority は ``0`` が有効値なので ``value or default`` は使えない
-    （``0 or 5 == 5`` で priority 0 を破壊する）。``is None`` ＋ try/except で coerce する。
-    """
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _sort_str(value: Any) -> str:
-    """raw JSON 由来の値を安全に比較可能な str へ coerce する（null/非 str を空文字へ）。
-
-    created_at/timestamp 等のソートキーが ``null`` だと ``None < str`` の TypeError でソート全体が
-    落ちる。``str(value) if value else ""`` で null/falsy を ""、非 str を文字列化して比較を安全化。
-    """
-    return str(value) if value else ""
 
 
 def _lock_fd(fh: TextIO) -> None:
@@ -243,7 +217,7 @@ class TaskQueue:
             tasks = [t for t in tasks if t.get("org_name") == org_name]
         if status:
             tasks = [t for t in tasks if t.get("status") == status]
-        tasks = sorted(tasks, key=lambda t: _sort_str(t.get("created_at")), reverse=True)
+        tasks = sorted(tasks, key=lambda t: coerce_sort_str(t.get("created_at")), reverse=True)
         if limit is None:
             return tasks
         return tasks[:limit]
@@ -297,7 +271,7 @@ class TaskQueue:
 
         tasks = sorted(
             tasks,
-            key=lambda t: (-_coerce_int(t.get("priority"), 5), _sort_str(t.get("created_at"))),
+            key=lambda t: (-coerce_int(t.get("priority"), 5), coerce_sort_str(t.get("created_at"))),
         )
         if limit is None:
             return tasks

@@ -14,43 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-
-def _coerce_int(value: Any, default: int) -> int:
-    """raw JSON 由来の値を安全に int 化する（null/非数値文字列は default へ倒す）。
-
-    知識レコードは disk から生 JSON で読まれるため usage_count が legacy/手編集/外部生成で
-    ``null``/非数値になりうる。``int(None)`` はソートキー算出中に TypeError を送出し並べ替え
-    全体（＝知識取得の全経路）を落とす。``is None`` ＋ try/except で coerce する。
-    """
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _coerce_float(value: Any, default: float) -> float:
-    """raw JSON 由来の値を安全に float 化する（null/非数値文字列は default へ倒す）。
-
-    quality_score も同様に disk の生 JSON 由来で legacy/手編集/外部生成により ``null``/非数値に
-    なりうる。``float(None)`` は best-practice 昇格判定中に TypeError を送出し、昇格処理（自動/手動）
-    を丸ごと落とす。``_coerce_int`` と対の ``is None`` ＋ try/except で coerce する。
-    """
-    if value is None:
-        return default
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _sort_str(value: Any) -> str:
-    """raw JSON 由来の値を安全に比較可能な str へ coerce する（null/非 str を空文字へ）。
-
-    created_at が ``null`` だと ``None < str`` の TypeError でソート全体が落ちる。
-    """
-    return str(value) if value else ""
+from core.persistence import coerce_float, coerce_int, coerce_sort_str
 
 
 class KnowledgeManager:
@@ -132,7 +96,7 @@ class KnowledgeManager:
         for record in self._load_all_entries():
             if not tag_set.intersection(set(record.get("tags", []))):
                 continue
-            record["usage_count"] = _coerce_int(record.get("usage_count"), 0) + 1
+            record["usage_count"] = coerce_int(record.get("usage_count"), 0) + 1
             record["last_referenced"] = referenced_at
             self._write_record(record)
 
@@ -140,8 +104,8 @@ class KnowledgeManager:
         entries = self._load_all_entries()
         entries.sort(
             key=lambda record: (
-                -_coerce_int(record.get("usage_count"), 0),
-                _sort_str(record.get("created_at")),
+                -coerce_int(record.get("usage_count"), 0),
+                coerce_sort_str(record.get("created_at")),
             ),
         )
         return entries[:limit]
@@ -150,7 +114,7 @@ class KnowledgeManager:
         record = self._load_by_id(entry_id)
         if not record:
             return False
-        quality_score = _coerce_float(record.get("quality_score"), 0.0)
+        quality_score = coerce_float(record.get("quality_score"), 0.0)
         if quality_score < 8 or record.get("importance") == "best_practice":
             return False
         record["importance"] = "best_practice"
@@ -165,8 +129,8 @@ class KnowledgeManager:
         ]
         entries.sort(
             key=lambda record: (
-                -_coerce_int(record.get("usage_count"), 0),
-                _sort_str(record.get("created_at")),
+                -coerce_int(record.get("usage_count"), 0),
+                coerce_sort_str(record.get("created_at")),
             ),
         )
         return entries[:limit]
@@ -176,7 +140,7 @@ class KnowledgeManager:
         for record in self._load_all_entries():
             if record.get("importance") == "best_practice":
                 continue
-            if _coerce_float(record.get("quality_score"), 0.0) < threshold:
+            if coerce_float(record.get("quality_score"), 0.0) < threshold:
                 continue
             record["importance"] = "best_practice"
             self._write_record(record)
@@ -219,8 +183,8 @@ class KnowledgeManager:
         ]
         entries.sort(
             key=lambda record: (
-                -_coerce_int(record.get("usage_count"), 0),
-                _sort_str(record.get("created_at")),
+                -coerce_int(record.get("usage_count"), 0),
+                coerce_sort_str(record.get("created_at")),
             ),
         )
         return entries[:limit]
@@ -268,5 +232,5 @@ class KnowledgeManager:
             if isinstance(record, dict):  # 非 dict の壊れたファイルは読み取り全体を壊さない
                 entries.append(record)
         # 生 JSON の created_at は null/非 str になりうる（``None < str`` のソート TypeError 防止）。
-        entries.sort(key=lambda record: _sort_str(record.get("created_at")), reverse=True)
+        entries.sort(key=lambda record: coerce_sort_str(record.get("created_at")), reverse=True)
         return entries
