@@ -469,6 +469,17 @@ class BusinessCreateRequest(ApiRequestModel):
     kpis: List[str] = Field(default_factory=list, max_length=64)
 
 
+class BusinessUpdateRequest(ApiRequestModel):
+    """Business の部分更新（None のフィールドは変更しない）。"""
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    purpose: Optional[str] = Field(default=None, max_length=2000)
+    status: Optional[str] = Field(default=None, max_length=32)
+    member_orgs: Optional[List[str]] = Field(default=None, max_length=64)
+    roles: Optional[Dict[str, str]] = Field(default=None)
+    kpis: Optional[List[str]] = Field(default=None, max_length=64)
+
+
 class AnalyzeRequest(ApiRequestModel):
     org_name: str = Field(min_length=1, max_length=120)
     max_files: int = Field(default=15, ge=1, le=50)
@@ -4190,6 +4201,50 @@ async def api_compose_business(business_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
     created = store.compose_handoffs(business)
     return {"created": len(created), "handoff_ids": [h.handoff_id for h in created]}
+
+
+# 状態は active / paused / archived のみ（status を「飾り」から実効化する・P17）。
+_BUSINESS_STATUSES = ("active", "paused", "archived")
+
+
+@app.patch("/api/businesses/{business_id}", tags=["businesses"])
+async def api_update_business(business_id: str, req: BusinessUpdateRequest) -> Dict[str, Any]:
+    """Business を部分更新する（name/purpose/status/member_orgs/roles/kpis）。"""
+    store = _business_store()
+    business = store.get(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+    if req.status is not None and req.status not in _BUSINESS_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status は {'/'.join(_BUSINESS_STATUSES)} のいずれかです",
+        )
+    if req.name is not None and req.name != business.name:
+        clash = store.get(req.name)
+        if clash is not None and str(clash.id) != str(business.id):
+            raise HTTPException(status_code=409, detail=f"Business '{req.name}' はすでに存在します")
+        business.name = req.name
+    if req.purpose is not None:
+        business.purpose = req.purpose
+    if req.status is not None:
+        business.status = req.status
+    if req.member_orgs is not None:
+        business.member_orgs = list(req.member_orgs)
+    if req.roles is not None:
+        business.roles = dict(req.roles)
+    if req.kpis is not None:
+        business.kpis = list(req.kpis)
+    store.save(business)
+    return business.model_dump(mode="json")
+
+
+@app.delete("/api/businesses/{business_id}", tags=["businesses"])
+async def api_delete_business(business_id: str) -> Dict[str, Any]:
+    """Business を削除する（member 会社や成果データには触れない）。"""
+    deleted = _business_store().delete(business_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+    return {"ok": True, "deleted": business_id}
 
 
 # --------------------------------------------------------------------------- #

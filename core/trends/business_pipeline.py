@@ -21,7 +21,11 @@ import logging
 from typing import Any, Dict, List, Optional
 from uuid import NAMESPACE_URL, uuid5
 
-from core.trends.business_proposal import is_business_worthy, trend_to_business_proposal
+from core.trends.business_proposal import (
+    TREND_SCORE_SCALE,
+    is_business_worthy,
+    trend_to_business_proposal,
+)
 from core.trends.models import TrendItem
 from core.trends.store import TrendStore
 from core.trends.trend_to_jobs import (
@@ -38,8 +42,8 @@ logger = logging.getLogger(__name__)
 # 安定 review_id 用の名前空間（trend_to_jobs と同じ思想で、dedupe_key 毎に決定論的 UUID を作る）。
 _BIZ_NS = uuid5(NAMESPACE_URL, "pantheon.trends.business")
 
-# TrendStore(0..10) → business_proposal(0..1) への換算係数。
-_SCORE_SCALE = 10.0
+# TrendStore(0..10) → business_proposal(0..1) への換算係数（単一ソースを参照・P23）。
+_SCORE_SCALE = TREND_SCORE_SCALE
 
 
 def _trend_to_dict(trend: TrendItem) -> Dict[str, Any]:

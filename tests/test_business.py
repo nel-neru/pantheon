@@ -108,5 +108,66 @@ def test_cli_parser_and_handlers_wired():
         "cmd_business_show",
         "cmd_business_outcomes",
         "cmd_business_compose",
+        "cmd_business_update",
+        "cmd_business_pause",
+        "cmd_business_archive",
+        "cmd_business_delete",
     ):
         assert name in main.HANDLERS
+
+
+async def test_business_update_pause_archive_delete_cli(tmp_path, monkeypatch):
+    """update/pause/archive/delete の CLI ハンドラが状態を実効化する（P10/P17）。"""
+    import argparse
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    from commands.business import (
+        cmd_business_archive,
+        cmd_business_delete,
+        cmd_business_pause,
+        cmd_business_update,
+    )
+
+    store = BusinessStore(platform_home=tmp_path)
+    store.save(Business(name="Biz", member_orgs=["A"], kpis=["k1"]))
+
+    # update: status / purpose / 会社追加 / KPI 追加
+    upd = argparse.Namespace(
+        id="Biz",
+        name=None,
+        purpose="新目的",
+        status="active",
+        add_org=["B"],
+        remove_org=["A"],
+        add_kpi=["k2"],
+    )
+    await cmd_business_update(upd, get_psm=lambda: None)
+    b = store.get("Biz")
+    assert b.purpose == "新目的" and b.member_orgs == ["B"] and "k2" in b.kpis
+
+    # pause / archive は status を遷移させる
+    await cmd_business_pause(argparse.Namespace(id="Biz"), get_psm=lambda: None)
+    assert store.get("Biz").status == "paused"
+    await cmd_business_archive(argparse.Namespace(id="Biz"), get_psm=lambda: None)
+    assert store.get("Biz").status == "archived"
+
+    # delete は除去する
+    await cmd_business_delete(argparse.Namespace(id="Biz"), get_psm=lambda: None)
+    assert store.get("Biz") is None
+
+
+async def test_business_update_rejects_unknown_status(tmp_path, monkeypatch):
+    """status は active/paused/archived のみ（不正値で SystemExit）。"""
+    import argparse
+
+    import pytest
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    from commands.business import cmd_business_update
+
+    BusinessStore(platform_home=tmp_path).save(Business(name="Biz"))
+    bad = argparse.Namespace(
+        id="Biz", name=None, purpose=None, status="bogus", add_org=[], remove_org=[], add_kpi=[]
+    )
+    with pytest.raises(SystemExit):
+        await cmd_business_update(bad, get_psm=lambda: None)

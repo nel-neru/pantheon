@@ -95,6 +95,40 @@ async def cmd_trends_untapped(args: argparse.Namespace) -> None:
     )
 
 
+async def cmd_trends_business_proposals(args: argparse.Namespace) -> None:
+    """承認待ちの新規会社候補提案（category=new_business）を一覧する（GUI の Card 2 と同等）。"""
+    from core.platform.state import PlatformStateManager, get_platform_home
+
+    psm = PlatformStateManager(platform_home=get_platform_home())
+    rows: list[tuple[str, str, str, str]] = []
+    for org in psm.load_organizations():
+        try:
+            sm = psm.get_org_state_manager(org)
+            for p in sm.get_pending_improvement_proposals(limit=50):
+                if p.get("category") != "new_business":
+                    continue
+                rows.append(
+                    (
+                        org.name,
+                        str(p.get("id", "")),
+                        str(p.get("title", "")),
+                        str(p.get("priority") or "medium"),
+                    )
+                )
+        except Exception:  # noqa: BLE001 — 1 組織の読み取り失敗で全体を落とさない
+            continue
+    if not rows:
+        print(
+            "[trends] 承認待ちの新規会社候補提案はありません"
+            "（pantheon trends business-scan / untapped で起票）"
+        )
+        return
+    print(f"\n承認待ちの新規会社候補（{len(rows)} 件）\n")
+    for org_name, pid, title, priority in rows:
+        print(f"  - [{priority}] {title}  ({org_name})  id={pid}")
+    print("\n承認: pantheon approve / proposal apply（または GUI /inbox）")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("trends", help="外部トレンドの収集・一覧")
     sub = parser.add_subparsers(dest="trends_command", required=True)
@@ -130,3 +164,8 @@ def register(subparsers: Any) -> None:
     )
     sp.add_argument("--preview", action="store_true", help="起票せず未開拓ジャンルを表示のみ")
     sp.set_defaults(handler_name="cmd_trends_untapped")
+
+    sp = sub.add_parser(
+        "business-proposals", help="承認待ちの新規会社候補提案を一覧（GUI Card 2 と同等）"
+    )
+    sp.set_defaults(handler_name="cmd_trends_business_proposals")

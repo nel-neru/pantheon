@@ -18,6 +18,23 @@ from typing import Any, Dict, List
 # 新規事業提案に値するとみなす最小スコア（0..1 スケール）。
 BUSINESS_PROPOSAL_MIN_SCORE = 0.6
 
+# ``TrendItem.score``（0..10）→ 本モジュールの 0..1 スケールへの換算係数（橋渡しの単一定義）。
+# business_pipeline / untapped_genre が個別に ``/ 10`` を書くと 0..1↔0..10 ミスマッチで
+# 閾値が静かにずれる footgun になるため、両者はここを唯一のソースとして参照する。
+TREND_SCORE_SCALE = 10.0
+
+
+def trend_score_to_unit(score: Any) -> float:
+    """0..10 スケールのトレンドスコアを 0..1 へ橋渡しする（換算ロジックの単一ソース）。
+
+    欠損・不正値は 0.0 扱い（``_safe_score`` と同じ安全側）。
+    """
+    try:
+        return float(score) / TREND_SCORE_SCALE
+    except (TypeError, ValueError):
+        return 0.0
+
+
 # 動画系ジャンルを示すトークン（genre / source title slug に含まれていれば動画系とみなす）。
 _VIDEO_TOKENS = (
     "video",
@@ -33,9 +50,7 @@ _VIDEO_TOKENS = (
 
 # slug 化で許可する文字（英数・アンダースコア・日本語ひらがな/カタカナ/漢字）。
 # それ以外は区切り文字として扱い、語を _ で連結する。
-_SLUG_ALLOWED = re.compile(
-    r"[0-9a-z_぀-ゟ゠-ヿ一-鿿]+"
-)
+_SLUG_ALLOWED = re.compile(r"[0-9a-z_぀-ゟ゠-ヿ一-鿿]+")
 
 # slug が長くなりすぎないよう、先頭からこの語数だけ採用する。
 _SLUG_MAX_TOKENS = 4

@@ -22,6 +22,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from core.trends.business_pipeline import _trend_to_dict
 from core.trends.business_proposal import (
+    TREND_SCORE_SCALE,
     _slugify,
     is_business_worthy,
     trend_to_business_proposal,
@@ -84,7 +85,7 @@ def find_untapped_genres(
       （固定 0.6 floor で呼び出し側の min_score を無視しないため）。
     - 並びは (max_score 降順, genre 昇順) で決定論的。
     """
-    threshold = float(min_score) / 10.0  # business_pipeline._SCORE_SCALE と整合
+    threshold = float(min_score) / TREND_SCORE_SCALE  # 換算係数の単一ソース（P23）
     result: List[str] = []
     for genre, ev in genre_evidence.items():
         if genre in covered:

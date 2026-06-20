@@ -1016,6 +1016,30 @@ def test_business_api_crud_outcomes_compose(tmp_path, monkeypatch):
     assert comp.status_code == 200 and comp.json()["created"] == 1
 
 
+def test_business_api_update_and_delete(tmp_path, monkeypatch):
+    """PATCH で部分更新（status 実効化）/ DELETE で削除（P10/P17）。"""
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+
+    client.post("/api/businesses", json={"name": "Biz", "member_orgs": ["A"]})
+
+    # PATCH: status と purpose を更新
+    patched = client.patch("/api/businesses/Biz", json={"status": "paused", "purpose": "停止中"})
+    assert patched.status_code == 200, patched.text
+    body = patched.json()
+    assert body["status"] == "paused" and body["purpose"] == "停止中"
+
+    # 不正な status は 400
+    assert client.patch("/api/businesses/Biz", json={"status": "bogus"}).status_code == 400
+    # 未知は 404
+    assert client.patch("/api/businesses/Nope", json={"status": "active"}).status_code == 404
+
+    # DELETE: 削除できる / 2 回目は 404
+    assert client.delete("/api/businesses/Biz").status_code == 200
+    assert client.get("/api/businesses/Biz").status_code == 404
+    assert client.delete("/api/businesses/Biz").status_code == 404
+
+
 def test_handoff_api_draft_creates_body_proposal(tmp_path, monkeypatch):
     """Web: 本文生成エンドポイントが受け手 org に本文ドラフト提案を作る（claude 不在＝決定論）。"""
     from core.org_factory import create_default_organization

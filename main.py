@@ -21,11 +21,15 @@ import sys
 
 from commands import build_parser
 from commands.atlas import cmd_atlas as _cmd_atlas_impl
+from commands.business import cmd_business_archive as _cmd_business_archive_impl
 from commands.business import cmd_business_compose as _cmd_business_compose_impl
 from commands.business import cmd_business_create as _cmd_business_create_impl
+from commands.business import cmd_business_delete as _cmd_business_delete_impl
 from commands.business import cmd_business_list as _cmd_business_list_impl
 from commands.business import cmd_business_outcomes as _cmd_business_outcomes_impl
+from commands.business import cmd_business_pause as _cmd_business_pause_impl
 from commands.business import cmd_business_show as _cmd_business_show_impl
+from commands.business import cmd_business_update as _cmd_business_update_impl
 from commands.chat import cmd_chat as _cmd_chat_impl
 from commands.doctor import cmd_doctor as _cmd_doctor_impl
 from commands.eval import cmd_eval as _cmd_eval_impl
@@ -262,6 +266,22 @@ async def cmd_business_outcomes(args) -> None:
 
 async def cmd_business_compose(args) -> None:
     await _cmd_business_compose_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_update(args) -> None:
+    await _cmd_business_update_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_pause(args) -> None:
+    await _cmd_business_pause_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_archive(args) -> None:
+    await _cmd_business_archive_impl(args, get_psm=_get_psm)
+
+
+async def cmd_business_delete(args) -> None:
+    await _cmd_business_delete_impl(args, get_psm=_get_psm)
 
 
 async def cmd_plugin_list(args) -> None:
@@ -618,6 +638,12 @@ async def cmd_trends_untapped(args) -> None:
     await _impl(args)
 
 
+async def cmd_trends_business_proposals(args) -> None:
+    from commands.trends import cmd_trends_business_proposals as _impl
+
+    await _impl(args)
+
+
 async def cmd_revenue_collect(args) -> None:
     from commands.revenue import cmd_revenue_collect as _impl
 
@@ -669,6 +695,10 @@ HANDLERS = {
     "cmd_business_show": cmd_business_show,
     "cmd_business_outcomes": cmd_business_outcomes,
     "cmd_business_compose": cmd_business_compose,
+    "cmd_business_update": cmd_business_update,
+    "cmd_business_pause": cmd_business_pause,
+    "cmd_business_archive": cmd_business_archive,
+    "cmd_business_delete": cmd_business_delete,
     "cmd_plugin_list": cmd_plugin_list,
     "cmd_plugin_add_division": cmd_plugin_add_division,
     "cmd_plugin_scaffold_division": cmd_plugin_scaffold_division,
@@ -740,6 +770,7 @@ HANDLERS = {
     "cmd_trends_list": cmd_trends_list,
     "cmd_trends_business_scan": cmd_trends_business_scan,
     "cmd_trends_untapped": cmd_trends_untapped,
+    "cmd_trends_business_proposals": cmd_trends_business_proposals,
     "cmd_revenue_collect": cmd_revenue_collect,
     "cmd_db_sync": cmd_db_sync,
     "cmd_db_stats": cmd_db_stats,
