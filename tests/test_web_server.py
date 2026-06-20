@@ -3254,6 +3254,46 @@ def test_business_performance_api(tmp_path, monkeypatch):
     assert client.get("/api/businesses/Nope/performance").status_code == 404
 
 
+def test_benchmark_snapshot_percentiles_and_flags():
+    """build_benchmark_snapshot がコホート内 percentile と外れ値フラグを付ける（拡張 #4）。"""
+    from core.metrics.benchmarking import build_benchmark_snapshot
+
+    snap = build_benchmark_snapshot(
+        [
+            {"org_name": "Top", "revenue": 10000, "reach": 100},  # 高収益・高 ROI
+            {"org_name": "Mid", "revenue": 1000, "reach": 1000},
+            {"org_name": "Burner", "revenue": 100, "reach": 100000},  # 収益あるが ROI 最下位
+        ]
+    )
+    by = {r["org_name"]: r for r in snap}
+    assert by["Top"]["flag"] == "top_performer"  # revenue_percentile>=90
+    assert by["Burner"]["flag"] == "underperformer"  # revenue>0 & roi_percentile<=25
+    assert snap[0]["org_name"] == "Top"  # 収益降順
+
+
+def test_portfolio_overview_api(tmp_path, monkeypatch):
+    """GET /api/portfolio/overview が全 org の ROI/percentile/action＋機会数を集約（拡張 #4）。"""
+    from core.metrics.outcomes import OutcomeStore
+    from core.org_factory import create_default_organization
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    psm.save_organization(create_default_organization("HighROI", "x"))
+    psm.save_organization(create_default_organization("LowROI", "y"))
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("HighROI", "impressions", 100)
+    store.record("HighROI", "revenue", 500)
+    store.record("LowROI", "impressions", 1000)
+    store.record("LowROI", "revenue", 100)
+
+    body = client.get("/api/portfolio/overview").json()
+    assert body["org_count"] == 2 and body["total_revenue"] == 600
+    # ROI 降順（HighROI が先頭）
+    assert body["orgs"][0]["org_name"] == "HighROI"
+    assert "roi" in body["orgs"][0] and "action" in body["orgs"][0]
+    assert "pending_handoffs" in body and "new_business_candidates" in body
+
+
 def test_revenue_goal_status_api(tmp_path, monkeypatch):
     """GET /api/hq/revenue/goal-status が到達状況＋backpressure を返す（拡張 #7）。"""
     from core.metrics.outcomes import OutcomeStore

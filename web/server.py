@@ -2847,6 +2847,75 @@ async def api_revenue_goal_status(
     return {"org_name": org_name, **status}
 
 
+@app.get("/api/portfolio/overview", tags=["hq"])
+async def api_portfolio_overview() -> Dict[str, Any]:
+    """統合コマンドセンター: 全 org の ROI/percentile/推奨アクション＋ポートフォリオ機会の集約。
+
+    既存の純粋コア（recommend_allocation / build_benchmark_snapshot）と OutcomeStore を合成した
+    読み取り専用の意思決定サマリ。/Revenue・/Businesses・/Proposals を行き来せず一望できる。
+    """
+    from core.metrics.benchmarking import build_benchmark_snapshot
+    from core.metrics.portfolio import recommend_allocation
+
+    psm = _psm()
+    store = _outcome_store()
+    org_stats: List[Dict[str, Any]] = []
+    for org in psm.load_organizations():
+        if getattr(org, "is_system", False):
+            continue
+        summary = store.summary_for_org(org.name)
+        org_stats.append(
+            {
+                "org_name": org.name,
+                "revenue": summary.total_revenue,
+                "reach": summary.total_reach,
+                "posts": summary.by_metric.get("posts", {}).get("sum", 0.0),
+            }
+        )
+    alloc = {a["org_name"]: a for a in recommend_allocation(org_stats)}
+    bench = {b["org_name"]: b for b in build_benchmark_snapshot(org_stats)}
+    orgs = []
+    for s in org_stats:
+        name = s["org_name"]
+        b = bench.get(name, {})
+        a = alloc.get(name, {})
+        orgs.append(
+            {
+                "org_name": name,
+                "revenue": s["revenue"],
+                "reach": s["reach"],
+                "roi": b.get("roi", a.get("roi", 0.0)),
+                "action": a.get("action", "grow_audience"),
+                "revenue_percentile": b.get("revenue_percentile", 0.0),
+                "roi_percentile": b.get("roi_percentile", 0.0),
+                "flag": b.get("flag", ""),
+            }
+        )
+    orgs.sort(key=lambda o: o["roi"], reverse=True)
+
+    pending_handoffs = len(_handoff_store().list_handoffs(status="pending"))
+    new_business_candidates = 0
+    for org in psm.load_organizations():
+        try:
+            sm = psm.get_org_state_manager(org)
+            new_business_candidates += sum(
+                1
+                for p in sm.get_pending_improvement_proposals(limit=50)
+                if p.get("category") == "new_business"
+            )
+        except Exception:  # noqa: BLE001 — 1 組織の読み取り失敗で全体を落とさない
+            continue
+
+    return {
+        "orgs": orgs,
+        "org_count": len(orgs),
+        "total_revenue": sum(s["revenue"] for s in org_stats),
+        "total_reach": sum(s["reach"] for s in org_stats),
+        "pending_handoffs": pending_handoffs,
+        "new_business_candidates": new_business_candidates,
+    }
+
+
 @app.get("/api/hq/portfolio", tags=["hq"])
 async def api_hq_portfolio() -> Dict[str, Any]:
     """ポートフォリオ資源配分・連携の HQ 提案（収益/リーチから invest/monetize/送客 等を提案）。"""
