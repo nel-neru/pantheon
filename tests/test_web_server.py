@@ -250,7 +250,10 @@ def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
     # OS-appropriate console-detach kwargs (Windows ignores start_new_session).
     import core.runtime.daemon_registry as registry
 
-    assert calls["kwargs"] == registry._detach_popen_kwargs()
+    for key, value in registry._detach_popen_kwargs().items():
+        assert calls["kwargs"][key] == value
+    # daemons spawn in UTF-8 mode so print() of non-cp932 chars cannot crash them.
+    assert calls["kwargs"]["env"]["PYTHONUTF8"] == "1"
     assert calls["stdout_name"] == tmp_path / "daemon.log"
 
 
