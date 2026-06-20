@@ -50,6 +50,52 @@ def test_sort_methods_tolerate_null_created_at_and_usage_count(tmp_path):
     }  # usage_count+created_at
 
 
+def test_arithmetic_paths_tolerate_null_usage_count_and_quality_score(tmp_path):
+    """usage_count/quality_score が null の生 JSON 知識レコードで increment/昇格判定が落ちない。
+
+    回帰（C70 が sort キーを硬化した後に残った非 sort の兄弟・C71）:
+    - ``record_knowledge_access``: ``int(record.get("usage_count", 0)) + 1`` → null で ``int(None)``
+      TypeError（知識アクセスのたびに発火する live write 経路）。
+    - ``promote_to_best_practice`` / ``auto_promote_high_quality``:
+      ``float(record.get("quality_score", 0))`` → null で ``float(None)`` TypeError（昇格処理を丸ごと落とす）。
+    いずれも ``.get(k, 0)`` は **キーが null 値で存在すると default でなく None を返す** 罠
+    （[[get-default-none-footgun]]）。
+    """
+    km = KnowledgeManager(tmp_path)
+    # quality_score/usage_count が null の legacy レコードを直接配置（save 経由では作れない）。
+    (km.knowledge_dir / "legacy.json").write_text(
+        json.dumps(
+            {
+                "id": "legacy",
+                "title": "t",
+                "content": "c",
+                "usage_count": None,
+                "quality_score": None,
+                "tags": ["repo:demo"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # 旧コードは int(None)+1 でクラッシュ。新コードは null→0 として 0+1=1 に increment。
+    km.record_knowledge_access(["repo:demo"])
+    assert km._load_by_id("legacy").get("usage_count") == 1
+
+    # 旧コードは float(None) でクラッシュ。新コードは null→0.0 として昇格しない（0.0 < 8 / < threshold）。
+    assert km.promote_to_best_practice("legacy") is False  # 0.0 < 8 で昇格せず（クラッシュしない）
+
+    # 非 null の有効スコアは同じ coerce 経路を通っても従来どおり昇格する（bit-for-bit 等価の固定）。
+    (km.knowledge_dir / "good.json").write_text(
+        json.dumps(
+            {"id": "good", "title": "t", "content": "c", "quality_score": 9.0, "tags": ["repo:x"]}
+        ),
+        encoding="utf-8",
+    )
+    assert km.promote_to_best_practice("good") is True  # 9.0 >= 8 → 昇格
+    # auto_promote: null レコード(0.0<8 で skip)も昇格済 good(best_practice で skip)もクラッシュさせない。
+    assert km.auto_promote_high_quality() == 0
+
+
 class TestKnowledgeManager:
     def test_save_and_get_insights(self, km):
         km.save_insight("import cleanup", "Python imports could be cleaner.", tags=["analysis"])

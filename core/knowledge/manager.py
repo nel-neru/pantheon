@@ -30,6 +30,21 @@ def _coerce_int(value: Any, default: int) -> int:
         return default
 
 
+def _coerce_float(value: Any, default: float) -> float:
+    """raw JSON 由来の値を安全に float 化する（null/非数値文字列は default へ倒す）。
+
+    quality_score も同様に disk の生 JSON 由来で legacy/手編集/外部生成により ``null``/非数値に
+    なりうる。``float(None)`` は best-practice 昇格判定中に TypeError を送出し、昇格処理（自動/手動）
+    を丸ごと落とす。``_coerce_int`` と対の ``is None`` ＋ try/except で coerce する。
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _sort_str(value: Any) -> str:
     """raw JSON 由来の値を安全に比較可能な str へ coerce する（null/非 str を空文字へ）。
 
@@ -117,7 +132,7 @@ class KnowledgeManager:
         for record in self._load_all_entries():
             if not tag_set.intersection(set(record.get("tags", []))):
                 continue
-            record["usage_count"] = int(record.get("usage_count", 0)) + 1
+            record["usage_count"] = _coerce_int(record.get("usage_count"), 0) + 1
             record["last_referenced"] = referenced_at
             self._write_record(record)
 
@@ -135,7 +150,7 @@ class KnowledgeManager:
         record = self._load_by_id(entry_id)
         if not record:
             return False
-        quality_score = float(record.get("quality_score", 0))
+        quality_score = _coerce_float(record.get("quality_score"), 0.0)
         if quality_score < 8 or record.get("importance") == "best_practice":
             return False
         record["importance"] = "best_practice"
@@ -161,7 +176,7 @@ class KnowledgeManager:
         for record in self._load_all_entries():
             if record.get("importance") == "best_practice":
                 continue
-            if float(record.get("quality_score", 0)) < threshold:
+            if _coerce_float(record.get("quality_score"), 0.0) < threshold:
                 continue
             record["importance"] = "best_practice"
             self._write_record(record)
