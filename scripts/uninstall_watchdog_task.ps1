@@ -1,4 +1,4 @@
-# Pantheon watchdog の Windows タスクスケジューラ登録を解除する。
+﻿# Pantheon watchdog の Windows タスクスケジューラ登録を解除する。
 # 実行中の watchdog プロセス自体は `pantheon daemons stop watchdog` で停止すること。
 #
 # 使い方:  powershell -ExecutionPolicy Bypass -File scripts\uninstall_watchdog_task.ps1

@@ -1,4 +1,4 @@
-# Pantheon watchdog を Windows タスクスケジューラに登録する。
+﻿# Pantheon watchdog を Windows タスクスケジューラに登録する。
 #
 #   - "Pantheon Watchdog"       : ログオン時に起動（ユーザーコンテキスト）
 #   - "Pantheon Watchdog Guard" : 5 分ごとに起動を試みる保活タスク
