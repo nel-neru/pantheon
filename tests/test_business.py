@@ -46,6 +46,18 @@ def test_business_store_roundtrip_and_corrupt_tolerant(tmp_path):
     assert store.list_businesses() == []
 
 
+def test_business_store_warns_on_corrupt_file(tmp_path, caplog):
+    """businesses.json 破損は黙殺せず warn で観測可能化する（discovery wave3・silent-drop）。"""
+    import logging
+
+    store = BusinessStore(platform_home=tmp_path)
+    store.path.write_text("{ broken json", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+        result = store.list_businesses()
+    assert result == []
+    assert any("businesses" in r.message for r in caplog.records)
+
+
 def test_business_delete(tmp_path):
     store = BusinessStore(platform_home=tmp_path)
     store.save(Business(name="Gone"))
