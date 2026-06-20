@@ -37,6 +37,22 @@ def _safe_mtime(path: Path) -> float:
         return 0.0
 
 
+def _timestamp_sort_key(value: Any) -> datetime:
+    """created_at/timestamp を比較可能な aware datetime に正規化する（時系列ソートの単一ソース）。
+
+    文字列の辞書順比較だと "…Z" と "…+00:00" のような同一時刻の別表記が誤順になるため、
+    datetime に解析して時系列順を保証する。naive（utcnow 時代/外部編集/移行データ）は UTC とみなして
+    aware に揃える（[[naive-tz-coercion-convention]]）。解析不能/空は最古（datetime.min, UTC）扱い。
+    """
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 class RepoStateManager:
     """
     各OrganizationのリポジトリRoot内に .pantheon/ ディレクトリを作り、
@@ -125,18 +141,9 @@ class RepoStateManager:
                 warn_skipped_state_file(f, exc, kind="決定")
                 continue
 
-        def sort_key(decision: Dict[str, Any]) -> datetime:
-            timestamp = str(decision.get("timestamp", ""))
-            try:
-                parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            except ValueError:
-                return datetime.min.replace(tzinfo=timezone.utc)
-            # naive な legacy timestamp（utcnow 時代/外部編集/移行データ）は UTC とみなして
-            # aware に揃える。未 coerce だと aware フォールバックや Z 付き timestamp と混在した
-            # とき sorted() の naive<aware 比較が TypeError でクラッシュする。
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-
-        return sorted(decisions, key=sort_key, reverse=True)[:limit]
+        return sorted(
+            decisions, key=lambda d: _timestamp_sort_key(d.get("timestamp")), reverse=True
+        )[:limit]
 
     # ============================================================
     # Quality Review & Improvement Proposal 永続化
@@ -177,7 +184,7 @@ class RepoStateManager:
                 proposals.append(data)
         # ファイル名は uuid4（時系列でソート不可）なので created_at 降順で並べてから
         # limit で切り詰める。これにより「新しい提案 limit 件」が安定して返る。
-        proposals.sort(key=lambda d: str(d.get("created_at", "")), reverse=True)
+        proposals.sort(key=lambda d: _timestamp_sort_key(d.get("created_at")), reverse=True)
         return proposals[:limit]
 
     def get_all_improvement_proposals(self, limit: int = 1000) -> list[Dict[str, Any]]:
@@ -201,7 +208,7 @@ class RepoStateManager:
                 continue
         # ファイル名は uuid4（時系列でソート不可）なので created_at 降順で並べてから
         # limit で切り詰める。docstring の「新しい順」を実際に保証する。
-        proposals.sort(key=lambda d: str(d.get("created_at", "")), reverse=True)
+        proposals.sort(key=lambda d: _timestamp_sort_key(d.get("created_at")), reverse=True)
         return proposals[:limit]
 
     def save_proposal(self, proposal: "ImprovementProposal") -> bool:
