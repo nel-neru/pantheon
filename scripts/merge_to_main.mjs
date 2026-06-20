@@ -32,10 +32,11 @@ const STAY = argv.has("--stay");
 const DELETE_BRANCH = argv.has("--delete-branch");
 const DRY_RUN = argv.has("--dry-run");
 
-// CLAUDE.md に記載の既知失敗（Windows chmod）。
-// これらは回帰ではないので、新規失敗の判定から除外する（テスト関数名で照合）。
-// CLAUDE.md と同期。**ファイル(::クラス)::関数 のフル nodeid** で照合する
-// （関数名だけだと別ファイルの同名テストの回帰を baseline と誤判定するため）。
+// 防御的フォールバック。旧・既知失敗（Windows chmod）の 2 件は 2026-06-20 以降
+// `skipif sys.platform=="win32"` で **Windows ではスキップ**され FAILED に出ない
+// （＝Windows ベースラインは 0 失敗。通常このセットはヒットしない）。Linux CI では
+// 実行され pass する。skipif が将来外れて再び落ちた場合に回帰と誤判定しないための保険。
+// **ファイル(::クラス)::関数 のフル nodeid** で照合する。
 // 注: 旧 path-separator 4 件（as_posix 正規化）と旧 order-flaky 2 件（同一クロック刻みの
 // タイムスタンプ衝突）は 2026-06-12 に根治済み — 落ちたら回帰。
 const KNOWN_BASELINE_FAILURES = new Set([

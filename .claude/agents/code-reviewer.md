@@ -35,6 +35,6 @@ Output, grouped by priority, each with file:line and a concrete fix:
 - 🟢 **Suggestion** (nice to have)
 
 End with a one-line verdict: APPROVE / APPROVE-WITH-NITS / REQUEST-CHANGES. Be specific and terse;
-do not restate unchanged code. The Windows test baseline is **2** known pre-existing failures
-(chmod 0o600); if the diff only touches those areas, note they are pre-existing (see CLAUDE.md) and
-not caused by the change. Do NOT wave through any OTHER new failure as "known".
+do not restate unchanged code. The Windows test baseline is **0** known failures — the 2 chmod
+0o600 tests are now `skipif(win32)` (they SKIP on Windows and PASS on Linux CI), so ANY failure is
+a regression. Do NOT wave through any new failure as "known".

@@ -250,7 +250,10 @@ def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
     # OS-appropriate console-detach kwargs (Windows ignores start_new_session).
     import core.runtime.daemon_registry as registry
 
-    assert calls["kwargs"] == registry._detach_popen_kwargs()
+    for key, value in registry._detach_popen_kwargs().items():
+        assert calls["kwargs"][key] == value
+    # daemons spawn in UTF-8 mode so print() of non-cp932 chars cannot crash them.
+    assert calls["kwargs"]["env"]["PYTHONUTF8"] == "1"
     assert calls["stdout_name"] == tmp_path / "daemon.log"
 
 
@@ -1685,6 +1688,10 @@ def test_resolve_serve_dir_falls_back_to_static_when_unbuilt(tmp_path, monkeypat
     assert server._resolve_serve_dir() == static
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX chmod 0o600 is a no-op on Windows; this permission behavior runs/passes on Linux CI",
+)
 def test_get_settings_warns_on_open_permissions(tmp_path, monkeypatch, caplog):
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}", encoding="utf-8")
@@ -1745,6 +1752,10 @@ def test_update_settings_persists_model(tmp_path, monkeypatch):
     assert json.loads(settings_file.read_text(encoding="utf-8"))["llm_model"] == "claude-opus-4-8"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX chmod 0o600 is a no-op on Windows; this permission behavior runs/passes on Linux CI",
+)
 def test_update_settings_sets_restrictive_permissions(tmp_path, monkeypatch):
     settings_file = tmp_path / "settings.json"
     monkeypatch.setattr(server, "_settings_file", lambda: settings_file)

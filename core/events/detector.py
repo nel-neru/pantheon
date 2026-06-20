@@ -22,6 +22,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.runtime.process_utils import no_window_kwargs
+
 logger = logging.getLogger(__name__)
 
 
@@ -167,6 +169,7 @@ class EventDetector:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                **no_window_kwargs(),
             )
             if result.returncode == 0:
                 return result.stdout.strip()

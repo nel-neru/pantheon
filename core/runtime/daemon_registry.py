@@ -288,6 +288,11 @@ def spawn_daemon(
     pid_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.parent.mkdir(parents=True, exist_ok=True)
     cmd = build_command(spec, args)
+    # 子プロセスの sys.stdout は、たとえ stdout をログファイルへ向けても、子側の既定
+    # エンコーディング（Windows では cp932）で開かれる。daemon が em-dash 等の非 cp932
+    # 文字を print すると UnicodeEncodeError で即死する（improvement の scheduler が実害）。
+    # UTF-8 モードを env で強制し、全 daemon の print を安全にする。
+    daemon_env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     with log_file.open("a", encoding="utf-8") as log_handle:
         # Detach the daemon from the launching console/group so it survives the
         # launcher exiting (POSIX setsid / Windows creation flags — see
@@ -297,6 +302,7 @@ def spawn_daemon(
             cwd=PROJECT_ROOT,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
+            env=daemon_env,
             **_detach_popen_kwargs(),
         )
     # pid は watchdog/status が読み戻して liveness 判定に使う。atomic に差し替えて

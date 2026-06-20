@@ -108,3 +108,22 @@ def terminate_pid(pid: int) -> bool:
         return True
     except (OSError, ProcessLookupError):
         return False
+
+
+_CREATE_NO_WINDOW = 0x08000000
+
+
+def no_window_kwargs(os_name: str = os.name) -> dict:
+    """subprocess kwargs that suppress a console window on Windows.
+
+    A console-subsystem child (``claude``/``git``/``python``/``ruff`` …) launched
+    from a process that itself has **no console** — a detached daemon, a
+    ``pythonw`` scheduled task, a headless agent — makes Windows allocate a brand
+    new console window for the child. With piped output that window is an empty
+    box that flashes (and can steal focus) on every call. ``CREATE_NO_WINDOW``
+    suppresses it. Returns ``{}`` off-Windows so callers can splat it portably:
+    ``subprocess.run(cmd, **no_window_kwargs())``.
+    """
+    if os_name == "nt":
+        return {"creationflags": _CREATE_NO_WINDOW}
+    return {}

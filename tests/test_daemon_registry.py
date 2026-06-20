@@ -114,7 +114,13 @@ def test_spawn_writes_pid_and_desired_state(tmp_path, monkeypatch):
     assert captured["cwd"] == registry.PROJECT_ROOT
     # spawn passes the OS-appropriate console-detach kwargs (POSIX setsid /
     # Windows creation flags), not a raw start_new_session that Windows ignores.
-    assert captured["kwargs"] == registry._detach_popen_kwargs()
+    for key, value in registry._detach_popen_kwargs().items():
+        assert captured["kwargs"][key] == value
+    # Regression: daemons are spawned in UTF-8 mode so print() of non-cp932 chars
+    # (em-dash etc.) cannot crash them on Windows where the child stdout defaults
+    # to cp932 even when redirected to the (utf-8) log file.
+    assert captured["kwargs"]["env"]["PYTHONUTF8"] == "1"
+    assert captured["kwargs"]["env"]["PYTHONIOENCODING"] == "utf-8"
     assert load_enabled(platform_home=tmp_path)["improvement"]["enabled"] is True
 
 

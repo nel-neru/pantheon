@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from core.runtime.process_utils import no_window_kwargs
+
 
 @dataclass
 class BackupRecord:
@@ -137,6 +139,7 @@ class SafeChangeExecutor:
             capture_output=True,
             text=True,
             timeout=120,
+            **no_window_kwargs(),
         )
         output = "\n".join(
             part for part in [completed.stdout.strip(), completed.stderr.strip()] if part

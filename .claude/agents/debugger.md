@@ -19,8 +19,9 @@ Process:
 5. **Fix** minimally — change the underlying cause, not the test assertion. Respect Pantheon
    conventions (`from __future__ import annotations`, tz-aware datetimes, 404 handling, state dirs).
 6. **Confirm** the fix: re-run the originally-failing command AND the surrounding tests to ensure no
-   new breakage. Remember the **2** pre-existing Windows failures (chmod 0o600) are NOT yours to
-   "fix" (see CLAUDE.md); any OTHER failure is a real regression.
+   new breakage. The Windows backend baseline is now **0 known failures** — the 2 chmod 0o600 tests
+   are SKIPPED on Windows (and PASS on Linux CI), so ANY failure on Windows is a real regression
+   (see CLAUDE.md).
 
 Beware Windows-specifics: path separators (`\` vs `/`), `chmod` no-ops, and that the Bash tool does
 NOT persist `cd` between calls — use absolute paths or chain commands.

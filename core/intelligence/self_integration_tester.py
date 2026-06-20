@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from agents.self_code_writer import CodeOutput
+from core.runtime.process_utils import no_window_kwargs
 
 
 @dataclass
@@ -87,6 +88,7 @@ class SelfIntegrationTester:
             capture_output=True,
             text=True,
             check=False,
+            **no_window_kwargs(),
         )
         duration = time.perf_counter() - start
         combined_output = "\n".join(

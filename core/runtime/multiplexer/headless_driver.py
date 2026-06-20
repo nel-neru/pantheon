@@ -26,7 +26,7 @@ from core.runtime.multiplexer.base import (
     SurfaceStatus,
     Workspace,
 )
-from core.runtime.process_utils import pid_alive, terminate_pid
+from core.runtime.process_utils import no_window_kwargs, pid_alive, terminate_pid
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +148,9 @@ class HeadlessDriver(MultiplexerDriver):
                 stderr=subprocess.STDOUT,
                 cwd=spec.cwd,
                 env=os.environ.copy(),
+                # Suppress the flashing empty console window on Windows when the
+                # launcher itself has no console (no-op off-Windows).
+                **no_window_kwargs(),
             )
             self._procs[surface_id] = proc
             self._logs[surface_id] = log_fh

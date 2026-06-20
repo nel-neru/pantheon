@@ -23,4 +23,4 @@ labels: bug
 - `claude` CLI available? (Pantheon uses the local CLI, no API keys)
 
 ## Notes
-<!-- Is it one of the 2 known pre-existing Windows test failures (chmod 0o600)? If so, not a regression. -->
+<!-- Windows backend baseline is now 0 known test failures, so any failure is a regression. (The 2 chmod 0o600 tests are SKIPPED on Windows and pass on Linux CI.) -->

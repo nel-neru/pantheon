@@ -204,4 +204,7 @@ def test_cmd_daemon_start_closes_log_handle(monkeypatch, tmp_path, capsys):
     # CLI daemon start also detaches OS-correctly (Windows ignores start_new_session).
     import core.runtime.daemon_registry as registry
 
-    assert captured["popen_kwargs"] == registry._detach_popen_kwargs()
+    for key, value in registry._detach_popen_kwargs().items():
+        assert captured["popen_kwargs"][key] == value
+    # daemons spawn in UTF-8 mode so print() of non-cp932 chars cannot crash them.
+    assert captured["popen_kwargs"]["env"]["PYTHONUTF8"] == "1"
