@@ -256,6 +256,45 @@ export async function listPersonas(): Promise<Persona[]> {
   return api<Persona[]>('GET', '/api/personas')
 }
 
+// ─── Revenue projection / efficiency ─────────────────────────────────────────
+
+export type RevenueProjection = {
+  org_name: string
+  target: number
+  current: number
+  slope_per_month: number
+  on_track: boolean
+  months_to_target: number | null  // 0 = already met, null = unreachable
+  projected_3mo: number
+}
+
+export async function getRevenueProjection(
+  target: number,
+  orgName?: string
+): Promise<RevenueProjection> {
+  const params = new URLSearchParams({ target: String(target) })
+  if (orgName) params.set('org_name', orgName)
+  return api<RevenueProjection>('GET', `/api/metrics/revenue/projection?${params.toString()}`)
+}
+
+export type EfficiencyOrg = {
+  org_name: string
+  revenue: number
+  reach: number
+  roi: number
+  action: string
+  efficiency_rank: number
+}
+
+export type RevenueEfficiencyResponse = {
+  orgs: EfficiencyOrg[]
+  count: number
+}
+
+export async function getRevenueEfficiency(): Promise<RevenueEfficiencyResponse> {
+  return api<RevenueEfficiencyResponse>('GET', '/api/metrics/efficiency')
+}
+
 /**
  * SSE ストリーミング POST ヘルパー。
  * バックエンドの text/event-stream レスポンスを chunk 単位で読み取り、
