@@ -21,7 +21,12 @@ from core.metrics.velocity import VelocityCalculator
 from core.models.organization import is_active_improvement_proposal_status
 
 # 「承認/適用済み」とみなす提案 status（pending/proposed/in_progress 以外で、棄却・失敗でないもの）。
-_ACCEPTED_STATUSES = {"accepted", "approved", "done", "applied", "completed", "merged"}
+# 受理判定の単一ソース。他モジュール（hq_interventions の診断カウント等）もこれを参照して、
+# 「同じ提案を片方は受理・片方は未受理」と数えるズレ（自律スコア乖離）を防ぐ。
+ACCEPTED_PROPOSAL_STATUSES = {"accepted", "approved", "done", "applied", "completed", "merged"}
+# 終端の非成功（棄却・失敗・取消）= 「却下」相当として扱う status。
+REJECTED_PROPOSAL_STATUSES = {"rejected", "failed", "cancelled"}
+_ACCEPTED_STATUSES = ACCEPTED_PROPOSAL_STATUSES  # 後方互換の内部別名
 
 
 def _is_accepted_proposal(proposal: dict[str, Any]) -> bool:

@@ -41,6 +41,13 @@ type ConfirmState = {
   run: () => Promise<void>
 }
 
+/** 会社インストール確認ダイアログの追加フィールド */
+type CompanyInstallFields = {
+  manifest: CompanyManifest
+  name: string
+  repoPath: string
+}
+
 export function MarketplacePage() {
   const navigate = useNavigate()
   const [manifests, setManifests] = useState<CompanyManifest[] | undefined | null>(undefined)
@@ -59,6 +66,8 @@ export function MarketplacePage() {
   const [untapped, setUntapped] = useState<UntappedGenre[] | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
+  // 会社インストール確認ダイアログ（name/repoPath フィールドを持つ）
+  const [companyInstall, setCompanyInstall] = useState<CompanyInstallFields | null>(null)
   const initialLoadDone = useRef(false)
 
   const load = useCallback(async (quiet = false) => {
@@ -174,14 +183,17 @@ export function MarketplacePage() {
     }
   }, [])
 
-  const installCompanyConfirmed = useCallback(
-    async (manifest: CompanyManifest) => {
+  const doInstallCompany = useCallback(
+    async (manifest: CompanyManifest, name: string, repoPath: string) => {
       setInstalling(manifest.id)
       try {
+        const body: Record<string, string> = {}
+        if (name.trim()) body.name = name.trim()
+        if (repoPath.trim()) body.repo_path = repoPath.trim()
         const res = await api<{ org_name: string; divisions: string[] }>(
           'POST',
           `/api/company-plugins/${encodeURIComponent(manifest.id)}/install`,
-          {}
+          body
         )
         toast.success(`会社「${res.org_name}」を起動しました（${res.divisions.length} 事業部）。`)
         await load(true)
@@ -194,6 +206,19 @@ export function MarketplacePage() {
     },
     [load]
   )
+
+  /** CompanyManifestTable の onInstall コールバック（デフォルト確認フロー用。基本非使用だがシグネチャ維持のため残す）。 */
+  const installCompanyConfirmed = useCallback(
+    async (manifest: CompanyManifest) => {
+      await doInstallCompany(manifest, '', '')
+    },
+    [doInstallCompany]
+  )
+
+  /** 「この会社を作成」ボタンクリック → 名前/パス入力ダイアログを開く */
+  const requestInstallCompany = useCallback((manifest: CompanyManifest) => {
+    setCompanyInstall({ manifest, name: '', repoPath: '' })
+  }, [])
 
   const installDivisionConfirmed = useCallback(
     async (pluginId: string, orgName: string, pluginLabel: string) => {
@@ -314,6 +339,7 @@ export function MarketplacePage() {
                 )}
                 emptyTitle="会社プラグインがありません。"
                 onRetry={() => void load(false)}
+                onRequestInstall={requestInstallCompany}
                 onInstall={installCompanyConfirmed}
               />
             </div>
@@ -535,6 +561,65 @@ export function MarketplacePage() {
         destructive={confirm?.destructive ?? true}
         onConfirm={async () => {
           if (confirm) await confirm.run()
+        }}
+      />
+
+      {/* 会社インストール確認ダイアログ（name + repo_path 入力付き） */}
+      <ConfirmDialog
+        open={companyInstall !== null}
+        onOpenChange={(open) => {
+          if (!open) setCompanyInstall(null)
+        }}
+        title={companyInstall ? `「${companyInstall.manifest.label}」を作成しますか？` : ''}
+        description={
+          companyInstall ? (
+            <div className="flex flex-col gap-3">
+              <div className="text-sm text-fg2">
+                事業部・Agent・初期KPI・人間タスクまで含む会社を一括生成します。
+                {companyInstall.manifest.divisions.length > 0 && (
+                  <>
+                    <br />
+                    <span className="text-sm text-fg2">
+                      作成される事業部: {companyInstall.manifest.divisions.join('、')}
+                    </span>
+                  </>
+                )}
+              </div>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-muted">会社名（任意）</span>
+                <input
+                  className="input"
+                  placeholder={companyInstall.manifest.label}
+                  value={companyInstall.name}
+                  onChange={(e) =>
+                    setCompanyInstall((prev) => prev ? { ...prev, name: e.target.value } : prev)
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-muted">ワークスペースのパス（任意）</span>
+                <input
+                  className="input"
+                  placeholder="/path/to/workspace"
+                  value={companyInstall.repoPath}
+                  onChange={(e) =>
+                    setCompanyInstall((prev) => prev ? { ...prev, repoPath: e.target.value } : prev)
+                  }
+                />
+              </label>
+            </div>
+          ) : undefined
+        }
+        confirmLabel="この会社を作成"
+        destructive={false}
+        onConfirm={async () => {
+          if (companyInstall) {
+            await doInstallCompany(
+              companyInstall.manifest,
+              companyInstall.name,
+              companyInstall.repoPath
+            )
+          }
         }}
       />
     </>

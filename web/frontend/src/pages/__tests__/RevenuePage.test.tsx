@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
-import { beforeEach, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RevenuePage } from '../RevenuePage'
 import { mockApi } from '@/test/mocks'
@@ -53,16 +53,30 @@ const emptyMetrics: Metrics = { orgs: [], total_revenue: 0, total_reach: 0 }
 const emptyReport: Report = { by_month: {}, total_revenue: 0 }
 const insufficientIntel: Intel = { trend: 'insufficient', latest_change_pct: null, forecast_next: 0 }
 
-/** mockApi をパス別に応答させる（load は revenue / report / intelligence / hq portfolio を並列取得）。 */
-function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
+const daemonsStatus = {
+  daemons: {
+    revenue: { name: 'revenue', running: false, pid: null, last_heartbeat: null },
+  },
+}
+
+const daemonsStatusRunning = {
+  daemons: {
+    revenue: { name: 'revenue', running: true, pid: 1234, last_heartbeat: '2026-06-20T10:00:00Z' },
+  },
+}
+
+/** mockApi をパス別に応答させる（load は revenue / report / intelligence / hq portfolio / daemons を並列取得）。 */
+function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel; daemonRunning?: boolean }) {
   const m = opts?.metrics ?? metrics
   const r = opts?.report ?? report
   const ai = opts?.intel ?? intel
-  mockApi.mockImplementation((_method: string, path: string) => {
+  const ds = opts?.daemonRunning ? daemonsStatusRunning : daemonsStatus
+  mockApi.mockImplementation((_method: string, path: string, body?: unknown) => {
     if (path === '/api/metrics/revenue') return Promise.resolve(m)
     if (path === '/api/metrics/revenue/report') return Promise.resolve(r)
     if (path === '/api/metrics/revenue/intelligence') return Promise.resolve(ai)
     if (path === '/api/hq/portfolio') return Promise.resolve(portfolio)
+    if (path === '/api/daemons/status') return Promise.resolve(ds)
     if (path === '/api/hq/portfolio/scan') return Promise.resolve({ proposals: 2 })
     if (path.startsWith('/api/hq/portfolio/plan')) {
       return Promise.resolve({
@@ -80,9 +94,16 @@ function wireApi(opts?: { metrics?: Metrics; report?: Report; intel?: Intel }) {
       })
     }
     if (path === '/api/outcomes') return Promise.resolve({ ok: true, event: {} })
+    if (path === '/api/daemons/revenue/start') return Promise.resolve({ name: 'revenue', status: 'started' })
+    if (path === '/api/daemons/revenue/stop') return Promise.resolve({ name: 'revenue', status: 'stopped' })
+    if (path === '/api/outcomes/import') {
+      const b = body as { rows?: unknown[] } | undefined
+      return Promise.resolve({ imported: b?.rows?.length ?? 0, skipped: 0, orgs: ['My Co'] })
+    }
     return Promise.resolve({})
   })
 }
+
 
 // ── 基本表示 ──────────────────────────────────────────────────────────────────
 
@@ -363,4 +384,137 @@ it('API が null/欠落レスポンスを返してもクラッシュしない', 
   // null レスポンスでもクラッシュせずページが描画される
   // data=null なので KPI は「—」または 0 で表示される（空状態含む）
   expect(await screen.findByText('成果データがありません')).toBeInTheDocument()
+})
+
+// ── P14 収益デーモン制御 ──────────────────────────────────────────────────────
+
+describe('P14 収益デーモン制御カード', () => {
+  it('カードが描画される', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('自律経営（収益デーモン）')).toBeInTheDocument()
+  })
+
+  it('daemon 停止中 → 「停止中」バッジを表示する', async () => {
+    wireApi({ daemonRunning: false })
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('停止中')).toBeInTheDocument()
+  })
+
+  it('daemon 稼働中 → 「稼働中」バッジを表示する', async () => {
+    wireApi({ daemonRunning: true })
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('稼働中')).toBeInTheDocument()
+  })
+
+  it('「起動」ボタンで POST /api/daemons/revenue/start を呼ぶ（目標なし）', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営（収益デーモン）')
+    fireEvent.click(screen.getByRole('button', { name: '起動' }))
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('POST', '/api/daemons/revenue/start', {})
+    )
+  })
+
+  it('月次目標を入力して起動すると target を送信する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営（収益デーモン）')
+    fireEvent.change(screen.getByPlaceholderText('月次目標額（円）任意'), {
+      target: { value: '50000' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '起動' }))
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('POST', '/api/daemons/revenue/start', { target: 50000 })
+    )
+  })
+
+  it('「停止」ボタンで POST /api/daemons/revenue/stop を呼ぶ', async () => {
+    wireApi({ daemonRunning: true })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('自律経営（収益デーモン）')
+    fireEvent.click(screen.getByRole('button', { name: '停止' }))
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('POST', '/api/daemons/revenue/stop')
+    )
+  })
+})
+
+// ── P22 CSV インポート＋エクスポート ─────────────────────────────────────────
+
+describe('P22 CSV インポート', () => {
+  it('インポートカードが描画される', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    expect(await screen.findByText('成果データを一括インポート')).toBeInTheDocument()
+  })
+
+  it('CSV テキストを入力してインポートボタンで /api/outcomes/import を呼ぶ', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('成果データを一括インポート')
+
+    const textarea = screen.getByPlaceholderText(/org_name,metric,value,note/)
+    fireEvent.change(textarea, {
+      target: { value: 'org_name,metric,value\nMy Co,revenue,5000' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'インポート' }))
+
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith(
+        'POST',
+        '/api/outcomes/import',
+        expect.objectContaining({ rows: expect.any(Array) })
+      )
+    )
+  })
+
+  it('JSON 配列をインポートすると rows にそのまま渡す', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('成果データを一括インポート')
+
+    const jsonInput = JSON.stringify([{ org_name: 'My Co', metric: 'revenue', value: 8000 }])
+    const textarea = screen.getByPlaceholderText(/org_name,metric,value,note/)
+    fireEvent.change(textarea, { target: { value: jsonInput } })
+    fireEvent.click(screen.getByRole('button', { name: 'インポート' }))
+
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('POST', '/api/outcomes/import', {
+        rows: [{ org_name: 'My Co', metric: 'revenue', value: 8000 }],
+      })
+    )
+  })
+})
+
+describe('P22 CSV エクスポート', () => {
+  it('月次データがあるとき「エクスポート (CSV)」ボタンを有効化する', async () => {
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('月次収益レポート（全組織）')
+    const btn = screen.getByRole('button', { name: /エクスポート \(CSV\)/ })
+    expect(btn).not.toBeDisabled()
+  })
+
+  it('月次データが空のとき「エクスポート (CSV)」ボタンを無効化する', async () => {
+    wireApi({ report: emptyReport })
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('月次収益レポート（全組織）')
+    const btn = screen.getByRole('button', { name: /エクスポート \(CSV\)/ })
+    expect(btn).toBeDisabled()
+  })
+
+  it('エクスポートボタンクリックで URL.createObjectURL を呼ぶ', async () => {
+    const createObjectURL = vi.fn().mockReturnValue('blob:test')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(globalThis.URL, 'createObjectURL', { value: createObjectURL, writable: true })
+    Object.defineProperty(globalThis.URL, 'revokeObjectURL', { value: revokeObjectURL, writable: true })
+
+    wireApi()
+    renderWithRouter(<RevenuePage />)
+    await screen.findByText('月次収益レポート（全組織）')
+    fireEvent.click(screen.getByRole('button', { name: /エクスポート \(CSV\)/ }))
+    expect(createObjectURL).toHaveBeenCalled()
+  })
 })

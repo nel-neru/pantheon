@@ -269,6 +269,35 @@ def test_hq_no_add_division_when_monetization_exists(tmp_path):
     assert [p for p in proposals if p.target_ref == "monetization_from_outcomes"]
 
 
+def test_hq_proposal_counts_includes_all_terminal_statuses(tmp_path):
+    """受理=done/applied/approved…、却下=rejected/failed/cancelled を正しく数える（診断整合）。"""
+    import json
+
+    from core.hierarchy.hq_interventions import HQInterventionProposer
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    org = create_default_organization("CountOrg", "content", status=OrganizationStatus.ACTIVE)
+    psm.save_organization(org)
+    sm = psm.get_org_state_manager(org)
+    imp = sm.state_dir / "improvements"
+    imp.mkdir(parents=True, exist_ok=True)
+    statuses = {
+        "a": "done",
+        "b": "applied",
+        "c": "approved",
+        "d": "rejected",
+        "e": "failed",
+        "f": "cancelled",
+        "g": "proposed",  # 終端でない → どちらにも数えない
+    }
+    for fid, st in statuses.items():
+        (imp / f"{fid}.json").write_text(json.dumps({"id": fid, "status": st}), encoding="utf-8")
+
+    accepted, rejected = HQInterventionProposer(psm, source_org_name="HQ")._proposal_counts(sm)
+    assert accepted == 3  # done / applied / approved
+    assert rejected == 3  # rejected / failed / cancelled
+
+
 def test_hq_gap_proposes_audience_division_when_no_reach(tmp_path):
     """活動はあるがリーチ0・収益0・集客事業部なし → 集客事業部の ADD_DIVISION を提案する（P16）。"""
     from core.hierarchy.hq_interventions import HQInterventionProposer

@@ -4,12 +4,17 @@ import {
   AlertTriangle,
   CalendarDays,
   Coins,
+  Download,
   Eye,
   Lightbulb,
+  Play,
   Plus,
   Send,
+  Square,
   Target,
   TrendingUp,
+  Upload,
+  Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -153,19 +158,33 @@ export function RevenuePage() {
   const [planPreview, setPlanPreview] = useState<PlanPreview | null>(null)
   const [previewing, setPreviewing] = useState(false)
 
+  // P14 収益デーモン制御
+  const [daemonRunning, setDaemonRunning] = useState<boolean | null>(null)
+  const [daemonTarget, setDaemonTarget] = useState('')
+  const [daemonBusy, setDaemonBusy] = useState(false)
+
+  // P22 CSV インポート
+  const [importText, setImportText] = useState('')
+  const [importing, setImporting] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [result, rep, ai, pf] = await Promise.all([
+      type DaemonsStatusShape = { daemons: Record<string, { running?: unknown }> }
+      const [result, rep, ai, pf, daemonStatus] = await Promise.all([
         api<RevenueMetrics>('GET', '/api/metrics/revenue'),
         api<RevenueReport>('GET', '/api/metrics/revenue/report'),
         api<RevenueIntelligence>('GET', '/api/metrics/revenue/intelligence'),
         api<{ proposals: PortfolioProposal[] }>('GET', '/api/hq/portfolio'),
+        api<DaemonsStatusShape>('GET', '/api/daemons/status').catch(() => null),
       ])
       setData(result ?? null)
       setReport(rep ?? null)
       setIntel(ai ?? null)
       setPortfolio(Array.isArray(pf?.proposals) ? pf.proposals : [])
+      // daemon 状態を coerce（free-form payload）
+      const rev = daemonStatus?.daemons?.['revenue']
+      setDaemonRunning(rev ? Boolean(rev.running) : false)
       setError(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : '収益メトリクスの読み込みに失敗しました。'
@@ -286,6 +305,85 @@ export function RevenuePage() {
     }
   }, [targetInput])
 
+  // P14 — 収益デーモン起動（月次目標を送信）
+  const startDaemon = useCallback(async () => {
+    const target = Number(daemonTarget)
+    const hasTarget = daemonTarget.trim() !== '' && Number.isFinite(target) && target > 0
+    setDaemonBusy(true)
+    try {
+      await api('POST', '/api/daemons/revenue/start', hasTarget ? { target } : {})
+      setDaemonRunning(true)
+      toast.success(
+        hasTarget
+          ? `収益デーモンを起動しました（月次目標: ${formatYen(target)}）。`
+          : '収益デーモンをアイドル安全モードで起動しました。'
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '収益デーモンの起動に失敗しました。')
+    } finally {
+      setDaemonBusy(false)
+    }
+  }, [daemonTarget])
+
+  // P14 — 収益デーモン停止
+  const stopDaemon = useCallback(async () => {
+    setDaemonBusy(true)
+    try {
+      await api('POST', '/api/daemons/revenue/stop')
+      setDaemonRunning(false)
+      toast.success('収益デーモンを停止しました。')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '収益デーモンの停止に失敗しました。')
+    } finally {
+      setDaemonBusy(false)
+    }
+  }, [])
+
+  // P22 — CSV/JSON インポート（テキストエリアの内容を /api/outcomes/import に送信）
+  const runImport = useCallback(async () => {
+    const text = importText.trim()
+    if (!text) {
+      toast.error('インポートするデータを入力してください。')
+      return
+    }
+    setImporting(true)
+    try {
+      // JSON 配列もしくは CSV（1行目はヘッダ）を受け付ける
+      let rows: Record<string, unknown>[]
+      const firstChar = text[0]
+      if (firstChar === '[' || firstChar === '{') {
+        // JSON パス
+        const parsed: unknown = JSON.parse(text)
+        rows = Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : [parsed as Record<string, unknown>]
+      } else {
+        // CSV パス: 1行目ヘッダ、以降はデータ行
+        const lines = text.split(/\r?\n/).filter((l) => l.trim())
+        if (lines.length < 2) throw new Error('CSV にはヘッダ行とデータ行が必要です。')
+        const headers = lines[0].split(',').map((h) => h.trim())
+        rows = lines.slice(1).map((line) => {
+          const values = line.split(',')
+          const record: Record<string, unknown> = {}
+          headers.forEach((h, idx) => {
+            record[h] = values[idx]?.trim() ?? ''
+          })
+          return record
+        })
+      }
+      const res = await api<{ imported: number; skipped: number; orgs: string[] }>(
+        'POST',
+        '/api/outcomes/import',
+        { rows }
+      )
+      toast.success(`${res.imported} 件をインポートしました（スキップ: ${res.skipped} 件）。`)
+      setImportText('')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'インポートに失敗しました。')
+    } finally {
+      setImporting(false)
+    }
+  }, [importText, load])
+
   const orgs = data?.orgs ?? []
   const alerts = orgs.filter((o) => o.reach_but_no_revenue)
 
@@ -300,6 +398,32 @@ export function RevenuePage() {
     const prev = months[i - 1][1]
     if (prev === 0) return null
     return Math.round(((months[i][1] - prev) / prev) * 1000) / 10
+  }
+
+  // P22 — CSV エクスポート（月次テーブルをクライアントサイド Blob で出力）
+  // months / calcDelta の後に定義することで TDZ エラーを回避。
+  const exportCsv = () => {
+    if (months.length === 0) {
+      toast.error('エクスポートするデータがありません。')
+      return
+    }
+    const csvRows = [
+      ['月', '収益(¥)', '前月比(%)'],
+      ...months.map(([month, total], i) => {
+        const delta = calcDelta(i)
+        const safeTotal = Math.round(Number.isFinite(total) ? total : 0)
+        return [month, String(safeTotal), delta === null ? '' : String(delta)]
+      }),
+    ]
+    const csv = csvRows.map((r) => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'revenue_monthly.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('CSV をエクスポートしました。')
   }
 
   // priority 降順ソートされたポートフォリオ提案
@@ -621,12 +745,74 @@ export function RevenuePage() {
             </div>
           </div>
 
+          {/* P14: 自律経営（収益デーモン）コントロール */}
+          <div id="daemon-control-card" className="card">
+            <div className="card-body flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Zap size={16} />
+                <div className="font-semibold">自律経営（収益デーモン）</div>
+                {daemonRunning === true ? (
+                  <span className="badge badge-green">稼働中</span>
+                ) : daemonRunning === false ? (
+                  <span className="badge badge-neutral">停止中</span>
+                ) : null}
+              </div>
+              <p className="text-muted text-sm">
+                月次目標を設定してデーモンを起動すると、自律的にポートフォリオ提案・HQ介入を繰り返す
+                継続ループが動きます（目標省略 = アイドル安全モード）。停止はいつでもできます。
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  id="daemon-target-input"
+                  className="input w-48"
+                  type="number"
+                  min={0}
+                  placeholder="月次目標額（円）任意"
+                  value={daemonTarget}
+                  onChange={(e) => setDaemonTarget(e.target.value)}
+                />
+                <button
+                  id="daemon-start-button"
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={daemonBusy || daemonRunning === true}
+                  onClick={() => void startDaemon()}
+                >
+                  <Play size={14} />
+                  {daemonBusy ? '処理中…' : '起動'}
+                </button>
+                <button
+                  id="daemon-stop-button"
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={daemonBusy || daemonRunning === false}
+                  onClick={() => void stopDaemon()}
+                >
+                  <Square size={14} />
+                  停止
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* 月次収益レポート（month キーソート＋前月比列） */}
           <div id="monthly-report-card" className="card">
             <div className="card-body flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <CalendarDays size={16} />
-                <div className="font-semibold">月次収益レポート（全組織）</div>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <CalendarDays size={16} />
+                  <div className="font-semibold">月次収益レポート（全組織）</div>
+                </div>
+                <button
+                  id="export-csv-button"
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={months.length === 0}
+                  onClick={exportCsv}
+                >
+                  <Download size={14} />
+                  エクスポート (CSV)
+                </button>
               </div>
               {months.length === 0 ? (
                 <div className="text-sm text-muted">月次データが蓄積されると表示されます。</div>
@@ -662,6 +848,40 @@ export function RevenuePage() {
                   </tbody>
                 </table>
               )}
+            </div>
+          </div>
+
+          {/* P22: CSV/JSON インポート */}
+          <div id="import-card" className="card">
+            <div className="card-body flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Upload size={16} />
+                <div className="font-semibold">成果データを一括インポート</div>
+              </div>
+              <p className="text-muted text-sm">
+                CSV（1行目: ヘッダ）または JSON 配列を貼り付けて一括取り込みします。
+                CSV ヘッダ例: <code>org_name,metric,value,note</code>
+              </p>
+              <textarea
+                id="import-textarea"
+                className="input font-mono text-xs"
+                rows={4}
+                placeholder={'org_name,metric,value,note\nMy Co,revenue,5000,6月分'}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+              />
+              <div className="flex justify-end">
+                <button
+                  id="import-button"
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={importing || !importText.trim()}
+                  onClick={() => void runImport()}
+                >
+                  <Upload size={14} />
+                  {importing ? 'インポート中…' : 'インポート'}
+                </button>
+              </div>
             </div>
           </div>
 

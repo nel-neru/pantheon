@@ -384,6 +384,13 @@ class HQInterventionProposer:
     # ------------------------------------------------------------------ #
 
     def _proposal_counts(self, sm: "RepoStateManager") -> tuple[int, int]:
+        # 受理/却下の判定は live_metrics の単一ソースに揃える（"done" だけを受理と数える旧実装は
+        # accepted/approved/applied/… を取りこぼし、failed/cancelled も無視して診断を歪めていた）。
+        from core.metrics.live_metrics import (
+            ACCEPTED_PROPOSAL_STATUSES,
+            REJECTED_PROPOSAL_STATUSES,
+        )
+
         accepted = 0
         rejected = 0
         improvements_dir = sm.state_dir / "improvements"
@@ -394,10 +401,10 @@ class HQInterventionProposer:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (ValueError, OSError):
                 continue
-            status = data.get("status")
-            if status == "done":
+            status = str(data.get("status") or "").lower()
+            if status in ACCEPTED_PROPOSAL_STATUSES:
                 accepted += 1
-            elif status == "rejected":
+            elif status in REJECTED_PROPOSAL_STATUSES:
                 rejected += 1
         return (accepted, rejected)
 

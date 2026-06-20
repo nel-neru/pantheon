@@ -32,6 +32,46 @@ export async function api<T = unknown>(
 
 // ─── Typed convenience wrappers ──────────────────────────────────────────────
 
+export type DaemonState = {
+  name: string
+  running: boolean
+  pid?: number | null
+  last_heartbeat?: string | null
+  desired?: string | null
+}
+
+export type DaemonsStatusResponse = {
+  daemons: Record<string, DaemonState>
+  rate_limited?: boolean
+}
+
+export async function getDaemonsStatus(): Promise<DaemonsStatusResponse> {
+  return api<DaemonsStatusResponse>('GET', '/api/daemons/status')
+}
+
+export async function startRevenueDaemon(opts: {
+  target?: number
+  source_org?: string
+  min_reach?: number
+}): Promise<Record<string, unknown>> {
+  return api<Record<string, unknown>>('POST', '/api/daemons/revenue/start', opts)
+}
+
+export async function stopRevenueDaemon(): Promise<Record<string, unknown>> {
+  return api<Record<string, unknown>>('POST', '/api/daemons/revenue/stop')
+}
+
+export async function importOutcomes(body: {
+  rows: Record<string, unknown>[]
+  org_name?: string
+}): Promise<{ imported: number; skipped: number; orgs: string[] }> {
+  return api<{ imported: number; skipped: number; orgs: string[] }>(
+    'POST',
+    '/api/outcomes/import',
+    body
+  )
+}
+
 export type BusinessHandoffRoute = {
   from_org: string
   to_org: string
