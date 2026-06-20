@@ -90,6 +90,7 @@ from commands.plugin import cmd_plugin_list as _cmd_plugin_list_impl
 from commands.plugin import cmd_plugin_scaffold_company as _cmd_plugin_scaffold_company_impl
 from commands.plugin import cmd_plugin_scaffold_division as _cmd_plugin_scaffold_division_impl
 from commands.portfolio import cmd_portfolio_overview as _cmd_portfolio_overview_impl
+from commands.story import cmd_story_brief as _cmd_story_brief_impl
 from commands.traces import cmd_traces as _cmd_traces_impl
 from commands.up import cmd_up as _cmd_up_impl
 from commands.version import cmd_version as _cmd_version_impl
@@ -312,6 +313,10 @@ async def cmd_plugin_scaffold_company(args) -> None:
 
 async def cmd_portfolio_overview(args) -> None:
     await _cmd_portfolio_overview_impl(args, get_psm=_get_psm)
+
+
+async def cmd_story_brief(args) -> None:
+    await _cmd_story_brief_impl(args, get_psm=_get_psm)
 
 
 async def cmd_plugin_install_company(args) -> None:
@@ -855,6 +860,7 @@ HANDLERS = {
     "cmd_plugin_scaffold_division": cmd_plugin_scaffold_division,
     "cmd_plugin_scaffold_company": cmd_plugin_scaffold_company,
     "cmd_portfolio_overview": cmd_portfolio_overview,
+    "cmd_story_brief": cmd_story_brief,
     "cmd_plugin_install_company": cmd_plugin_install_company,
     "cmd_org_list": cmd_org_list,
     "cmd_org_scan": cmd_org_scan,
