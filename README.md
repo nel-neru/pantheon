@@ -120,7 +120,7 @@ python -m pytest tests/ -q --tb=short
 .\.venv\Scripts\python.exe -m pytest tests\ -q --tb=short
 ```
 
-> Windows では `chmod`(0o600) 由来の **2 件が既知の失敗**（回帰ではありません。path-separator と order-flaky の旧4件は 2026-06-12 に修正済み）。詳細は `CLAUDE.md` / `AGENTS.md` を参照。
+> Windows では **既知の失敗は 0 件**（あらゆる失敗は回帰）。`chmod`(0o600) 由来の 2 件はかつての既知の失敗ですが、現在は `@pytest.mark.skipif` により Windows では **スキップ**され、Linux CI では実行されて **パス**します。path-separator と order-flaky の旧4件は 2026-06-12 に修正済み。詳細は `CLAUDE.md` / `AGENTS.md` を参照。
 
 ## コントリビュート / ライセンス / セキュリティ
 

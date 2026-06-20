@@ -50,6 +50,6 @@ cd web/frontend && npm test                  # フロントエンド (vitest)
 
 ## Pull Request
 
-1. work ブランチで変更し、テストを全件グリーンにする（既知ベースライン除く）
+1. work ブランチで変更し、テストを全件グリーンにする（Windows では既知失敗 0 件。chmod 2 件は skip）
 2. 変更内容・動機・テスト方法を PR 説明に記載
 3. CI（GitHub Actions）が通ることを確認

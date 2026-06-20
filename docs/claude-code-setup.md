@@ -27,8 +27,8 @@ flowchart TD
 
 ### Memory & rules
 - **`CLAUDE.md`** (root) — lean operating guide; imports `@AGENTS.md` (Claude Code does not read
-  `AGENTS.md` natively). Holds commands, the 6-known-Windows-failures test baseline, git/commit
-  policy, and the `.claude/` map.
+  `AGENTS.md` natively). Holds commands, the 0-known-Windows-failures test baseline (the 2 chmod
+  tests skip on Windows and pass on Linux CI), git/commit policy, and the `.claude/` map.
 - **`.claude/rules/`** — path-scoped guidance loaded only when Claude touches matching files:
   `python.md` (`**/*.py`), `frontend.md` (`web/frontend/**/*.{ts,tsx}`), `web-api.md` (`web/server.py`).
 
@@ -51,8 +51,9 @@ Model-tiered by cognitive load — heavy reasoning on Opus, implementation on So
 mechanical/monitoring on Haiku — so routine work doesn't burn the expensive tier:
 - **Opus** (deep reasoning): `code-reviewer` (read-only diff review), `debugger` (root-cause + minimal fix).
 - **Sonnet** (implementation / judgment): `frontend-dev` (React/Vite/TS), `flow-auditor` (per-flow health).
-- **Haiku** (mechanical / monitoring, low-cost): `test-triage` (run suites, match against the 2 known
-  Windows failures — chmod 0o600), `trend-watcher` (surface Claude Code/Anthropic trends → `.claude/` config suggestions,
+- **Haiku** (mechanical / monitoring, low-cost): `test-triage` (run suites; on Windows there are 0 known
+  failures — any failure is a regression — while the 2 chmod 0o600 tests skip on Windows and pass on
+  Linux CI), `trend-watcher` (surface Claude Code/Anthropic trends → `.claude/` config suggestions,
   read-only), `doc-writer` (keep docs in sync; honors the planning-doc hygiene rule).
 
 Pick the tier by the task's hardest sub-step, not its length: a long-but-mechanical task (run tests,
