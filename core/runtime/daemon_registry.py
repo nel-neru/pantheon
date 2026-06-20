@@ -160,11 +160,28 @@ def is_process_running(pid: int) -> bool:
     return pid_alive(pid)
 
 
+def _windowless_python(executable: str = sys.executable, os_name: str = os.name) -> str:
+    """Interpreter to launch daemons with — windowless on Windows.
+
+    On Windows a console-subsystem ``python.exe`` pops a (usually empty) console
+    window per daemon even with ``DETACHED_PROCESS``; the GUI-subsystem
+    ``pythonw.exe`` (same venv, sibling of ``python.exe``) can never be given a
+    console window by the loader, so it is the reliable fix (this is why the
+    watchdog/evolve launchers already use pythonw). Falls back to the given
+    executable if the sibling pythonw is missing or off-Windows.
+    """
+    if os_name == "nt":
+        candidate = Path(executable).with_name("pythonw.exe")
+        if candidate.exists():
+            return str(candidate)
+    return executable
+
+
 def build_command(spec: DaemonSpec, extra_args: Sequence[str] = ()) -> List[str]:
     """Argv for the daemon subprocess (frozen-exe aware, pure/testable)."""
     if getattr(sys, "frozen", False):
         return [sys.executable, spec.frozen_flag, *extra_args]
-    return [sys.executable, "-m", spec.runner_module, *extra_args]
+    return [_windowless_python(), "-m", spec.runner_module, *extra_args]
 
 
 # --------------------------------------------------------------------------- #

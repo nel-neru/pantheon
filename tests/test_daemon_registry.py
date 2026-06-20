@@ -5,8 +5,6 @@ subprocess は決して実起動しない: Popen / terminate_pid を monkeypatch
 
 from __future__ import annotations
 
-import sys
-
 import pytest
 
 import core.runtime.daemon_registry as registry
@@ -60,12 +58,53 @@ def test_cli_daemon_names_match_registry():
 
 def test_build_command_non_frozen():
     cmd = build_command(get_spec("content"), ["--interval=600"])
-    assert cmd == [sys.executable, "-m", "core._content_daemon_runner", "--interval=600"]
+    # daemons launch via the windowless interpreter (pythonw on Windows; == sys.executable elsewhere)
+    assert cmd == [
+        registry._windowless_python(),
+        "-m",
+        "core._content_daemon_runner",
+        "--interval=600",
+    ]
 
 
 def test_build_command_non_frozen_revenue():
     cmd = build_command(get_spec("revenue"), ["--target=1000"])
-    assert cmd == [sys.executable, "-m", "core._revenue_daemon_runner", "--target=1000"]
+    assert cmd == [
+        registry._windowless_python(),
+        "-m",
+        "core._revenue_daemon_runner",
+        "--target=1000",
+    ]
+
+
+def test_windowless_python_prefers_sibling_pythonw_on_windows(tmp_path):
+    """On Windows, daemons launch via the sibling pythonw.exe when it exists.
+
+    Portable (os_name injected) so the pythonw branch is exercised on Linux CI too —
+    the build_command assertions above only pin structure and never reach this branch
+    there (where _windowless_python is identically sys.executable).
+    """
+    py = tmp_path / "python.exe"
+    pyw = tmp_path / "pythonw.exe"
+    py.write_text("", encoding="utf-8")
+    pyw.write_text("", encoding="utf-8")
+    assert registry._windowless_python(str(py), os_name="nt") == str(pyw)
+
+
+def test_windowless_python_falls_back_when_pythonw_missing(tmp_path):
+    """No sibling pythonw.exe → return the given interpreter unchanged (no crash)."""
+    py = tmp_path / "python.exe"
+    py.write_text("", encoding="utf-8")
+    assert registry._windowless_python(str(py), os_name="nt") == str(py)
+
+
+def test_windowless_python_noop_off_windows(tmp_path):
+    """Off Windows the gate is skipped — even if a pythonw.exe sibling exists."""
+    py = tmp_path / "python"
+    pyw = tmp_path / "pythonw.exe"
+    py.write_text("", encoding="utf-8")
+    pyw.write_text("", encoding="utf-8")
+    assert registry._windowless_python(str(py), os_name="posix") == str(py)
 
 
 def test_build_command_frozen_uses_revenue_flag(monkeypatch):
@@ -110,7 +149,7 @@ def test_spawn_writes_pid_and_desired_state(tmp_path, monkeypatch):
     assert result["status"] == "started"
     assert result["pid"] == 1234
     assert (tmp_path / "daemon.pid").read_text(encoding="utf-8") == "1234"
-    assert captured["cmd"][:3] == [sys.executable, "-m", "core._daemon_runner"]
+    assert captured["cmd"][:3] == [registry._windowless_python(), "-m", "core._daemon_runner"]
     assert captured["cwd"] == registry.PROJECT_ROOT
     # spawn passes the OS-appropriate console-detach kwargs (POSIX setsid /
     # Windows creation flags), not a raw start_new_session that Windows ignores.

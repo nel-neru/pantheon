@@ -12,6 +12,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from core.runtime.process_utils import no_window_kwargs
+
 
 def git_remote_github_repo(repo_path: Path) -> str | None:
     """target_repo の origin リモートから owner/repo を推定する（best-effort）。"""
@@ -21,6 +23,7 @@ def git_remote_github_repo(repo_path: Path) -> str | None:
             capture_output=True,
             text=True,
             timeout=5,
+            **no_window_kwargs(),
         )
     except Exception:  # noqa: BLE001 - git 不在 / 非リポジトリは推定不能として扱う
         return None

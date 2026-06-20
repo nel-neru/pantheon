@@ -174,8 +174,15 @@ class AbstractGoalPipeline:
             try:
                 import subprocess
 
+                from core.runtime.process_utils import no_window_kwargs
+
                 subprocess.run(
-                    ["git", "init"], cwd=str(path), capture_output=True, timeout=15, check=False
+                    ["git", "init"],
+                    cwd=str(path),
+                    capture_output=True,
+                    timeout=15,
+                    check=False,
+                    **no_window_kwargs(),
                 )
             except Exception:  # noqa: BLE001 - git 不在環境でも続行
                 pass

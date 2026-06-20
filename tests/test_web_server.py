@@ -238,8 +238,11 @@ def test_daemon_start_uses_runner_command(tmp_path, monkeypatch):
     assert data["interval"] == 3600
     assert data["max_files"] == 10
     assert (tmp_path / "daemon.pid").read_text(encoding="utf-8") == "9876"
+    import core.runtime.daemon_registry as registry
+
+    # daemons launch via the windowless interpreter (pythonw on Windows; == sys.executable elsewhere)
     assert calls["cmd"] == [
-        sys.executable,
+        registry._windowless_python(),
         "-m",
         "core._daemon_runner",
         "--interval=3600",
