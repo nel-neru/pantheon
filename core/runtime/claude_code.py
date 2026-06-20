@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
 from core.llm.base import LLMMessage, LLMResponse
+from core.runtime.process_utils import no_window_kwargs
 from core.runtime.rate_limit import RateLimitInfo, detect_rate_limit, detect_rate_limit_strict
 from core.runtime.usage_gate import RateLimitGate, gate_bypassed
 
