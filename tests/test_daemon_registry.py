@@ -121,7 +121,7 @@ def test_spawn_writes_pid_and_desired_state(tmp_path, monkeypatch):
     assert result["status"] == "started"
     assert result["pid"] == 1234
     assert (tmp_path / "daemon.pid").read_text(encoding="utf-8") == "1234"
-    assert captured["cmd"][:3] == [sys.executable, "-m", "core._daemon_runner"]
+    assert captured["cmd"][:3] == [registry._windowless_python(), "-m", "core._daemon_runner"]
     assert captured["cwd"] == registry.PROJECT_ROOT
     # spawn passes the OS-appropriate console-detach kwargs (POSIX setsid /
     # Windows creation flags), not a raw start_new_session that Windows ignores.
