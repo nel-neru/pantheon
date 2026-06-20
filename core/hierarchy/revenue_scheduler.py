@@ -60,6 +60,7 @@ class RevenueScheduler:
         target: float = 0.0,
         source_org_name: str = "HQ",
         min_reach: float = 0.0,
+        collect: bool = True,
         **_kwargs: Any,
     ):
         from core.platform.state import PlatformStateManager
@@ -70,6 +71,8 @@ class RevenueScheduler:
         self._target = float(target)
         self._source_org_name = source_org_name
         self._min_reach = float(min_reach)
+        # 各サイクルで接続済みソース（CSV/実API）から収益を自動取り込みする（冪等・トークンゼロ）。
+        self._collect = bool(collect)
         self._running = False
         self._cycle_count = 0
         self._status = STATUS_STOPPED
@@ -107,6 +110,18 @@ class RevenueScheduler:
 
         from core.metrics.outcomes import OutcomeStore
         from core.metrics.revenue_intelligence import analyze_revenue
+
+        # 自律収益取り込み（§9）: 接続済みソース（revenue_imports/<src>.csv 等）から記録する。
+        # 冪等（dedupe_on_source）・LLM 非依存。未接続ソースは接続タスクを一度だけ積む。
+        recorded = 0
+        if self._collect:
+            try:
+                from core.metrics.revenue_collectors import run_revenue_collection
+
+                collect_result = run_revenue_collection(platform_home=self.platform_home)
+                recorded = int(collect_result.get("recorded", 0))
+            except Exception as exc:  # noqa: BLE001
+                logger.info("revenue collection failed: %s", exc)
 
         analysis: Dict[str, Any] = {}
         try:
@@ -171,6 +186,7 @@ class RevenueScheduler:
             "target": self._target,
             "trend": analysis.get("trend"),
             "forecast_next": analysis.get("forecast_next"),
+            "revenue_recorded": recorded,
             "proposals": scan.get("proposals", 0),
             "hq_proposals": hq_created,
             "scanned": scan.get("scanned", 0),

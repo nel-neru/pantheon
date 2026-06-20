@@ -101,6 +101,31 @@ def test_run_cycle_writes_log_and_beats_heartbeat(tmp_path, monkeypatch):
     assert logs[-1]["cycle"] == 1
 
 
+def test_run_cycle_auto_collects_from_csv(tmp_path, monkeypatch):
+    """各サイクルで接続済みソース（revenue_imports/<src>.csv）から収益を自動取り込みする（P12）。"""
+    home = _home(tmp_path, monkeypatch)
+    csv_dir = home / "revenue_imports"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    (csv_dir / "note.csv").write_text("org_name,amount,id\nNoteCo,1500,a1\n", encoding="utf-8")
+
+    summary = asyncio.run(RevenueScheduler(platform_home=home, target=0.0).run_cycle())
+    assert summary["revenue_recorded"] == 1
+    assert OutcomeStore(platform_home=home).summary_for_org("NoteCo").total_revenue == 1500.0
+
+
+def test_collect_can_be_disabled(tmp_path, monkeypatch):
+    """collect=False なら自動取り込みしない（明示オプトアウト）。"""
+    home = _home(tmp_path, monkeypatch)
+    csv_dir = home / "revenue_imports"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    (csv_dir / "note.csv").write_text("org_name,amount,id\nNoteCo,1500,a1\n", encoding="utf-8")
+
+    summary = asyncio.run(
+        RevenueScheduler(platform_home=home, target=0.0, collect=False).run_cycle()
+    )
+    assert summary["revenue_recorded"] == 0
+
+
 def _boom(*_a, **_k):
     raise RuntimeError("boom")
 

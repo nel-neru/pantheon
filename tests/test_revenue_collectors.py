@@ -92,3 +92,39 @@ def test_default_collectors_unconfigured_by_default(tmp_path, monkeypatch):
     result = run_revenue_collection(platform_home=home)
     assert result["recorded"] == 0
     assert set(result["needs_connection"]) == {"note", "x", "asp"}
+
+
+def test_csv_import_makes_source_configured_and_records(tmp_path, monkeypatch):
+    """revenue_imports/<source>.csv を置くと CSV から収益を自動収集する（P15）。"""
+    home = _home(tmp_path, monkeypatch)
+    csv_dir = home / "revenue_imports"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    (csv_dir / "note.csv").write_text(
+        "org_name,amount,occurred_at,id\n"
+        "Note Co,1200,2026-06-10,art1\n"
+        "Note Co,800,2026-06-20,art2\n"
+        ",999,2026-06-21,bad\n",  # org 欠落 → skip
+        encoding="utf-8",
+    )
+    result = run_revenue_collection(platform_home=home)
+    assert result["recorded"] == 2  # 不正 1 行は skip
+    assert "note" in result["collected_sources"]
+    # x/asp は未接続のまま接続タスク対象
+    assert set(result["needs_connection"]) == {"x", "asp"}
+    summary = OutcomeStore(platform_home=home).summary_for_org("Note Co")
+    assert summary.total_revenue == 2000.0
+
+    # 冪等: 同じ CSV を再取り込みしても二重計上しない（dedupe_on_source）。
+    run_revenue_collection(platform_home=home)
+    assert OutcomeStore(platform_home=home).summary_for_org("Note Co").total_revenue == 2000.0
+
+
+def test_parse_revenue_csv_skips_malformed_without_raising(tmp_path):
+    """壊れた行は例外を投げず skip する（silent-drop-observability）。"""
+    from core.metrics.revenue_collectors.csv_import import parse_revenue_csv
+
+    path = tmp_path / "asp.csv"
+    path.write_text("org_name,amount\nCo,not-a-number\nCo,500\n", encoding="utf-8")
+    records = parse_revenue_csv(path, "asp")
+    assert len(records) == 1 and records[0].amount == 500.0
+    assert records[0].source.startswith("asp:")
