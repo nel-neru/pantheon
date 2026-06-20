@@ -524,6 +524,9 @@ def run_claude_sync(
             errors="replace",
             timeout=effective_timeout,
             cwd=str(cwd) if cwd else None,
+            # No flashing empty console window when invoked from a windowless
+            # daemon / headless / pythonw context on Windows (no-op off-Windows).
+            **no_window_kwargs(),
         )
 
     # Tool calls intentionally have NO flag-rejection fallback: the retry-without-fast path
