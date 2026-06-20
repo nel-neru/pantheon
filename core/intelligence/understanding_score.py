@@ -52,5 +52,7 @@ class UnderstandingScoreTracker:
             return {}
 
     def _save(self, data: dict) -> None:
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
-        self.file_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（partial write による理解度スコアの静かな消失を防ぐ）。
+        atomic_write_text(self.file_path, json.dumps(data, ensure_ascii=False, indent=2))

@@ -332,10 +332,12 @@ class CapabilityGapAnalyzer:
             logger.warning("CapabilityGapAnalyzer load failed: %s", e)
 
     def _save_gaps(self) -> None:
-        self._gap_file.parent.mkdir(parents=True, exist_ok=True)
+        from core.persistence import atomic_write_text
+
         data = {
             "version": "1.0.0",
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "gaps": [g.to_dict() for g in self._gaps],
         }
-        self._gap_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        # 原子的に書く（学習状態の partial write による静かな目減りを防ぐ）。
+        atomic_write_text(self._gap_file, json.dumps(data, ensure_ascii=False, indent=2))

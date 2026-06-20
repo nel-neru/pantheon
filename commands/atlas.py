@@ -99,9 +99,11 @@ def cmd_atlas(args: argparse.Namespace) -> None:
 
     output = getattr(args, "output", None)
     if output:
+        from core.persistence import atomic_write_text
+
         path = Path(output)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(atlas, ensure_ascii=False, indent=2), encoding="utf-8")
+        # 原子的に書く（Ctrl+C/OOM で切り詰めた壊れ Atlas を残さない）。
+        atomic_write_text(path, json.dumps(atlas, ensure_ascii=False, indent=2))
         print(f"[OK] Atlas を書き出しました: {path}")
         return
 

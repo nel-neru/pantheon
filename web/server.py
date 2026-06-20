@@ -304,8 +304,8 @@ def _save_session(session: dict[str, Any]) -> None:
     _ensure_chat_sessions_dir()
     session["updated_at"] = datetime.now(timezone.utc).isoformat()
     path = _get_session_path(session["id"])
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(session, f, ensure_ascii=False, indent=2)
+    # 原子的に書く（プロセス強制終了でも切り詰めた壊れセッション JSON を残さない）。
+    atomic_write_text(path, json.dumps(session, ensure_ascii=False, indent=2))
 
 
 def _list_sessions() -> list[dict[str, Any]]:

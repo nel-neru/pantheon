@@ -80,8 +80,8 @@ class PatternLibrary:
         return [CodePattern(**item) for item in data.get("patterns", [])]
 
     def _save_all(self, patterns: list[CodePattern]) -> None:
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        from core.persistence import atomic_write_text
+
         payload = {"patterns": [asdict(pattern) for pattern in patterns]}
-        self.file_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        # 原子的に書く（学習済みパターンの partial write による静かな消失を防ぐ）。
+        atomic_write_text(self.file_path, json.dumps(payload, ensure_ascii=False, indent=2))
