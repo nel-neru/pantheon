@@ -45,7 +45,6 @@ from commands.memory import cmd_memory_capture as _cmd_memory_capture_impl
 from commands.memory import cmd_memory_list as _cmd_memory_list_impl
 from commands.memory import cmd_memory_propagate as _cmd_memory_propagate_impl
 from commands.orchestration import cmd_agent_list as _cmd_agent_list_impl
-from commands.orchestration import cmd_skills_list as _cmd_skills_list_impl
 from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
 from commands.orchestration import (
     cmd_orchestration_analyze as _cmd_orchestration_analyze_impl,
@@ -57,6 +56,7 @@ from commands.orchestration import cmd_orchestration_history as _cmd_orchestrati
 from commands.orchestration import (
     cmd_orchestration_self_review as _cmd_orchestration_self_review_impl,
 )
+from commands.orchestration import cmd_skills_list as _cmd_skills_list_impl
 from commands.org import cmd_analyze as _cmd_analyze_impl
 from commands.org import cmd_approve as _cmd_approve_impl
 from commands.org import cmd_init as _cmd_init_impl
