@@ -2793,6 +2793,44 @@ async def api_revenue_forecast_extended(
     return {"org_name": org_name, "horizon": horizon, **analysis}
 
 
+@app.get("/api/revenue/attribution", tags=["metrics"])
+async def api_revenue_attribution(
+    org_name: Optional[str] = None,
+    business_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """収益のチャネル（source）別アトリビューション。``business_id`` 指定で member 横断ロールアップ。
+
+    どの導線（note/X/affiliate/manual…）が収益を生むかを %内訳で示す（配分判断の材料）。
+    """
+    store = _outcome_store()
+    scope = "all"
+    if business_id:
+        business = _business_store().get(business_id)
+        if business is None:
+            raise HTTPException(
+                status_code=404, detail=f"Business '{business_id}' が見つかりません"
+            )
+        by_channel = store.revenue_by_channel(
+            business.member_orgs, start_date=start_date, end_date=end_date
+        )
+        scope = f"business:{business.name}"
+    else:
+        by_channel = store.revenue_by_channel(org_name, start_date=start_date, end_date=end_date)
+        scope = f"org:{org_name}" if org_name else "all"
+    total = sum(by_channel.values())
+    channels = [
+        {
+            "channel": ch,
+            "revenue": amount,
+            "pct": round(amount / total * 100, 1) if total else 0.0,
+        }
+        for ch, amount in by_channel.items()
+    ]
+    return {"scope": scope, "total_revenue": total, "channels": channels}
+
+
 @app.get("/api/hq/portfolio", tags=["hq"])
 async def api_hq_portfolio() -> Dict[str, Any]:
     """ポートフォリオ資源配分・連携の HQ 提案（収益/リーチから invest/monetize/送客 等を提案）。"""

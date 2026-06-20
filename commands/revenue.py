@@ -111,6 +111,23 @@ async def cmd_revenue_forecast(args: argparse.Namespace) -> None:
         print(f"    +{i:>2}か月後: {v:,.0f} 円")
 
 
+async def cmd_revenue_attribution(args: argparse.Namespace) -> None:
+    """収益をチャネル（source）別に内訳表示する（どの導線が収益を生んでいるか）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    by_channel = OutcomeStore().revenue_by_channel(getattr(args, "org", None) or None)
+    total = sum(by_channel.values())
+    if not by_channel:
+        print("[revenue] 収益記録がありません（source 別の内訳はまだありません）")
+        return
+    print("\n収益チャネル別アトリビューション\n")
+    print(f"  {'チャネル':<16}{'収益(円)':>14}{'比率':>8}")
+    for ch, amount in by_channel.items():
+        pct = (amount / total * 100) if total else 0.0
+        print(f"  {ch:<16}{amount:>14,.0f}{pct:>7.1f}%")
+    print(f"\n  合計: {total:,.0f} 円")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("revenue", help="収益の自動収集・レポート・分析")
     sub = parser.add_subparsers(dest="revenue_command", required=True)
@@ -131,3 +148,7 @@ def register(subparsers: Any) -> None:
     sp = sub.add_parser("forecast", help="OLS 回帰で多か月の収益予測（slope/R²/予測系列）")
     sp.add_argument("--months", type=int, default=12, help="予測する月数（既定 12・最大 36）")
     sp.set_defaults(handler_name="cmd_revenue_forecast")
+
+    sp = sub.add_parser("attribution", help="収益をチャネル（source）別に内訳表示")
+    sp.add_argument("--org", default=None, help="対象 Organization（省略で全 org 横断）")
+    sp.set_defaults(handler_name="cmd_revenue_attribution")

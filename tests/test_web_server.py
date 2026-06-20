@@ -3254,6 +3254,28 @@ def test_business_performance_api(tmp_path, monkeypatch):
     assert client.get("/api/businesses/Nope/performance").status_code == 404
 
 
+def test_revenue_attribution_api(tmp_path, monkeypatch):
+    """GET /api/revenue/attribution がチャネル別 %内訳を返す（org / business ロールアップ）（拡張 #2A）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("VideoCo", "revenue", 750, source="note")
+    store.record("AffCo", "revenue", 250, source="affiliate")
+    client.post("/api/businesses", json={"name": "SVA", "member_orgs": ["VideoCo", "AffCo"]})
+
+    body = client.get("/api/revenue/attribution").json()
+    assert body["total_revenue"] == 1000
+    top = body["channels"][0]
+    assert top["channel"] == "note" and top["pct"] == 75.0
+    # business ロールアップ
+    biz = client.get("/api/revenue/attribution?business_id=SVA").json()
+    assert biz["scope"] == "business:SVA" and biz["total_revenue"] == 1000
+    # 未知 business は 404
+    assert client.get("/api/revenue/attribution?business_id=Nope").status_code == 404
+
+
 def test_revenue_projection_api(tmp_path, monkeypatch):
     """GET /api/metrics/revenue/projection が目標到達射影を返す（新能力）。"""
     from core.metrics.outcomes import OutcomeStore

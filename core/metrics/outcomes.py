@@ -304,6 +304,37 @@ class OutcomeStore:
             buckets[month] = buckets.get(month, 0.0) + event.value
         return {key: buckets[key] for key in sorted(buckets, key=lambda k: (k == "unknown", k))}
 
+    def revenue_by_channel(
+        self,
+        org_names: Optional[Iterable[str]] = None,
+        *,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, float]:
+        """収益（REVENUE_METRICS）を **チャネル（source）別**に合計する（収益アトリビューション）。
+
+        ``org_names`` 省略=全 org 横断 / 単一名(str) / 名前の集合(Business のロールアップ)。
+        source 空は ``"(unknown)"``。降順 ``{channel: 合計}``。どの導線（note/X/affiliate/manual…）が
+        収益を生んでいるかを可視化し、配分判断の材料にする。
+        """
+        names: Optional[set] = None
+        if org_names is not None:
+            names = {str(org_names)} if isinstance(org_names, str) else {str(n) for n in org_names}
+        totals: Dict[str, float] = {}
+        for event in self._load():
+            if event.metric not in REVENUE_METRICS:
+                continue
+            if names is not None and event.org_name not in names:
+                continue
+            day = (event.occurred_at or event.recorded_at or "")[:10]
+            if start_date and day and day < start_date:
+                continue
+            if end_date and day and day > end_date:
+                continue
+            src = event.source or "(unknown)"
+            totals[src] = totals.get(src, 0.0) + event.value
+        return dict(sorted(totals.items(), key=lambda kv: kv[1], reverse=True))
+
     # ---- 内部 ----
 
     def _load(self) -> List[OutcomeEvent]:

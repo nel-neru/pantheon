@@ -48,6 +48,28 @@ def test_outcome_actor_audit_fields(tmp_path):
     assert legacy[0].actor == "" and legacy[0].value == 5.0
 
 
+def test_revenue_by_channel_attribution(tmp_path):
+    """revenue_by_channel が source 別に収益を降順集計する（全体/org/集合・date 絞り）（拡張 #2A）。"""
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("VideoCo", "revenue", 1000, source="note", occurred_at="2026-01-10")
+    store.record("VideoCo", "revenue", 400, source="affiliate", occurred_at="2026-02-10")
+    store.record("AffCo", "revenue", 250, source="affiliate", occurred_at="2026-01-10")
+    store.record("VideoCo", "clicks", 999, source="note")  # 非収益は無視
+
+    # 全 org 横断（降順）
+    allch = store.revenue_by_channel()
+    assert allch == {"note": 1000.0, "affiliate": 650.0}
+    # 単一 org
+    assert store.revenue_by_channel("AffCo") == {"affiliate": 250.0}
+    # Business ロールアップ（org 集合）
+    assert store.revenue_by_channel(["VideoCo", "AffCo"]) == {"note": 1000.0, "affiliate": 650.0}
+    # 日付絞り（1月のみ）
+    assert store.revenue_by_channel(start_date="2026-01-01", end_date="2026-01-31") == {
+        "note": 1000.0,
+        "affiliate": 250.0,
+    }
+
+
 def test_export_events_csv_filters_and_header(tmp_path):
     """export_events_csv が metric/日付で絞り、ヘッダ付き CSV を返す（finding 21）。"""
     store = OutcomeStore(platform_home=tmp_path)
