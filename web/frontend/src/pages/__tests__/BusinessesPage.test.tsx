@@ -45,13 +45,25 @@ const outcomes = {
   total_reach: 5000,
 }
 
+const performance = {
+  business: bizA,
+  member_org_count: 2,
+  total_revenue: 12000,
+  total_reach: 5000,
+  revenue_trend: 'growing',
+  forecast_next: 14000,
+  handoff_count: 3,
+  handoff_success_rate: 0.67,
+  kpi_status: { revenue: 'on_track', reach: 'below_target' },
+}
+
 function wireApi(overrides?: { businesses?: typeof bizA[] }) {
   const businesses = overrides?.businesses ?? [bizA, bizB]
   mockApi.mockImplementation((_method: string, path: string) => {
     if (path === '/api/businesses') return Promise.resolve({ businesses })
     if (path === '/api/businesses/biz-001/outcomes') return Promise.resolve(outcomes)
+    if (path === '/api/businesses/biz-001/performance') return Promise.resolve(performance)
     if (path === '/api/businesses/biz-001/compose') return Promise.resolve({ created: 2, handoff_ids: ['h1', 'h2'] })
-    if (path === '/api/businesses') return Promise.resolve({ businesses: [] })
     return Promise.resolve({ ok: true, deleted: true })
   })
 }
@@ -276,4 +288,70 @@ it('API が null を返してもクラッシュしない', async () => {
   renderWithRouter(<BusinessesPage />)
   // null → businesses = [] → empty state
   expect(await screen.findByText('事業がありません')).toBeInTheDocument()
+})
+
+// ── ヘルスパネル ──────────────────────────────────────────────────────────────
+
+it('「ヘルスを見る」ボタンでヘルスパネルを開く', async () => {
+  wireApi()
+  renderWithRouter(<BusinessesPage />)
+  await screen.findByText('AIコンテンツ事業')
+
+  const buttons = screen.getAllByRole('button', { name: /ヘルスを見る/ })
+  await userEvent.click(buttons[0])
+
+  expect(await screen.findByText('ヘルスサマリー')).toBeInTheDocument()
+})
+
+it('ヘルスパネルで GET /api/businesses/{id}/performance を呼ぶ', async () => {
+  wireApi()
+  renderWithRouter(<BusinessesPage />)
+  await screen.findByText('AIコンテンツ事業')
+
+  const buttons = screen.getAllByRole('button', { name: /ヘルスを見る/ })
+  await userEvent.click(buttons[0])
+
+  await waitFor(() =>
+    expect(mockApi).toHaveBeenCalledWith('GET', '/api/businesses/biz-001/performance')
+  )
+})
+
+it('ヘルスパネルで収益トレンドと翌月予測を表示する', async () => {
+  wireApi()
+  renderWithRouter(<BusinessesPage />)
+  await screen.findByText('AIコンテンツ事業')
+
+  const buttons = screen.getAllByRole('button', { name: /ヘルスを見る/ })
+  await userEvent.click(buttons[0])
+
+  expect(await screen.findByText('growing')).toBeInTheDocument()
+  // forecast_next: 14000 → ¥14,000
+  expect(await screen.findByText('¥14,000')).toBeInTheDocument()
+})
+
+it('ヘルスパネルでハンドオフ成功率をパーセント表示する', async () => {
+  wireApi()
+  renderWithRouter(<BusinessesPage />)
+  await screen.findByText('AIコンテンツ事業')
+
+  const buttons = screen.getAllByRole('button', { name: /ヘルスを見る/ })
+  await userEvent.click(buttons[0])
+
+  // handoff_success_rate: 0.67 → 67%
+  expect(await screen.findByText('67%')).toBeInTheDocument()
+})
+
+it('ヘルスパネルを再クリックで閉じる', async () => {
+  wireApi()
+  renderWithRouter(<BusinessesPage />)
+  await screen.findByText('AIコンテンツ事業')
+
+  const buttons = screen.getAllByRole('button', { name: /ヘルスを見る/ })
+  await userEvent.click(buttons[0])
+  await screen.findByText('ヘルスサマリー')
+
+  await userEvent.click(buttons[0])
+  await waitFor(() => {
+    expect(screen.queryByText('ヘルスサマリー')).not.toBeInTheDocument()
+  })
 })

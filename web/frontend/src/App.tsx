@@ -26,6 +26,7 @@ import {
   Sun,
   Target,
   Gauge,
+  ScanEye,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -57,6 +58,7 @@ import { SessionsPage } from '@/pages/SessionsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { StudioPage } from '@/pages/StudioPage'
 import { BusinessesPage } from '@/pages/BusinessesPage'
+import { ObservabilityPage } from '@/pages/ObservabilityPage'
 import { UsagePage } from '@/pages/UsagePage'
 
 type NavItem = {
@@ -136,6 +138,7 @@ const navGroups: NavGroup[] = [
       { to: '/board', label: '作業ボード', icon: KanbanSquare },
       { to: '/data', label: 'データ管理', icon: Database },
       { to: '/usage', label: '使用量', icon: Gauge },
+      { to: '/observability', label: 'オブザーバビリティ', icon: ScanEye },
       { to: '/settings', label: '設定', icon: Settings },
       { to: '/help', label: 'ヘルプ', icon: HelpCircle },
     ],
@@ -767,6 +770,7 @@ export default function App() {
         <Route path="/data" element={<DataPage />} />
         <Route path="/businesses" element={<BusinessesPage />} />
         <Route path="/usage" element={<UsagePage />} />
+        <Route path="/observability" element={<ObservabilityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -51,6 +51,9 @@ type DaemonStatus = {
   running: boolean
   pid: number | null
   log_path: string | null
+  rate_limited?: boolean
+  retry_at?: string | null
+  rate_limit_scope?: string | null
 }
 
 type TaskStats = {
@@ -712,8 +715,19 @@ export function DashboardPage() {
                     複数デーモンの詳細管理は専用ページで確認してください。
                   </div>
                 </div>
-                <div className={`badge ${daemon?.running ? 'badge-green' : 'badge-neutral'}`}>
-                  {daemon?.running ? '起動中' : '停止'}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {daemon?.rate_limited ? (
+                    <span className="badge badge-yellow">
+                      レート制限で自動停止（再開可:{' '}
+                      {daemon.retry_at
+                        ? formatDateTime(daemon.retry_at)
+                        : '—'}
+                      ）
+                    </span>
+                  ) : null}
+                  <div className={`badge ${daemon?.running ? 'badge-green' : 'badge-neutral'}`}>
+                    {daemon?.running ? '起動中' : '停止'}
+                  </div>
                 </div>
               </div>
               <div className="card-body flex flex-col gap-4">
