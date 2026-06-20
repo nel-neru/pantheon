@@ -403,3 +403,48 @@ def test_cli_handoff_create_approve_consume(tmp_path, capsys):
     consumed = store.get(handoff.handoff_id)
     assert consumed.status == HANDOFF_CONSUMED
     assert consumed.consumed_ref == "proposal:xyz"
+
+
+# --------------------------------------------------------------------------- #
+# Autonomous Handoff Executor（承認済み → 実体化 → consumed の push 駆動・拡張）        #
+# --------------------------------------------------------------------------- #
+
+
+def test_handoff_executor_materializes_and_consumes(tmp_path):
+    """承認済みハンドオフを受け手 org のブリーフ提案へ実体化し consumed に前進させる。"""
+    from core.hierarchy.handoff_executor import execute_approved_handoffs
+    from core.org_factory import create_default_organization
+    from core.platform.state import PlatformStateManager
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    target = create_default_organization("note販売", "販売")
+    target.target_repo_path = str(tmp_path / "repo")
+    psm.save_organization(target)
+
+    store = OrgHandoffStore(platform_home=tmp_path)
+    h = store.create(
+        source_org="SNS運用", target_org="note販売", kind="content_brief", title="集客→記事ブリーフ"
+    )
+    store.approve(h.handoff_id)  # pending -> approved（実体化は executor が行う）
+
+    results = execute_approved_handoffs(psm=psm)
+    assert len(results) == 1 and results[0]["status"] == "consumed" and results[0]["proposal_id"]
+    assert store.get(h.handoff_id).status == HANDOFF_CONSUMED
+    # 受け手 org に content_asset 提案（ブリーフ）が生成されている
+    sm = psm.get_org_state_manager(target)
+    assert any(p.get("category") == "content_asset" for p in sm.get_all_improvement_proposals())
+
+
+def test_handoff_executor_skips_when_target_missing(tmp_path):
+    """受け手 org が未登録なら no_target でスキップし、approved のまま据え置く。"""
+    from core.hierarchy.handoff_executor import execute_approved_handoffs
+    from core.platform.state import PlatformStateManager
+
+    psm = PlatformStateManager(platform_home=tmp_path)
+    store = OrgHandoffStore(platform_home=tmp_path)
+    h = store.create(source_org="A", target_org="不在社", kind="content_brief", title="x")
+    store.approve(h.handoff_id)
+
+    results = execute_approved_handoffs(psm=psm)
+    assert results[0]["status"] == "no_target"
+    assert store.get(h.handoff_id).status == HANDOFF_APPROVED  # 据え置き（消費しない）

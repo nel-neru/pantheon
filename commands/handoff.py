@@ -170,6 +170,26 @@ async def cmd_handoff(args: argparse.Namespace, *, get_psm: Any) -> None:
         print(f"[OK] 消費済みにしました:「{updated.title}」 ref={updated.consumed_ref or '-'}")
         return
 
+    if action == "execute":
+        from core.hierarchy.handoff_executor import execute_approved_handoffs
+
+        results = execute_approved_handoffs(
+            psm=get_psm(), target_org=getattr(args, "target", None) or None
+        )
+        if not results:
+            print("[INFO] 実行対象（承認済み・未消費）の引き渡しはありません。")
+            return
+        consumed = sum(1 for r in results if r["status"] == "consumed")
+        print(
+            f"\n[OK] 承認済みハンドオフを実体化しました（{consumed}/{len(results)} 件 consumed）\n"
+        )
+        for r in results:
+            tag = {"consumed": "✓", "materialized": "◯", "no_target": "×"}.get(r["status"], "?")
+            ref = f" → 提案 {r['proposal_id'][:8]}" if r.get("proposal_id") else ""
+            print(f"  [{tag}] {r['handoff_id']} → {r['target_org']} ({r['status']}){ref}")
+        print("\n受け手 org 側で pantheon proposal apply で草稿を適用してください。")
+        return
+
     # list（既定）
     handoffs = store.list_handoffs(
         source_org=getattr(args, "source", None),
@@ -234,6 +254,14 @@ def register(subparsers: Any) -> None:
     consume.add_argument("handoff_id", help="引き渡し ID（先頭一致可）")
     consume.add_argument("--ref", default="", help="消費結果の参照（例: 生成した提案 id）")
     consume.set_defaults(handler_name="cmd_handoff")
+
+    execute = sub.add_parser(
+        "execute", help="承認済み(approved)ハンドオフを一括実体化→consumed へ前進（actuate）"
+    )
+    execute.add_argument(
+        "--to", dest="target", default=None, help="受け手 org で絞り込み（省略で全件）"
+    )
+    execute.set_defaults(handler_name="cmd_handoff")
 
     lst = sub.add_parser("list", help="引き渡しを一覧する")
     lst.add_argument("--from", dest="source", help="送り手で絞り込み")
