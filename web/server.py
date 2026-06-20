@@ -4650,6 +4650,7 @@ async def api_outcome_summary(org_name: str) -> Dict[str, Any]:
         "org_name": org_name,
         "event_count": summary.event_count,
         "by_metric": summary.by_metric,
+        "by_source": summary.by_source,  # 収益チャネル別内訳（note/x/affiliate/manual…）
         "total_reach": summary.total_reach,
         "total_revenue": summary.total_revenue,
     }

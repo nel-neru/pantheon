@@ -54,11 +54,38 @@ class OutcomeEvent:
             self.occurred_at = self.recorded_at
 
 
+def _aggregate_events(
+    events: List["OutcomeEvent"],
+) -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, Dict[str, float]]]]:
+    """イベント列を by_metric と by_source（source→metric→stats）へ集計する（共通部）。
+
+    by_source はどの収益チャネル（note/x/affiliate/manual…）が成果を駆動しているかを
+    可視化するための内訳（同じ metric でも source 別に分けて見える）。source 空は "(unknown)"。
+    """
+    by_metric: Dict[str, Dict[str, float]] = {}
+    by_source: Dict[str, Dict[str, Dict[str, float]]] = {}
+    for event in events:
+        stats = by_metric.setdefault(event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0})
+        stats["sum"] += event.value
+        stats["count"] += 1
+        stats["last"] = event.value
+        src = event.source or "(unknown)"
+        s_stats = by_source.setdefault(src, {}).setdefault(
+            event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0}
+        )
+        s_stats["sum"] += event.value
+        s_stats["count"] += 1
+        s_stats["last"] = event.value
+    return by_metric, by_source
+
+
 @dataclass
 class OutcomeSummary:
     org_name: str
     by_metric: Dict[str, Dict[str, float]] = field(default_factory=dict)
     event_count: int = 0
+    # 収益チャネル（source）別の内訳: source -> metric -> {sum,count,last}。
+    by_source: Dict[str, Dict[str, Dict[str, float]]] = field(default_factory=dict)
 
     @property
     def total_revenue(self) -> float:
@@ -169,28 +196,24 @@ class OutcomeStore:
 
     def summary_for_org(self, org_name: str) -> OutcomeSummary:
         events = self.list_events(org_name)
-        by_metric: Dict[str, Dict[str, float]] = {}
-        for event in events:
-            stats = by_metric.setdefault(event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0})
-            stats["sum"] += event.value
-            stats["count"] += 1
-            stats["last"] = event.value
-        return OutcomeSummary(org_name=org_name, by_metric=by_metric, event_count=len(events))
+        by_metric, by_source = _aggregate_events(events)
+        return OutcomeSummary(
+            org_name=org_name,
+            by_metric=by_metric,
+            event_count=len(events),
+            by_source=by_source,
+        )
 
     def summary_for_orgs(self, org_names: Iterable[str], *, label: str = "") -> OutcomeSummary:
         """複数 org の成果を 1 つに合算する（Business 単位のロールアップ用）。"""
         names = {str(n) for n in (org_names or [])}
         events = [e for e in self._load() if e.org_name in names]
-        by_metric: Dict[str, Dict[str, float]] = {}
-        for event in events:
-            stats = by_metric.setdefault(event.metric, {"sum": 0.0, "count": 0.0, "last": 0.0})
-            stats["sum"] += event.value
-            stats["count"] += 1
-            stats["last"] = event.value
+        by_metric, by_source = _aggregate_events(events)
         return OutcomeSummary(
             org_name=label or ",".join(sorted(names)),
             by_metric=by_metric,
             event_count=len(events),
+            by_source=by_source,
         )
 
     def revenue_by_month(self, org_name: Optional[str] = None) -> Dict[str, float]:
@@ -230,7 +253,10 @@ class OutcomeStore:
         return events
 
     def _save(self, events: List[OutcomeEvent]) -> None:
-        self.outcomes_path.write_text(
+        # 原子的に書く（毎 record の全置換書き込みが torn すると収益データが丸ごと壊れるため）。
+        from core.persistence import atomic_write_text
+
+        atomic_write_text(
+            self.outcomes_path,
             json.dumps([asdict(e) for e in events], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )

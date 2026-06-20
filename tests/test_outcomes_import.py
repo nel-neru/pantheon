@@ -12,6 +12,25 @@ from core.metrics.outcomes import OutcomeStore
 from core.platform.state import PlatformStateManager
 
 
+def test_summary_by_source_breakdown(tmp_path):
+    """by_source が収益チャネル別に metric を内訳化する（finding 8）。"""
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Note Sales", "revenue", 1000, source="note")
+    store.record("Note Sales", "revenue", 400, source="affiliate")
+    store.record("Note Sales", "clicks", 50, source="note")
+    store.record("Note Sales", "revenue", 200)  # source 空 → "(unknown)"
+
+    summary = store.summary_for_org("Note Sales")
+    # 全体合算は従来どおり
+    assert summary.by_metric["revenue"]["sum"] == 1600
+    assert summary.total_revenue == 1600
+    # チャネル別内訳
+    assert summary.by_source["note"]["revenue"]["sum"] == 1000
+    assert summary.by_source["note"]["clicks"]["sum"] == 50
+    assert summary.by_source["affiliate"]["revenue"]["sum"] == 400
+    assert summary.by_source["(unknown)"]["revenue"]["sum"] == 200
+
+
 def test_record_many_imports_and_skips_invalid(tmp_path):
     store = OutcomeStore(platform_home=tmp_path)
     rows = [
