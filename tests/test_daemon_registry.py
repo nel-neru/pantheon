@@ -60,12 +60,23 @@ def test_cli_daemon_names_match_registry():
 
 def test_build_command_non_frozen():
     cmd = build_command(get_spec("content"), ["--interval=600"])
-    assert cmd == [sys.executable, "-m", "core._content_daemon_runner", "--interval=600"]
+    # daemons launch via the windowless interpreter (pythonw on Windows; == sys.executable elsewhere)
+    assert cmd == [
+        registry._windowless_python(),
+        "-m",
+        "core._content_daemon_runner",
+        "--interval=600",
+    ]
 
 
 def test_build_command_non_frozen_revenue():
     cmd = build_command(get_spec("revenue"), ["--target=1000"])
-    assert cmd == [sys.executable, "-m", "core._revenue_daemon_runner", "--target=1000"]
+    assert cmd == [
+        registry._windowless_python(),
+        "-m",
+        "core._revenue_daemon_runner",
+        "--target=1000",
+    ]
 
 
 def test_build_command_frozen_uses_revenue_flag(monkeypatch):
