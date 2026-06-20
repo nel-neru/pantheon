@@ -216,6 +216,54 @@ class OutcomeStore:
             by_source=by_source,
         )
 
+    def export_events_csv(
+        self,
+        org_name: Optional[str] = None,
+        *,
+        metric: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> str:
+        """成果イベントを CSV 文字列で書き出す（外部 BI/分析へのエクスポート用）。
+
+        ``org_name``/``metric`` 省略で全件。``start_date``/``end_date``（YYYY-MM-DD）は
+        ``occurred_at`` の日付部分で範囲フィルタ（境界含む）。壊れた日付は範囲判定で除外せず
+        通す（silent-drop で集計母数を歪めない）。ヘッダ行付き。
+        """
+        import csv
+        import io
+
+        metric_key = (metric or "").strip().lower()
+        rows = []
+        for e in self.list_events(org_name):
+            if metric_key and e.metric != metric_key:
+                continue
+            day = (e.occurred_at or e.recorded_at or "")[:10]
+            if start_date and day and day < start_date:
+                continue
+            if end_date and day and day > end_date:
+                continue
+            rows.append(e)
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(
+            ["org_name", "metric", "value", "unit", "source", "note", "occurred_at", "recorded_at"]
+        )
+        for e in rows:
+            writer.writerow(
+                [
+                    e.org_name,
+                    e.metric,
+                    e.value,
+                    e.unit,
+                    e.source,
+                    e.note,
+                    e.occurred_at,
+                    e.recorded_at,
+                ]
+            )
+        return buf.getvalue()
+
     def revenue_by_month(self, org_name: Optional[str] = None) -> Dict[str, float]:
         """収益メトリクス（REVENUE_METRICS）を ``YYYY-MM`` バケットで合計する簡易レポート。
 

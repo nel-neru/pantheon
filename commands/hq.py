@@ -196,6 +196,25 @@ async def cmd_hq_outcomes(args: argparse.Namespace, *, get_psm: Any) -> None:
             )
         return
 
+    if action == "export":
+        csv_text = store.export_events_csv(
+            getattr(args, "org_name", None) or None,
+            metric=getattr(args, "metric", None) or None,
+            start_date=getattr(args, "start_date", None) or None,
+            end_date=getattr(args, "end_date", None) or None,
+        )
+        out_path = getattr(args, "out", None)
+        if out_path:
+            from pathlib import Path
+
+            from core.persistence import atomic_write_text
+
+            atomic_write_text(Path(out_path), csv_text)
+            print(f"[OK] 成果を CSV で書き出しました: {out_path}")
+        else:
+            print(csv_text, end="")
+        return
+
     # list（既定）
     if not getattr(args, "org_name", None):
         print("[ERROR] --org-name を指定してください（例: pantheon hq outcomes --org-name MyApp）")
@@ -262,6 +281,14 @@ def register(subparsers: Any) -> None:
         "--org-name", default="", help="org_name 列が無い行に使う既定の Organization 名"
     )
     imp.set_defaults(handler_name="cmd_hq_outcomes")
+
+    exp = outcomes_sub.add_parser("export", help="成果イベントを CSV で書き出す（外部分析用）")
+    exp.add_argument("--org-name", help="対象 Organization（省略で全件）")
+    exp.add_argument("--metric", help="metric で絞り込み（省略で全 metric）")
+    exp.add_argument("--start-date", dest="start_date", help="開始日 YYYY-MM-DD（含む）")
+    exp.add_argument("--end-date", dest="end_date", help="終了日 YYYY-MM-DD（含む）")
+    exp.add_argument("--out", help="出力ファイルパス（省略で標準出力）")
+    exp.set_defaults(handler_name="cmd_hq_outcomes")
 
     # `hq outcomes --org-name X`（サブコマンド省略時）も list として扱う
     outcomes_parser.add_argument("--org-name", help="対象 Organization 名（list 既定）")

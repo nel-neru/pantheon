@@ -31,6 +31,43 @@ def test_summary_by_source_breakdown(tmp_path):
     assert summary.by_source["(unknown)"]["revenue"]["sum"] == 200
 
 
+def test_export_events_csv_filters_and_header(tmp_path):
+    """export_events_csv が metric/日付で絞り、ヘッダ付き CSV を返す（finding 21）。"""
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 1000, source="note", occurred_at="2026-01-10")
+    store.record("Co", "revenue", 2000, source="note", occurred_at="2026-03-10")
+    store.record("Co", "clicks", 50, occurred_at="2026-01-10")
+
+    full = store.export_events_csv("Co")
+    assert full.splitlines()[0].startswith("org_name,metric,value")
+    assert len([ln for ln in full.splitlines() if ln]) == 4  # header + 3
+
+    # metric フィルタ
+    rev = store.export_events_csv("Co", metric="revenue")
+    assert len([ln for ln in rev.splitlines() if ln]) == 3  # header + 2 revenue
+    # 日付範囲（1月のみ）
+    jan = store.export_events_csv(
+        "Co", metric="revenue", start_date="2026-01-01", end_date="2026-01-31"
+    )
+    assert "1000" in jan and "2000" not in jan
+
+
+def test_export_outcomes_api_not_shadowed_by_org_route(tmp_path, monkeypatch):
+    """GET /api/outcomes/export が {org_name} ルートにシャドウされず CSV を返す（finding 21）。"""
+    from fastapi.testclient import TestClient
+
+    import web.server as server
+
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: PlatformStateManager(platform_home=tmp_path))
+    OutcomeStore(platform_home=tmp_path).record("Co", "revenue", 500, occurred_at="2026-01-10")
+
+    resp = TestClient(server.app).get("/api/outcomes/export?org_name=Co")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+    assert "org_name,metric,value" in resp.text and "revenue" in resp.text
+
+
 def test_record_many_imports_and_skips_invalid(tmp_path):
     store = OutcomeStore(platform_home=tmp_path)
     rows = [

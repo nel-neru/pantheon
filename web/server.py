@@ -4748,6 +4748,26 @@ async def api_import_outcomes(body: OutcomeImportRequest) -> Dict[str, Any]:
     }
 
 
+@app.get("/api/outcomes/export", tags=["outcomes"])
+async def api_export_outcomes(
+    org_name: Optional[str] = None,
+    metric: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """成果イベントを CSV で書き出す（外部 BI/分析向け・curl > file.csv で保存可能）。
+
+    注: この固定パスは ``/api/outcomes/{org_name}`` より先に登録する（後だと "export" が
+    org_name として食われてシャドウされる）。
+    """
+    from fastapi.responses import PlainTextResponse
+
+    csv_text = _outcome_store().export_events_csv(
+        org_name, metric=metric, start_date=start_date, end_date=end_date
+    )
+    return PlainTextResponse(content=csv_text, media_type="text/csv")
+
+
 @app.get("/api/outcomes/{org_name}", tags=["outcomes"])
 async def api_outcome_summary(org_name: str) -> Dict[str, Any]:
     store = _outcome_store()
