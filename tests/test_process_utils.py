@@ -16,7 +16,7 @@ import time
 import pytest
 
 from core.runtime.daemon_registry import is_process_running
-from core.runtime.process_utils import pid_alive, terminate_pid
+from core.runtime.process_utils import no_window_kwargs, pid_alive, terminate_pid
 
 
 def _spawn_sleeper() -> subprocess.Popen:
