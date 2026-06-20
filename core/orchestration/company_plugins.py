@@ -6,9 +6,11 @@
 構造（Division/Team/SpecialistAgent）そのものは持たない（実体の組み立ては
 ``pantheon org create --genre`` 等の既存量産経路が担当する）。
 
-注: ``core.orchestration.division_plugins.load_company_plugins`` は
+注: ``core.orchestration.division_plugins.load_company_archetypes`` は
 ``config/departments/*.yaml`` を列挙する薄いアーキタイプ用で、本モジュールとは別物
 （同ファイルが「manifest の正式化は段階的な次ステップ」と明記している、その次ステップ）。
+**install できるのは本モジュールの manifest** であり、`plugin list` / GET /api/company-plugins も
+manifest を主に見せる（list と install のカタログを一致させる）。
 
 堅牢性方針（``load_division_plugins`` に倣う）: 欠落・破損時は空リストを返して
 生成パイプラインを止めない。``id`` を持つ dict 要素のみ返す。

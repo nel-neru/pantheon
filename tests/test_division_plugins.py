@@ -7,7 +7,7 @@ import pytest
 from core.orchestration.division_plugins import (
     add_division_plugin,
     get_division_plugin,
-    load_company_plugins,
+    load_company_archetypes,
     load_division_plugins,
 )
 from core.org_factory import create_default_organization
@@ -49,10 +49,10 @@ def test_add_division_plugin_unknown_raises():
         add_division_plugin(org, "no_such_plugin")
 
 
-def test_load_company_plugins_lists_department_templates():
-    plugins = load_company_plugins()
+def test_load_company_archetypes_lists_department_templates():
+    plugins = load_company_archetypes()
     ids = {p["id"] for p in plugins}
-    # 同梱テンプレートが会社プラグインとして列挙される
+    # 同梱テンプレート（config/departments/*.yaml）がアーキタイプとして列挙される
     assert "sns_growth" in ids
     for p in plugins:
         assert "division_count" in p

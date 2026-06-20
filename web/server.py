@@ -2805,10 +2805,14 @@ async def api_list_division_plugins() -> Dict[str, Any]:
 
 @app.get("/api/company-plugins", tags=["plugins"])
 async def api_list_company_plugins() -> Dict[str, Any]:
-    """会社プラグインのアーキタイプ（org create --genre 相当の Organization テンプレ）。"""
-    from core.orchestration.division_plugins import load_company_plugins
+    """install できる会社プラグイン（manifest）の一覧。
 
-    return {"plugins": load_company_plugins()}
+    ``/api/company-plugins/{id}/install`` で起動できる id と一致させる（list したものが
+    install できる）。リッチな manifest 全文は ``/api/company-plugin-manifests`` でも取得可能。
+    """
+    from core.orchestration.company_plugins import load_company_plugin_manifests
+
+    return {"plugins": load_company_plugin_manifests()}
 
 
 @app.post("/api/organizations/{org_name}/divisions", tags=["plugins"])

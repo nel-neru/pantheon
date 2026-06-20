@@ -91,11 +91,15 @@ def add_division_plugin(org: Organization, plugin_id: str) -> Division:
     return division
 
 
-def load_company_plugins() -> List[Dict[str, Any]]:
-    """会社プラグインのアーキタイプを `config/departments/*.yaml` から列挙する。
+def load_company_archetypes() -> List[Dict[str, Any]]:
+    """会社「アーキタイプ」を `config/departments/*.yaml` から列挙する（install 不可・参考表示用）。
 
-    各 yaml を「会社プラグイン」として id（ファイル名）/ label / 部門数で表現する。
-    実際の会社作成は `pantheon org create --genre` 経由（このカタログは GUI 表示用の薄いラベル）。
+    各 yaml を id（ファイル名）/ label / 部門数で表現する薄いカタログ。これは
+    `pantheon org create --genre` 用の参考アーキタイプであり、**`install-company` で起動できる
+    会社プラグイン（manifest）とは別物**である（install できるのは
+    ``core.orchestration.company_plugins.load_company_plugin_manifests`` の方）。
+    両者を混同させない（list したものが install できないという footgun を避ける）ため、
+    `plugin list` / GET /api/company-plugins は manifest を主に見せ、本関数はアーキタイプ参照に限る。
     """
     out: List[Dict[str, Any]] = []
     departments_dir = resource_path("config", DEPARTMENTS_DIR)

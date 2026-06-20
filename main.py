@@ -78,6 +78,7 @@ from commands.platform import cmd_serve as _cmd_serve_impl
 from commands.plugin import cmd_plugin_add_division as _cmd_plugin_add_division_impl
 from commands.plugin import cmd_plugin_install_company as _cmd_plugin_install_company_impl
 from commands.plugin import cmd_plugin_list as _cmd_plugin_list_impl
+from commands.plugin import cmd_plugin_scaffold_company as _cmd_plugin_scaffold_company_impl
 from commands.plugin import cmd_plugin_scaffold_division as _cmd_plugin_scaffold_division_impl
 from commands.traces import cmd_traces as _cmd_traces_impl
 from commands.up import cmd_up as _cmd_up_impl
@@ -273,6 +274,10 @@ async def cmd_plugin_add_division(args) -> None:
 
 async def cmd_plugin_scaffold_division(args) -> None:
     await _cmd_plugin_scaffold_division_impl(args, get_psm=_get_psm)
+
+
+async def cmd_plugin_scaffold_company(args) -> None:
+    await _cmd_plugin_scaffold_company_impl(args, get_psm=_get_psm)
 
 
 async def cmd_plugin_install_company(args) -> None:
@@ -667,6 +672,7 @@ HANDLERS = {
     "cmd_plugin_list": cmd_plugin_list,
     "cmd_plugin_add_division": cmd_plugin_add_division,
     "cmd_plugin_scaffold_division": cmd_plugin_scaffold_division,
+    "cmd_plugin_scaffold_company": cmd_plugin_scaffold_company,
     "cmd_plugin_install_company": cmd_plugin_install_company,
     "cmd_org_list": cmd_org_list,
     "cmd_org_scan": cmd_org_scan,
