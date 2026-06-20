@@ -83,6 +83,12 @@ uniqueness keys collided within one Windows clock tick; now disambiguated. If th
 - New Python files start with `from __future__ import annotations`.
 - Never `datetime.utcnow()` → use `datetime.now(timezone.utc)` (timezone-aware always).
 - Do not break full-suite collection/execution, and do not break the explicit 404 handling in `web/server.py`.
+- **Engineering integrity (absolute, honor-enforced — not all hook-checked): NO quick fixes, NO facade UI.**
+  Root-fix failures in real code; never bypass a test/hook/gate (`--no-test`, `--no-verify`),
+  silence a failure (`skip`/`xfail`/deleted assert/`try/except: pass`), or ship a "とりあえず動く" guess.
+  Ship UI only when it is wired end-to-end (no dead controls, no unbacked-but-"done" pages, no
+  fake/mock/seed data, no unrendered promised metrics) — label unfinished legs honestly instead of
+  faking them. If you can't root-fix, report it honestly; don't hide it. See `.claude/rules/engineering-integrity.md`.
 - `SpecialistAgent.skills`: min 2, max 3.
 - State location: global → `~/.pantheon`; repo-specific → `<repo>/.pantheon`.
 - A `PreToolUse` guard (`guard-bash.mjs`, on Bash **and** PowerShell) blocks catastrophic deletes
@@ -113,7 +119,9 @@ uniqueness keys collided within one Windows clock tick; now disambiguated. If th
   `/daemon-status` (24h 自律基盤の状態), `/trend-report` (トレンド収集状況), `/spawn-org`
   (ジャンル別 Organization を1コマンド量産), plus the git-lifecycle commands
   `/new-work-branch` · `/branch-status` · `/merge-to-main`.
-- **Rules** (`.claude/rules/`): path-scoped guidance for `*.py`, frontend, and `web/server.py`.
+- **Rules** (`.claude/rules/`): path-scoped guidance for `*.py`, frontend, and `web/server.py`; plus
+  two **NON-NEGOTIABLE repo-wide** rules — `revenue-integrity.md` (never fake monetization) and
+  `engineering-integrity.md` (no quick fixes / no facade UI).
 - **Output-styles** (`.claude/output-styles/`): `rigor`, `diagram-first`.
 - **MCP** (`.mcp.json`): Context7 (version-pinned docs) + Playwright (drive the frontend) — both are
   committed but **disabled by default** in the (git-ignored, personal) `settings.local.json`
