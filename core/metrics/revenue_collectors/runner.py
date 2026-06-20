@@ -93,6 +93,8 @@ def run_revenue_collection(
                     rec.amount,
                     source=rec.source,  # レコード単位の安定キー
                     note=rec.note,
+                    actor=source,  # 監査: どのコレクタ由来か
+                    actor_type="collector",
                     occurred_at=rec.occurred_at,
                     dedupe_on_source=True,  # 二重計上を防ぐ（冪等）
                 )

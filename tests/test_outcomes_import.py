@@ -31,6 +31,23 @@ def test_summary_by_source_breakdown(tmp_path):
     assert summary.by_source["(unknown)"]["revenue"]["sum"] == 200
 
 
+def test_outcome_actor_audit_fields(tmp_path):
+    """record が actor/actor_type を保持し、旧 JSON（フィールド無し）も既定で読める（finding 26）。"""
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("Co", "revenue", 100, actor="web:manual", actor_type="manual")
+    e = store.list_events("Co")[0]
+    assert e.actor == "web:manual" and e.actor_type == "manual"
+
+    # 旧スキーマ（actor 無し）レコードも例外なく読める＝後方互換
+    import json
+
+    store.outcomes_path.write_text(
+        json.dumps([{"org_name": "Co", "metric": "revenue", "value": 5}]), encoding="utf-8"
+    )
+    legacy = store.list_events("Co")
+    assert legacy[0].actor == "" and legacy[0].value == 5.0
+
+
 def test_export_events_csv_filters_and_header(tmp_path):
     """export_events_csv が metric/日付で絞り、ヘッダ付き CSV を返す（finding 21）。"""
     store = OutcomeStore(platform_home=tmp_path)

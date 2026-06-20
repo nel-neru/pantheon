@@ -37,6 +37,10 @@ class OutcomeEvent:
     unit: str = ""
     source: str = ""
     note: str = ""
+    # 監査用: 誰が/何が記録したか（web:manual / cli:system / collector:<src> 等）。
+    # 任意・後方互換（旧 JSON は既定 "" で読める）。
+    actor: str = ""
+    actor_type: str = ""
     event_id: str = ""
     occurred_at: str = ""
     recorded_at: str = ""
@@ -125,6 +129,8 @@ class OutcomeStore:
         unit: str = "",
         source: str = "",
         note: str = "",
+        actor: str = "",
+        actor_type: str = "",
         occurred_at: str = "",
         dedupe_on_source: bool = False,
     ) -> OutcomeEvent:
@@ -133,6 +139,8 @@ class OutcomeStore:
         ``dedupe_on_source=True`` は同じ ``source`` のイベントが既にあれば追記せず
         既存を返す（冪等）。「1 回しか起きない事象」（例: 投稿の公開確認）を
         ジョブ固有の source で記録するときの二重計上ガード。
+
+        ``actor``/``actor_type`` は監査用（誰が記録したか）。省略可。
         """
         event = OutcomeEvent(
             org_name=org_name,
@@ -141,6 +149,8 @@ class OutcomeStore:
             unit=unit,
             source=source,
             note=note,
+            actor=actor,
+            actor_type=actor_type,
             occurred_at=occurred_at,
         )
         events = self._load()
