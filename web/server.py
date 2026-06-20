@@ -4301,6 +4301,69 @@ async def api_delete_business(business_id: str) -> Dict[str, Any]:
     return {"ok": True, "deleted": business_id}
 
 
+@app.get("/api/businesses/{business_id}/performance", tags=["businesses"])
+async def api_business_performance(business_id: str) -> Dict[str, Any]:
+    """Business のヘルスサマリ（収益トレンド/handoff 成功率/KPI 状況）を 1 画面分で返す。
+
+    member org を個別ドリルせずに事業全体の健康度を見るための集約（既存の OutcomeStore /
+    revenue_intelligence / OrgHandoffStore を合成するだけ・新規ドメインロジックなし）。
+    """
+    from core.hierarchy.org_handoff import (
+        HANDOFF_APPROVED,
+        HANDOFF_CONSUMED,
+        HANDOFF_REJECTED,
+        OrgHandoffStore,
+    )
+    from core.metrics.outcomes import OutcomeStore
+    from core.metrics.revenue_intelligence import analyze_revenue
+
+    business = _business_store().get(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail=f"Business '{business_id}' が見つかりません")
+
+    home = _psm().platform_home
+    store = OutcomeStore(platform_home=home)
+    summary = store.summary_for_orgs(business.member_orgs, label=business.name)
+
+    # member 横断で月次収益を合算し、トレンド/予測を出す。
+    combined: Dict[str, float] = {}
+    for org in business.member_orgs:
+        for month, val in store.revenue_by_month(org).items():
+            combined[month] = combined.get(month, 0.0) + val
+    analysis = analyze_revenue(combined)
+
+    # handoff の成功率（却下を除く実行可能 handoff のうち pending を越えて進んだ割合）。
+    members = set(business.member_orgs)
+    handoffs = [
+        h
+        for h in OrgHandoffStore(platform_home=home).list_handoffs()
+        if h.source_org in members or h.target_org in members
+    ]
+    progressed = sum(1 for h in handoffs if h.status in (HANDOFF_APPROVED, HANDOFF_CONSUMED))
+    actionable = sum(1 for h in handoffs if h.status != HANDOFF_REJECTED)
+    success_rate = round(progressed / actionable, 4) if actionable else 0.0
+
+    # KPI は目標値を持たないので「データ追跡できているか」を正直に返す（met と詐称しない）。
+    kpi_status: Dict[str, str] = {}
+    metrics_present = set(summary.by_metric)
+    for kpi in business.kpis:
+        key = str(kpi).strip().lower()
+        tracked = any(key in m or m in key for m in metrics_present) if key else False
+        kpi_status[kpi] = "tracked" if tracked else "no_data"
+
+    return {
+        "business": business.name,
+        "member_org_count": len(business.member_orgs),
+        "total_revenue": summary.total_revenue,
+        "total_reach": summary.total_reach,
+        "revenue_trend": analysis["trend"],
+        "forecast_next": analysis["forecast_next"],
+        "handoff_count": len(handoffs),
+        "handoff_success_rate": success_rate,
+        "kpi_status": kpi_status,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Cross-org handoff（集客→販売→収益化の引き渡し / 承認ボタン）                    #
 # --------------------------------------------------------------------------- #

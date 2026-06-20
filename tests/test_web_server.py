@@ -3136,6 +3136,38 @@ def test_revenue_daemon_start_passes_target_args(tmp_path, monkeypatch):
     assert "--target=0.0" in captured["args"]
 
 
+def test_business_performance_api(tmp_path, monkeypatch):
+    """Business のヘルスサマリ（収益トレンド/handoff 成功率/KPI 状況）を返す（discovery #9）。"""
+    from core.metrics.outcomes import OutcomeStore
+
+    psm = server.PlatformStateManager(platform_home=tmp_path)
+    monkeypatch.setattr(server, "_psm", lambda: psm)
+    client.post(
+        "/api/businesses",
+        json={
+            "name": "BizPerf",
+            "member_orgs": ["VideoCo", "AffCo"],
+            "kpis": ["revenue", "未追跡KPI"],
+        },
+    )
+    store = OutcomeStore(platform_home=tmp_path)
+    store.record("AffCo", "revenue", 1000, occurred_at="2026-01-15")
+    store.record("AffCo", "revenue", 1500, occurred_at="2026-02-15")
+    store.record("VideoCo", "impressions", 5000)
+
+    resp = client.get("/api/businesses/BizPerf/performance")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["member_org_count"] == 2
+    assert body["total_revenue"] == 2500
+    assert body["total_reach"] == 5000
+    assert body["revenue_trend"] in {"growing", "flat", "declining", "insufficient"}
+    assert body["kpi_status"]["revenue"] == "tracked"
+    assert body["kpi_status"]["未追跡KPI"] == "no_data"
+    # 未知の business は 404
+    assert client.get("/api/businesses/Nope/performance").status_code == 404
+
+
 def test_metrics_efficiency_api(tmp_path, monkeypatch):
     """組織別 ROI 効率とランクを返す（discovery #7）。"""
     from core.metrics.outcomes import OutcomeStore
