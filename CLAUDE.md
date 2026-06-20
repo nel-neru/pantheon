@@ -101,8 +101,9 @@ uniqueness keys collided within one Windows clock tick; now disambiguated. If th
 
 - **Subagents** (`.claude/agents/`), model-tiered by cognitive load: Opus —
   `code-reviewer` (read-only diff), `debugger`; Sonnet — `frontend-dev`, `flow-auditor`;
-  Haiku (mechanical/monitoring) — `test-triage` (separates the 2 known failures from real
-  regressions), `trend-watcher` (Claude Code trends → `.claude/` config suggestions),
+  Haiku (mechanical/monitoring) — `test-triage` (separates real regressions from the 2 chmod tests
+  that skip on Windows and pass on Linux CI; Windows baseline is now 0 known failures),
+  `trend-watcher` (Claude Code trends → `.claude/` config suggestions),
   `doc-writer` (keep docs in sync).
 - **Skills** (`.claude/skills/`): `run-pantheon` (launch recipe), `pantheon-agent`
   (how to add a Pantheon-agent + skill correctly), `improvement-proposal-flow`,
