@@ -16,19 +16,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from core.persistence import coerce_float
+
 # 役割ラベル。audience = リーチ源（集客）、monetization = 収益化先。
 ROLE_AUDIENCE = "audience"
 ROLE_MONETIZATION = "monetization"
-
-
-def _coerce_float(value: Any) -> float:
-    """reach / revenue を安全に float へ変換する（None・非数値・空文字は 0.0）。"""
-    if value is None:
-        return 0.0
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def _classify_role(role: Any, reach: float, revenue: float) -> str:
@@ -80,8 +72,8 @@ def recommend_handoffs(org_stats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         name = raw.get("org_name")
         if not name:
             continue
-        reach = _coerce_float(raw.get("reach"))
-        revenue = _coerce_float(raw.get("revenue"))
+        reach = coerce_float(raw.get("reach"))
+        revenue = coerce_float(raw.get("revenue"))
         role = _classify_role(raw.get("role"), reach, revenue)
         entry = {"org_name": str(name), "reach": reach, "revenue": revenue}
         if role == ROLE_AUDIENCE:
