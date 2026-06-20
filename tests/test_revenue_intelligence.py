@@ -54,6 +54,28 @@ def test_unknown_bucket_excluded():
     assert a["trend"] == "growing"
 
 
+def test_forecast_confidence_band_brackets_point_estimate():
+    """予測バンドは点推定を挟み、下限は 0 未満にならない（finding 15）。"""
+    a = analyze_revenue({"2026-01": 100, "2026-02": 150, "2026-03": 225})
+    assert a["forecast_lower"] <= a["forecast_next"] <= a["forecast_upper"]
+    assert a["forecast_lower"] >= 0.0
+
+
+def test_forecast_band_widens_with_volatility():
+    """成長率のばらつきが大きいほどバンドは広い（一定成長はスプレッド 0）。"""
+    steady = analyze_revenue({"2026-01": 100, "2026-02": 110, "2026-03": 121})  # +10% 一定
+    volatile = analyze_revenue({"2026-01": 100, "2026-02": 200, "2026-03": 210})  # +100%,+5%
+    steady_width = steady["forecast_upper"] - steady["forecast_lower"]
+    volatile_width = volatile["forecast_upper"] - volatile["forecast_lower"]
+    assert steady_width == 0.0  # 一定成長 → ばらつき無し
+    assert volatile_width > steady_width
+
+
+def test_insufficient_data_band_is_point():
+    a = analyze_revenue({"2026-06": 1000})
+    assert a["forecast_lower"] == a["forecast_next"] == a["forecast_upper"] == 1000.0
+
+
 def test_revenue_impact_rank_high_medium_none():
     from core.metrics.revenue_intelligence import revenue_impact_rank
 
