@@ -27,6 +27,7 @@ import {
   Target,
   Gauge,
   ScanEye,
+  Crosshair,
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
@@ -60,6 +61,7 @@ import { StudioPage } from '@/pages/StudioPage'
 import { BusinessesPage } from '@/pages/BusinessesPage'
 import { ObservabilityPage } from '@/pages/ObservabilityPage'
 import { UsagePage } from '@/pages/UsagePage'
+import { PortfolioPage } from '@/pages/PortfolioPage'
 
 type NavItem = {
   to: string
@@ -121,6 +123,7 @@ const navGroups: NavGroup[] = [
   {
     label: '収益化',
     items: [
+      { to: '/portfolio', label: '司令塔', icon: Crosshair },
       { to: '/studio', label: 'スタジオ', icon: PenSquare },
       { to: '/content', label: 'コンテンツ予約', icon: CalendarClock },
       { to: '/handoffs', label: '引き渡し', icon: ArrowRightLeft },
@@ -769,6 +772,7 @@ export default function App() {
         <Route path="/board" element={<BoardPage />} />
         <Route path="/data" element={<DataPage />} />
         <Route path="/businesses" element={<BusinessesPage />} />
+        <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/usage" element={<UsagePage />} />
         <Route path="/observability" element={<ObservabilityPage />} />
         <Route path="/settings" element={<SettingsPage />} />

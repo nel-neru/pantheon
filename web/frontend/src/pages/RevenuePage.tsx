@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  AlertOctagon,
   AlertTriangle,
   BarChart2,
   CalendarDays,
@@ -11,6 +12,7 @@ import {
   Play,
   Plus,
   Send,
+  ShieldCheck,
   Square,
   Target,
   TrendingUp,
@@ -19,7 +21,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api, type RevenueProjection, type RevenueEfficiencyResponse } from '@/lib/api'
+import { api, type RevenueIntegrity, type RevenueProjection, type RevenueEfficiencyResponse } from '@/lib/api'
 import { AsyncBoundary } from '@/components/AsyncBoundary'
 import { PageHeader } from '@/components/PageHeader'
 import { RefreshButton } from '@/components/RefreshButton'
@@ -142,6 +144,7 @@ export function RevenuePage() {
   const [report, setReport] = useState<RevenueReport | null>(null)
   const [intel, setIntel] = useState<RevenueIntelligence | null>(null)
   const [portfolio, setPortfolio] = useState<PortfolioProposal[]>([])
+  const [integrity, setIntegrity] = useState<RevenueIntegrity | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -181,12 +184,13 @@ export function RevenuePage() {
     setLoading(true)
     try {
       type DaemonsStatusShape = { daemons: Record<string, { running?: unknown }> }
-      const [result, rep, ai, pf, daemonStatus] = await Promise.all([
+      const [result, rep, ai, pf, daemonStatus, integrityRes] = await Promise.all([
         api<RevenueMetrics>('GET', '/api/metrics/revenue'),
         api<RevenueReport>('GET', '/api/metrics/revenue/report'),
         api<RevenueIntelligence>('GET', '/api/metrics/revenue/intelligence'),
         api<{ proposals: PortfolioProposal[] }>('GET', '/api/hq/portfolio'),
         api<DaemonsStatusShape>('GET', '/api/daemons/status').catch(() => null),
+        api<RevenueIntegrity>('GET', '/api/metrics/revenue/integrity').catch(() => null),
       ])
       setData(result ?? null)
       setReport(rep ?? null)
@@ -195,6 +199,22 @@ export function RevenuePage() {
       // daemon 状態を coerce（free-form payload）
       const rev = daemonStatus?.daemons?.['revenue']
       setDaemonRunning(rev ? Boolean(rev.running) : false)
+      // 確定収益整合性（free-form payload を防御的に coerce）
+      if (integrityRes) {
+        const num = (x: unknown): number => (Number.isFinite(Number(x)) ? Number(x) : 0)
+        setIntegrity({
+          org_name: integrityRes.org_name ?? null,
+          confirmed_revenue: num(integrityRes.confirmed_revenue),
+          recorded_event_count: Math.round(num(integrityRes.recorded_event_count)),
+          has_confirmed_data: Boolean(integrityRes.has_confirmed_data),
+          confirmed_sources: Array.isArray(integrityRes.confirmed_sources)
+            ? integrityRes.confirmed_sources.map(String)
+            : [],
+          warning: String(integrityRes.warning ?? ''),
+        })
+      } else {
+        setIntegrity(null)
+      }
       setError(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : '収益メトリクスの読み込みに失敗しました。'
@@ -202,6 +222,7 @@ export function RevenuePage() {
       setReport(null)
       setIntel(null)
       setPortfolio([])
+      setIntegrity(null)
       setError(message)
       toast.error(message)
     } finally {
@@ -511,6 +532,60 @@ export function RevenuePage() {
           loadingText="収益メトリクスを読み込み中…"
           errorTitle="収益メトリクスの読み込みに失敗しました"
         >
+          {/* ── 確定収益データなし警告バナー ─────────────────────────────── */}
+          {integrity !== null && !integrity.has_confirmed_data && (
+            <div
+              id="no-confirmed-revenue-banner"
+              role="alert"
+              className="flex items-start gap-3 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3"
+            >
+              <AlertOctagon size={18} className="mt-0.5 shrink-0 text-yellow-400" />
+              <div className="flex flex-col gap-0.5">
+                <div className="font-semibold text-sm text-yellow-300">確定収益データがありません</div>
+                <div className="text-xs text-yellow-200/80">{integrity.warning}</div>
+              </div>
+            </div>
+          )}
+
+          {/* ── 確定収益（記録済み実データ）カード ──────────────────────── */}
+          {integrity !== null && (
+            <div id="confirmed-revenue-card" className="card border border-green-500/30 bg-green-500/5">
+              <div className="card-body flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-green-400" />
+                  <div className="font-semibold text-green-300">確定収益（記録済み実データ）</div>
+                  <span className="badge badge-green text-xs">実績のみ</span>
+                </div>
+                <p className="text-xs text-muted">
+                  OutcomeStore に記録された実イベント由来の金額のみを集計します。予測・見通し・概算は含まれません。
+                </p>
+                <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+                  <span>
+                    <span className="text-muted">確定収益合計: </span>
+                    <span className="font-semibold text-green-300" id="confirmed-revenue-total">
+                      {formatYen(integrity.confirmed_revenue)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="text-muted">収益イベント件数: </span>
+                    <span className="font-medium" id="confirmed-revenue-count">
+                      {integrity.recorded_event_count.toLocaleString('ja-JP')}件
+                    </span>
+                  </span>
+                </div>
+                {integrity.confirmed_sources.length > 0 && (
+                  <div className="flex flex-wrap gap-1" id="confirmed-revenue-sources">
+                    {integrity.confirmed_sources.map((src) => (
+                      <span key={src} className="badge badge-neutral text-xs">
+                        {src}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* KPI カード（3種） */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="card">

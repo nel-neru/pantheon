@@ -256,6 +256,25 @@ export async function listPersonas(): Promise<Persona[]> {
   return api<Persona[]>('GET', '/api/personas')
 }
 
+// ─── Revenue integrity (confirmed-only real data) ────────────────────────────
+
+/** GET /api/metrics/revenue/integrity response shape.
+ *  Only confirmed (recorded real) revenue is included — no forecasts/projections.
+ */
+export type RevenueIntegrity = {
+  org_name: string | null
+  confirmed_revenue: number
+  recorded_event_count: number
+  has_confirmed_data: boolean
+  confirmed_sources: string[]
+  warning: string
+}
+
+export async function getRevenueIntegrity(orgName?: string): Promise<RevenueIntegrity> {
+  const params = orgName ? `?org_name=${encodeURIComponent(orgName)}` : ''
+  return api<RevenueIntegrity>('GET', `/api/metrics/revenue/integrity${params}`)
+}
+
 // ─── Revenue projection / efficiency ─────────────────────────────────────────
 
 export type RevenueProjection = {
@@ -293,6 +312,34 @@ export type RevenueEfficiencyResponse = {
 
 export async function getRevenueEfficiency(): Promise<RevenueEfficiencyResponse> {
   return api<RevenueEfficiencyResponse>('GET', '/api/metrics/efficiency')
+}
+
+// ─── Portfolio ────────────────────────────────────────────────────────────────
+
+/** GET /api/portfolio/overview の 1 org エントリ。free-form なので全フィールドを optional 扱い。 */
+export type PortfolioOrgEntry = {
+  org_name?: unknown
+  revenue?: unknown
+  reach?: unknown
+  roi?: unknown
+  action?: unknown
+  revenue_percentile?: unknown
+  roi_percentile?: unknown
+  flag?: unknown
+}
+
+/** GET /api/portfolio/overview のレスポンス形。 */
+export type PortfolioOverview = {
+  orgs?: PortfolioOrgEntry[]
+  org_count?: unknown
+  total_revenue?: unknown
+  total_reach?: unknown
+  pending_handoffs?: unknown
+  new_business_candidates?: unknown
+}
+
+export async function getPortfolioOverview(): Promise<PortfolioOverview> {
+  return api<PortfolioOverview>('GET', '/api/portfolio/overview')
 }
 
 /**
