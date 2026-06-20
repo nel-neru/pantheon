@@ -219,8 +219,11 @@ class KnowledgeManager:
             return None
 
     def _write_record(self, record: Dict[str, Any]) -> None:
+        from core.persistence import atomic_write_text
+
+        # 原子的に書く（知識エントリの torn write による消失を防ぐ）。
         path = self._entry_path(str(record["id"]))
-        path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(path, json.dumps(record, ensure_ascii=False, indent=2))
 
     def _load_all_entries(self) -> List[Dict[str, Any]]:
         entries: List[Dict[str, Any]] = []
