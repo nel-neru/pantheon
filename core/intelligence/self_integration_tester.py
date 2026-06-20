@@ -19,6 +19,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from core.runtime.process_utils import no_window_kwargs
+
 from agents.self_code_writer import CodeOutput
 
 
@@ -87,6 +89,7 @@ class SelfIntegrationTester:
             capture_output=True,
             text=True,
             check=False,
+            **no_window_kwargs(),
         )
         duration = time.perf_counter() - start
         combined_output = "\n".join(
