@@ -24,6 +24,9 @@ from core.persistence import atomic_write_text
 if TYPE_CHECKING:
     from core.models.organization import ImprovementProposal, Organization, QualityReview
 
+# get_cross_org_state は件数概要に使うだけなので保留タスクの取得上限を設ける（unbounded ロード回避）。
+_CROSS_ORG_PENDING_PREVIEW = 100
+
 
 def _safe_mtime(path: Path) -> float:
     """ソートキー用の堅牢な mtime。glob と sort の間でファイルが消えても落ちない
@@ -74,10 +77,19 @@ class RepoStateManager:
         )
 
     def load_current_state(self) -> Dict[str, Any]:
-        if self.current_state_file.exists():
+        default = {"organization": self.org_name, "status": "initialized"}
+        if not self.current_state_file.exists():
+            return default
+        # 破損（daemon クラッシュ中の partial write 等）でも黙って状態消失させず、観測可能に
+        # 既定へフォールバックする（同クラスの get_recent_decisions 等と同じ規約）。
+        try:
             with open(self.current_state_file, "r", encoding="utf-8") as f:
                 return json.load(f)
-        return {"organization": self.org_name, "status": "initialized"}
+        except (OSError, ValueError) as exc:
+            from core.platform.state import warn_skipped_state_file
+
+            warn_skipped_state_file(self.current_state_file, exc, kind="現在状態")
+            return default
 
     def record_decision(
         self,
@@ -223,8 +235,16 @@ class RepoStateManager:
             return False
         for f in improvements_dir.glob("*.json"):
             if f.stem == proposal_id:
-                with open(f, "r", encoding="utf-8") as fp:
-                    data = json.load(fp)
+                # 対象提案が破損していても関数契約（bool 返却）を守って観測可能に False を返す
+                # （未捕捉例外で update フロー全体をクラッシュさせない）。
+                try:
+                    with open(f, "r", encoding="utf-8") as fp:
+                        data = json.load(fp)
+                except (OSError, ValueError) as exc:
+                    from core.platform.state import warn_skipped_state_file
+
+                    warn_skipped_state_file(f, exc, kind="改善提案")
+                    return False
                 data.update(updates)
                 data["last_updated"] = datetime.now(timezone.utc).isoformat()
                 atomic_write_text(f, json.dumps(data, ensure_ascii=False, indent=2))
@@ -285,8 +305,16 @@ class RepoStateManager:
         path = self.sessions_dir / f"{session_id}.json"
         if not path.exists():
             return None
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        # 破損（並行アクセス中の partial write 等）でも黙ってセッション消失させず観測可能にする
+        # （list_session_contexts と同じ規約）。
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError) as exc:
+            from core.platform.state import warn_skipped_state_file
+
+            warn_skipped_state_file(path, exc, kind="セッション")
+            return None
 
     def list_session_contexts(self) -> list[Dict[str, Any]]:
         """保存済みセッションコンテキストの一覧を返す。"""
@@ -314,7 +342,8 @@ class RepoStateManager:
         from core.orchestration.task_queue import TaskQueue
 
         queue = TaskQueue()
+        # 概要表示用なので上限を設けて in-memory ロードを抑える（unbounded 取得を避ける）。
         return {
-            "pending_tasks": len(queue.get_pending_tasks(limit=None)),
+            "pending_tasks": len(queue.get_pending_tasks(limit=_CROSS_ORG_PENDING_PREVIEW)),
             "recent_tasks": queue.list_tasks(limit=5),
         }

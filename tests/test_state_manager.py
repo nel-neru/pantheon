@@ -318,6 +318,35 @@ class TestRepoStateManager:
         assert {s["session_id"] for s in sessions} == {"session-1"}
         assert any("broken.json" in rec.message for rec in caplog.records)
 
+    def test_load_current_state_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        state_manager.current_state_file.write_text("{not json", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            st = state_manager.load_current_state()
+        assert st["status"] == "initialized"  # 既定へフォールバック（クラッシュしない）
+        assert any("current_state" in rec.message for rec in caplog.records)
+
+    def test_load_session_context_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        (state_manager.sessions_dir / "sess-x.json").write_text("{not json", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            ctx = state_manager.load_session_context("sess-x")
+        assert ctx is None
+        assert any("sess-x" in rec.message for rec in caplog.records)
+
+    def test_update_proposal_fields_warns_on_malformed_json(self, state_manager, caplog):
+        import logging
+
+        improvements_dir = state_manager.state_dir / "improvements"
+        improvements_dir.mkdir(exist_ok=True)
+        (improvements_dir / "broken-prop.json").write_text("{not json", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="core.platform.state"):
+            ok = state_manager.update_proposal_fields("broken-prop", status="done")
+        assert ok is False  # 関数契約（bool）を守る・クラッシュしない
+        assert any("broken-prop" in rec.message for rec in caplog.records)
+
     def test_safe_mtime_tolerates_missing_file(self, tmp_path):
         # glob と sort の間でファイルが消えても、ソートキーは落ちず最古（0.0）扱いにする。
         from core.state.manager import _safe_mtime
