@@ -697,39 +697,54 @@ export function RevenuePage() {
 
           {/* 収益トレンド（insufficient のときも淡色で表示） */}
           {intel ? (
-            <div id="trend-card" className="card">
-              <div className="card-body flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={16} />
-                  <div className="font-semibold">収益トレンド（全組織）</div>
-                  <span className={`badge ${TREND_BADGE[intel.trend]}`}>
-                    {TREND_LABEL[intel.trend]}
-                  </span>
-                </div>
-                {intel.trend === 'insufficient' ? (
-                  <div className="text-sm text-muted">
-                    データ蓄積中です。2ヶ月以上の記録が揃うと予測が始まります。
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-4 text-sm">
-                    {Number.isFinite(intel.latest_change_pct) ? (
-                      <span className="text-muted">
-                        前月比{' '}
-                        <span className="font-medium">
-                          {(intel.latest_change_pct as number) > 0 ? '+' : ''}
-                          {intel.latest_change_pct}%
-                        </span>
-                      </span>
-                    ) : null}
-                    <span className="text-muted" id="trend-forecast">
-                      翌月予測{' '}
-                      <span className="font-medium">{formatYen(intel.forecast_next)}</span>
-                      <span className="text-muted text-xs ml-1" title="過去月次データの線形近似による点予測。実績との乖離が生じる場合があります。">
-                        （概算）
-                      </span>
+            <div id="trend-card" className="card border border-white/5 opacity-90">
+              <div className="card-body flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={16} />
+                    <div className="font-semibold">収益トレンド（全組織）</div>
+                    <span className={`badge ${TREND_BADGE[intel.trend]}`}>
+                      {TREND_LABEL[intel.trend]}
+                    </span>
+                    <span
+                      id="trend-estimate-label"
+                      className="badge badge-yellow text-xs"
+                      title="概算・確定収益ではありません"
+                    >
+                      予測
                     </span>
                   </div>
-                )}
+                  {intel.trend === 'insufficient' ? (
+                    <div className="text-sm text-muted">
+                      データ蓄積中です。2ヶ月以上の記録が揃うと予測が始まります。
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4 text-sm">
+                      {Number.isFinite(intel.latest_change_pct) ? (
+                        <span className="text-muted">
+                          前月比{' '}
+                          <span className="font-medium">
+                            {(intel.latest_change_pct as number) > 0 ? '+' : ''}
+                            {intel.latest_change_pct}%
+                          </span>
+                        </span>
+                      ) : null}
+                      <span className="text-muted" id="trend-forecast">
+                        翌月予測{' '}
+                        <span className="font-medium">{formatYen(intel.forecast_next)}</span>
+                        <span className="text-muted text-xs ml-1" title="過去月次データの線形近似による点予測。実績との乖離が生じる場合があります。">
+                          （概算）
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div
+                  id="trend-disclaimer"
+                  className="text-xs text-muted border-t border-white/5 pt-1 mt-1"
+                >
+                  概算・確定収益ではありません
+                </div>
               </div>
             </div>
           ) : null}
@@ -885,11 +900,18 @@ export function RevenuePage() {
 
           {/* 目標到達の見通し（projection card） */}
           {(projection !== null || projectionLoading) && (
-            <div id="projection-card" className="card">
+            <div id="projection-card" className="card border border-white/5 opacity-90">
               <div className="card-body flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <Target size={16} />
                   <div className="font-semibold">目標到達の見通し</div>
+                  <span
+                    id="projection-estimate-label"
+                    className="badge badge-yellow text-xs"
+                    title="概算・確定収益ではありません"
+                  >
+                    予測
+                  </span>
                   {projectionLoading && (
                     <span className="text-sm text-muted">計算中…</span>
                   )}
@@ -921,6 +943,12 @@ export function RevenuePage() {
                     </div>
                   </>
                 )}
+                <div
+                  id="projection-disclaimer"
+                  className="text-xs text-muted border-t border-white/5 pt-1 mt-1"
+                >
+                  概算・確定収益ではありません
+                </div>
               </div>
             </div>
           )}
