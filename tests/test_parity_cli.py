@@ -173,6 +173,32 @@ async def test_inbox_list_category_and_impact_filters(tmp_path, monkeypatch, cap
     assert "承認して" not in capsys.readouterr().out
 
 
+async def test_skills_list_cli(capsys):
+    """orchestration skills が SkillLoader レジストリを一覧する（GET /api/skills 相当）。"""
+    import main
+    from commands.orchestration import cmd_skills_list
+
+    parser = build_parser()
+    assert parser.parse_args(["orchestration", "skills"]).handler_name == "cmd_skills_list"
+    assert "cmd_skills_list" in main.HANDLERS
+    await cmd_skills_list(argparse.Namespace(), get_psm=lambda: None)
+    out = capsys.readouterr().out
+    assert "Skill Registry" in out and "strategic_planning" in out
+
+
+async def test_orchestration_history_accepts_filters():
+    """orchestration history が --task-type/--pattern を受け付ける（finding wave2）。"""
+    from commands.orchestration import cmd_orchestration_history
+
+    parser = build_parser()
+    args = parser.parse_args(
+        ["orchestration", "history", "--task-type", "code_review", "--pattern", "parallel"]
+    )
+    assert args.task_type == "code_review" and args.pattern == "parallel"
+    # フィルタ適用で空でも落ちずに案内を出す
+    await cmd_orchestration_history(args)
+
+
 async def test_proposal_rollback_cli(tmp_path, monkeypatch):
     """proposal rollback CLI が dead だった rollback_implementation を配線する（finding 19）。"""
     import main

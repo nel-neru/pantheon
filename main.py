@@ -45,6 +45,7 @@ from commands.memory import cmd_memory_capture as _cmd_memory_capture_impl
 from commands.memory import cmd_memory_list as _cmd_memory_list_impl
 from commands.memory import cmd_memory_propagate as _cmd_memory_propagate_impl
 from commands.orchestration import cmd_agent_list as _cmd_agent_list_impl
+from commands.orchestration import cmd_skills_list as _cmd_skills_list_impl
 from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
 from commands.orchestration import (
     cmd_orchestration_analyze as _cmd_orchestration_analyze_impl,
@@ -507,6 +508,10 @@ async def cmd_agent_list(args) -> None:
     await _cmd_agent_list_impl(args, get_psm=_get_psm)
 
 
+async def cmd_skills_list(args) -> None:
+    await _cmd_skills_list_impl(args, get_psm=_get_psm)
+
+
 async def cmd_goal_status(args) -> None:
     await _cmd_goal_status_impl(args, get_platform_home=_get_platform_home)
 
@@ -842,6 +847,7 @@ HANDLERS = {
     "cmd_orchestration_self_review": cmd_orchestration_self_review,
     "cmd_agent_status": cmd_agent_status,
     "cmd_agent_list": cmd_agent_list,
+    "cmd_skills_list": cmd_skills_list,
     "cmd_goal_status": cmd_goal_status,
     "cmd_goal_run": cmd_goal_run,
     "cmd_goal_plan": cmd_goal_plan,
