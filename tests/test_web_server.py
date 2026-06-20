@@ -1688,6 +1688,10 @@ def test_resolve_serve_dir_falls_back_to_static_when_unbuilt(tmp_path, monkeypat
     assert server._resolve_serve_dir() == static
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX file permissions (chmod 0o600) are a no-op on Windows; enforced on POSIX/CI only",
+)
 def test_get_settings_warns_on_open_permissions(tmp_path, monkeypatch, caplog):
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}", encoding="utf-8")
