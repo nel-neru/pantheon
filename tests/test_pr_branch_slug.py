@@ -214,3 +214,89 @@ def test_pr_flow_emits_no_literal_none_when_title_and_description_missing(monkey
     # 本文の title/description 行も literal "None" を出さない。
     assert "**改善提案**: None" not in pull["body"]
     assert "**説明**: None" not in pull["body"]
+
+
+# ── create_git_ref の 422（ブランチ既存）冪等ハンドリング ──
+
+
+def _github_module_with_ref_error(repo, status: int):
+    fake_module = ModuleType("github")
+
+    class FakeGithubException(Exception):
+        def __init__(self, status):
+            super().__init__(f"status={status}")
+            self.status = status
+
+    fake_module.GithubException = FakeGithubException
+
+    class FakeGithub:
+        def __init__(self, token):
+            pass
+
+        def get_repo(self, slug):
+            return repo
+
+    fake_module.Github = FakeGithub
+    repo._exc_cls = FakeGithubException
+    repo._ref_error_status = status
+    return fake_module
+
+
+class _RefErrorRepo:
+    default_branch = "main"
+
+    def __init__(self):
+        self.updated = []
+
+    def get_branch(self, branch):
+        return SimpleNamespace(commit=SimpleNamespace(sha="deadbeef"))
+
+    def create_git_ref(self, ref, sha):
+        raise self._exc_cls(self._ref_error_status)
+
+    def get_contents(self, path, ref=None):
+        return SimpleNamespace(sha="abc")
+
+    def update_file(self, **kwargs):
+        self.updated.append(kwargs)
+
+    def create_pull(self, **kwargs):
+        return SimpleNamespace(html_url="https://example.com/pr/422")
+
+
+def test_create_git_ref_existing_branch_422_is_idempotent(monkeypatch, tmp_path):
+    """ブランチ既存(422)なら create_git_ref を握りつぶしてファイル操作へ進む。"""
+    repo = _RefErrorRepo()
+    monkeypatch.setitem(sys.modules, "github", _github_module_with_ref_error(repo, 422))
+    url = asyncio.run(
+        create_improvement_pr(
+            repo_path=tmp_path,
+            github_token="t",
+            github_repo="o/r",
+            file_path="a.py",
+            modified_content="x",
+            suggestion={"title": "T"},
+        )
+    )
+    assert url == "https://example.com/pr/422"
+    assert repo.updated  # 422 を握りつぶしてファイル更新へ進んだ
+
+
+def test_create_git_ref_non_422_propagates(monkeypatch, tmp_path):
+    """422 以外（例: 403）は握りつぶさず伝播する。"""
+    import pytest
+
+    repo = _RefErrorRepo()
+    monkeypatch.setitem(sys.modules, "github", _github_module_with_ref_error(repo, 403))
+    with pytest.raises(Exception):  # noqa: B017 — FakeGithubException が伝播することの確認
+        asyncio.run(
+            create_improvement_pr(
+                repo_path=tmp_path,
+                github_token="t",
+                github_repo="o/r",
+                file_path="a.py",
+                modified_content="x",
+                suggestion={"title": "T"},
+            )
+        )
+    assert not repo.updated  # ファイル操作に進まず中断
