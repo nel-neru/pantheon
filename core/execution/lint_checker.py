@@ -10,6 +10,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from core.runtime.process_utils import no_window_kwargs
+
 
 @dataclass
 class LintResult:
