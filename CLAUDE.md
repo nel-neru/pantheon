@@ -36,16 +36,16 @@ npm run dev         # vite dev server (proxies /api + /ws -> http://localhost:80
 
 Bash-tool equivalents use forward slashes: `.venv/Scripts/python -m pytest tests/ -q`.
 
-## Test baseline — DO NOT treat these as regressions
+## Test baseline — clean on Windows (0 known failures)
 
-On Windows the full backend suite has **2 long-standing failures** unrelated to any change
-(verified against a clean tree). Only NEW failures beyond these count:
+The full backend suite has **0 known failures on Windows**. **Any** failure is a regression.
 
-- POSIX `chmod 0o600` not honored on Windows: `test_get_settings_warns_on_open_permissions`,
-  `test_update_settings_sets_restrictive_permissions`
-
-(4 former path-separator failures were fixed 2026-06-12 by normalizing relative paths to
-POSIX with `as_posix()` in `repo_reader` / `dependency_graph` / `improvement_executor_agent`.)
+- The 2 former chmod failures (`test_get_settings_warns_on_open_permissions`,
+  `test_update_settings_sets_restrictive_permissions`) now **`skipif sys.platform=="win32"`**
+  — POSIX `chmod 0o600` is a no-op on Windows, so they're skipped there and still run/pass on
+  Linux CI (where the permission behavior is real). Expect `... skipped` for them on Windows.
+- (4 former path-separator failures were fixed 2026-06-12 by normalizing relative paths to
+  POSIX with `as_posix()` in `repo_reader` / `dependency_graph` / `improvement_executor_agent`.)
 
 (The 2 former order-flaky tests — `test_backup_manager_cleanup_old`,
 `test_get_improvement_history` — were root-fixed 2026-06-12: wall-clock timestamps used as
