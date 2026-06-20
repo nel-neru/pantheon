@@ -288,3 +288,40 @@ plugins:
       - デザイン企画・制作部
       - 集客・マーケティング部
       - 販売・収益化部
+
+  - id: illustration_story_youtube
+    label: イラストストーリーYouTube（RED THREAD）
+    genre: illustration_story_youtube
+    description: >-
+      台詞ゼロ・2ビートのどんでん返し寓話（RED THREAD/赤い糸）を量産する、全世界向け
+      イラストストーリーYouTubeチャンネルの「執筆・編成」層を自律運営する会社。トレンド適合の
+      エピソード企画、2ビート台本、ショット分解、独自スタイルと連続性を固定した画像生成プロンプト、
+      タイトル/概要/タグ/サムネ指示、投稿カレンダー、クロス投稿文、確定収益の記録までを自動で担う。
+      画像生成・動画組立・YouTubeアップロードは外部ツール/人手（チャンネル作成と最終投稿は利用者）。
+    canon_template: red_thread
+    initial_kpis:
+      - 週間Shorts公開数
+      - 長尺アンソロジー公開数
+      - 平均視聴維持率（%）
+      - 登録者増加数
+      - 確定収益（円・CSV由来のみ）
+    weekly_review: >-
+      週次で伸びた twist とサムネを言語化して Playbook 化し、視聴維持率と登録者増の高い
+      テーマへ次サイクルの制作枠を寄せる。Shorts→長尺ファネルの遷移率を点検する。
+    human_tasks:
+      - YouTubeチャンネルの作成と初回OAuth（利用者が実施）
+      - 各カットの画像生成（Nano Banana 等の外部ツール）と初期エピソードの絵柄QA
+      - 動画アセンブリ（Shotstack/JSON2Video/Remotion/FFmpeg 等のレンダリング）
+      - サムネイルの最終描画
+      - 楽曲・効果音のライセンス取得（アカウント紐付け）
+      - YouTubeへの最終アップロード/公開（投稿カレンダーに沿って）
+      - 確定収益CSV（AdSense/マーチ/アフィリエイト）の取り込み確認
+    divisions:
+      - name: 企画・カノン事業部
+        category: content
+      - name: 制作ブリーフ事業部
+        category: content
+      - name: 集客・配信事業部
+        category: audience
+      - name: 収益化・分析事業部
+        category: monetization

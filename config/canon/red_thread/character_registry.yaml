@@ -1,0 +1,37 @@
+# RED THREAD キャラ登録簿 — 連続性の核。
+#
+# canonical_sheet は不変アンカー（初回の設定画。新しい表情/ポーズは設定画の「編集」で
+# 生成し、毎回フレッシュ生成しない）。base_seed を固定し、face/outfit をロックして
+# outfit-drift（最大の連続性崩れ要因）を防ぐ。episode_brief が各カットのキャラ参照に使う。
+
+outfit_lock: true   # 衣装は固定。変更は canon を改訂してから（drift 防止）
+
+characters:
+  - id: lighthouse_keeper
+    name: 灯台守（The Lighthouse Keeper）
+    canonical_sheet: ""        # 初回画像生成後に URL/hash を記入（以後 不変アンカー）
+    base_seed: 101001
+    face: 年配・白い無精髭・片目を細める・しわ深い穏やかな顔
+    outfit: 色褪せた紺のダッフルコート・赤いマフラー・黒い長靴
+    role: 物語の観測者。赤い糸を最初に見つける存在
+  - id: lost_kid
+    name: 迷子（The Lost Kid）
+    canonical_sheet: ""
+    base_seed: 101002
+    face: 6-8歳・大きな丸い目・短い黒髪・小さな鼻
+    outfit: 黄色いレインコート・赤い長靴・空の小さなリュック
+    role: 純粋さの象徴。赤い糸をたぐる側
+  - id: old_cat
+    name: 老猫（The Old Cat）
+    canonical_sheet: ""
+    base_seed: 101003
+    face: 片耳が欠けた灰色のブチ猫・琥珀色の目
+    outfit: 首に緩く巻かれた赤い糸
+    role: 物言わぬ案内役。糸の在処を知っている
+  - id: stranger
+    name: コートの異邦人（The Coated Stranger）
+    canonical_sheet: ""
+    base_seed: 101004
+    face: 顔は影に隠れがち・見えるのは薄い微笑のみ
+    outfit: 床まで届く赤茶のロングコート・立てた襟
+    role: 背景の謎の中心。糸を置いていく者かもしれない
