@@ -41,6 +41,8 @@ from commands.hq import cmd_hq_apply as _cmd_hq_apply_impl
 from commands.hq import cmd_hq_diagnose as _cmd_hq_diagnose_impl
 from commands.hq import cmd_hq_outcomes as _cmd_hq_outcomes_impl
 from commands.hq import cmd_hq_propose as _cmd_hq_propose_impl
+from commands.memory import cmd_memory_capture as _cmd_memory_capture_impl
+from commands.memory import cmd_memory_list as _cmd_memory_list_impl
 from commands.memory import cmd_memory_propagate as _cmd_memory_propagate_impl
 from commands.orchestration import cmd_agent_list as _cmd_agent_list_impl
 from commands.orchestration import cmd_agent_status as _cmd_agent_status_impl
@@ -469,6 +471,14 @@ def cmd_memory_propagate(args) -> None:
     _cmd_memory_propagate_impl(args)
 
 
+def cmd_memory_list(args) -> None:
+    _cmd_memory_list_impl(args)
+
+
+def cmd_memory_capture(args) -> None:
+    _cmd_memory_capture_impl(args)
+
+
 async def cmd_orchestration_analyze(args) -> None:
     await _cmd_orchestration_analyze_impl(args, get_orchestrator=_get_orchestrator)
 
@@ -822,6 +832,8 @@ HANDLERS = {
     "cmd_traces": cmd_traces,
     "cmd_eval": cmd_eval,
     "cmd_memory_propagate": cmd_memory_propagate,
+    "cmd_memory_list": cmd_memory_list,
+    "cmd_memory_capture": cmd_memory_capture,
     "cmd_version": cmd_version,
     "cmd_doctor": cmd_doctor,
     "cmd_orchestration_analyze": cmd_orchestration_analyze,
