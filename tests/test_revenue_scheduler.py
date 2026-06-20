@@ -174,3 +174,47 @@ def test_active_runs_hq_cadence_and_emits_notification(tmp_path, monkeypatch):
     assert "自律経営サイクル" in notes[0]["message"]
     # 起票された提案はすべて承認待ち（自動採用しない）。
     assert all(p["status"] == "proposed" for p in _proposals_for(psm, "Reachy"))
+
+
+def _approved_handoff_in(home, tmp_path, psm):
+    """受け手 org（repo 付き）＋承認済みハンドオフを用意して store を返す。"""
+    from core.hierarchy.org_handoff import OrgHandoffStore
+
+    tgt = create_default_organization("収益化部", "note販売")
+    tgt.target_repo_path = str(tmp_path / "repo")
+    psm.save_organization(tgt)
+    store = OrgHandoffStore(platform_home=home)
+    h = store.create("集客部", "収益化部", "audience_signal", "検証済み需要")
+    store.approve(h.handoff_id)  # pending -> approved（人間ゲート通過）
+    return store, h, tgt
+
+
+def test_execute_approved_off_by_default_leaves_handoffs(tmp_path, monkeypatch):
+    """既定オフ: run_cycle は承認済みハンドオフを自律実行しない（勝手に actuate しない）。"""
+    from core.hierarchy.org_handoff import HANDOFF_APPROVED
+
+    home = _home(tmp_path, monkeypatch)
+    psm = PlatformStateManager(platform_home=home)
+    store, h, _ = _approved_handoff_in(home, tmp_path, psm)
+
+    summary = asyncio.run(RevenueScheduler(platform_home=home, collect=False).run_cycle())
+    assert summary["handoffs_executed"] == 0
+    assert store.get(h.handoff_id).status == HANDOFF_APPROVED  # 据え置き
+
+
+def test_execute_approved_opt_in_consumes_handoffs(tmp_path, monkeypatch):
+    """opt-in: 承認済みハンドオフを実体化→consumed まで自律で前進させ、件数を報告する（Gap B）。"""
+    from core.hierarchy.org_handoff import HANDOFF_CONSUMED
+
+    home = _home(tmp_path, monkeypatch)
+    psm = PlatformStateManager(platform_home=home)
+    store, h, tgt = _approved_handoff_in(home, tmp_path, psm)
+
+    summary = asyncio.run(
+        RevenueScheduler(platform_home=home, execute_approved=True, collect=False).run_cycle()
+    )
+    assert summary["handoffs_executed"] == 1
+    assert store.get(h.handoff_id).status == HANDOFF_CONSUMED
+    # 受け手 org に content_asset ブリーフ（下流も human_required＝HITL は回避しない）。
+    sm = psm.get_org_state_manager(tgt)
+    assert any(p.get("category") == "content_asset" for p in sm.get_all_improvement_proposals())

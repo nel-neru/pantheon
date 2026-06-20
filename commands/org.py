@@ -632,6 +632,35 @@ async def cmd_proposal_apply(
         print(f"[OK] コンテンツ資産を適用しました: {result.output}")
         return
 
+    # new_business 提案（トレンド由来の新規会社候補）は file_path を持たない meta だが、
+    # 承認後に Organization+Business を組成する専用 executor へ委任する（Web の
+    # POST /api/businesses/from-proposal・CLI business from-proposal と同じ挙動）。
+    # PolicyEngine は上で既に通過しているので HITL は維持される。これが無いと下の
+    # 空 file_path 棄却に落ち、CLI 承認からは事業化に到達できない（Web だけ可）。
+    if str(proposal.get("category", "")) == "new_business":
+        if not confirm_action(
+            f"新規事業 '{proposal.get('title')}' を組成しますか?",
+            assume_yes=getattr(args, "yes", False),
+        ):
+            print("[INFO] 適用を中止しました。")
+            return
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "in_progress")
+        from core.orchestration.business_application import scaffold_business_from_proposal
+
+        try:
+            result = scaffold_business_from_proposal(proposal, psm=psm)
+        except ValueError as exc:
+            print(f"[ERROR] 新規事業の組成失敗: {exc}")
+            state_manager.update_proposal_status(str(proposal.get("id", "")), "failed")
+            sys.exit(1)
+        state_manager.update_proposal_status(str(proposal.get("id", "")), "done")
+        reused = "（既存 org を再利用）" if result.get("reused_org") else ""
+        print(
+            f"[OK] 新規事業を組成しました: 会社={result['org_name']} 事業={result['business_name']}{reused}"
+        )
+        print(f"   事業部: {', '.join(result.get('divisions') or []) or '(なし)'}")
+        return
+
     file_path = proposal.get("file_path", "")
     if not file_path:
         print("[ERROR] この提案は file_path がありません（meta-level 提案）。")

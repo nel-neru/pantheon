@@ -30,7 +30,9 @@ def build_benchmark_snapshot(org_stats: List[Dict[str, Any]]) -> List[Dict[str, 
 
     引数: 各要素 ``{"org_name", "revenue", "reach", ...}``（欠損は 0 扱い）。
     返り値: revenue 降順で ``{org_name, revenue, reach, roi, revenue_percentile, roi_percentile, flag}``。
-    flag: revenue_percentile>=90→"top_performer" / revenue>0 かつ roi_percentile<=25→"underperformer" / 他 ""。
+    flag: revenue_percentile>=90→"top_performer" / revenue>0 かつ earner 内の最低 ROI（2社以上
+    収益ありのとき）→"underperformer" / 他 ""（小コホートでも 1 社を安定特定するため percentile
+    閾値でなく最低 ROI で判定）。
     入力が空なら ``[]``。元 dict は破壊しない。
     """
     if not org_stats:

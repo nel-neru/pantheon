@@ -36,6 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--source-org-name", default="HQ", dest="source_org_name")
     parser.add_argument("--min-reach", type=float, default=0.0, dest="min_reach")
+    parser.add_argument(
+        "--execute-approved",
+        action="store_true",
+        dest="execute_approved",
+        help="承認済みクロス Org ハンドオフを毎サイクル自律実行（opt-in・既定オフ・HITL維持）",
+    )
     return parser
 
 
@@ -49,6 +55,7 @@ def main() -> None:
         target=args.target,
         source_org_name=args.source_org_name,
         min_reach=args.min_reach,
+        execute_approved=args.execute_approved,
     )
     asyncio.run(scheduler.start())
 

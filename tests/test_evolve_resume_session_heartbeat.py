@@ -129,7 +129,7 @@ def _run_resume_dryrun(tmp_path: Path, stale: int) -> str:
     env["USERPROFILE"] = str(tmp_path)
     env["HOME"] = str(tmp_path)
     (tmp_path / ".pantheon").mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(
+    subprocess.run(
         [
             _PWSH,
             "-NoProfile",
@@ -141,17 +141,19 @@ def _run_resume_dryrun(tmp_path: Path, stale: int) -> str:
             "-StaleMinutes",
             str(stale),
         ],
-        # evolve_resume.ps1 emits UTF-8 to the pipe (Japanese log lines like
-        # "skip: 最終コミット"). `text=True` would decode with the Windows locale
-        # codepage (cp932 on JP Windows) and crash on the UTF-8 multibyte bytes,
-        # leaving stdout empty and the gate assertions silently false. Decode UTF-8
-        # explicitly (errors="replace" so a stray byte never zeroes the whole capture).
-        encoding="utf-8",
-        errors="replace",
         env=env,
         capture_output=True,
     )
-    return (proc.stdout or "") + (proc.stderr or "")
+    # 出力の取得はパイプ（stdout）ではなく **ログファイル**から行う。PowerShell 5.1 がパイプへ
+    # 書く際のエンコーディングは ambient な [Console]::OutputEncoding（既定 = OEM コードページ＝
+    # 日本語 Windows なら cp932）に依存し、実行環境ごとに非決定的＝日本語 sentinel が壊れる。
+    # 一方 PS1 の Write-Log は ``Add-Content -Encoding utf8`` で必ず UTF-8 で書く（スクリプトは
+    # BOM 付きでリテラルも正しく読まれる）ので、ログを utf-8-sig で読めば決定論的にクリーン。
+    # USERPROFILE=tmp_path なのでログも隔離され、各テストで空から始まる。
+    log = tmp_path / ".pantheon" / "evolve_resume.log"
+    if log.exists():
+        return log.read_text(encoding="utf-8-sig", errors="replace")
+    return ""
 
 
 @pytest.mark.skipif(_PWSH is None, reason="powershell が PATH に無い")
