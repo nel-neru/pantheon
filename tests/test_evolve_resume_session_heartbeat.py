@@ -43,7 +43,11 @@ def _run_hook(tmp_path: Path, stdin: str, headless: bool = False) -> subprocess.
     return subprocess.run(
         [_NODE, str(_HOOK)],
         input=stdin,
-        text=True,
+        # Same cp932 hazard as _run_resume_dryrun: the hook can print UTF-8 (e.g. a
+        # Japanese error to stderr). Pin UTF-8 so stdin/stdout/stderr never depend on
+        # the Windows locale codepage.
+        encoding="utf-8",
+        errors="replace",
         env=env,
         capture_output=True,
     )
@@ -137,7 +141,13 @@ def _run_resume_dryrun(tmp_path: Path, stale: int) -> str:
             "-StaleMinutes",
             str(stale),
         ],
-        text=True,
+        # evolve_resume.ps1 emits UTF-8 to the pipe (Japanese log lines like
+        # "skip: 最終コミット"). `text=True` would decode with the Windows locale
+        # codepage (cp932 on JP Windows) and crash on the UTF-8 multibyte bytes,
+        # leaving stdout empty and the gate assertions silently false. Decode UTF-8
+        # explicitly (errors="replace" so a stray byte never zeroes the whole capture).
+        encoding="utf-8",
+        errors="replace",
         env=env,
         capture_output=True,
     )
