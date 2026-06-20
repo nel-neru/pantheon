@@ -3886,8 +3886,14 @@ def _policy_engine() -> PolicyEngine:
 
 
 def _git_remote_github_repo(repo_path: Path) -> str | None:
-    """target_repo の origin リモートから owner/repo を推定する（best-effort）。"""
+    """target_repo の origin リモートから owner/repo を推定する（best-effort）。
+
+    パースは ``github_integration.repo_resolver.parse_github_owner_repo`` に集約
+    （host 厳密検証つき・偽装ホスト受理を防ぐ）。subprocess は本モジュール側で実行する
+    （テストが server.subprocess を monkeypatch するため）。
+    """
     from core.runtime.process_utils import no_window_kwargs
+    from github_integration.repo_resolver import parse_github_owner_repo
 
     try:
         result = subprocess.run(
@@ -3899,14 +3905,7 @@ def _git_remote_github_repo(repo_path: Path) -> str | None:
         )
     except Exception:  # noqa: BLE001 - git 不在/非リポジトリ等は推定不能として扱う
         return None
-    url = (result.stdout or "").strip()
-    if not url or "github.com" not in url:
-        return None
-    tail = url.removesuffix(".git").split("github.com", 1)[-1].lstrip(":/")
-    parts = [segment for segment in tail.split("/") if segment]
-    if len(parts) >= 2:
-        return f"{parts[0]}/{parts[1]}"
-    return None
+    return parse_github_owner_repo(result.stdout or "")
 
 
 def _resolve_github_repo(org: Any, repo_path: Path) -> str | None:

@@ -49,6 +49,21 @@ def test_external_backslash_parent_traversal_is_rejected():
     assert v.rule_name == "org_boundary.escape"
 
 
+def test_external_backslash_absolute_path_is_rejected_cross_platform():
+    # `\\foo\\bar` は Linux の posixpath.isabs では相対扱いだが、正規化後 isabs で検出する
+    # （OS によらず境界脱出を REJECT する＝cross-platform セキュリティ）。
+    v = _engine().evaluate(_proposal(file_path="\\windows\\system32\\x"), org_context=_external())
+    assert v.decision == ApprovalDecision.REJECT
+    assert v.rule_name == "org_boundary.escape"
+
+
+def test_external_drive_letter_absolute_path_is_rejected_cross_platform():
+    # ドライブレター（C:\\）も OS 非依存で絶対パス＝脱出として REJECT する。
+    v = _engine().evaluate(_proposal(file_path="C:\\secrets.txt"), org_context=_external())
+    assert v.decision == ApprovalDecision.REJECT
+    assert v.rule_name == "org_boundary.escape"
+
+
 # ---- external: 宣言スコープ外は HUMAN_REQUIRED ----
 
 

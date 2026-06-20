@@ -163,6 +163,23 @@ def test_git_remote_github_repo_parses_https_and_ssh(tmp_path, monkeypatch):
     assert server._git_remote_github_repo(tmp_path) == "acme/widgets"
 
 
+def test_parse_github_owner_repo_validates_host():
+    """host を厳密検証し、偽装ホストや非 GitHub は拒否する（リポジトリ confusion 防止）。"""
+    from github_integration.repo_resolver import parse_github_owner_repo
+
+    # 正規の SSH / HTTPS
+    assert parse_github_owner_repo("git@github.com:acme/widgets.git") == "acme/widgets"
+    assert parse_github_owner_repo("https://github.com/acme/widgets") == "acme/widgets"
+    assert parse_github_owner_repo("https://www.github.com/acme/widgets.git") == "acme/widgets"
+    # 偽装ホスト（部分文字列一致を突く）は拒否
+    assert parse_github_owner_repo("https://github.com.evil.com/owner/repo") is None
+    assert parse_github_owner_repo("git@github.com.evil.com:owner/repo") is None
+    # 非 GitHub / 不正は None
+    assert parse_github_owner_repo("https://gitlab.com/acme/widgets") is None
+    assert parse_github_owner_repo("") is None
+    assert parse_github_owner_repo("https://github.com/onlyowner") is None
+
+
 def test_reject_records_policy_verdict(tmp_path, monkeypatch):
     psm = server.PlatformStateManager(platform_home=tmp_path)
     org = create_default_organization("RejectOrg", "reject audit")
