@@ -115,6 +115,35 @@ def _division_spec_from_name(name: str) -> Dict[str, Any]:
     }
 
 
+def _division_spec_from_entry(entry: Any) -> Optional[Dict[str, Any]]:
+    """manifest の divisions 要素を department dict へ変換する（P20: category 明示に対応）。
+
+    要素は次のどちらでもよい（後方互換）:
+    - 文字列（従来）: ``_division_spec_from_name`` でキーワードから型/スキルを推定する。
+      キーワードに当たらない名前は org_evolution + strategic_planning/deep_research へ寄る。
+    - dict ``{name, category}``: ``category``（audience/monetization/content/operations/full_funnel）
+      が与えられていれば ``CATEGORY_PRESETS`` から **正しい型・スキルの事業部**を組み立てる
+      （キーワード非依存・generic フォールバックを避ける）。``category`` 省略時は name から推定。
+    無効（name 空）は ``None``。
+    """
+    if isinstance(entry, dict):
+        name = str(entry.get("name") or "").strip()
+        if not name:
+            return None
+        category = str(entry.get("category") or "").strip()
+        if category:
+            from core.orchestration.plugin_templates import scaffold_division_plugin
+
+            # scaffold_division_plugin はカテゴリプリセットから department を厳密生成する
+            # （_build_division がそのまま食べられる・required_skills は 2 個ちょうど）。
+            return scaffold_division_plugin(name, name, category)["department"]
+        return _division_spec_from_name(name)
+    name = str(entry).strip()
+    if not name:
+        return None
+    return _division_spec_from_name(name)
+
+
 def install_company_plugin(
     plugin_id: str,
     *,
@@ -186,9 +215,10 @@ def install_company_plugin(
         str(k).strip() for k in (manifest.get("initial_kpis") or []) if str(k).strip()
     ]
 
-    division_names = [d for d in (manifest.get("divisions") or []) if str(d).strip()]
-    for div_name in division_names:
-        org.add_division(_build_division(_division_spec_from_name(str(div_name))))
+    for entry in manifest.get("divisions") or []:
+        spec = _division_spec_from_entry(entry)
+        if spec is not None:
+            org.add_division(_build_division(spec))
 
     # 全社共通の「自己改善シード」事業部を標準搭載する（週次レビュー Agent・TPL-SEED / §6.2）。
     # WIRE-MEM（成功施策の Playbook 蓄積）と AUTO-1（HQ エスカレーション）と噛み合い、
