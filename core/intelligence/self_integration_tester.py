@@ -19,9 +19,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from core.runtime.process_utils import no_window_kwargs
-
 from agents.self_code_writer import CodeOutput
+from core.runtime.process_utils import no_window_kwargs
 
 
 @dataclass
