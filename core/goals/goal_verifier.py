@@ -101,14 +101,20 @@ class GoalVerifier:
         """
         criterion_results = self._evaluate_criteria(goal, execution_progress)
 
-        met_count = sum(1 for r in criterion_results if r.met)
-        total = len(criterion_results) or 1
-        achievement_pct = met_count / total * 100
-
-        # タスク完了率も考慮（ボーナス/ペナルティ）
-        task_completion_rate = execution_progress.progress_pct / 100
-        achievement_pct = achievement_pct * 0.7 + task_completion_rate * 100 * 0.3
-        achievement_pct = min(100.0, max(0.0, achievement_pct))
+        if not goal.success_criteria:
+            # 明示の成功基準が無い場合はタスク完了率を達成度の唯一の指標とする。
+            # （従来は _evaluate_criteria が「80%以上完了」という fallback 基準を1つ足し、
+            #  さらに 70/30 でタスク完了率を再加算していたため二重計上で不整合だった:
+            #  例 75%完了で fallback=未達→0*0.7+75*0.3=22.5% と過小評価された。）
+            achievement_pct = min(100.0, max(0.0, execution_progress.progress_pct))
+        else:
+            met_count = sum(1 for r in criterion_results if r.met)
+            total = len(criterion_results) or 1
+            achievement_pct = met_count / total * 100
+            # タスク完了率も考慮（ボーナス/ペナルティ）
+            task_completion_rate = execution_progress.progress_pct / 100
+            achievement_pct = achievement_pct * 0.7 + task_completion_rate * 100 * 0.3
+            achievement_pct = min(100.0, max(0.0, achievement_pct))
 
         unmet = [r.criterion for r in criterion_results if not r.met]
         recommendations = self._generate_recommendations(goal, unmet, execution_progress)

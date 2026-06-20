@@ -413,6 +413,17 @@ class TestGoalVerifier:
         assert "overall_achieved" in d
         assert "achievement_pct" in d
 
+    def test_verify_no_criteria_uses_task_completion_directly(self):
+        """成功基準が無い目標は達成度＝タスク完了率（fallback 基準との二重計上をしない）。"""
+        from types import SimpleNamespace
+
+        verifier = GoalVerifier()
+        goal = SimpleNamespace(success_criteria=[], goal_id="g-nocrit", description="基準なし目標")
+        progress = SimpleNamespace(progress_pct=75.0, failed_count=0, task_progresses={})
+        result = verifier.verify(goal, None, progress)
+        # 旧実装は 0*0.7 + 75*0.3 = 22.5% と過小評価していた。修正後はタスク完了率そのもの。
+        assert result.achievement_pct == 75.0
+
 
 # ═══════════════════════════════════════════════════════════════
 # AbstractGoalPipeline フルフロー
