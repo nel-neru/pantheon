@@ -28,13 +28,16 @@ class LintChecker:
         path = Path(file_path)
         command = [self.linter, "check", str(path), "--select", "E,W"]
         try:
-            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+            completed = subprocess.run(
+                command, capture_output=True, text=True, check=False, **no_window_kwargs()
+            )
         except FileNotFoundError:
             completed = subprocess.run(
                 [sys.executable, "-m", "py_compile", str(path)],
                 capture_output=True,
                 text=True,
                 check=False,
+                **no_window_kwargs(),
             )
 
         output = "\n".join(
