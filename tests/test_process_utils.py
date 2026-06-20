@@ -80,3 +80,15 @@ def test_pid_alive_false_for_unreaped_zombie_child():
         assert pid_alive(proc.pid) is False
     finally:
         proc.wait(timeout=10)  # ここで初めて reap（テスト後始末）
+
+
+def test_no_window_kwargs_suppresses_console_on_windows_only():
+    """回帰防止: コンソール非保持のプロセス（detached daemon / pythonw / headless）が
+    console アプリ（claude/git/ruff/pytest）を起動すると Windows は空の窓を点滅させる。
+    nt では CREATE_NO_WINDOW を渡して抑止し、非 Windows では空 dict（no-op）で
+    `**no_window_kwargs()` を可搬に splat できること。"""
+    assert no_window_kwargs("nt") == {"creationflags": 0x08000000}
+    assert no_window_kwargs("posix") == {}
+    # 既定引数は現プラットフォーム。POSIX では必ず空（creationflags は POSIX で不正）。
+    if os.name != "nt":
+        assert no_window_kwargs() == {}
