@@ -43,8 +43,14 @@ def test_build_delete_command():
     assert cmd[:2] == ["schtasks", "/Delete"] and "/F" in cmd
 
 
-def test_install_schedule_uses_injected_runner():
-    """install は runner（schtasks 実行）を呼び、成功コードで True を返す（実登録しない）。"""
+def test_install_schedule_uses_injected_runner(monkeypatch):
+    """install は runner（schtasks 実行）を呼び、成功コードで True を返す（実登録しない）。
+
+    install_schedule は非 Windows では runner 到達前に正直に未対応で返すため、OS に依存せず
+    ロジック（runner 呼び出し）を検証するには Windows 分岐をシミュレートする
+    （CI=Linux で「走る場所により結果が変わる」のを防ぐ）。
+    """
+    monkeypatch.setattr("core.illustration_story.scheduler._is_windows", lambda: True)
     captured = {}
 
     def fake_runner(cmd):
@@ -56,6 +62,15 @@ def test_install_schedule_uses_injected_runner():
     )
     assert ok and out == "SUCCESS"
     assert captured["cmd"][0] == "schtasks" and "story produce" in " ".join(captured["cmd"])
+
+
+def test_install_schedule_non_windows_is_honest(monkeypatch):
+    """非 Windows では schtasks を呼ばず、正直に未対応を返す（runner は触らない）。"""
+    monkeypatch.setattr("core.illustration_story.scheduler._is_windows", lambda: False)
+    called = []
+    ok, out = install_schedule("RedThread", runner=lambda cmd: called.append(cmd) or (0, ""))
+    assert ok is False and "Windows" in out
+    assert called == []  # runner を呼ばない
 
 
 def test_cli_schedule_install_wires_through(tmp_path, monkeypatch, capsys):
