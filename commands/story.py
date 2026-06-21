@@ -257,6 +257,25 @@ async def cmd_story_publish(args: argparse.Namespace, *, get_psm: Any) -> None:
     if not result.ok:
         print(f"[ERROR] アップロード失敗: {result.error}")
         sys.exit(1)
+
+    # 公開記録を残す（insights が episode→video_id を辿るため）。
+    import json
+    from datetime import datetime, timezone
+
+    from core.persistence import atomic_write_text
+
+    published = {
+        "episode_no": ep,
+        "video_id": result.video_id,
+        "url": result.url,
+        "privacy": privacy,
+        "logline": str((brief or {}).get("logline") or ""),
+        "published_at": datetime.now(timezone.utc).isoformat(),
+    }
+    atomic_write_text(
+        episodes_dir / f"ep-{ep:02d}" / "published.json",
+        json.dumps(published, ensure_ascii=False, indent=2),
+    )
     print(f"\n[OK] YouTube にアップロードしました: {result.url}（公開範囲: {privacy}）")
 
 
@@ -414,6 +433,60 @@ async def cmd_story_characters(args: argparse.Namespace, *, get_psm: Any) -> Non
             print(f"  [失敗] {r.shot_id}: {r.error}")
 
 
+async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """公開済みエピソードの YouTube 統計を取得し、再生数降順でランキング表示・保存する。
+
+    フィードバックループの計測側。episode→video_id は publish 時の published.json から辿る。
+    認証情報が無ければ正直に停止（偽の数値は出さない）。
+    """
+    import json
+    from pathlib import Path
+
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.youtube_analytics import fetch_video_stats, rank_episodes
+    from core.persistence import atomic_write_text
+
+    psm, _org, ws = _load_org_ws(get_psm, args.org)
+    episodes_dir = Path(ws) / "episodes"
+    published: list[dict] = []
+    for pub_file in sorted(episodes_dir.glob("ep-*/published.json")):
+        try:
+            published.append(json.loads(pub_file.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    if not published:
+        print("公開済みの動画がありません（pantheon story publish --yes で公開すると記録されます）")
+        return
+
+    video_ids = [str(p.get("video_id") or "") for p in published if p.get("video_id")]
+    try:
+        stats = fetch_video_stats(video_ids, platform_home=psm.platform_home)
+    except MediaProviderNotConfigured as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+
+    report = rank_episodes(published, stats)
+    atomic_write_text(
+        Path(ws) / "insights.json",
+        json.dumps(
+            {"total_views": report.total_views, "ranked": report.ranked, "note": report.note},
+            ensure_ascii=False,
+            indent=2,
+        ),
+    )
+    print(
+        f"\n━━ RED THREAD インサイト（公開 {len(published)} 本・総再生 {report.total_views:,}）━━"
+    )
+    for i, row in enumerate(report.ranked[:10], start=1):
+        print(
+            f"  {i:>2}. #{row['episode_no']} 再生 {row['views']:,} / 高評価 {row['likes']:,}"
+            f" — {str(row['logline'])[:36]}"
+        )
+    print(f"\n  保存: {Path(ws) / 'insights.json'}")
+    print(f"  注: {report.note}")
+    print("  次サイクルは上位の twist/型に制作枠を寄せると効率的（series_canon.backlog を更新）")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("story", help="イラストストーリー（RED THREAD）の自律制作")
     sub = parser.add_subparsers(dest="story_command", required=True)
@@ -503,3 +576,10 @@ def register(subparsers: Any) -> None:
     c.add_argument("--org", required=True, help="Organization 名")
     c.add_argument("--provider", choices=["gemini", "fal"], default="gemini", help="画像プロバイダ")
     c.set_defaults(handler_name="cmd_story_characters")
+
+    ins = sub.add_parser(
+        "insights",
+        help="公開済み動画の YouTube 統計を取得し再生数でランキング（フィードバック計測）",
+    )
+    ins.add_argument("--org", required=True, help="Organization 名")
+    ins.set_defaults(handler_name="cmd_story_insights")
