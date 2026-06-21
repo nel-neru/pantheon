@@ -25,6 +25,25 @@ def _setup_org(tmp_path, name="SNS Growth"):
     return psm, org
 
 
+def _setup_workspace_org(tmp_path, name="Workspace Co"):
+    """会社プラグイン install と同じ workspace モード org（target_repo_path 無し）を作る。"""
+    from core.models.organization import Organization, OrganizationStatus
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    psm = PlatformStateManager(platform_home=tmp_path / "home")
+    org = Organization(
+        name=name,
+        purpose="workspace org",
+        management_mode="workspace",
+        workspace_path=str(ws),
+        status=OrganizationStatus.INCUBATING,
+        isolation_level="external",
+    )
+    psm.save_organization(org)
+    return psm, org
+
+
 # ---- ContentJobStore ----
 
 
@@ -91,6 +110,27 @@ def test_run_content_job_generates_pending_content_asset(tmp_path):
     from core.models.organization import is_active_improvement_proposal_status
 
     assert is_active_improvement_proposal_status(proposals[0].get("status"))
+
+
+def test_run_content_job_works_for_workspace_org_without_target_repo(tmp_path, monkeypatch):
+    """workspace モード会社（install-company 産・target_repo_path 無し）でも content job が
+    生成できる。旧実装は target_repo_path を hard gate にしており no_workspace で失敗していた
+    （install-company は workspace_path のみ設定し target_repo_path を設定しないため、
+    会社プラグインから1記事も作れなかった回帰）。今は data_location/is_managed 経由で解決する。"""
+    # claude 非依存（決定論テンプレ）に固定して高速・再現可能にする（ゲートは生成前段なので無影響）。
+    monkeypatch.setattr("core.runtime.claude_code.claude_available", lambda: False)
+    psm, org = _setup_workspace_org(tmp_path)
+    assert org.target_repo_path is None  # workspace モードは git 非紐づき
+    assert org.is_managed  # data_location（= workspace_path）で管理されている
+
+    job = ContentJob(org_name=org.name, kind="monetization_lead", theme="AI文字起こし比較")
+    result = _run(run_content_job(job, psm))
+    assert result["ok"] is True
+    assert result["status"] == "generated"
+
+    proposals = psm.get_org_state_manager(org).get_all_improvement_proposals()
+    assert len(proposals) == 1
+    assert proposals[0]["category"] == "content_asset"
 
 
 def test_short_video_kind_is_known_and_generates(tmp_path):

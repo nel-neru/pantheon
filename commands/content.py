@@ -54,8 +54,8 @@ async def cmd_content_create(args: argparse.Namespace) -> None:
     if org is None:
         print(f"[ERROR] Organization '{args.org}' が見つかりません")
         sys.exit(1)
-    if not getattr(org, "target_repo_path", None):
-        print(f"[ERROR] Organization '{args.org}' に repo（ワークスペース）が未設定です")
+    if not org.is_managed:
+        print(f"[ERROR] Organization '{args.org}' に repo/ワークスペースが未設定です")
         sys.exit(1)
     if args.kind not in CONTENT_JOB_KINDS:
         print(f"[ERROR] kind は {'/'.join(CONTENT_JOB_KINDS)} のいずれかです")
