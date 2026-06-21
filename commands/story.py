@@ -260,6 +260,65 @@ async def cmd_story_publish(args: argparse.Namespace, *, get_psm: Any) -> None:
     print(f"\n[OK] YouTube にアップロードしました: {result.url}（公開範囲: {privacy}）")
 
 
+async def cmd_story_produce(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """次の未制作 N 話を brief→render まで一括自動化する（外部公開は story publish --yes に残す）。
+
+    ブリーフ生成（テキスト）は常に実行。動画化は画像鍵があれば実行し、失敗（鍵未設定など）は
+    そのエピソードだけ skip して次へ進む（ブリーフは残る）。これが「自動運用」の一括コマンド。
+    """
+    from pathlib import Path
+
+    from core.illustration_story.episode_brief import load_canon, next_unproduced_episode
+
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.org)
+    if org is None:
+        print(f"[ERROR] Organization '{args.org}' が見つかりません")
+        sys.exit(1)
+    ws = getattr(org, "workspace_path", None)
+    if not ws:
+        print(f"[ERROR] '{args.org}' にワークスペースがありません")
+        sys.exit(1)
+
+    canon = load_canon(ws)
+    if not canon.get("series_canon"):
+        print("[ERROR] カノンがありません（illustration_story_youtube プラグインで作成されます）")
+        sys.exit(1)
+
+    episodes_dir = Path(ws) / "episodes"
+    count = max(1, int(getattr(args, "count", 1)))
+    fmt = getattr(args, "format", "long_form") or "long_form"
+    produced = 0
+    rendered = 0
+    for _ in range(count):
+        nxt = next_unproduced_episode(canon, episodes_dir)
+        if nxt is None:
+            print("backlog のエピソードは全て生成済みです（series_canon.yaml に追加できます）")
+            break
+        ep = nxt["episode_no"]
+        await cmd_story_brief(argparse.Namespace(org=args.org, ep=ep, format=fmt), get_psm=get_psm)
+        produced += 1
+        try:
+            await cmd_story_render(
+                argparse.Namespace(
+                    org=args.org,
+                    ep=ep,
+                    provider=getattr(args, "provider", "gemini"),
+                    no_images=getattr(args, "no_images", False),
+                    audio=None,
+                ),
+                get_psm=get_psm,
+            )
+            rendered += 1
+        except SystemExit:
+            print(
+                f"  ep{ep}: 動画化はスキップ（画像鍵未設定/画像不足など）。ブリーフは生成済みです"
+            )
+
+    print(f"\n[完了] ブリーフ {produced} 本 / 動画 {rendered} 本を生成しました。")
+    print("  公開（外部アクション）は人間の確認付き: pantheon story publish --org ... --ep N --yes")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("story", help="イラストストーリー（RED THREAD）の自律制作")
     sub = parser.add_subparsers(dest="story_command", required=True)
@@ -319,3 +378,20 @@ def register(subparsers: Any) -> None:
     )
     p.add_argument("--yes", action="store_true", help="実アップロードを実行（未指定はドライラン）")
     p.set_defaults(handler_name="cmd_story_publish")
+
+    pr = sub.add_parser(
+        "produce",
+        help="次の未制作 N 話を brief→render まで一括自動化（公開は publish --yes に残す）",
+    )
+    pr.add_argument("--org", required=True, help="Organization 名")
+    pr.add_argument("--count", type=int, default=1, help="一括制作する話数（既定 1）")
+    pr.add_argument(
+        "--format", choices=["long_form", "shorts"], default="long_form", help="長尺 or Shorts"
+    )
+    pr.add_argument(
+        "--provider", choices=["gemini", "fal"], default="gemini", help="画像プロバイダ"
+    )
+    pr.add_argument(
+        "--no-images", action="store_true", help="画像生成をスキップ（既存画像で動画化）"
+    )
+    pr.set_defaults(handler_name="cmd_story_produce")
