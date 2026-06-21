@@ -487,6 +487,42 @@ async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
     print("  次サイクルは上位の twist/型に制作枠を寄せると効率的（series_canon.backlog を更新）")
 
 
+async def cmd_story_schedule(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """story produce を Windows タスクスケジューラで毎日自動実行する（公開は手動のまま）。"""
+    from core.illustration_story.scheduler import (
+        install_schedule,
+        schedule_status,
+        task_name_for,
+        uninstall_schedule,
+    )
+
+    _load_org_ws(get_psm, args.org)  # org の存在確認
+    action = getattr(args, "schedule_action", None)
+    if action == "install":
+        ok, out = install_schedule(
+            args.org, count=getattr(args, "count", 1), time=getattr(args, "time", "09:00")
+        )
+        if not ok:
+            print(f"[ERROR] タスク登録に失敗: {out}")
+            sys.exit(1)
+        print(
+            f"\n[OK] 毎日 {getattr(args, 'time', '09:00')} に '{task_name_for(args.org)}' を登録しました"
+            f"（story produce --count {getattr(args, 'count', 1)}）"
+        )
+        print(
+            "  自動生成: ブリーフ＋動画（画像鍵があれば）。公開は story publish --yes（無人公開はしない）"
+        )
+    elif action == "uninstall":
+        ok, out = uninstall_schedule(args.org)
+        print("[OK] タスクを削除しました" if ok else f"[INFO] 削除できませんでした: {out}")
+    elif action == "status":
+        ok, out = schedule_status(args.org)
+        print(out if ok else f"[INFO] タスク未登録か照会失敗: {out}")
+    else:
+        print("[ERROR] schedule のサブコマンド（install/uninstall/status）を指定してください")
+        sys.exit(1)
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("story", help="イラストストーリー（RED THREAD）の自律制作")
     sub = parser.add_subparsers(dest="story_command", required=True)
@@ -583,3 +619,19 @@ def register(subparsers: Any) -> None:
     )
     ins.add_argument("--org", required=True, help="Organization 名")
     ins.set_defaults(handler_name="cmd_story_insights")
+
+    sch = sub.add_parser(
+        "schedule", help="story produce を毎日自動実行（Windows タスク・公開は手動のまま）"
+    )
+    sch_sub = sch.add_subparsers(dest="schedule_action", required=True)
+    si = sch_sub.add_parser("install", help="毎日 produce を実行するタスクを登録")
+    si.add_argument("--org", required=True, help="Organization 名")
+    si.add_argument("--count", type=int, default=1, help="1回あたりの制作話数")
+    si.add_argument("--time", default="09:00", help="実行時刻 HH:mm（既定 09:00）")
+    si.set_defaults(handler_name="cmd_story_schedule")
+    su = sch_sub.add_parser("uninstall", help="タスクを削除")
+    su.add_argument("--org", required=True, help="Organization 名")
+    su.set_defaults(handler_name="cmd_story_schedule")
+    st = sch_sub.add_parser("status", help="タスクの状態を表示")
+    st.add_argument("--org", required=True, help="Organization 名")
+    st.set_defaults(handler_name="cmd_story_schedule")
