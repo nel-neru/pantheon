@@ -630,7 +630,7 @@ def test_revenue_collect_api(tmp_path, monkeypatch):
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["recorded"] == 0
-    assert set(data["needs_connection"]) == {"note", "x", "asp"}
+    assert set(data["needs_connection"]) == {"note", "x", "asp", "youtube"}
 
 
 def test_settings_exposes_and_updates_quota_and_notifications(tmp_path, monkeypatch):
