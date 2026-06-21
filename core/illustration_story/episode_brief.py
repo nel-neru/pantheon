@@ -129,6 +129,9 @@ def build_episode_brief(
     aspect = _aspect(style_bible, fmt)
     thread_red = (style_bible.get("palette") or {}).get("thread_red", "#D7263D")
 
+    from core.illustration_story.asset_prompts import lora_payload
+
+    loras = lora_payload(canon)  # 学習済みスタイル LoRA があれば各カットに適用
     is_shorts = fmt == "shorts"
     char_refs = [{"id": c["id"], "base_seed": c["base_seed"]} for c in cast]
     char_desc = (
@@ -166,16 +169,17 @@ def build_episode_brief(
                 "duration_s": dur,
             }
         )
-        image_prompts.append(
-            {
-                "shot_id": shot_id,
-                "positive": positive,
-                "style_suffix": style_suffix,  # カノン由来＝署名スタイル（独自性）
-                "character_refs": char_refs,  # 固定 seed ＝ 連続性
-                "negative_prompt": negative,
-                "aspect": aspect,
-            }
-        )
+        img_prompt: Dict[str, Any] = {
+            "shot_id": shot_id,
+            "positive": positive,
+            "style_suffix": style_suffix,  # カノン由来＝署名スタイル（独自性）
+            "character_refs": char_refs,  # 固定 seed ＝ 連続性
+            "negative_prompt": negative,
+            "aspect": aspect,
+        }
+        if loras:
+            img_prompt["loras"] = loras  # 学習済み重みで署名スタイルを固定
+        image_prompts.append(img_prompt)
         timeline_shots.append(
             {
                 "shot_id": shot_id,

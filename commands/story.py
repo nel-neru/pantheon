@@ -180,19 +180,30 @@ async def cmd_story_render(args: argparse.Namespace, *, get_psm: Any) -> None:
         if p.exists():
             image_paths[sid] = str(p)
 
+    # BGM: --audio 明示が最優先。無ければ music_library から mood に合う1曲を自動選定
+    # （ライブラリが空なら BGM 無しで進む＝音は生成・無断DLしない）。
+    audio = getattr(args, "audio", None)
+    if not audio:
+        from core.media.music import select_music
+
+        audio = select_music(
+            str(timeline.get("music_mood") or ""),
+            platform_home=psm.platform_home,
+            episode_no=ep_no,
+        )
+        if audio:
+            print(f"  BGM 自動選定: {Path(audio).name}")
+        else:
+            print("  BGM なし（~/.pantheon/music_library に権利処理済み音源を置くと自動付与）")
+
     out_mp4 = work / f"ep-{ep_no:02d}.mp4"
-    result = assemble_video(
-        timeline, image_paths, out_path=out_mp4, audio_path=getattr(args, "audio", None)
-    )
+    result = assemble_video(timeline, image_paths, out_path=out_mp4, audio_path=audio)
     if not result.ok:
         print(f"\n[ERROR] 動画組立に失敗: {result.error}")
         print("  画像が揃っているか確認してください（画像生成には provider の鍵が必要です）")
         sys.exit(1)
     print(f"\n[OK] 動画を生成しました: {result.path}")
-    print(
-        "  残りの人手/外部: サムネ最終描画 / 楽曲（--audio 未指定なら）/ "
-        "YouTube 投稿（pantheon publish youtube ＝ 後続フェーズ）"
-    )
+    print("  残りの人手/外部: サムネ最終描画 / YouTube 投稿（story publish --yes）")
 
 
 async def cmd_story_publish(args: argparse.Namespace, *, get_psm: Any) -> None:
@@ -440,10 +451,15 @@ async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
     認証情報が無ければ正直に停止（偽の数値は出さない）。
     """
     import json
+    from datetime import datetime, timedelta, timezone
     from pathlib import Path
 
     from core.media.credentials import MediaProviderNotConfigured
-    from core.media.youtube_analytics import fetch_video_stats, rank_episodes
+    from core.media.youtube_analytics import (
+        fetch_video_analytics,
+        fetch_video_stats,
+        rank_episodes,
+    )
     from core.persistence import atomic_write_text
 
     psm, _org, ws = _load_org_ws(get_psm, args.org)
@@ -465,7 +481,21 @@ async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
         print(f"[ERROR] {exc}")
         sys.exit(1)
 
-    report = rank_episodes(published, stats)
+    # 視聴維持率/CTR（Analytics Reporting API）は best-effort: analytics スコープが無い/
+    # データ未蓄積なら取得できないが、その場合も再生数ランキングは出す（捏造しない）。
+    analytics = {}
+    now = datetime.now(timezone.utc).date()
+    start = (now - timedelta(days=int(getattr(args, "days", 0) or 365))).isoformat()
+    try:
+        analytics = fetch_video_analytics(
+            video_ids, start_date=start, end_date=now.isoformat(), platform_home=psm.platform_home
+        )
+    except Exception as exc:  # noqa: BLE001 — 維持率取れずとも続行（正直に注記）
+        print(
+            f"  （視聴維持率/CTR は未取得: {type(exc).__name__}。analytics スコープ/データを確認）"
+        )
+
+    report = rank_episodes(published, stats, analytics)
     atomic_write_text(
         Path(ws) / "insights.json",
         json.dumps(
@@ -478,9 +508,11 @@ async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
         f"\n━━ RED THREAD インサイト（公開 {len(published)} 本・総再生 {report.total_views:,}）━━"
     )
     for i, row in enumerate(report.ranked[:10], start=1):
+        ret = f" / 維持{row['retention_pct']}%" if row.get("retention_pct") is not None else ""
+        ctr = f" / CTR{row['ctr']}%" if row.get("ctr") is not None else ""
         print(
             f"  {i:>2}. #{row['episode_no']} 再生 {row['views']:,} / 高評価 {row['likes']:,}"
-            f" — {str(row['logline'])[:36]}"
+            f"{ret}{ctr} — {str(row['logline'])[:32]}"
         )
     print(f"\n  保存: {Path(ws) / 'insights.json'}")
     print(f"  注: {report.note}")
@@ -521,6 +553,109 @@ async def cmd_story_schedule(args: argparse.Namespace, *, get_psm: Any) -> None:
     else:
         print("[ERROR] schedule のサブコマンド（install/uninstall/status）を指定してください")
         sys.exit(1)
+
+
+async def cmd_story_lora(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """Flux スタイル LoRA の学習（独自スタイルを参照プロンプトから学習済み重みへ昇格）。
+
+    prepare（学習画像を収集→zip・ローカル）/ train（zip の公開URLを fal へ投入）/
+    status（完了なら lora_url を canon に登録）。zip の公開URL化は利用者の作業（人間専用）。
+    """
+    import json
+    from pathlib import Path
+
+    import yaml
+
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.lora_training import (
+        LoraJob,
+        build_training_zip,
+        check_lora_status,
+        collect_training_images,
+        submit_lora_training,
+    )
+    from core.persistence import atomic_write_text
+
+    psm, _org, ws = _load_org_ws(get_psm, args.org)
+    lora_dir = Path(ws) / "lora"
+    action = getattr(args, "lora_action", None)
+
+    if action == "prepare":
+        images = collect_training_images(ws)
+        if not images:
+            print(
+                "[ERROR] 学習用画像がありません（先に story characters / story render で画像生成）"
+            )
+            sys.exit(1)
+        zip_path = build_training_zip(images, lora_dir / "training_images.zip")
+        print(f"\n[OK] 学習画像 {len(images)} 枚を zip 化: {zip_path}")
+        print("  次（人間の作業）: この zip を公開URLにして →")
+        print("    pantheon story lora train --org ... --images-url <公開URL>")
+        return
+
+    if action == "train":
+        url = getattr(args, "images_url", None)
+        try:
+            job = submit_lora_training(
+                url,
+                trigger_word=getattr(args, "trigger", "redthread"),
+                platform_home=psm.platform_home,
+            )
+        except (MediaProviderNotConfigured, ValueError) as exc:
+            print(f"[ERROR] {exc}")
+            sys.exit(1)
+        lora_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            lora_dir / "job.json",
+            json.dumps(
+                {
+                    "request_id": job.request_id,
+                    "status_url": job.status_url,
+                    "response_url": job.response_url,
+                    "trigger": getattr(args, "trigger", "redthread"),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+        print(f"\n[OK] 学習を投入しました: request_id={job.request_id}")
+        print("  進捗確認: pantheon story lora status --org ...")
+        return
+
+    if action == "status":
+        job_file = lora_dir / "job.json"
+        if not job_file.exists():
+            print("[INFO] 学習ジョブがありません（先に story lora train）")
+            return
+        data = json.loads(job_file.read_text(encoding="utf-8"))
+        job = LoraJob(
+            request_id=str(data.get("request_id", "")),
+            status_url=str(data.get("status_url", "")),
+            response_url=str(data.get("response_url", "")),
+        )
+        try:
+            result = check_lora_status(job, platform_home=psm.platform_home)
+        except MediaProviderNotConfigured as exc:
+            print(f"[ERROR] {exc}")
+            sys.exit(1)
+        print(f"\n  学習状態: {result['status']}")
+        if result.get("lora_url"):
+            sb_path = Path(ws) / "canon" / "style_bible.yaml"
+            sb = yaml.safe_load(sb_path.read_text(encoding="utf-8")) if sb_path.exists() else {}
+            sb = sb if isinstance(sb, dict) else {}
+            sb["lora_url"] = result["lora_url"]
+            sb["lora_trigger"] = data.get("trigger", "redthread")
+            atomic_write_text(sb_path, yaml.safe_dump(sb, allow_unicode=True, sort_keys=False))
+            print(
+                "  [OK] LoRA 完成。style_bible に登録しました（以後の画像生成が署名スタイルを重みで固定）"
+            )
+            print(f"  lora_url: {result['lora_url']}")
+        else:
+            print("  （完了後にもう一度 status を実行すると canon に登録します）")
+        return
+
+    print("[ERROR] lora のサブコマンド（prepare/train/status）を指定してください")
+    sys.exit(1)
 
 
 def register(subparsers: Any) -> None:
@@ -618,7 +753,29 @@ def register(subparsers: Any) -> None:
         help="公開済み動画の YouTube 統計を取得し再生数でランキング（フィードバック計測）",
     )
     ins.add_argument("--org", required=True, help="Organization 名")
+    ins.add_argument(
+        "--days", type=int, default=365, help="視聴維持率/CTR の集計期間（日・既定365）"
+    )
     ins.set_defaults(handler_name="cmd_story_insights")
+
+    lo = sub.add_parser("lora", help="Flux スタイルLoRA学習（独自スタイルを学習済み重みで固定）")
+    lo_sub = lo.add_subparsers(dest="lora_action", required=True)
+    lp = lo_sub.add_parser("prepare", help="学習画像を収集して zip 化（公開URL化は利用者）")
+    lp.add_argument("--org", required=True, help="Organization 名")
+    lp.set_defaults(handler_name="cmd_story_lora")
+    lt = lo_sub.add_parser("train", help="学習zipの公開URLを fal に投入")
+    lt.add_argument("--org", required=True, help="Organization 名")
+    lt.add_argument(
+        "--images-url",
+        required=True,
+        dest="images_url",
+        help="学習画像zipの公開URL（利用者が用意）",
+    )
+    lt.add_argument("--trigger", default="redthread", help="トリガーワード（既定 redthread）")
+    lt.set_defaults(handler_name="cmd_story_lora")
+    lst = lo_sub.add_parser("status", help="学習状態を確認し、完了なら canon に登録")
+    lst.add_argument("--org", required=True, help="Organization 名")
+    lst.set_defaults(handler_name="cmd_story_lora")
 
     sch = sub.add_parser(
         "schedule", help="story produce を毎日自動実行（Windows タスク・公開は手動のまま）"

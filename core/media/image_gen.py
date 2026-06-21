@@ -97,6 +97,10 @@ def _fal_image_bytes(transport: Any, *, api_key: str, model: str, prompt: Dict[s
         "prompt": _full_prompt(prompt),
         "image_size": _FAL_SIZE.get(aspect, "landscape_16_9"),
     }
+    # 学習済みスタイル LoRA があれば適用（カノン由来＝署名スタイルを重みで固定）。
+    loras = prompt.get("loras")
+    if loras:
+        payload["loras"] = loras
     resp = transport.post_json(url, {"Authorization": f"Key {api_key}"}, payload)
     images = resp.get("images") or []
     if images and images[0].get("url"):

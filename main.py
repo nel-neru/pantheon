@@ -93,6 +93,7 @@ from commands.portfolio import cmd_portfolio_overview as _cmd_portfolio_overview
 from commands.story import cmd_story_brief as _cmd_story_brief_impl
 from commands.story import cmd_story_characters as _cmd_story_characters_impl
 from commands.story import cmd_story_insights as _cmd_story_insights_impl
+from commands.story import cmd_story_lora as _cmd_story_lora_impl
 from commands.story import cmd_story_produce as _cmd_story_produce_impl
 from commands.story import cmd_story_publish as _cmd_story_publish_impl
 from commands.story import cmd_story_render as _cmd_story_render_impl
@@ -352,6 +353,10 @@ async def cmd_story_insights(args) -> None:
 
 async def cmd_story_schedule(args) -> None:
     await _cmd_story_schedule_impl(args, get_psm=_get_psm)
+
+
+async def cmd_story_lora(args) -> None:
+    await _cmd_story_lora_impl(args, get_psm=_get_psm)
 
 
 async def cmd_plugin_install_company(args) -> None:
@@ -903,6 +908,7 @@ HANDLERS = {
     "cmd_story_characters": cmd_story_characters,
     "cmd_story_insights": cmd_story_insights,
     "cmd_story_schedule": cmd_story_schedule,
+    "cmd_story_lora": cmd_story_lora,
     "cmd_plugin_install_company": cmd_plugin_install_company,
     "cmd_org_list": cmd_org_list,
     "cmd_org_scan": cmd_org_scan,
