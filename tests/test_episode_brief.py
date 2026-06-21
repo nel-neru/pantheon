@@ -156,3 +156,27 @@ def test_cli_story_brief_end_to_end(tmp_path, monkeypatch, capsys):
         )
     )
     assert (Path(org.workspace_path) / "episodes" / "ep-02.yaml").exists()
+
+
+def test_cli_story_produce_batches_briefs(tmp_path, monkeypatch, capsys):
+    """story produce が次の N 話のブリーフを一括生成し、鍵なしの動画化は graceful skip。"""
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)  # 画像鍵なし → 動画化は skip
+    psm = PlatformStateManager(platform_home=tmp_path)
+    org_name = install_company_plugin("illustration_story_youtube", psm=psm)["org_name"]
+
+    from commands.story import cmd_story_produce
+
+    asyncio.run(
+        cmd_story_produce(
+            SimpleNamespace(
+                org=org_name, count=3, format="long_form", provider="gemini", no_images=False
+            ),
+            get_psm=lambda: psm,
+        )
+    )
+    out = capsys.readouterr().out
+    assert "ブリーフ 3 本" in out  # 3 話分のブリーフが生成された
+    org = psm.load_organization_by_name(org_name)
+    eps = sorted((Path(org.workspace_path) / "episodes").glob("ep-*.yaml"))
+    assert [p.name for p in eps] == ["ep-01.yaml", "ep-02.yaml", "ep-03.yaml"]

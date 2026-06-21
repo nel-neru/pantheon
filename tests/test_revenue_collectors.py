@@ -87,11 +87,11 @@ def test_collection_is_idempotent_by_source(tmp_path, monkeypatch):
 
 
 def test_default_collectors_unconfigured_by_default(tmp_path, monkeypatch):
-    """既定アダプタ（note/x/asp）は資格情報未接続なので収集 0・接続タスクを起票する。"""
+    """既定アダプタ（note/x/asp/youtube）は資格情報未接続なので収集 0・接続タスクを起票する。"""
     home = _home(tmp_path, monkeypatch)
     result = run_revenue_collection(platform_home=home)
     assert result["recorded"] == 0
-    assert set(result["needs_connection"]) == {"note", "x", "asp"}
+    assert set(result["needs_connection"]) == {"note", "x", "asp", "youtube"}
 
 
 def test_csv_import_makes_source_configured_and_records(tmp_path, monkeypatch):
@@ -109,14 +109,33 @@ def test_csv_import_makes_source_configured_and_records(tmp_path, monkeypatch):
     result = run_revenue_collection(platform_home=home)
     assert result["recorded"] == 2  # 不正 1 行は skip
     assert "note" in result["collected_sources"]
-    # x/asp は未接続のまま接続タスク対象
-    assert set(result["needs_connection"]) == {"x", "asp"}
+    # x/asp/youtube は未接続のまま接続タスク対象
+    assert set(result["needs_connection"]) == {"x", "asp", "youtube"}
     summary = OutcomeStore(platform_home=home).summary_for_org("Note Co")
     assert summary.total_revenue == 2000.0
 
     # 冪等: 同じ CSV を再取り込みしても二重計上しない（dedupe_on_source）。
     run_revenue_collection(platform_home=home)
     assert OutcomeStore(platform_home=home).summary_for_org("Note Co").total_revenue == 2000.0
+
+
+def test_youtube_csv_records_confirmed_revenue(tmp_path, monkeypatch):
+    """revenue_imports/youtube.csv を置くと YouTube 収益が確定収益として記録される。"""
+    from core.metrics.revenue_integrity import assess_revenue_integrity
+
+    home = _home(tmp_path, monkeypatch)
+    csv_dir = home / "revenue_imports"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    (csv_dir / "youtube.csv").write_text(
+        "org_name,amount,occurred_at,id\nRedThread,3500,2026-06-15,ads1\n",
+        encoding="utf-8",
+    )
+    result = run_revenue_collection(platform_home=home)
+    assert "youtube" in result["collected_sources"]
+    store = OutcomeStore(platform_home=home)
+    integ = assess_revenue_integrity(store)
+    assert integ["confirmed_revenue"] == 3500.0  # 確定収益（実CSV由来）
+    assert "youtube" in {s.split(":")[0] for s in integ["confirmed_sources"]}
 
 
 def test_parse_revenue_csv_skips_malformed_without_raising(tmp_path):
