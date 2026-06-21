@@ -195,6 +195,71 @@ async def cmd_story_render(args: argparse.Namespace, *, get_psm: Any) -> None:
     )
 
 
+async def cmd_story_publish(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """レンダリング済み mp4 を YouTube へアップロードする（既定ドライラン・--yes で実行）。
+
+    外部公開アクションなので既定はドライプレビュー。認証情報が無ければ正直に停止（偽公開しない）。
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.youtube_upload import load_youtube_credentials, upload_video
+
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.org)
+    if org is None:
+        print(f"[ERROR] Organization '{args.org}' が見つかりません")
+        sys.exit(1)
+    ws = getattr(org, "workspace_path", None)
+    if not ws:
+        print(f"[ERROR] '{args.org}' にワークスペースがありません")
+        sys.exit(1)
+
+    ep = int(args.ep)
+    episodes_dir = Path(ws) / "episodes"
+    mp4 = episodes_dir / f"ep-{ep:02d}" / f"ep-{ep:02d}.mp4"
+    if not mp4.exists():
+        print(f"[ERROR] 動画がありません: {mp4}（先に `pantheon story render` を実行）")
+        sys.exit(1)
+
+    brief_path = episodes_dir / f"ep-{ep:02d}.yaml"
+    brief = yaml.safe_load(brief_path.read_text(encoding="utf-8")) if brief_path.exists() else {}
+    md = (brief or {}).get("metadata") or {}
+    title = str(md.get("title") or f"RED THREAD #{ep}")
+    description = str(md.get("description") or "")
+    tags = list(md.get("tags") or [])
+    privacy = getattr(args, "privacy", "private")
+
+    if not getattr(args, "yes", False):
+        creds = load_youtube_credentials(psm.platform_home)
+        print("（ドライラン）以下を YouTube にアップロードします。実行は --yes を付けてください:")
+        print(f"  動画      : {mp4}")
+        print(f"  タイトル  : {title}")
+        print(f"  公開範囲  : {privacy}")
+        print(f"  タグ      : {', '.join(tags)}")
+        print(f"  認証情報  : {'あり' if creds else 'なし（OAuth 未設定ではアップロード不可）'}")
+        return
+
+    try:
+        result = upload_video(
+            mp4,
+            title=title,
+            description=description,
+            tags=tags,
+            privacy=privacy,
+            platform_home=psm.platform_home,
+        )
+    except MediaProviderNotConfigured as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+    if not result.ok:
+        print(f"[ERROR] アップロード失敗: {result.error}")
+        sys.exit(1)
+    print(f"\n[OK] YouTube にアップロードしました: {result.url}（公開範囲: {privacy}）")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("story", help="イラストストーリー（RED THREAD）の自律制作")
     sub = parser.add_subparsers(dest="story_command", required=True)
@@ -239,3 +304,18 @@ def register(subparsers: Any) -> None:
         "--audio", default=None, help="BGM/効果音ファイルのパス（権利処理済を利用者が用意）"
     )
     r.set_defaults(handler_name="cmd_story_render")
+
+    p = sub.add_parser(
+        "publish",
+        help="レンダリング済み動画を YouTube にアップロード（Data API v3・既定ドライラン・--yesで実行）",
+    )
+    p.add_argument("--org", required=True, help="Organization 名")
+    p.add_argument("--ep", type=int, required=True, help="公開するエピソード番号")
+    p.add_argument(
+        "--privacy",
+        choices=["private", "unlisted", "public"],
+        default="private",
+        help="公開範囲（既定 private＝誤公開防止）",
+    )
+    p.add_argument("--yes", action="store_true", help="実アップロードを実行（未指定はドライラン）")
+    p.set_defaults(handler_name="cmd_story_publish")
