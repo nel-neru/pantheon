@@ -109,6 +109,92 @@ async def cmd_story_brief(args: argparse.Namespace, *, get_psm: Any) -> None:
     )
 
 
+async def cmd_story_render(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """ブリーフ（ep-NN.yaml）から画像を生成し、FFmpeg で動画(mp4)を組み立てる。
+
+    画像生成は provider の鍵が要る（無ければ正直にスキップ）。動画組立は FFmpeg ローカル完結。
+    どちらも偽の成果物は作らない。
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.image_gen import generate_images
+    from core.media.video_assembly import assemble_video
+
+    psm = get_psm()
+    org = psm.load_organization_by_name(args.org)
+    if org is None:
+        print(f"[ERROR] Organization '{args.org}' が見つかりません")
+        sys.exit(1)
+    ws = getattr(org, "workspace_path", None)
+    if not ws:
+        print(f"[ERROR] '{args.org}' にワークスペースがありません")
+        sys.exit(1)
+
+    episodes_dir = Path(ws) / "episodes"
+    ep = getattr(args, "ep", None)
+    if ep is None:
+        briefs = sorted(episodes_dir.glob("ep-*.yaml"))
+        if not briefs:
+            print("[ERROR] ブリーフがありません。先に `pantheon story brief` を実行してください")
+            sys.exit(1)
+        ep_path = briefs[-1]
+    else:
+        ep_path = episodes_dir / f"ep-{int(ep):02d}.yaml"
+    if not ep_path.exists():
+        print(f"[ERROR] ブリーフが見つかりません: {ep_path}")
+        sys.exit(1)
+
+    brief = yaml.safe_load(ep_path.read_text(encoding="utf-8")) or {}
+    ep_no = int(brief.get("episode_no") or 0)
+    work = episodes_dir / f"ep-{ep_no:02d}"
+    images_dir = work / "images"
+    provider = getattr(args, "provider", "gemini") or "gemini"
+
+    print(f"\nエピソード #{ep_no} をレンダリングします（{ep_path.name}）")
+    if not getattr(args, "no_images", False):
+        try:
+            results = generate_images(
+                brief.get("image_prompts") or [],
+                out_dir=images_dir,
+                provider=provider,
+                platform_home=psm.platform_home,
+            )
+            ok = sum(1 for r in results if r.ok)
+            print(f"  画像生成: {ok} 成功 / {len(results) - ok} 失敗（{images_dir}）")
+            for r in results:
+                if not r.ok:
+                    print(f"    [画像失敗] {r.shot_id}: {r.error}")
+        except MediaProviderNotConfigured as exc:
+            print(f"  画像生成スキップ（未設定）: {exc}")
+    else:
+        print("  画像生成スキップ（--no-images）。既存画像を使います")
+
+    timeline = brief.get("timeline_spec") or {}
+    image_paths: dict[str, str] = {}
+    for shot in timeline.get("shots") or []:
+        sid = str(shot.get("shot_id") or "")
+        p = images_dir / f"{sid}.png"
+        if p.exists():
+            image_paths[sid] = str(p)
+
+    out_mp4 = work / f"ep-{ep_no:02d}.mp4"
+    result = assemble_video(
+        timeline, image_paths, out_path=out_mp4, audio_path=getattr(args, "audio", None)
+    )
+    if not result.ok:
+        print(f"\n[ERROR] 動画組立に失敗: {result.error}")
+        print("  画像が揃っているか確認してください（画像生成には provider の鍵が必要です）")
+        sys.exit(1)
+    print(f"\n[OK] 動画を生成しました: {result.path}")
+    print(
+        "  残りの人手/外部: サムネ最終描画 / 楽曲（--audio 未指定なら）/ "
+        "YouTube 投稿（pantheon publish youtube ＝ 後続フェーズ）"
+    )
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("story", help="イラストストーリー（RED THREAD）の自律制作")
     sub = parser.add_subparsers(dest="story_command", required=True)
@@ -133,3 +219,23 @@ def register(subparsers: Any) -> None:
         help="長尺アンソロジー or Shorts（aspect と尺が変わる）",
     )
     b.set_defaults(handler_name="cmd_story_brief")
+
+    r = sub.add_parser("render", help="ブリーフから画像生成→FFmpegで動画(mp4)を組み立てる")
+    r.add_argument("--org", required=True, help="Organization 名")
+    r.add_argument(
+        "--ep",
+        type=int,
+        default=None,
+        help="レンダリングするエピソード番号（省略時は最新ブリーフ）",
+    )
+    r.add_argument(
+        "--provider",
+        choices=["gemini", "fal"],
+        default="gemini",
+        help="画像生成プロバイダ（鍵が要る）",
+    )
+    r.add_argument("--no-images", action="store_true", help="画像生成をスキップし既存画像で動画化")
+    r.add_argument(
+        "--audio", default=None, help="BGM/効果音ファイルのパス（権利処理済を利用者が用意）"
+    )
+    r.set_defaults(handler_name="cmd_story_render")
