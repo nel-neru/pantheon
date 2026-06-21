@@ -24,3 +24,10 @@ class XRevenueCollector(CsvBackedRevenueCollector):
 class AspRevenueCollector(CsvBackedRevenueCollector):
     source = "asp"
     label = "ASP（アフィリエイト報酬）"
+
+
+class YouTubeRevenueCollector(CsvBackedRevenueCollector):
+    source = "youtube"
+    label = "YouTube（広告/メンバーシップ等の収益）"
+    # 公式 YouTube Analytics API 連携は将来 _fetch_via_api をオーバーライドして差し込む。
+    # それまでは ~/.pantheon/revenue_imports/youtube.csv（AdSense 等のエクスポート）から取り込む。

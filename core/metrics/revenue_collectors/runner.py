@@ -17,6 +17,7 @@ from core.metrics.revenue_collectors.adapters import (
     AspRevenueCollector,
     NoteRevenueCollector,
     XRevenueCollector,
+    YouTubeRevenueCollector,
 )
 from core.metrics.revenue_collectors.base import RevenueCollector
 
@@ -27,6 +28,7 @@ DEFAULT_COLLECTORS: List[RevenueCollector] = [
     NoteRevenueCollector(),
     XRevenueCollector(),
     AspRevenueCollector(),
+    YouTubeRevenueCollector(),
 ]
 
 
