@@ -182,11 +182,11 @@ async def run_content_job(job: ContentJob, psm: Any, *, downgrade: bool = False)
             "status": "org_not_found",
             "detail": f"組織 '{job.org_name}' が見つかりません",
         }
-    if not getattr(org, "target_repo_path", None):
+    if not getattr(org, "data_location", None):
         return {
             "ok": False,
             "status": "no_workspace",
-            "detail": f"組織 '{job.org_name}' に repo（ワークスペース）が未設定です",
+            "detail": f"組織 '{job.org_name}' に repo/ワークスペースが未設定です",
         }
 
     now = datetime.now(timezone.utc)
@@ -219,7 +219,7 @@ async def run_content_job(job: ContentJob, psm: Any, *, downgrade: bool = False)
         file_path=file_path,
         content=body,
         mode="create",
-        target_repo=str(org.target_repo_path),
+        target_repo=str(org.data_location),
         priority="medium",
     )
 

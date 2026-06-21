@@ -2177,9 +2177,10 @@ async def api_create_content_job(req: ContentJobRequest) -> Dict[str, Any]:
         raise HTTPException(
             status_code=404, detail=f"Organization '{req.org_name}' が見つかりません"
         )
-    if not getattr(org, "target_repo_path", None):
+    if not org.is_managed:
         raise HTTPException(
-            status_code=400, detail=f"Organization '{req.org_name}' に repo が未設定です"
+            status_code=400,
+            detail=f"Organization '{req.org_name}' に repo/ワークスペースが未設定です",
         )
     from core.content.content_jobs import ContentJob
 
@@ -4226,15 +4227,15 @@ async def _approve_proposal_internal(
 
     if is_content_asset_dict(target):
         org = _find_org(org_name)
-        if not org.target_repo_path:
+        if not org.is_managed:
             raise HTTPException(
                 status_code=400,
-                detail="content_asset 提案には Organization の target_repo（ワークスペース）が必要です。",
+                detail="content_asset 提案には Organization の repo/ワークスペースが必要です。",
             )
         from core.orchestration.asset_application import execute_content_asset
 
         sm.update_proposal_status(str(target.get("id", "")), "in_progress")
-        result = await execute_content_asset(target, repo_path=org.target_repo_path)
+        result = await execute_content_asset(target, repo_path=org.data_location)
         if not result.success:
             sm.update_proposal_status(str(target.get("id", "")), "failed")
             raise HTTPException(
