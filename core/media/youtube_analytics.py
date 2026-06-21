@@ -89,18 +89,118 @@ def fetch_video_stats(
     return out
 
 
-def rank_episodes(published: List[Dict[str, Any]], stats: Dict[str, VideoStats]) -> InsightsReport:
-    """公開済みエピソード（{episode_no, video_id, logline?}）を再生数降順でランキングする（純粋）。
+@dataclass
+class VideoAnalytics:
+    video_id: str
+    retention_pct: Optional[float] = None  # averageViewPercentage（視聴維持率）
+    minutes_watched: Optional[float] = None
+    ctr: Optional[float] = None  # impressionClickThroughRate（サムネCTR・取得不可なら None）
 
-    統計の無い動画は views=0 として末尾へ。次サイクルで「伸びた型」を厚くする判断材料。
+
+_ANALYTICS_URL = "https://youtubeanalytics.googleapis.com/v2/reports"
+
+
+def _query_report(tr: Any, access: str, params: Dict[str, str]) -> Dict[str, Any]:
+    query = urllib.parse.urlencode(params)
+    return tr.get_json(f"{_ANALYTICS_URL}?{query}", {"Authorization": f"Bearer {access}"})
+
+
+def _rows_by_video(resp: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Analytics レポート（columnHeaders + rows）を {video_id: {metric: value}} へ。"""
+    headers = [str(h.get("name")) for h in (resp.get("columnHeaders") or [])]
+    if "video" not in headers:
+        return {}
+    vi = headers.index("video")
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in resp.get("rows") or []:
+        if len(row) != len(headers):
+            continue
+        out[str(row[vi])] = {headers[i]: row[i] for i in range(len(headers)) if i != vi}
+    return out
+
+
+def _as_float(value: Any) -> Optional[float]:
+    try:
+        return round(float(value), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_video_analytics(
+    video_ids: List[str],
+    *,
+    start_date: str,
+    end_date: str,
+    platform_home: Optional[Path] = None,
+    transport: Any = None,
+) -> Dict[str, VideoAnalytics]:
+    """YouTube Analytics Reporting API で動画別の視聴維持率/視聴分/CTR を取得する（OAuth）。
+
+    retention(averageViewPercentage) と estimatedMinutesWatched は信頼度の高い基本指標として
+    1リクエストで取得。CTR(impressionClickThroughRate) はアカウント/権限で取れないことがあるため
+    **別リクエストの best-effort**（失敗しても retention は返す＝部分成功を正直に・捏造しない）。
+    認証情報が無ければ送出。analytics スコープが無いと API がエラー＝呼び出し側が正直に扱う。
     """
+    ids = [v for v in (video_ids or []) if v]
+    if not ids:
+        return {}
+    tr = transport or _UrllibStatsTransport()
+    access = get_access_token(platform_home, transport=tr)
+    common = {
+        "ids": "channel==MINE",
+        "startDate": start_date,
+        "endDate": end_date,
+        "dimensions": "video",
+        "filters": "video==" + ",".join(ids),
+        "maxResults": "200",
+    }
+    core = _rows_by_video(
+        _query_report(
+            tr, access, {**common, "metrics": "views,averageViewPercentage,estimatedMinutesWatched"}
+        )
+    )
+    ctr_rows: Dict[str, Dict[str, Any]] = {}
+    try:
+        ctr_rows = _rows_by_video(
+            _query_report(
+                tr, access, {**common, "metrics": "impressions,impressionClickThroughRate"}
+            )
+        )
+    except Exception:  # noqa: BLE001 — CTR 取得不可は致命でない（retention は返す）
+        ctr_rows = {}
+
+    out: Dict[str, VideoAnalytics] = {}
+    for vid in set(core) | set(ctr_rows):
+        out[vid] = VideoAnalytics(
+            video_id=vid,
+            retention_pct=_as_float(core.get(vid, {}).get("averageViewPercentage")),
+            minutes_watched=_as_float(core.get(vid, {}).get("estimatedMinutesWatched")),
+            ctr=_as_float(ctr_rows.get(vid, {}).get("impressionClickThroughRate")),
+        )
+    return out
+
+
+def rank_episodes(
+    published: List[Dict[str, Any]],
+    stats: Dict[str, VideoStats],
+    analytics: Optional[Dict[str, VideoAnalytics]] = None,
+) -> InsightsReport:
+    """公開済みエピソードをランキングする（純粋）。analytics があれば retention 降順、無ければ再生数降順。
+
+    統計/分析の無い動画は 0 として末尾へ。次サイクルで「伸びた型」を厚くする判断材料。
+    """
+    analytics = analytics or {}
     rows: List[Dict[str, Any]] = []
     total = 0
+    has_retention = False
     for pub in published:
         vid = str(pub.get("video_id") or "")
         s = stats.get(vid)
+        a = analytics.get(vid)
         views = s.views if s else 0
         total += views
+        if a and a.retention_pct is not None:
+            has_retention = True
         rows.append(
             {
                 "episode_no": pub.get("episode_no"),
@@ -110,11 +210,20 @@ def rank_episodes(published: List[Dict[str, Any]], stats: Dict[str, VideoStats])
                 "views": views,
                 "likes": s.likes if s else 0,
                 "comments": s.comments if s else 0,
+                "retention_pct": a.retention_pct if a else None,
+                "ctr": a.ctr if a else None,
+                "minutes_watched": a.minutes_watched if a else None,
             }
         )
-    rows.sort(key=lambda r: r["views"], reverse=True)
-    return InsightsReport(
-        ranked=rows,
-        total_views=total,
-        note="retention/CTR は YouTube Analytics Reporting API（analytics スコープ）が必要な次の層（未対応＝捏造しない）",
-    )
+    # 維持率が取れていれば retention 優先（離脱されない型を学ぶ）、無ければ再生数で。
+    if has_retention:
+        rows.sort(
+            key=lambda r: r["retention_pct"] if r["retention_pct"] is not None else -1, reverse=True
+        )
+        note = "視聴維持率(averageViewPercentage)降順。CTR は取得できた動画のみ表示。"
+    else:
+        rows.sort(key=lambda r: r["views"], reverse=True)
+        note = (
+            "再生数降順（retention/CTR 未取得＝analytics スコープ未付与/データ無し。捏造しない）。"
+        )
+    return InsightsReport(ranked=rows, total_views=total, note=note)

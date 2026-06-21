@@ -180,19 +180,30 @@ async def cmd_story_render(args: argparse.Namespace, *, get_psm: Any) -> None:
         if p.exists():
             image_paths[sid] = str(p)
 
+    # BGM: --audio 明示が最優先。無ければ music_library から mood に合う1曲を自動選定
+    # （ライブラリが空なら BGM 無しで進む＝音は生成・無断DLしない）。
+    audio = getattr(args, "audio", None)
+    if not audio:
+        from core.media.music import select_music
+
+        audio = select_music(
+            str(timeline.get("music_mood") or ""),
+            platform_home=psm.platform_home,
+            episode_no=ep_no,
+        )
+        if audio:
+            print(f"  BGM 自動選定: {Path(audio).name}")
+        else:
+            print("  BGM なし（~/.pantheon/music_library に権利処理済み音源を置くと自動付与）")
+
     out_mp4 = work / f"ep-{ep_no:02d}.mp4"
-    result = assemble_video(
-        timeline, image_paths, out_path=out_mp4, audio_path=getattr(args, "audio", None)
-    )
+    result = assemble_video(timeline, image_paths, out_path=out_mp4, audio_path=audio)
     if not result.ok:
         print(f"\n[ERROR] 動画組立に失敗: {result.error}")
         print("  画像が揃っているか確認してください（画像生成には provider の鍵が必要です）")
         sys.exit(1)
     print(f"\n[OK] 動画を生成しました: {result.path}")
-    print(
-        "  残りの人手/外部: サムネ最終描画 / 楽曲（--audio 未指定なら）/ "
-        "YouTube 投稿（pantheon publish youtube ＝ 後続フェーズ）"
-    )
+    print("  残りの人手/外部: サムネ最終描画 / YouTube 投稿（story publish --yes）")
 
 
 async def cmd_story_publish(args: argparse.Namespace, *, get_psm: Any) -> None:
@@ -440,10 +451,15 @@ async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
     認証情報が無ければ正直に停止（偽の数値は出さない）。
     """
     import json
+    from datetime import datetime, timedelta, timezone
     from pathlib import Path
 
     from core.media.credentials import MediaProviderNotConfigured
-    from core.media.youtube_analytics import fetch_video_stats, rank_episodes
+    from core.media.youtube_analytics import (
+        fetch_video_analytics,
+        fetch_video_stats,
+        rank_episodes,
+    )
     from core.persistence import atomic_write_text
 
     psm, _org, ws = _load_org_ws(get_psm, args.org)
@@ -465,7 +481,21 @@ async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
         print(f"[ERROR] {exc}")
         sys.exit(1)
 
-    report = rank_episodes(published, stats)
+    # 視聴維持率/CTR（Analytics Reporting API）は best-effort: analytics スコープが無い/
+    # データ未蓄積なら取得できないが、その場合も再生数ランキングは出す（捏造しない）。
+    analytics = {}
+    now = datetime.now(timezone.utc).date()
+    start = (now - timedelta(days=int(getattr(args, "days", 0) or 365))).isoformat()
+    try:
+        analytics = fetch_video_analytics(
+            video_ids, start_date=start, end_date=now.isoformat(), platform_home=psm.platform_home
+        )
+    except Exception as exc:  # noqa: BLE001 — 維持率取れずとも続行（正直に注記）
+        print(
+            f"  （視聴維持率/CTR は未取得: {type(exc).__name__}。analytics スコープ/データを確認）"
+        )
+
+    report = rank_episodes(published, stats, analytics)
     atomic_write_text(
         Path(ws) / "insights.json",
         json.dumps(
@@ -478,9 +508,11 @@ async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
         f"\n━━ RED THREAD インサイト（公開 {len(published)} 本・総再生 {report.total_views:,}）━━"
     )
     for i, row in enumerate(report.ranked[:10], start=1):
+        ret = f" / 維持{row['retention_pct']}%" if row.get("retention_pct") is not None else ""
+        ctr = f" / CTR{row['ctr']}%" if row.get("ctr") is not None else ""
         print(
             f"  {i:>2}. #{row['episode_no']} 再生 {row['views']:,} / 高評価 {row['likes']:,}"
-            f" — {str(row['logline'])[:36]}"
+            f"{ret}{ctr} — {str(row['logline'])[:32]}"
         )
     print(f"\n  保存: {Path(ws) / 'insights.json'}")
     print(f"  注: {report.note}")
@@ -618,6 +650,9 @@ def register(subparsers: Any) -> None:
         help="公開済み動画の YouTube 統計を取得し再生数でランキング（フィードバック計測）",
     )
     ins.add_argument("--org", required=True, help="Organization 名")
+    ins.add_argument(
+        "--days", type=int, default=365, help="視聴維持率/CTR の集計期間（日・既定365）"
+    )
     ins.set_defaults(handler_name="cmd_story_insights")
 
     sch = sub.add_parser(

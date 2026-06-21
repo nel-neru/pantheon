@@ -115,11 +115,105 @@ def test_cli_insights_ranks_published(tmp_path, monkeypatch, capsys):
             "v2": VideoStats("v2", views=900),
         },
     )
+    # analytics（維持率/CTR）は別APIなので未取得を模す（実ネットワークを呼ばせない）
+    monkeypatch.setattr(
+        "core.media.youtube_analytics.fetch_video_analytics",
+        lambda video_ids, **kw: {},
+    )
 
     from commands.story import cmd_story_insights
 
-    asyncio.run(cmd_story_insights(SimpleNamespace(org=org_name), get_psm=lambda: psm))
+    asyncio.run(cmd_story_insights(SimpleNamespace(org=org_name, days=365), get_psm=lambda: psm))
     out = capsys.readouterr().out
     assert "インサイト" in out and "総再生 1,020" in out
     insights = json.loads((Path(org.workspace_path) / "insights.json").read_text(encoding="utf-8"))
-    assert insights["ranked"][0]["episode_no"] == 2  # 再生数トップが先頭
+    assert insights["ranked"][0]["episode_no"] == 2  # 維持率未取得→再生数トップが先頭
+
+
+def test_fetch_video_analytics_parses_retention_and_ctr(tmp_path):
+    from core.media.youtube_analytics import fetch_video_analytics
+
+    _write_creds(tmp_path)
+
+    class _FakeAnalyticsTransport:
+        def fetch_token(self, form):
+            return {"access_token": "at-1"}
+
+        def get_json(self, url, headers):
+            if "averageViewPercentage" in url:
+                return {
+                    "columnHeaders": [
+                        {"name": "video"},
+                        {"name": "views"},
+                        {"name": "averageViewPercentage"},
+                        {"name": "estimatedMinutesWatched"},
+                    ],
+                    "rows": [["v1", 900, 61.5, 120.0], ["v2", 300, 33.0, 20.0]],
+                }
+            # CTR レポート
+            return {
+                "columnHeaders": [
+                    {"name": "video"},
+                    {"name": "impressions"},
+                    {"name": "impressionClickThroughRate"},
+                ],
+                "rows": [["v1", 5000, 7.2]],
+            }
+
+    a = fetch_video_analytics(
+        ["v1", "v2"],
+        start_date="2026-01-01",
+        end_date="2026-06-21",
+        platform_home=tmp_path,
+        transport=_FakeAnalyticsTransport(),
+    )
+    assert a["v1"].retention_pct == 61.5 and a["v1"].ctr == 7.2
+    assert (
+        a["v2"].retention_pct == 33.0 and a["v2"].ctr is None
+    )  # CTR は v2 に無い→None（捏造しない）
+
+
+def test_fetch_video_analytics_ctr_failure_keeps_retention(tmp_path):
+    """CTR レポートが落ちても retention は返す（部分成功・捏造しない）。"""
+    from core.media.youtube_analytics import fetch_video_analytics
+
+    _write_creds(tmp_path)
+
+    class _CtrFailsTransport:
+        def fetch_token(self, form):
+            return {"access_token": "at-1"}
+
+        def get_json(self, url, headers):
+            if "averageViewPercentage" in url:
+                return {
+                    "columnHeaders": [{"name": "video"}, {"name": "averageViewPercentage"}],
+                    "rows": [["v1", 55.0]],
+                }
+            raise RuntimeError("ctr report not available")
+
+    a = fetch_video_analytics(
+        ["v1"],
+        start_date="2026-01-01",
+        end_date="2026-06-21",
+        platform_home=tmp_path,
+        transport=_CtrFailsTransport(),
+    )
+    assert a["v1"].retention_pct == 55.0 and a["v1"].ctr is None
+
+
+def test_rank_episodes_prefers_retention_when_available():
+    from core.media.youtube_analytics import VideoAnalytics, VideoStats, rank_episodes
+
+    published = [
+        {"episode_no": 1, "video_id": "v1"},
+        {"episode_no": 2, "video_id": "v2"},
+    ]
+    stats = {"v1": VideoStats("v1", views=2000), "v2": VideoStats("v2", views=300)}
+    analytics = {
+        "v1": VideoAnalytics("v1", retention_pct=20.0),
+        "v2": VideoAnalytics("v2", retention_pct=70.0),
+    }
+    report = rank_episodes(published, stats, analytics)
+    # 再生数は v1 が上だが、維持率が高い v2 を上位にする（離脱されない型を学ぶ）
+    assert [r["episode_no"] for r in report.ranked] == [2, 1]
+    assert "維持率" in report.note
