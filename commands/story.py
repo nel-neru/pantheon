@@ -319,6 +319,101 @@ async def cmd_story_produce(args: argparse.Namespace, *, get_psm: Any) -> None:
     print("  公開（外部アクション）は人間の確認付き: pantheon story publish --org ... --ep N --yes")
 
 
+def _load_org_ws(get_psm: Any, org_name: str):
+    """org とワークスペースパスを取り出す（無ければ正直に終了）。"""
+    psm = get_psm()
+    org = psm.load_organization_by_name(org_name)
+    if org is None:
+        print(f"[ERROR] Organization '{org_name}' が見つかりません")
+        sys.exit(1)
+    ws = getattr(org, "workspace_path", None)
+    if not ws:
+        print(f"[ERROR] '{org_name}' にワークスペースがありません")
+        sys.exit(1)
+    return psm, org, ws
+
+
+async def cmd_story_thumbnail(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """ブリーフの thumbnail_brief ＋カノンからサムネ画像を1枚生成する（CTR の最大レバー）。"""
+    from pathlib import Path
+
+    import yaml
+
+    from core.illustration_story.asset_prompts import thumbnail_prompt
+    from core.illustration_story.episode_brief import load_canon
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.image_gen import generate_images
+
+    psm, _org, ws = _load_org_ws(get_psm, args.org)
+    ep = int(args.ep)
+    brief_path = Path(ws) / "episodes" / f"ep-{ep:02d}.yaml"
+    if not brief_path.exists():
+        print(f"[ERROR] ブリーフがありません: {brief_path}（先に story brief）")
+        sys.exit(1)
+    brief = yaml.safe_load(brief_path.read_text(encoding="utf-8")) or {}
+    prompt = thumbnail_prompt(brief, load_canon(ws))
+    out_dir = Path(ws) / "episodes" / f"ep-{ep:02d}"
+    try:
+        results = generate_images(
+            [prompt], out_dir=out_dir, provider=args.provider, platform_home=psm.platform_home
+        )
+    except MediaProviderNotConfigured as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+    r = results[0]
+    if not r.ok:
+        print(f"[ERROR] サムネ生成失敗: {r.error}")
+        sys.exit(1)
+    print(f"\n[OK] サムネを生成しました: {r.path}")
+
+
+async def cmd_story_characters(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """カノンのキャラ登録簿から設定画（model sheet）を生成し canonical_sheet を登録する。
+
+    連続性の要（不変アンカー）の一括ブートストラップ。生成済み画像のパスを registry へ書き戻す。
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from core.illustration_story.asset_prompts import character_prompts
+    from core.illustration_story.episode_brief import load_canon
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.image_gen import generate_images
+    from core.persistence import atomic_write_text
+
+    psm, _org, ws = _load_org_ws(get_psm, args.org)
+    prompts = character_prompts(load_canon(ws))
+    if not prompts:
+        print("[ERROR] character_registry にキャラがいません")
+        sys.exit(1)
+    out_dir = Path(ws) / "canon" / "characters"
+    try:
+        results = generate_images(
+            prompts, out_dir=out_dir, provider=args.provider, platform_home=psm.platform_home
+        )
+    except MediaProviderNotConfigured as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+
+    ok = [r for r in results if r.ok]
+    reg_path = Path(ws) / "canon" / "character_registry.yaml"
+    if ok and reg_path.exists():
+        reg = yaml.safe_load(reg_path.read_text(encoding="utf-8")) or {}
+        by_id = {r.shot_id: r.path for r in ok}
+        for c in reg.get("characters") or []:
+            if str(c.get("id")) in by_id:
+                c["canonical_sheet"] = by_id[str(c.get("id"))]  # 不変アンカーを登録
+        atomic_write_text(reg_path, yaml.safe_dump(reg, allow_unicode=True, sort_keys=False))
+
+    print(f"\n[OK] キャラ設定画 {len(ok)}/{len(results)} 枚を生成（{out_dir}）")
+    if ok:
+        print("  canonical_sheet を character_registry.yaml に登録しました（以後の連続性アンカー）")
+    for r in results:
+        if not r.ok:
+            print(f"  [失敗] {r.shot_id}: {r.error}")
+
+
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("story", help="イラストストーリー（RED THREAD）の自律制作")
     sub = parser.add_subparsers(dest="story_command", required=True)
@@ -395,3 +490,16 @@ def register(subparsers: Any) -> None:
         "--no-images", action="store_true", help="画像生成をスキップ（既存画像で動画化）"
     )
     pr.set_defaults(handler_name="cmd_story_produce")
+
+    t = sub.add_parser("thumbnail", help="ブリーフ＋カノンからサムネ画像を生成（CTRの最大レバー）")
+    t.add_argument("--org", required=True, help="Organization 名")
+    t.add_argument("--ep", type=int, required=True, help="サムネを作るエピソード番号")
+    t.add_argument("--provider", choices=["gemini", "fal"], default="gemini", help="画像プロバイダ")
+    t.set_defaults(handler_name="cmd_story_thumbnail")
+
+    c = sub.add_parser(
+        "characters", help="カノンのキャラ設定画（連続性アンカー）を一括生成し登録する"
+    )
+    c.add_argument("--org", required=True, help="Organization 名")
+    c.add_argument("--provider", choices=["gemini", "fal"], default="gemini", help="画像プロバイダ")
+    c.set_defaults(handler_name="cmd_story_characters")
