@@ -91,9 +91,13 @@ from commands.plugin import cmd_plugin_scaffold_company as _cmd_plugin_scaffold_
 from commands.plugin import cmd_plugin_scaffold_division as _cmd_plugin_scaffold_division_impl
 from commands.portfolio import cmd_portfolio_overview as _cmd_portfolio_overview_impl
 from commands.story import cmd_story_brief as _cmd_story_brief_impl
+from commands.story import cmd_story_characters as _cmd_story_characters_impl
+from commands.story import cmd_story_insights as _cmd_story_insights_impl
 from commands.story import cmd_story_produce as _cmd_story_produce_impl
 from commands.story import cmd_story_publish as _cmd_story_publish_impl
 from commands.story import cmd_story_render as _cmd_story_render_impl
+from commands.story import cmd_story_schedule as _cmd_story_schedule_impl
+from commands.story import cmd_story_thumbnail as _cmd_story_thumbnail_impl
 from commands.traces import cmd_traces as _cmd_traces_impl
 from commands.up import cmd_up as _cmd_up_impl
 from commands.version import cmd_version as _cmd_version_impl
@@ -332,6 +336,22 @@ async def cmd_story_publish(args) -> None:
 
 async def cmd_story_produce(args) -> None:
     await _cmd_story_produce_impl(args, get_psm=_get_psm)
+
+
+async def cmd_story_thumbnail(args) -> None:
+    await _cmd_story_thumbnail_impl(args, get_psm=_get_psm)
+
+
+async def cmd_story_characters(args) -> None:
+    await _cmd_story_characters_impl(args, get_psm=_get_psm)
+
+
+async def cmd_story_insights(args) -> None:
+    await _cmd_story_insights_impl(args, get_psm=_get_psm)
+
+
+async def cmd_story_schedule(args) -> None:
+    await _cmd_story_schedule_impl(args, get_psm=_get_psm)
 
 
 async def cmd_plugin_install_company(args) -> None:
@@ -879,6 +899,10 @@ HANDLERS = {
     "cmd_story_render": cmd_story_render,
     "cmd_story_publish": cmd_story_publish,
     "cmd_story_produce": cmd_story_produce,
+    "cmd_story_thumbnail": cmd_story_thumbnail,
+    "cmd_story_characters": cmd_story_characters,
+    "cmd_story_insights": cmd_story_insights,
+    "cmd_story_schedule": cmd_story_schedule,
     "cmd_plugin_install_company": cmd_plugin_install_company,
     "cmd_org_list": cmd_org_list,
     "cmd_org_scan": cmd_org_scan,

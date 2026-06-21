@@ -257,6 +257,25 @@ async def cmd_story_publish(args: argparse.Namespace, *, get_psm: Any) -> None:
     if not result.ok:
         print(f"[ERROR] アップロード失敗: {result.error}")
         sys.exit(1)
+
+    # 公開記録を残す（insights が episode→video_id を辿るため）。
+    import json
+    from datetime import datetime, timezone
+
+    from core.persistence import atomic_write_text
+
+    published = {
+        "episode_no": ep,
+        "video_id": result.video_id,
+        "url": result.url,
+        "privacy": privacy,
+        "logline": str((brief or {}).get("logline") or ""),
+        "published_at": datetime.now(timezone.utc).isoformat(),
+    }
+    atomic_write_text(
+        episodes_dir / f"ep-{ep:02d}" / "published.json",
+        json.dumps(published, ensure_ascii=False, indent=2),
+    )
     print(f"\n[OK] YouTube にアップロードしました: {result.url}（公開範囲: {privacy}）")
 
 
@@ -317,6 +336,191 @@ async def cmd_story_produce(args: argparse.Namespace, *, get_psm: Any) -> None:
 
     print(f"\n[完了] ブリーフ {produced} 本 / 動画 {rendered} 本を生成しました。")
     print("  公開（外部アクション）は人間の確認付き: pantheon story publish --org ... --ep N --yes")
+
+
+def _load_org_ws(get_psm: Any, org_name: str):
+    """org とワークスペースパスを取り出す（無ければ正直に終了）。"""
+    psm = get_psm()
+    org = psm.load_organization_by_name(org_name)
+    if org is None:
+        print(f"[ERROR] Organization '{org_name}' が見つかりません")
+        sys.exit(1)
+    ws = getattr(org, "workspace_path", None)
+    if not ws:
+        print(f"[ERROR] '{org_name}' にワークスペースがありません")
+        sys.exit(1)
+    return psm, org, ws
+
+
+async def cmd_story_thumbnail(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """ブリーフの thumbnail_brief ＋カノンからサムネ画像を1枚生成する（CTR の最大レバー）。"""
+    from pathlib import Path
+
+    import yaml
+
+    from core.illustration_story.asset_prompts import thumbnail_prompt
+    from core.illustration_story.episode_brief import load_canon
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.image_gen import generate_images
+
+    psm, _org, ws = _load_org_ws(get_psm, args.org)
+    ep = int(args.ep)
+    brief_path = Path(ws) / "episodes" / f"ep-{ep:02d}.yaml"
+    if not brief_path.exists():
+        print(f"[ERROR] ブリーフがありません: {brief_path}（先に story brief）")
+        sys.exit(1)
+    brief = yaml.safe_load(brief_path.read_text(encoding="utf-8")) or {}
+    prompt = thumbnail_prompt(brief, load_canon(ws))
+    out_dir = Path(ws) / "episodes" / f"ep-{ep:02d}"
+    try:
+        results = generate_images(
+            [prompt], out_dir=out_dir, provider=args.provider, platform_home=psm.platform_home
+        )
+    except MediaProviderNotConfigured as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+    r = results[0]
+    if not r.ok:
+        print(f"[ERROR] サムネ生成失敗: {r.error}")
+        sys.exit(1)
+    print(f"\n[OK] サムネを生成しました: {r.path}")
+
+
+async def cmd_story_characters(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """カノンのキャラ登録簿から設定画（model sheet）を生成し canonical_sheet を登録する。
+
+    連続性の要（不変アンカー）の一括ブートストラップ。生成済み画像のパスを registry へ書き戻す。
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from core.illustration_story.asset_prompts import character_prompts
+    from core.illustration_story.episode_brief import load_canon
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.image_gen import generate_images
+    from core.persistence import atomic_write_text
+
+    psm, _org, ws = _load_org_ws(get_psm, args.org)
+    prompts = character_prompts(load_canon(ws))
+    if not prompts:
+        print("[ERROR] character_registry にキャラがいません")
+        sys.exit(1)
+    out_dir = Path(ws) / "canon" / "characters"
+    try:
+        results = generate_images(
+            prompts, out_dir=out_dir, provider=args.provider, platform_home=psm.platform_home
+        )
+    except MediaProviderNotConfigured as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+
+    ok = [r for r in results if r.ok]
+    reg_path = Path(ws) / "canon" / "character_registry.yaml"
+    if ok and reg_path.exists():
+        reg = yaml.safe_load(reg_path.read_text(encoding="utf-8")) or {}
+        by_id = {r.shot_id: r.path for r in ok}
+        for c in reg.get("characters") or []:
+            if str(c.get("id")) in by_id:
+                c["canonical_sheet"] = by_id[str(c.get("id"))]  # 不変アンカーを登録
+        atomic_write_text(reg_path, yaml.safe_dump(reg, allow_unicode=True, sort_keys=False))
+
+    print(f"\n[OK] キャラ設定画 {len(ok)}/{len(results)} 枚を生成（{out_dir}）")
+    if ok:
+        print("  canonical_sheet を character_registry.yaml に登録しました（以後の連続性アンカー）")
+    for r in results:
+        if not r.ok:
+            print(f"  [失敗] {r.shot_id}: {r.error}")
+
+
+async def cmd_story_insights(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """公開済みエピソードの YouTube 統計を取得し、再生数降順でランキング表示・保存する。
+
+    フィードバックループの計測側。episode→video_id は publish 時の published.json から辿る。
+    認証情報が無ければ正直に停止（偽の数値は出さない）。
+    """
+    import json
+    from pathlib import Path
+
+    from core.media.credentials import MediaProviderNotConfigured
+    from core.media.youtube_analytics import fetch_video_stats, rank_episodes
+    from core.persistence import atomic_write_text
+
+    psm, _org, ws = _load_org_ws(get_psm, args.org)
+    episodes_dir = Path(ws) / "episodes"
+    published: list[dict] = []
+    for pub_file in sorted(episodes_dir.glob("ep-*/published.json")):
+        try:
+            published.append(json.loads(pub_file.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    if not published:
+        print("公開済みの動画がありません（pantheon story publish --yes で公開すると記録されます）")
+        return
+
+    video_ids = [str(p.get("video_id") or "") for p in published if p.get("video_id")]
+    try:
+        stats = fetch_video_stats(video_ids, platform_home=psm.platform_home)
+    except MediaProviderNotConfigured as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)
+
+    report = rank_episodes(published, stats)
+    atomic_write_text(
+        Path(ws) / "insights.json",
+        json.dumps(
+            {"total_views": report.total_views, "ranked": report.ranked, "note": report.note},
+            ensure_ascii=False,
+            indent=2,
+        ),
+    )
+    print(
+        f"\n━━ RED THREAD インサイト（公開 {len(published)} 本・総再生 {report.total_views:,}）━━"
+    )
+    for i, row in enumerate(report.ranked[:10], start=1):
+        print(
+            f"  {i:>2}. #{row['episode_no']} 再生 {row['views']:,} / 高評価 {row['likes']:,}"
+            f" — {str(row['logline'])[:36]}"
+        )
+    print(f"\n  保存: {Path(ws) / 'insights.json'}")
+    print(f"  注: {report.note}")
+    print("  次サイクルは上位の twist/型に制作枠を寄せると効率的（series_canon.backlog を更新）")
+
+
+async def cmd_story_schedule(args: argparse.Namespace, *, get_psm: Any) -> None:
+    """story produce を Windows タスクスケジューラで毎日自動実行する（公開は手動のまま）。"""
+    from core.illustration_story.scheduler import (
+        install_schedule,
+        schedule_status,
+        task_name_for,
+        uninstall_schedule,
+    )
+
+    _load_org_ws(get_psm, args.org)  # org の存在確認
+    action = getattr(args, "schedule_action", None)
+    if action == "install":
+        ok, out = install_schedule(
+            args.org, count=getattr(args, "count", 1), time=getattr(args, "time", "09:00")
+        )
+        if not ok:
+            print(f"[ERROR] タスク登録に失敗: {out}")
+            sys.exit(1)
+        print(
+            f"\n[OK] 毎日 {getattr(args, 'time', '09:00')} に '{task_name_for(args.org)}' を登録しました"
+            f"（story produce --count {getattr(args, 'count', 1)}）"
+        )
+        print(
+            "  自動生成: ブリーフ＋動画（画像鍵があれば）。公開は story publish --yes（無人公開はしない）"
+        )
+    elif action == "uninstall":
+        ok, out = uninstall_schedule(args.org)
+        print("[OK] タスクを削除しました" if ok else f"[INFO] 削除できませんでした: {out}")
+    elif action == "status":
+        ok, out = schedule_status(args.org)
+        print(out if ok else f"[INFO] タスク未登録か照会失敗: {out}")
+    else:
+        print("[ERROR] schedule のサブコマンド（install/uninstall/status）を指定してください")
+        sys.exit(1)
 
 
 def register(subparsers: Any) -> None:
@@ -395,3 +599,39 @@ def register(subparsers: Any) -> None:
         "--no-images", action="store_true", help="画像生成をスキップ（既存画像で動画化）"
     )
     pr.set_defaults(handler_name="cmd_story_produce")
+
+    t = sub.add_parser("thumbnail", help="ブリーフ＋カノンからサムネ画像を生成（CTRの最大レバー）")
+    t.add_argument("--org", required=True, help="Organization 名")
+    t.add_argument("--ep", type=int, required=True, help="サムネを作るエピソード番号")
+    t.add_argument("--provider", choices=["gemini", "fal"], default="gemini", help="画像プロバイダ")
+    t.set_defaults(handler_name="cmd_story_thumbnail")
+
+    c = sub.add_parser(
+        "characters", help="カノンのキャラ設定画（連続性アンカー）を一括生成し登録する"
+    )
+    c.add_argument("--org", required=True, help="Organization 名")
+    c.add_argument("--provider", choices=["gemini", "fal"], default="gemini", help="画像プロバイダ")
+    c.set_defaults(handler_name="cmd_story_characters")
+
+    ins = sub.add_parser(
+        "insights",
+        help="公開済み動画の YouTube 統計を取得し再生数でランキング（フィードバック計測）",
+    )
+    ins.add_argument("--org", required=True, help="Organization 名")
+    ins.set_defaults(handler_name="cmd_story_insights")
+
+    sch = sub.add_parser(
+        "schedule", help="story produce を毎日自動実行（Windows タスク・公開は手動のまま）"
+    )
+    sch_sub = sch.add_subparsers(dest="schedule_action", required=True)
+    si = sch_sub.add_parser("install", help="毎日 produce を実行するタスクを登録")
+    si.add_argument("--org", required=True, help="Organization 名")
+    si.add_argument("--count", type=int, default=1, help="1回あたりの制作話数")
+    si.add_argument("--time", default="09:00", help="実行時刻 HH:mm（既定 09:00）")
+    si.set_defaults(handler_name="cmd_story_schedule")
+    su = sch_sub.add_parser("uninstall", help="タスクを削除")
+    su.add_argument("--org", required=True, help="Organization 名")
+    su.set_defaults(handler_name="cmd_story_schedule")
+    st = sch_sub.add_parser("status", help="タスクの状態を表示")
+    st.add_argument("--org", required=True, help="Organization 名")
+    st.set_defaults(handler_name="cmd_story_schedule")
