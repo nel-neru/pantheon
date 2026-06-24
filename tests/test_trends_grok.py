@@ -224,9 +224,10 @@ class _FakeHandle:
 
 
 class _FakeGrokPage:
-    def __init__(self, *, composer: bool = True):
+    def __init__(self, *, composer: bool = True, guest: bool = False):
         self.url = "about:blank"
         self._composer = composer
+        self._guest = guest  # サインイン/新規登録 導線がある＝未ログイン（ゲスト）
         self.goto_urls: list[str] = []
 
     async def goto(self, url: str) -> None:
@@ -237,6 +238,11 @@ class _FakeGrokPage:
         if self._composer and sel in COMPOSER_SELECTORS:
             return _FakeHandle(True)
         return None
+
+    async def evaluate(
+        self, expr: str = "", arg=None
+    ):  # _grok_logged_in の guest 判定をエミュレート
+        return self._guest
 
 
 class _FakeGrokContext:
@@ -290,6 +296,20 @@ async def test_connect_grok_times_out_when_not_logged_in(tmp_path):
     assert result.ok is False
     assert store.is_connected("grok") is False
     assert launcher.closed is True
+
+
+async def test_connect_grok_rejects_guest_session(tmp_path):
+    # grok.com はゲストでも入力欄を出す。サインイン/新規登録 導線が在る間は接続成功にしない
+    # （composer の存在だけで保存する偽陽性を防ぐ・facade 化させない）。
+    store = SessionStore(platform_home=tmp_path)
+    page = _FakeGrokPage(composer=True, guest=True)  # 入力欄あり but ゲスト導線あり
+    ctx = _FakeGrokContext(page)
+    launcher = _FakeLauncher(ctx)
+
+    result = await connect_grok(session_store=store, launcher=launcher, timeout_s=0)
+
+    assert result.ok is False
+    assert store.is_connected("grok") is False
 
 
 # --------------------------------------------------------------------------- #

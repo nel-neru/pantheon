@@ -31,27 +31,31 @@ GROK_URL = "https://grok.com/"
 MAX_ITEMS_PER_QUERY = 20
 DEFAULT_RESPONSE_TIMEOUT_S = 180.0
 
-# --- DOM セレクタ（実機 discovery で確定する。複数候補をフォールバック順に並べる）---
-# grok.com の UI は不定形のため、以下は妥当な初期候補。壊れても例外でなく [] で落とす。
+# --- DOM セレクタ（2026-06 実機 discovery で確定。複数候補をフォールバック順に並べる）---
+# grok.com の入力欄は TipTap/ProseMirror の contenteditable（aria-label="Ask Grok anything"）。
+# 送信は data-testid="chat-submit"（入力があると有効化される）。壊れても例外でなく [] で落とす。
 COMPOSER_SELECTORS: Tuple[str, ...] = (
-    "textarea",
+    '[aria-label="Ask Grok anything"]',
+    "div.ProseMirror[contenteditable='true']",
     "[contenteditable='true']",
     "[role='textbox']",
+    "textarea",
 )
 SEND_SELECTORS: Tuple[str, ...] = (
+    '[data-testid="chat-submit"]',
     "button[type='submit']",
-    "button[aria-label*='Send' i]",
-    "button[aria-label*='送信']",
 )
+# 応答コンテナ。ユーザー/アシスタント双方が .message-bubble。最後の bubble が最新応答
+# （アシスタントが最後に話すため）。STOP は生成中インジケータ（完了検知の最確指標）。
 RESPONSE_SELECTORS: Tuple[str, ...] = (
-    "[data-message-author-role='assistant']",
-    "[class*='response']",
-    "[class*='message']",
+    ".response-content-markdown",
+    ".message-bubble",
+    "[class*='message-bubble']",
 )
 STOP_STREAMING_SELECTORS: Tuple[str, ...] = (
+    '[data-testid="chat-stop"]',
     "button[aria-label*='Stop' i]",
     "button[aria-label*='停止']",
-    "[data-testid='stop-button']",
 )
 
 
@@ -260,10 +264,13 @@ class PlaywrightGrokDriver:
             return ""
         try:
             await composer.click()
-            await composer.fill(prompt)
+            # 入力欄は ProseMirror(contenteditable) で fill が効かないことがあるため、実キー入力で
+            # 挿入する（送信ボタンの有効化トリガにもなる）。
+            await page.keyboard.insert_text(prompt)
         except Exception as exc:  # noqa: BLE001
             logger.info("grok composer input failed: %s", exc)
             return ""
+        # 送信ボタン(chat-submit)は入力があると有効化される。click は actionable まで自動待機する。
         send = await _find_visible(page, SEND_SELECTORS)
         try:
             if send is not None:

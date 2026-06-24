@@ -20,16 +20,39 @@ from core.trends.collectors.grok import (
     _find_visible,
 )
 
+# ゲスト（未ログイン）導線のラベル。これらのボタン/リンクが在る間は未ログインとみなす。
+_GUEST_MARKERS = ("サインイン", "新規登録", "ログイン", "Sign in", "Sign up", "Log in")
+
 
 async def _grok_logged_in(context: Any, page: Any) -> bool:
-    """grok.com のチャット UI（コンポーザ入力欄）が見えればログイン済みと判定する（cookie 非依存）。"""
+    """grok.com で「実際にログイン済み」かを判定する（cookie 非依存）。
+
+    grok.com は **ゲスト（未ログイン）でも入力欄 'Ask Grok anything' を出す**ため、入力欄の存在
+    だけだと false positive になる（送信しても「会話を続ける/ご登録ください」で生成されない）。
+    そこで「入力欄が在り、かつ サインイン/新規登録 等のゲスト導線が無い」ことを真のログインとみなす。
+    """
     try:
         url = str(getattr(page, "url", "") or "")
     except Exception:  # noqa: BLE001
         url = ""
     if "grok.com" not in url:
         return False
-    return (await _find_visible(page, COMPOSER_SELECTORS)) is not None
+    if (await _find_visible(page, COMPOSER_SELECTORS)) is None:
+        return False
+    try:
+        has_guest_cta = await page.evaluate(
+            """(markers) => {
+              const els = Array.from(document.querySelectorAll('button,a'));
+              return els.some(e => {
+                const t = (e.innerText || '').trim();
+                return !!t && markers.some(m => t === m || t.includes(m));
+              });
+            }""",
+            list(_GUEST_MARKERS),
+        )
+    except Exception:  # noqa: BLE001 — 判定不能時は安全側（未ログイン扱い）で偽陽性を避ける
+        return False
+    return not has_guest_cta
 
 
 async def connect_grok(

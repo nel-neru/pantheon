@@ -70,21 +70,27 @@ async def cmd_ui_status(args: argparse.Namespace) -> None:
 
     def _run_once() -> bool:
         """1 回 probe する。サーバー未起動なら False（呼び出し側で非ゼロ終了）。"""
-        try:
-            with httpx.Client(base_url=base_url, timeout=10.0) as client:
-                report = build_ui_status(client)
-        except httpx.ConnectError:
-            print(
-                f"サーバー未起動: pantheon serve を実行してください（接続先 {base_url}）。",
-                file=sys.stderr,
-            )
-            return False
-        except httpx.HTTPError as exc:
-            print(
-                f"サーバー未起動: pantheon serve を実行してください（{exc}）。",
-                file=sys.stderr,
-            )
-            return False
+        with httpx.Client(base_url=base_url, timeout=10.0) as client:
+            # 接続性の事前確認（pre-flight）。build_ui_status は各 probe の例外を
+            # ページ単位の error として握る設計のため、サーバー未起動だと「全 error の
+            # レポートが普通に生成された」ように見えて未起動を黙殺してしまう。ここで 1 本
+            # 叩いて到達不能を捕まえ、未起動を正直に表示して非ゼロ終了へ倒す（facade 禁止）。
+            try:
+                client.get("/api/platform/status")
+            except httpx.ConnectError:
+                print(
+                    f"サーバー未起動: pantheon serve を実行してください（接続先 {base_url}）。",
+                    file=sys.stderr,
+                )
+                return False
+            except httpx.HTTPError as exc:
+                print(
+                    f"サーバー未起動: pantheon serve を実行してください（{exc}）。",
+                    file=sys.stderr,
+                )
+                return False
+
+            report = build_ui_status(client)
 
         write_ui_status(report, out)
         if as_json:
