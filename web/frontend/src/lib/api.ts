@@ -390,22 +390,8 @@ export type UiStatusUnavailable = {
 }
 
 /** GET /api/ui/status は判別ユニオン（生成済み or 未生成）を返す。 */
+// 判別ユニオン型。呼び出しは既存規約どおりページ側で api('GET'|'POST', '/api/ui/status'[/refresh]) を直接使う。
 export type UiStatusResponse = UiStatusReport | UiStatusUnavailable
-
-/** レスポンスが生成済みレポートか（available !== false）を判別する型ガード。 */
-export function isUiStatusReport(res: UiStatusResponse): res is UiStatusReport {
-  return (res as UiStatusUnavailable).available !== false
-}
-
-/** 最後に生成された UI 状態を取得する（未生成なら available:false）。 */
-export async function getUiStatus(): Promise<UiStatusResponse> {
-  return api<UiStatusResponse>('GET', '/api/ui/status')
-}
-
-/** UI 状態を今すぐ再チェックして生成済みレポートを返す。 */
-export async function refreshUiStatus(): Promise<UiStatusReport> {
-  return api<UiStatusReport>('POST', '/api/ui/status/refresh')
-}
 
 /**
  * SSE ストリーミング POST ヘルパー。
