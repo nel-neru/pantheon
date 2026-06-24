@@ -216,7 +216,7 @@ const overviewSections: Section[] = [
             <span className="help-step-num">2</span>
             <div>
               <strong>組織</strong>
-              <p>サンプル組織で始めるか、新しい組織を作成して対象リポジトリを登録します。</p>
+              <p>テンプレートから収益モデル会社を自動構築するか、新しい組織を作成して対象リポジトリ（ワークスペース）を登録します。</p>
             </div>
           </li>
           <li>
