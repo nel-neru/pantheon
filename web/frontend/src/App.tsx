@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Bell,
+  BookMarked,
   Bot,
   Boxes,
   ArrowRightLeft,
@@ -62,6 +63,7 @@ import { BusinessesPage } from '@/pages/BusinessesPage'
 import { ObservabilityPage } from '@/pages/ObservabilityPage'
 import { UsagePage } from '@/pages/UsagePage'
 import { PortfolioPage } from '@/pages/PortfolioPage'
+import { KnowledgePage } from '@/pages/KnowledgePage'
 
 type NavItem = {
   to: string
@@ -137,6 +139,7 @@ const navGroups: NavGroup[] = [
       { to: '/connections', label: '連携設定', icon: Plug },
       { to: '/marketplace', label: 'マーケットプレイス', icon: Blocks },
       { to: '/atlas', label: 'Atlas', icon: MapIcon },
+      { to: '/knowledge', label: 'ナレッジ（Vault）', icon: BookMarked },
       { to: '/sessions', label: 'セッション', icon: Boxes },
       { to: '/board', label: '作業ボード', icon: KanbanSquare },
       { to: '/data', label: 'データ管理', icon: Database },
@@ -768,6 +771,7 @@ export default function App() {
         <Route path="/revenue" element={<RevenuePage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/atlas" element={<AtlasPage />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/sessions" element={<SessionsPage />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/data" element={<DataPage />} />

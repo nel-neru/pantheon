@@ -1237,6 +1237,28 @@ def _resolve_knowledge_path(file_path: str) -> Path:
     return resolved
 
 
+def _vault_dir() -> Path:
+    """Obsidian 互換 Vault のルート（``<platform_home>/vault``・遅延解決）。
+
+    KNOWLEDGE_DIR（同梱 docs）とは別ルート。dev/prod は PANTHEON_HOME で分離される。
+    """
+    return get_platform_home() / "vault"
+
+
+def _resolve_vault_path(file_path: str) -> Path:
+    """Vault 配下の Markdown パスを安全に解決する（``_resolve_knowledge_path`` と同型のガード）。"""
+    base = _vault_dir()
+    full_path = base / file_path
+    try:
+        resolved = full_path.resolve()
+        resolved.relative_to(base.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="不正なパスです") from exc
+    if resolved.suffix.lower() != ".md":
+        raise HTTPException(status_code=400, detail="Markdown ファイルのみ操作できます")
+    return resolved
+
+
 def _format_sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -5440,6 +5462,102 @@ async def create_knowledge_file(body: KnowledgeFileCreate) -> Dict[str, str]:
 
     full_path.write_text(body.content, encoding="utf-8")
     return {"status": "ok", "path": name}
+
+
+# ---- Vault（Obsidian 互換ナレッジ）read-only API（Phase 1） ----
+# 編集の書き戻し（PUT/POST）・同期トリガ・グラフは Phase 2/3 で配線する。
+# ここでは未配線の偽エンドポイントを出さない（実装済みに見せない）。
+
+
+def _collect_vault_notes() -> Dict[str, Any]:
+    """Vault 内の全 Markdown ノートの要約一覧を返す（同期処理外・blocking なので to_thread 経由）。"""
+    from core.vault.format import parse_note
+
+    vault = _vault_dir()
+    notes: List[Dict[str, Any]] = []
+    if vault.exists():
+        for path in sorted(vault.rglob("*.md")):
+            if not path.is_file():
+                continue
+            try:
+                note = parse_note(path.read_text(encoding="utf-8"))
+            except OSError:
+                continue
+            fm = note.frontmatter
+            rel = path.relative_to(vault).as_posix()
+            notes.append(
+                {
+                    "path": rel,
+                    "name": path.name,
+                    "title": str(fm.get("title") or path.stem),
+                    "type": str(fm.get("pantheon_type") or ""),
+                    "canonical": str(fm.get("pantheon_canonical") or ""),
+                    "tags": list(fm.get("tags") or []),
+                    "subdir": rel.split("/")[0] if "/" in rel else "",
+                    "managed": bool(fm.get("pantheon_id")),
+                }
+            )
+    return {"vault_dir": str(vault), "exists": vault.exists(), "notes": notes}
+
+
+def _read_vault_note(file_path: str, resolved: Path) -> Dict[str, Any]:
+    """1 ノートを frontmatter + body + wikilink + backlink 付きで返す。"""
+    from core.vault.format import parse_note
+    from core.vault.links import backlinks_for, build_link_index
+
+    vault = _vault_dir()
+    note = parse_note(resolved.read_text(encoding="utf-8"))
+    fm = note.frontmatter
+    index = build_link_index(vault)
+
+    pid = fm.get("pantheon_id")
+    ptype = fm.get("pantheon_type")
+    node_id = f"{ptype}:{pid}" if pid and ptype else ""
+
+    wikilinks: List[Dict[str, Any]] = []
+    for link in note.wikilinks:
+        target_ref = index.by_node.get(link.node_id)
+        wikilinks.append(
+            {
+                "type": link.type,
+                "target": link.target,
+                "alias": link.alias,
+                "node_id": link.node_id,
+                "resolved": target_ref is not None,
+                "resolved_path": target_ref.path if target_ref else "",
+            }
+        )
+
+    conflict_sidecar = resolved.with_name(resolved.stem + ".conflict.md")
+    return {
+        "path": file_path,
+        "name": resolved.name,
+        "title": str(fm.get("title") or resolved.stem),
+        "type": str(ptype or ""),
+        "canonical": str(fm.get("pantheon_canonical") or ""),
+        "frontmatter": fm,
+        "body": note.body,
+        "tags": list(fm.get("tags") or []),
+        "wikilinks": wikilinks,
+        "backlinks": backlinks_for(index, node_id) if node_id else [],
+        "synced_at": str(fm.get("pantheon_synced_at") or ""),
+        "has_conflict": conflict_sidecar.exists(),
+    }
+
+
+@app.get("/api/vault/notes", tags=["vault"])
+async def list_vault_notes() -> Dict[str, Any]:
+    """Vault 内の全ノート要約を返す（read-only）。"""
+    return await asyncio.to_thread(_collect_vault_notes)
+
+
+@app.get("/api/vault/notes/{file_path:path}", tags=["vault"])
+async def get_vault_note(file_path: str) -> Dict[str, Any]:
+    """1 ノートの内容（frontmatter + body + wikilink + backlink）を返す（read-only）。"""
+    resolved = _resolve_vault_path(file_path)
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="ノートが見つかりません")
+    return await asyncio.to_thread(_read_vault_note, file_path, resolved)
 
 
 @app.get("/api/orchestration/analyze/{task_type}")

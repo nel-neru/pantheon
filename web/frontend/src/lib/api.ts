@@ -342,6 +342,62 @@ export async function getPortfolioOverview(): Promise<PortfolioOverview> {
   return api<PortfolioOverview>('GET', '/api/portfolio/overview')
 }
 
+// ─── Vault (Obsidian-compatible knowledge store) ─────────────────────────────
+
+export type VaultNoteSummary = {
+  path: string
+  name: string
+  title: string
+  type: string
+  canonical: string
+  tags: string[]
+  subdir: string
+  managed: boolean
+}
+
+export type VaultNotesResponse = {
+  vault_dir: string
+  exists: boolean
+  notes: VaultNoteSummary[]
+}
+
+export type VaultWikiLink = {
+  type: string
+  target: string
+  alias: string
+  node_id: string
+  resolved: boolean
+  resolved_path: string
+}
+
+export type VaultBacklink = {
+  path: string
+  title: string
+}
+
+export type VaultNoteDetail = {
+  path: string
+  name: string
+  title: string
+  type: string
+  canonical: string
+  frontmatter: Record<string, unknown>
+  body: string
+  tags: string[]
+  wikilinks: VaultWikiLink[]
+  backlinks: VaultBacklink[]
+  synced_at: string
+  has_conflict: boolean
+}
+
+export async function listVaultNotes(): Promise<VaultNotesResponse> {
+  return api<VaultNotesResponse>('GET', '/api/vault/notes')
+}
+
+export async function getVaultNote(path: string): Promise<VaultNoteDetail> {
+  return api<VaultNoteDetail>('GET', `/api/vault/notes/${path}`)
+}
+
 /**
  * SSE ストリーミング POST ヘルパー。
  * バックエンドの text/event-stream レスポンスを chunk 単位で読み取り、

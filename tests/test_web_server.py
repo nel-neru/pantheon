@@ -3430,3 +3430,80 @@ def test_combined_execution_history_tolerates_null_timestamp(monkeypatch):
     assert {r["id"] for r in history} == {"no-ts", "has-ts"}
     # timestamp 有りが先頭（null は "" に coerce され reverse ソートで後方）。
     assert history[0]["id"] == "has-ts"
+
+
+# ---- Vault（Obsidian 互換ナレッジ）read-only API ----
+
+
+def _seed_vault_stores(tmp_path) -> None:
+    from core.intelligence.playbook import PlaybookStore
+    from core.knowledge.manager import KnowledgeManager
+    from core.metrics.outcomes import OutcomeStore
+
+    KnowledgeManager(tmp_path).save_insight(
+        "Vault Insight", "本文", tags=["best_practice"], source_org="Foo"
+    )
+    PlaybookStore(tmp_path).add("Vault Play", "施策", category="general", org_name="Foo")
+    OutcomeStore(tmp_path).record("Foo", "revenue", 250, source="note")
+
+
+def _export_vault(tmp_path) -> None:
+    from core.vault import build_default_sync
+
+    build_default_sync(tmp_path).export()
+
+
+def _patch_vault_home(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+
+def test_list_vault_notes(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    resp = client.get("/api/vault/notes")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["exists"] is True
+    types = {n["type"] for n in data["notes"] if n["managed"]}
+    assert {"insight", "playbook", "outcome"} <= types
+
+
+def test_get_vault_note_with_links(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    listing = client.get("/api/vault/notes").json()
+    insight = next(n for n in listing["notes"] if n["type"] == "insight")
+    resp = client.get(f"/api/vault/notes/{insight['path']}")
+    assert resp.status_code == 200
+    note = resp.json()
+    assert note["type"] == "insight"
+    assert note["canonical"] == "vault"
+    assert note["frontmatter"]["pantheon_id"]
+    assert any(w["type"] == "org" and w["target"] == "Foo" for w in note["wikilinks"])
+    assert note["has_conflict"] is False
+
+
+def test_get_vault_note_missing_returns_404(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    (tmp_path / "vault").mkdir(parents=True, exist_ok=True)
+    resp = client.get("/api/vault/notes/insights/does-not-exist.md")
+    assert resp.status_code == 404
+
+
+def test_get_vault_note_rejects_non_markdown(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    resp = client.get("/api/vault/notes/secrets.txt")
+    assert resp.status_code == 400
+
+
+def test_list_vault_notes_empty_when_no_vault(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    resp = client.get("/api/vault/notes")
+    assert resp.status_code == 200
+    assert resp.json()["notes"] == []
+    assert resp.json()["exists"] is False
