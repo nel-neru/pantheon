@@ -77,3 +77,35 @@ def test_vault_handler_registered_in_main():
     from main import HANDLERS
 
     assert "cmd_vault" in HANDLERS
+
+
+def test_vault_sync_runs(monkeypatch, tmp_path, capsys):
+    _seed(tmp_path)
+    _patch_home(monkeypatch, tmp_path)
+    from commands.vault import cmd_vault
+
+    cmd_vault(SimpleNamespace(vault_command="export"))
+    capsys.readouterr()
+    cmd_vault(SimpleNamespace(vault_command="sync"))
+    out = capsys.readouterr().out
+    assert "Vault sync" in out
+
+
+def test_vault_import_runs(monkeypatch, tmp_path, capsys):
+    _seed(tmp_path)
+    _patch_home(monkeypatch, tmp_path)
+    from commands.vault import cmd_vault
+
+    cmd_vault(SimpleNamespace(vault_command="export"))
+    capsys.readouterr()
+    cmd_vault(SimpleNamespace(vault_command="import"))
+    out = capsys.readouterr().out
+    assert "Vault import" in out
+
+
+def test_vault_sync_import_in_cli_parser():
+    from commands import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["vault", "sync"]).vault_command == "sync"
+    assert parser.parse_args(["vault", "import"]).vault_command == "import"

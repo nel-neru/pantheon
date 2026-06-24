@@ -5464,9 +5464,9 @@ async def create_knowledge_file(body: KnowledgeFileCreate) -> Dict[str, str]:
     return {"status": "ok", "path": name}
 
 
-# ---- Vault（Obsidian 互換ナレッジ）read-only API（Phase 1） ----
-# 編集の書き戻し（PUT/POST）・同期トリガ・グラフは Phase 2/3 で配線する。
-# ここでは未配線の偽エンドポイントを出さない（実装済みに見せない）。
+# ---- Vault（Obsidian 互換ナレッジ）API ----
+# read（GET notes / note）＋ write（PUT note = 単一編集の書き戻し / POST sync = 双方向同期）。
+# グラフ（GET graph）は別途。未配線の偽エンドポイントは出さない。
 
 
 def _collect_vault_notes() -> Dict[str, Any]:
@@ -5558,6 +5558,56 @@ async def get_vault_note(file_path: str) -> Dict[str, Any]:
     if not resolved.exists() or not resolved.is_file():
         raise HTTPException(status_code=404, detail="ノートが見つかりません")
     return await asyncio.to_thread(_read_vault_note, file_path, resolved)
+
+
+class VaultNoteEdit(ApiRequestModel):
+    content: str = ""
+
+
+def _edit_vault_note(file_path: str, content: str) -> Dict[str, Any]:
+    from core.vault import build_default_sync
+
+    return build_default_sync(get_platform_home()).edit_note(file_path, content)
+
+
+@app.put("/api/vault/notes/{file_path:path}", tags=["vault"])
+async def edit_vault_note(file_path: str, body: VaultNoteEdit) -> Dict[str, Any]:
+    """単一ノートの編集を store へ書き戻す（vault 正本のみ。json 正本ミラーは 409 で拒否）。"""
+    resolved = _resolve_vault_path(file_path)
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="ノートが見つかりません")
+    result = await asyncio.to_thread(_edit_vault_note, file_path, body.content)
+    status = result.get("status")
+    if status == "rejected":
+        # 読み取り専用ミラー（収益インテグリティ等）への編集 → ラベル付きで拒否。
+        raise HTTPException(status_code=409, detail=result.get("reason") or "編集できません")
+    if status in ("unmanaged", "not_found"):
+        raise HTTPException(status_code=400, detail="編集対象の管理ノートではありません")
+    return result
+
+
+def _run_vault_sync() -> Dict[str, Any]:
+    from core.vault import build_default_sync
+
+    return build_default_sync(get_platform_home()).sync()
+
+
+@app.post("/api/vault/sync", tags=["vault"])
+async def sync_vault() -> Dict[str, Any]:
+    """双方向同期を実行する（Obsidian の編集を取り込み→最新を書き出し）。"""
+    return await asyncio.to_thread(_run_vault_sync)
+
+
+def _build_vault_graph() -> Dict[str, Any]:
+    from core.vault import build_vault_graph
+
+    return build_vault_graph(_vault_dir())
+
+
+@app.get("/api/vault/graph", tags=["vault"])
+async def vault_graph() -> Dict[str, Any]:
+    """Vault のノード/エッジ/バックリンクグラフを返す（GUI のグラフビュー用）。"""
+    return await asyncio.to_thread(_build_vault_graph)
 
 
 @app.get("/api/orchestration/analyze/{task_type}")

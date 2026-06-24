@@ -1,10 +1,11 @@
-"""pantheon vault — Obsidian 互換ナレッジ Vault の管理（Phase 1: export / status / open / doctor）。
+"""pantheon vault — Obsidian 互換ナレッジ Vault の管理（export/sync/import/status/open/doctor）。
 
-``~/.pantheon/vault/`` を本物の Obsidian Vault として実体化し、Pantheon のナレッジ
-（insight / playbook / outcome …）を Markdown + frontmatter + ``[[wikilink]]`` で書き出す。
+``~/.pantheon/vault/`` を本物の Obsidian Vault として実体化し、Pantheon のナレッジを
+Markdown + frontmatter + ``[[wikilink]]`` で双方向同期する。
 
-Phase 1 は **export のみ**（store→vault）。双方向同期（import / sync）と競合解決は Phase 2 で
-配線するため、ここでは未配線の偽コマンドを出さない（実装済みに見せない）。
+- ``export`` = store→vault（ストア勝ち・一方向・冪等）
+- ``import`` = vault→store（Obsidian の編集を書き戻す・3-way 競合判定）
+- ``sync``   = import→export（双方向 1 往復）
 """
 
 from __future__ import annotations
@@ -43,11 +44,41 @@ def cmd_vault(args: argparse.Namespace) -> None:
         print("  → 本物の Obsidian でこのフォルダを開くと閲覧できます。")
         return
 
+    if sub == "sync":
+        result = sync.sync()
+        imp, exp = result["import"], result["export"]
+        print("\n=== Vault sync（双方向）完了 ===")
+        print(
+            f"  取り込み(import): {imp['imported']} 件 / 競合: {imp['conflicts']} 件 / "
+            f"reject: {imp['rejected']} 件 / orphan: {imp['orphan']} 件"
+        )
+        print(f"  書き出し(export): {exp['written']} 件 / スキップ: {exp['skipped']} 件")
+        if imp["conflict_paths"]:
+            print("  ⚠ 競合（.conflict.md に両版を保全。整えて削除→再 sync）:")
+            for p in imp["conflict_paths"]:
+                print(f"    - {p}")
+        print(f"  Vault: {vault_dir}")
+        return
+
+    if sub == "import":
+        result = sync.import_vault()
+        print("\n=== Vault import（vault→store）完了 ===")
+        print(
+            f"  取り込み: {result.imported} 件 / 競合: {result.conflicts} 件 / "
+            f"reject: {result.rejected} 件 / orphan: {result.orphan} 件 / "
+            f"スキップ: {result.skipped} 件"
+        )
+        for p in result.conflict_paths:
+            print(f"    ⚠ 競合: {p}")
+        return
+
     if sub == "status":
         report = sync.status()
         print("\n=== Vault status ===")
         print(f"  Vault: {report['vault_dir']}（存在: {'はい' if report['exists'] else 'いいえ'}）")
         print(f"  ストア総件数: {report['total_entries']} / 未反映: {report['total_pending']}")
+        if report.get("conflict_count"):
+            print(f"  ⚠ 競合: {report['conflict_count']} 件（.conflict.md を解決してください）")
         print("\n  種別        正本   ストア  ディスク  未反映")
         for row in report["adapters"]:
             print(
@@ -56,6 +87,19 @@ def cmd_vault(args: argparse.Namespace) -> None:
             )
         if report["total_pending"]:
             print("\n  `pantheon vault export` で未反映を書き出せます。")
+        return
+
+    if sub == "graph":
+        import json
+
+        from core.vault import build_vault_graph, to_dot
+
+        graph = build_vault_graph(vault_dir)
+        fmt = getattr(args, "format", "json")
+        if fmt == "dot":
+            print(to_dot(graph))
+        else:
+            print(json.dumps(graph, ensure_ascii=False, indent=2, default=str))
         return
 
     if sub == "doctor":
@@ -71,23 +115,41 @@ def cmd_vault(args: argparse.Namespace) -> None:
         return
 
     # サブコマンド未指定（required=True なので通常到達しない）。
-    print("使い方: pantheon vault {export|status|open|doctor}")
+    print("使い方: pantheon vault {export|sync|import|status|graph|open|doctor}")
 
 
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser(
         "vault",
-        help="Obsidian 互換ナレッジ Vault を管理する（export/status/open/doctor）",
+        help="Obsidian 互換ナレッジ Vault を管理する（export/sync/import/status/open/doctor）",
     )
     sub = parser.add_subparsers(dest="vault_command", required=True)
 
     sub.add_parser(
         "export",
-        help="ナレッジ（insight/playbook/outcome）を Vault へ書き出す（差分のみ・冪等）",
+        help="ナレッジを Vault へ書き出す（store→vault・差分のみ・冪等）",
+    )
+    sub.add_parser(
+        "sync",
+        help="双方向同期する（Obsidian の編集を取り込み→最新を書き出し）",
+    )
+    sub.add_parser(
+        "import",
+        help="Obsidian の編集を store へ書き戻す（vault→store・3-way 競合判定）",
     )
     sub.add_parser(
         "status",
-        help="ストア件数・ディスク上のノート数・未反映件数を表示する",
+        help="ストア件数・ディスク上のノート数・未反映件数・競合を表示する",
+    )
+    graph_parser = sub.add_parser(
+        "graph",
+        help="Vault のノード/エッジグラフを出力する（GUI/Graphviz 用）",
+    )
+    graph_parser.add_argument(
+        "--format",
+        choices=["json", "dot"],
+        default="json",
+        help="出力形式（json=ノード/エッジ、dot=Graphviz）",
     )
     sub.add_parser(
         "open",

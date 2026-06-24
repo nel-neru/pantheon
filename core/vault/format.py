@@ -21,7 +21,14 @@ from typing import Any, Dict, List
 import yaml
 
 # frontmatter の制御キー（pantheon_ 名前空間でユーザー追加キーと衝突しない）。
-PANTHEON_VOLATILE_KEYS = ("pantheon_synced_at", "pantheon_body_hash", "pantheon_meta_hash")
+# volatile = 同期のたびに変わりうる制御値。meta_hash の対象から除外する（counter 変化や
+# 同期時刻で meta_hash が揺れないようにする）。
+PANTHEON_VOLATILE_KEYS = (
+    "pantheon_synced_at",
+    "pantheon_body_hash",
+    "pantheon_meta_hash",
+    "pantheon_owned_hash",
+)
 _CONTROL_ORDER = (
     "pantheon_id",
     "pantheon_type",
@@ -31,10 +38,20 @@ _CONTROL_ORDER = (
     "pantheon_synced_at",
     "pantheon_body_hash",
     "pantheon_meta_hash",
+    "pantheon_owned_hash",
 )
+
+# 本文に自動生成する「## Related」リンク節を囲むマーカー（HTML コメント＝Obsidian で不可視）。
+# import 時にこの区間を確実に除去してユーザー編集の content を復元できるようにする。
+RELATED_BEGIN = "<!-- pantheon:related (auto-generated, do not edit) -->"
+RELATED_END = "<!-- /pantheon:related -->"
 
 _FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n?(.*)$", re.DOTALL)
 _WIKILINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
+_RELATED_BLOCK_RE = re.compile(
+    re.escape(RELATED_BEGIN) + r".*?" + re.escape(RELATED_END),
+    re.DOTALL,
+)
 
 
 @dataclass
@@ -160,5 +177,50 @@ def meta_hash(frontmatter: Dict[str, Any]) -> str:
         if key not in PANTHEON_VOLATILE_KEYS
     }
     canonical = json.dumps(managed, sort_keys=True, ensure_ascii=False, default=str)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
+
+
+def compose_related(content: str, wikilinks: List[WikiLink]) -> str:
+    """ユーザー content の後ろに自動生成の「## Related」節（マーカー囲み）を付けて返す。"""
+    body = (content or "").rstrip()
+    if not wikilinks:
+        return body
+    lines = [body, "", RELATED_BEGIN, "## Related", ""]
+    seen: set[tuple[str, str]] = set()
+    for link in wikilinks:
+        key = (link.type, link.target)
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"- {emit_wikilink(link.type, link.target, link.alias)}")
+    lines.append(RELATED_END)
+    return "\n".join(lines)
+
+
+def split_user_content(body: str) -> str:
+    """本文から自動生成の Related 節（マーカー囲み）を除去してユーザー編集 content を復元する。
+
+    マーカーは一意な HTML コメントなので、ユーザー content が ``## Related`` 見出しを含んでも
+    誤って削り過ぎない。マーカーが無い（手書き/旧形式）場合は本文全体を content とみなす。
+
+    先頭/末尾の空白は strip する（frontmatter 直後の空行が content に混入しないよう正規化）。
+    """
+    stripped = _RELATED_BLOCK_RE.sub("", body or "")
+    return stripped.strip()
+
+
+def owned_hash(fields: Dict[str, Any], content: str) -> str:
+    """ユーザー所有（編集可能）ペイロードの sha256。
+
+    競合検出の base 値。``fields``＝編集可能 frontmatter フィールドの部分集合、``content``＝
+    Related 除去後のユーザー本文。counter/同期時刻など store 所有の値は含めない（それらの変化が
+    競合を誤検出しないようにする）。
+    """
+    payload = {
+        "fields": {key: fields.get(key) for key in sorted(fields or {})},
+        "content": _normalize_body(content),
+    }
+    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return f"sha256:{digest}"

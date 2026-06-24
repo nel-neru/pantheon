@@ -3507,3 +3507,68 @@ def test_list_vault_notes_empty_when_no_vault(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert resp.json()["notes"] == []
     assert resp.json()["exists"] is False
+
+
+def test_edit_vault_note_roundtrip(tmp_path, monkeypatch):
+    from core.knowledge.manager import KnowledgeManager
+
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    listing = client.get("/api/vault/notes").json()
+    insight = next(n for n in listing["notes"] if n["type"] == "insight")
+    resp = client.put(f"/api/vault/notes/{insight['path']}", json={"content": "GUI で編集した本文"})
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "accepted"
+    assert KnowledgeManager(tmp_path).get_insights(limit=10)[0]["content"] == "GUI で編集した本文"
+
+
+def test_edit_vault_note_rejected_for_json_mirror(tmp_path, monkeypatch):
+    from core.metrics.outcomes import OutcomeStore
+
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    listing = client.get("/api/vault/notes").json()
+    outcome = next(n for n in listing["notes"] if n["type"] == "outcome")
+    resp = client.put(f"/api/vault/notes/{outcome['path']}", json={"content": "改ざん"})
+
+    assert resp.status_code == 409  # 読み取り専用ミラー（収益インテグリティ）
+    assert OutcomeStore(tmp_path).summary_for_org("Foo").total_revenue == 250.0
+
+
+def test_sync_vault_endpoint(tmp_path, monkeypatch):
+    from core.knowledge.manager import KnowledgeManager
+    from core.vault.format import parse_note, render_note
+
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    # Obsidian での編集を再現（ファイル本文を書き換え）
+    note_path = next((tmp_path / "vault" / "insights").glob("*.md"))
+    note = parse_note(note_path.read_text(encoding="utf-8"))
+    note_path.write_text(render_note(note.frontmatter, "Obsidian で編集"), encoding="utf-8")
+
+    resp = client.post("/api/vault/sync")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["import"]["imported"] == 1
+    assert KnowledgeManager(tmp_path).get_insights(limit=10)[0]["content"] == "Obsidian で編集"
+
+
+def test_vault_graph_endpoint(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    resp = client.get("/api/vault/graph")
+    assert resp.status_code == 200
+    data = resp.json()
+    groups = {n["group"] for n in data["nodes"]}
+    assert "insight" in groups
+    assert any(e["target"] == "org:Foo" for e in data["edges"])
+    assert data["counts"]["notes"] >= 2
