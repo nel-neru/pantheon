@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -5712,6 +5712,43 @@ async def api_atlas() -> dict:
     from core.atlas import build_atlas
 
     return await asyncio.to_thread(build_atlas)
+
+
+@app.get("/api/ui/status", tags=["platform"])
+async def api_ui_status() -> Dict[str, Any]:
+    """保存済み UI 状態レポートを返す（無ければ未生成を正直に通知・200）。
+
+    レポートの生成は ``POST /api/ui/status/refresh`` または CLI ``pantheon ui-status`` が行う。
+    ここは読み取り専用で、artifact が無ければ捏造せず ``available: false`` を返す。
+    """
+    from core.ui.ui_status import load_ui_status
+
+    report = load_ui_status()
+    if report is None:
+        return {
+            "available": False,
+            "message": "未生成: 「再チェック」または pantheon ui-status を実行してください",
+        }
+    return report
+
+
+@app.post("/api/ui/status/refresh", tags=["platform"])
+def api_ui_status_refresh(request: Request) -> Dict[str, Any]:
+    """全ページの API を実測 probe して UI 状態レポートを再生成・保存し、返す。
+
+    **sync def（async ではない）にしているのは意図的**: このハンドラは自分自身のサーバーへ
+    self-HTTP（``request.base_url`` 宛て）で probe する。async ハンドラ内で同一 event loop へ
+    同期 ``httpx.Client`` を回すとデッドロックし得るが、sync def は FastAPI が threadpool で
+    実行するため、self-HTTP は別スレッドから走り event loop をブロックしない。
+    """
+    import httpx
+
+    from core.ui.ui_status import build_ui_status, default_status_path, write_ui_status
+
+    with httpx.Client(base_url=str(request.base_url), timeout=10.0) as client:
+        report = build_ui_status(client)
+    write_ui_status(report, default_status_path())
+    return report
 
 
 # --- SPA routes (must be last so API routes take precedence) ---

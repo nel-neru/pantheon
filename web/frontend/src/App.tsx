@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  Activity,
   Bell,
   Bot,
   Boxes,
@@ -62,6 +63,7 @@ import { BusinessesPage } from '@/pages/BusinessesPage'
 import { ObservabilityPage } from '@/pages/ObservabilityPage'
 import { UsagePage } from '@/pages/UsagePage'
 import { PortfolioPage } from '@/pages/PortfolioPage'
+import { UiStatusPage } from '@/pages/UiStatusPage'
 
 type NavItem = {
   to: string
@@ -142,6 +144,7 @@ const navGroups: NavGroup[] = [
       { to: '/data', label: 'データ管理', icon: Database },
       { to: '/usage', label: '使用量', icon: Gauge },
       { to: '/observability', label: 'オブザーバビリティ', icon: ScanEye },
+      { to: '/ui-status', label: 'UI状態監視', icon: Activity },
       { to: '/settings', label: '設定', icon: Settings },
       { to: '/help', label: 'ヘルプ', icon: HelpCircle },
     ],
@@ -775,6 +778,7 @@ export default function App() {
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/usage" element={<UsagePage />} />
         <Route path="/observability" element={<ObservabilityPage />} />
+        <Route path="/ui-status" element={<UiStatusPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

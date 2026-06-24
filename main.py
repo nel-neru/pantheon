@@ -899,6 +899,12 @@ async def cmd_publish_jobs_delete(args) -> None:
     await _impl(args)
 
 
+async def cmd_ui_status(args) -> None:
+    from commands.ui_status import cmd_ui_status as _impl
+
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
@@ -1029,6 +1035,7 @@ HANDLERS = {
     "cmd_publish_jobs_run": cmd_publish_jobs_run,
     "cmd_publish_jobs_confirm": cmd_publish_jobs_confirm,
     "cmd_publish_jobs_delete": cmd_publish_jobs_delete,
+    "cmd_ui_status": cmd_ui_status,
 }
 
 

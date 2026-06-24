@@ -342,6 +342,71 @@ export async function getPortfolioOverview(): Promise<PortfolioOverview> {
   return api<PortfolioOverview>('GET', '/api/portfolio/overview')
 }
 
+// ─── UI status monitor (GET/POST /api/ui/status) ─────────────────────────────
+
+/** 1 ページが叩く 1 API のヘルスチェック結果。 */
+export type UiApiCheck = {
+  method: string
+  path: string
+  status_code: number
+  ok: boolean
+  latency_ms: number
+  error?: string | null
+}
+
+/** 1 ページのヘルス。status は ok / degraded / error のいずれか。 */
+export type UiPageStatus = {
+  route: string
+  label: string
+  group: string
+  status: 'ok' | 'degraded' | 'error'
+  static: boolean
+  apis: UiApiCheck[]
+  controls: string[]
+}
+
+/** UI 全体の集計。 */
+export type UiStatusOverall = {
+  pages: number
+  ok: number
+  degraded: number
+  error: number
+  total_apis: number
+  ok_apis: number
+}
+
+/** 生成済みの UI 状態レポート。 */
+export type UiStatusReport = {
+  available?: true
+  generated_at: string
+  overall: UiStatusOverall
+  pages: UiPageStatus[]
+}
+
+/** レポート未生成（まだ一度もチェックしていない）状態。 */
+export type UiStatusUnavailable = {
+  available: false
+  message?: string
+}
+
+/** GET /api/ui/status は判別ユニオン（生成済み or 未生成）を返す。 */
+export type UiStatusResponse = UiStatusReport | UiStatusUnavailable
+
+/** レスポンスが生成済みレポートか（available !== false）を判別する型ガード。 */
+export function isUiStatusReport(res: UiStatusResponse): res is UiStatusReport {
+  return (res as UiStatusUnavailable).available !== false
+}
+
+/** 最後に生成された UI 状態を取得する（未生成なら available:false）。 */
+export async function getUiStatus(): Promise<UiStatusResponse> {
+  return api<UiStatusResponse>('GET', '/api/ui/status')
+}
+
+/** UI 状態を今すぐ再チェックして生成済みレポートを返す。 */
+export async function refreshUiStatus(): Promise<UiStatusReport> {
+  return api<UiStatusReport>('POST', '/api/ui/status/refresh')
+}
+
 /**
  * SSE ストリーミング POST ヘルパー。
  * バックエンドの text/event-stream レスポンスを chunk 単位で読み取り、
