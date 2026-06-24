@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, Iterable, Optional, Tuple
 
 from core.publishing.base import PLATFORM_NOTE, PLATFORM_X, playwright_available
 from core.publishing.session import SessionStore
@@ -114,13 +114,23 @@ async def interactive_login(
     timeout_s: float = DEFAULT_TIMEOUT_S,
     poll_interval_s: float = DEFAULT_POLL_INTERVAL_S,
     launcher: Any = None,
+    login_url: Optional[str] = None,
+    is_logged_in: Optional[Callable[[Any, Any], Awaitable[bool]]] = None,
 ) -> ConnectResult:
     """ヘッドフルブラウザで手動ログインしてもらい、storage_state を保存する。
 
     例外を投げず ``ConnectResult`` で正直に成否を返す（CLI / API 双方から使うため）。
     ログイン検知前にブラウザが閉じられた場合、state は保存できないので未接続のまま。
+
+    publishing 以外（例: trends の Grok）からも流用できるよう、遷移先と検知方法を任意で
+    上書きできる:
+    - ``login_url``: 省略時は ``LOGIN_URLS[platform]``。どちらも無ければ未対応エラー。
+    - ``is_logged_in(context, page) -> bool``: 省略時は従来の cookie ヒント照合
+      （``_hint_matched``）。cookie 名が不明なプラットフォームは URL/DOM で判定する述語を渡す。
+    既存 note/x 経路は両引数を渡さないため挙動は不変。
     """
-    if platform not in LOGIN_URLS:
+    target_url = login_url or LOGIN_URLS.get(platform)
+    if target_url is None:
         return ConnectResult(
             ok=False, platform=platform, error=f"接続フロー未対応のプラットフォーム: {platform}"
         )
@@ -145,7 +155,7 @@ async def interactive_login(
         try:
             context = await launcher.launch()
             page = await context.new_page()
-            await page.goto(LOGIN_URLS[platform])
+            await page.goto(target_url)
         except Exception as exc:  # noqa: BLE001 — 起動失敗は理由つきで正直に返す
             return ConnectResult(
                 ok=False,
@@ -160,7 +170,10 @@ async def interactive_login(
         deadline = loop.time() + max(0.0, timeout_s)
         while True:
             try:
-                cookies = await context.cookies()
+                if is_logged_in is not None:
+                    matched = await is_logged_in(context, page)
+                else:
+                    matched = _hint_matched(await context.cookies(), platform)
             except Exception:  # noqa: BLE001 — ユーザーがブラウザごと閉じた等
                 return ConnectResult(
                     ok=False,
@@ -170,7 +183,7 @@ async def interactive_login(
                         "接続完了が表示されるまでウィンドウを開いたままにしてください"
                     ),
                 )
-            if _hint_matched(cookies, platform):
+            if matched:
                 try:
                     await context.storage_state(path=str(state_path))
                 except Exception as exc:  # noqa: BLE001

@@ -11,14 +11,70 @@ from typing import Any
 
 
 async def cmd_trends_collect(args: argparse.Namespace) -> None:
-    """RSS/Atom ソースからトレンドを収集して保存する。"""
+    """選択ソース（既定 web+youtube、--source grok で Grok）から収集して保存する。"""
     from core.trends.runner import collect_and_store
 
-    result = await collect_and_store()
+    source = getattr(args, "source", None)
+    grok_query = getattr(args, "grok_query", None)
+    sources: set[str] | None = None
+    if grok_query:
+        sources = {"grok"}
+    elif source == "all":
+        sources = {"web", "youtube", "grok"}
+    elif source in {"web", "youtube", "grok"}:
+        sources = {source}
+    # source 無指定（None）→ collect_and_store の既定（web+youtube）に委ねる
+
+    result = await collect_and_store(sources=sources, grok_query=grok_query)
     print(
         f"[trends] {result['sources']} ソースから {result['collected']} 件収集、"
         f"{result['added']} 件を新規保存（重複は除外）"
     )
+    if result.get("grok"):
+        print(f"        Grok: {result['grok']} 件")
+    if result.get("grok_needs_reconnect"):
+        print(
+            "[warn]  Grok セッションが未接続/失効の可能性があります。"
+            "`pantheon trends connect-grok` で再接続してください"
+        )
+
+
+async def cmd_trends_connect_grok(args: argparse.Namespace) -> None:
+    """grok.com にヘッドフルブラウザで手動ログインし、セッション state を保存する（1回だけ）。"""
+    from core.trends.grok_connect import connect_grok
+
+    print(
+        "[grok] ヘッドフルブラウザを起動します。開いたウィンドウで grok.com にログインしてください…"
+    )
+    print("       （注意: grok.com の自動操作は xAI の規約・bot 検知の対象になり得ます）")
+    result = await connect_grok(timeout_s=float(getattr(args, "timeout", 300.0)))
+    if result.ok:
+        print(f"[OK]   {result.detail}")
+        print(f"       state: {result.state_path}")
+    else:
+        print(f"[ERROR] {result.error}")
+
+
+async def cmd_trends_grok_status(args: argparse.Namespace) -> None:
+    """Grok の接続状態を表示する。"""
+    from core.trends.grok_connect import grok_status
+
+    st = grok_status()
+    mark = "[OK]  " if st.status == "connected" else "[NONE]"
+    suffix = f" connected_at={st.connected_at}" if st.connected_at else ""
+    print(f"{mark} grok {st.status}{suffix}")
+    if st.status != "connected":
+        print("       接続: pantheon trends connect-grok")
+
+
+async def cmd_trends_disconnect_grok(args: argparse.Namespace) -> None:
+    """保存済み Grok セッション state を削除して切断する。"""
+    from core.trends.grok_connect import disconnect_grok
+
+    if disconnect_grok():
+        print("[grok] 切断しました（セッション state を削除）")
+    else:
+        print("[grok] 保存済みセッションはありません")
 
 
 async def cmd_trends_list(args: argparse.Namespace) -> None:
@@ -133,8 +189,32 @@ def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("trends", help="外部トレンドの収集・一覧")
     sub = parser.add_subparsers(dest="trends_command", required=True)
 
-    sp = sub.add_parser("collect", help="RSS/Atom ソースから収集・採点・保存")
+    sp = sub.add_parser(
+        "collect", help="収集・採点・保存（既定 web+youtube、--source grok で Grok）"
+    )
+    sp.add_argument(
+        "--source",
+        choices=["all", "web", "youtube", "grok"],
+        default=None,
+        help="収集する collector（無指定=web+youtube / all=全て / grok=Grokのみ）",
+    )
+    sp.add_argument(
+        "--grok-query",
+        default=None,
+        dest="grok_query",
+        help="Grok にその場で投げるアドホックなリサーチ指示（config を無視しこの1件のみ）",
+    )
     sp.set_defaults(handler_name="cmd_trends_collect")
+
+    sp = sub.add_parser("connect-grok", help="grok.com に手動ログインしセッションを保存（1回だけ）")
+    sp.add_argument("--timeout", type=float, default=300.0, help="ログイン検知のタイムアウト秒")
+    sp.set_defaults(handler_name="cmd_trends_connect_grok")
+
+    sp = sub.add_parser("grok-status", help="Grok の接続状態を表示")
+    sp.set_defaults(handler_name="cmd_trends_grok_status")
+
+    sp = sub.add_parser("disconnect-grok", help="保存済み Grok セッションを削除して切断")
+    sp.set_defaults(handler_name="cmd_trends_disconnect_grok")
 
     sp = sub.add_parser("list", help="保存済みトレンドをスコア順に表示")
     sp.add_argument("--limit", type=int, default=30, help="表示件数")

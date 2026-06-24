@@ -52,3 +52,33 @@ youtube_channels:
   - name: Two Minute Papers
     channel_id: UCbfYPyITQ-7l4upoX8nvctg
     genre: ai
+
+# Grok ブラウザ自動操作リサーチ（grok.com に一度ログイン → セッション再利用で自動駆動）。
+# RSS/YouTube と違い「X/GitHub/YouTube/Web を横断して合成したトレンド」を取れる。
+#   接続:   pantheon trends connect-grok（ヘッドフルブラウザで手動ログイン・1回だけ）
+#   収集:   pantheon trends collect --source grok ／ アドホックは --grok-query "..."
+# クエリは固定ジャンルに縛らず自由に編集してよい（全ジャンル横断が既定の seed）。
+# enabled は接続して動作確認できてから true にする opt-in（既定 false で自動収集されない）。
+grok_research:
+  enabled: false
+  queries:
+    - name: ai_dev
+      query: "直近7日でX/GitHub/YouTube/Webで話題のAI開発・LLM・エージェントの最新トレンド"
+      genre: ai
+      lookback_days: 7
+      topics: [llm, agent]
+    - name: side_business
+      query: "直近7日でnote/個人副業/コンテンツ収益で伸びている題材とフォーマット"
+      genre: side_business
+      lookback_days: 7
+      topics: [note, monetization]
+    - name: video
+      query: "直近7日でバズっている短尺/無言ストーリー系YouTube動画の傾向"
+      genre: video
+      lookback_days: 7
+      topics: [shorts, story]
+    - name: claude_code
+      query: "直近7日のClaude Code/Anthropicの新機能・ベストプラクティス"
+      genre: claude_code
+      lookback_days: 7
+      topics: [claude_code]
