@@ -1576,19 +1576,18 @@ def _load_all_proposals() -> list[dict[str, Any]]:
 
 def _serialize_org_structure(org: Any) -> list[dict[str, Any]]:
     divisions: list[dict[str, Any]] = []
-    for division_index, division in enumerate(org.divisions):
+    for division in org.divisions:
         teams: list[dict[str, Any]] = []
-        previous_team_name: str | None = None
-        previous_division_name = (
-            org.divisions[division_index - 1].name if division_index > 0 else None
-        )
         for team in division.teams:
             teams.append(
                 {
                     "id": str(team.id),
                     "name": team.name,
                     "mission": team.mission,
-                    "depends_on": previous_team_name or previous_division_name,
+                    # Team モデルにチーム間依存の概念は存在しない。以前は列挙順の「直前チーム名」を
+                    # depends_on として代入し、UI が実在しない依存グラフを描画していた（捏造）。
+                    # 実データが無いので None を返し、UI 側は「定義された依存関係はありません」を表示する。
+                    "depends_on": None,
                     "agents": [
                         {
                             "id": str(agent.id),
@@ -1600,7 +1599,6 @@ def _serialize_org_structure(org: Any) -> list[dict[str, Any]]:
                     ],
                 }
             )
-            previous_team_name = team.name
         divisions.append(
             {
                 "id": str(division.id),
