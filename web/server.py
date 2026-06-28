@@ -521,6 +521,8 @@ class DaemonsActionRequest(ApiRequestModel):
     target: float | None = Field(default=None, ge=0)
     source_org: str | None = Field(default=None, max_length=120)
     min_reach: float | None = Field(default=None, ge=0)
+    # trend daemon 用（既定オフ・opt-in）: Grok collector を毎サイクルに含める。
+    grok_enabled: bool = False
 
 
 class TaskQueueRequest(ApiRequestModel):
@@ -2067,12 +2069,27 @@ async def api_list_trends(
     return [i.to_dict() for i in items]
 
 
+class CollectTrendsRequest(ApiRequestModel):
+    """手動トレンド収集のオプション（既定は web+youtube のみ）。"""
+
+    # Grok ブラウザ自動操作 collector を含めるか（要 connect・未接続時は捏造せず再接続シグナル）。
+    include_grok: bool = False
+    # Grok に渡すアドホックなリサーチプロンプト（省略時は設定 seed クエリ）。
+    grok_query: str | None = Field(default=None, max_length=2000)
+
+
 @app.post("/api/trends/collect", tags=["trends"])
-async def api_collect_trends() -> Dict[str, Any]:
-    """トレンドを今すぐ収集・採点・保存する（手動トリガー）。"""
+async def api_collect_trends(body: CollectTrendsRequest | None = None) -> Dict[str, Any]:
+    """トレンドを今すぐ収集・採点・保存する（手動トリガー）。
+
+    既定は web+youtube。``include_grok`` で Grok collector を含める（要 connect・未接続/失効時は
+    値を捏造せず ``grok_needs_reconnect: true`` を返す）。``grok_query`` でアドホックなプロンプト指定可。
+    """
     from core.trends.runner import collect_and_store
 
-    return await collect_and_store()
+    body = body or CollectTrendsRequest()
+    sources = {"web", "youtube", "grok"} if body.include_grok else None
+    return await collect_and_store(sources=sources, grok_query=body.grok_query)
 
 
 @app.post("/api/trends/convert", tags=["trends"])
@@ -2081,6 +2098,82 @@ async def api_convert_trends() -> Dict[str, Any]:
     from core.trends.trend_to_jobs import convert_trends
 
     return convert_trends()
+
+
+# ── Grok 接続（トレンドリサーチ用ブラウザセッション）─────────────────────────────
+# 進行中の Grok 手動ログインフロー（多重起動でヘッドフルブラウザが乱立しないようにする）。
+_grok_login_tasks: Dict[str, "asyncio.Task[Any]"] = {}
+
+
+@app.get("/api/trends/grok/status", tags=["trends"])
+async def api_grok_status() -> Dict[str, Any]:
+    """Grok ブラウザセッションの接続状態（connected/disconnected + connected_at）を返す。"""
+    from dataclasses import asdict
+
+    from core.trends.grok_connect import grok_status
+
+    return asdict(grok_status(session_store=_session_store()))
+
+
+@app.post("/api/trends/grok/connect", tags=["trends"])
+async def api_grok_connect() -> Dict[str, Any]:
+    """Grok への手動ログイン接続フローを背景で起動する（ヘッドフルブラウザ）。
+
+    サーバはユーザーの PC 上（既定 127.0.0.1）で動くためブラウザをそのまま開ける。ログインは
+    **人間が grok.com で実際にサインインする**必要がある（Pantheon は資格情報を保存せず
+    storage_state のみ保持）。完了は GET /api/trends/grok/status のポーリングで観測する。
+    """
+    from core.publishing.base import playwright_available
+    from core.trends.grok_connect import connect_grok
+
+    if not playwright_available():
+        return {
+            "platform": "grok",
+            "status": "unavailable",
+            "detail": (
+                "Playwright 未導入（または PANTHEON_NO_BROWSER=1）のため接続フローを起動できません。"
+                "`pip install playwright && playwright install chromium` で導入できます。"
+            ),
+        }
+
+    existing = _grok_login_tasks.get("grok")
+    if existing is not None and not existing.done():
+        return {
+            "platform": "grok",
+            "status": "login_in_progress",
+            "detail": "ログインフローは既に進行中です。開いているブラウザで grok.com にログインしてください。",
+        }
+
+    task = asyncio.create_task(connect_grok(session_store=_session_store()))
+
+    def _log_result(t: "asyncio.Task[Any]") -> None:
+        try:
+            r = t.result()
+            logger.info("grok connect: ok=%s %s", r.ok, r.error or r.detail)
+        except asyncio.CancelledError:
+            logger.info("grok connect: cancelled")
+        except Exception:  # noqa: BLE001 — connect_grok は例外を返さない契約だが念のため
+            logger.exception("grok connect: unexpected failure")
+        finally:
+            if _grok_login_tasks.get("grok") is t:
+                _grok_login_tasks.pop("grok", None)
+
+    task.add_done_callback(_log_result)
+    _grok_login_tasks["grok"] = task
+    return {
+        "platform": "grok",
+        "status": "login_started",
+        "detail": "ヘッドフルブラウザを起動しました。grok.com にログインしてください（完了は接続状態に反映されます）。",
+    }
+
+
+@app.delete("/api/trends/grok", tags=["trends"])
+async def api_grok_disconnect() -> Dict[str, Any]:
+    """保存済み Grok セッションを削除して切断する。"""
+    from core.trends.grok_connect import disconnect_grok
+
+    cleared = disconnect_grok(session_store=_session_store())
+    return {"platform": "grok", "cleared": cleared, "status": "disconnected"}
 
 
 @app.post("/api/daemons/{name}/start", tags=["platform"])
@@ -2100,6 +2193,10 @@ async def api_daemons_start(name: str, req: DaemonsActionRequest | None = None) 
         args.append(f"--target={req.target if req.target is not None else 0.0}")
         args.append(f"--source-org-name={req.source_org or 'HQ'}")
         args.append(f"--min-reach={req.min_reach if req.min_reach is not None else 0.0}")
+    if name == "trend" and req.grok_enabled:
+        # opt-in（既定オフ）: Grok collector を含める。CLI の
+        # `pantheon daemons start trend --grok-enabled` と同じ desired-state に記録される。
+        args.append("--grok-enabled")
     result = spawn_daemon(name, args=args)
     return {"name": name, **result}
 

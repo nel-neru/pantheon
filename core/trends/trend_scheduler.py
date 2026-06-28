@@ -44,6 +44,7 @@ class TrendScheduler:
         platform_home: Optional[Path] = None,
         interval_seconds: int = DEFAULT_TREND_INTERVAL_SECONDS,
         min_score: float = 7.0,
+        grok_enabled: bool = False,
         **_kwargs: Any,
     ):
         from core.platform.state import PlatformStateManager
@@ -52,6 +53,9 @@ class TrendScheduler:
         self.platform_home = self._psm.platform_home
         self._interval = max(60, interval_seconds)
         self._min_score = min_score
+        # Grok ブラウザ自動操作 collector を毎サイクルに含めるか（既定オフ・opt-in）。
+        # 有効でも未接続/失効時は collect 側が捏造せず grok_needs_reconnect を返すだけ。
+        self._grok_enabled = grok_enabled
         self._running = False
         self._cycle_count = 0
         self._status = STATUS_STOPPED
@@ -112,7 +116,9 @@ class TrendScheduler:
         biz = {}
         untapped = {}
         try:
-            collect = await collect_and_store(platform_home=self.platform_home)
+            # opt-in: grok を含めるときだけ sources を明示（既定は web+youtube のまま）。
+            sources = {"web", "youtube", "grok"} if self._grok_enabled else None
+            collect = await collect_and_store(platform_home=self.platform_home, sources=sources)
         except Exception as exc:  # noqa: BLE001
             logger.info("trend collect failed: %s", exc)
         try:
@@ -145,6 +151,9 @@ class TrendScheduler:
             "completed_at": _now_iso(),
             "collected": collect.get("collected", 0),
             "added": collect.get("added", 0),
+            "grok": collect.get("grok", 0),
+            # grok 有効時に未接続/失効を観測可能にする（捏造ゼロ・要再接続のシグナル）。
+            "grok_needs_reconnect": collect.get("grok_needs_reconnect", False),
             "content_jobs": convert.get("content_jobs", 0),
             "proposals": convert.get("proposals", 0),
             # 変換の部分/全失敗を母数として残す（"新規ゼロ" と "全件失敗" を区別する）。

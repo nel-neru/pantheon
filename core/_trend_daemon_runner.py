@@ -23,11 +23,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Pantheon Trend Daemon")
     parser.add_argument("--interval", type=int, default=6 * 3600)
     parser.add_argument("--min-score", type=float, default=7.0)
+    parser.add_argument(
+        "--grok-enabled",
+        action="store_true",
+        dest="grok_enabled",
+        help="Grok ブラウザ自動操作 collector を毎サイクルに含める（既定オフ・要 connect-grok）",
+    )
     args = parser.parse_args()
 
     from core.trends.trend_scheduler import TrendScheduler
 
-    scheduler = TrendScheduler(interval_seconds=args.interval, min_score=args.min_score)
+    scheduler = TrendScheduler(
+        interval_seconds=args.interval,
+        min_score=args.min_score,
+        grok_enabled=args.grok_enabled,
+    )
     asyncio.run(scheduler.start())
 
 

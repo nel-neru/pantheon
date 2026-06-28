@@ -76,6 +76,10 @@ async def cmd_daemons_start(args: argparse.Namespace) -> None:
         extra = [f"--interval={interval}"]
         if name == "improvement":
             extra.append(f"--max-files={args.max_files}")
+        if name == "trend":
+            # opt-in（既定オフ・getattr 後方互換）: Grok collector を毎サイクルに含める。
+            if getattr(args, "grok_enabled", False):
+                extra.append("--grok-enabled")
         if name == "revenue":
             # target / source-org / min-reach を desired state に記録 → watchdog/再起動でも
             # 同じ設定で復元される。target 0 以下はアイドル（分析ログのみ・提案は起票しない）。
@@ -222,6 +226,12 @@ def register(subparsers: Any) -> None:
         action="store_true",
         dest="execute_approved",
         help="revenue のみ: 承認済みクロス Org ハンドオフを毎サイクル自律実行（既定オフ・HITL維持）",
+    )
+    sp.add_argument(
+        "--grok-enabled",
+        action="store_true",
+        dest="grok_enabled",
+        help="trend のみ: Grok ブラウザ自動操作 collector を毎サイクルに含める（既定オフ・要 connect-grok）",
     )
     sp.set_defaults(handler_name="cmd_daemons_start")
 
