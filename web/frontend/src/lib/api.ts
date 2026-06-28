@@ -393,6 +393,124 @@ export type UiStatusUnavailable = {
 // 判別ユニオン型。呼び出しは既存規約どおりページ側で api('GET'|'POST', '/api/ui/status'[/refresh]) を直接使う。
 export type UiStatusResponse = UiStatusReport | UiStatusUnavailable
 
+// ─── Vault (Obsidian-compatible knowledge store) ─────────────────────────────
+
+export type VaultNoteSummary = {
+  path: string
+  name: string
+  title: string
+  type: string
+  canonical: string
+  tags: string[]
+  subdir: string
+  managed: boolean
+}
+
+export type VaultNotesResponse = {
+  vault_dir: string
+  exists: boolean
+  notes: VaultNoteSummary[]
+}
+
+export type VaultWikiLink = {
+  type: string
+  target: string
+  alias: string
+  node_id: string
+  resolved: boolean
+  resolved_path: string
+}
+
+export type VaultBacklink = {
+  path: string
+  title: string
+}
+
+export type VaultNoteDetail = {
+  path: string
+  name: string
+  title: string
+  type: string
+  canonical: string
+  frontmatter: Record<string, unknown>
+  body: string
+  tags: string[]
+  wikilinks: VaultWikiLink[]
+  backlinks: VaultBacklink[]
+  synced_at: string
+  has_conflict: boolean
+}
+
+export async function listVaultNotes(): Promise<VaultNotesResponse> {
+  return api<VaultNotesResponse>('GET', '/api/vault/notes')
+}
+
+export async function getVaultNote(path: string): Promise<VaultNoteDetail> {
+  return api<VaultNoteDetail>('GET', `/api/vault/notes/${path}`)
+}
+
+export async function editVaultNote(path: string, content: string): Promise<{ status: string }> {
+  return api<{ status: string }>('PUT', `/api/vault/notes/${path}`, { content })
+}
+
+export type VaultSyncImport = {
+  imported: number
+  conflicts: number
+  rejected: number
+  orphan: number
+  skipped: number
+  conflict_paths: string[]
+  imported_paths: string[]
+}
+
+export type VaultSyncExport = {
+  written: number
+  skipped: number
+  by_type: Record<string, number>
+  paths: string[]
+}
+
+export type VaultSyncResult = {
+  import: VaultSyncImport
+  export: VaultSyncExport
+  conflicts: number
+}
+
+export async function syncVault(): Promise<VaultSyncResult> {
+  return api<VaultSyncResult>('POST', '/api/vault/sync')
+}
+
+export type VaultGraphNode = {
+  id: string
+  label: string
+  group: string
+  path: string
+  files: number
+}
+
+export type VaultGraphEdge = {
+  source: string
+  target: string
+  weight: number
+}
+
+export type VaultGraph = {
+  nodes: VaultGraphNode[]
+  edges: VaultGraphEdge[]
+  backlinks: Record<string, string[]>
+  counts: {
+    notes: number
+    nodes: number
+    edges: number
+    resolved_links: number
+    groups: string[]
+  }
+}
+
+export async function getVaultGraph(): Promise<VaultGraph> {
+  return api<VaultGraph>('GET', '/api/vault/graph')
+}
+
 /**
  * SSE ストリーミング POST ヘルパー。
  * バックエンドの text/event-stream レスポンスを chunk 単位で読み取り、

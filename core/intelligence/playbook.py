@@ -85,6 +85,37 @@ class PlaybookStore:
         self._save(entries)
         return entry
 
+    def update(
+        self,
+        entry_id: str,
+        *,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        category: Optional[str] = None,
+    ) -> Optional[PlaybookEntry]:
+        """既存施策ノートの編集可能フィールドのみ更新する（Vault からの書き戻し用）。
+
+        usefulness_score / usage_count / created_at は実績/JSON 所有なので touch しない
+        （None 指定は変更しない）。更新時は updated_at を進める。未知 ``entry_id`` は None。
+        """
+        entries = self._load()
+        target: Optional[PlaybookEntry] = None
+        for entry in entries:
+            if entry.entry_id == entry_id:
+                target = entry
+                break
+        if target is None:
+            return None
+        if title is not None:
+            target.title = str(title)
+        if content is not None:
+            target.content = str(content)
+        if category is not None:
+            target.category = str(category).strip() or "general"
+        target.updated_at = _now_iso()
+        self._save(entries)
+        return target
+
     def list_entries(self, category: Optional[str] = None) -> List[PlaybookEntry]:
         """全エントリ（``category`` 指定時はそのカテゴリのみ）を保存順で返す。"""
         entries = self._load()

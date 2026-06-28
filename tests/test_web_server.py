@@ -3454,3 +3454,145 @@ def test_combined_execution_history_tolerates_null_timestamp(monkeypatch):
     assert {r["id"] for r in history} == {"no-ts", "has-ts"}
     # timestamp 有りが先頭（null は "" に coerce され reverse ソートで後方）。
     assert history[0]["id"] == "has-ts"
+
+
+# ---- Vault（Obsidian 互換ナレッジ）read-only API ----
+
+
+def _seed_vault_stores(tmp_path) -> None:
+    from core.intelligence.playbook import PlaybookStore
+    from core.knowledge.manager import KnowledgeManager
+    from core.metrics.outcomes import OutcomeStore
+
+    KnowledgeManager(tmp_path).save_insight(
+        "Vault Insight", "本文", tags=["best_practice"], source_org="Foo"
+    )
+    PlaybookStore(tmp_path).add("Vault Play", "施策", category="general", org_name="Foo")
+    OutcomeStore(tmp_path).record("Foo", "revenue", 250, source="note")
+
+
+def _export_vault(tmp_path) -> None:
+    from core.vault import build_default_sync
+
+    build_default_sync(tmp_path).export()
+
+
+def _patch_vault_home(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+
+def test_list_vault_notes(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    resp = client.get("/api/vault/notes")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["exists"] is True
+    types = {n["type"] for n in data["notes"] if n["managed"]}
+    assert {"insight", "playbook", "outcome"} <= types
+
+
+def test_get_vault_note_with_links(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    listing = client.get("/api/vault/notes").json()
+    insight = next(n for n in listing["notes"] if n["type"] == "insight")
+    resp = client.get(f"/api/vault/notes/{insight['path']}")
+    assert resp.status_code == 200
+    note = resp.json()
+    assert note["type"] == "insight"
+    assert note["canonical"] == "vault"
+    assert note["frontmatter"]["pantheon_id"]
+    assert any(w["type"] == "org" and w["target"] == "Foo" for w in note["wikilinks"])
+    assert note["has_conflict"] is False
+
+
+def test_get_vault_note_missing_returns_404(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    (tmp_path / "vault").mkdir(parents=True, exist_ok=True)
+    resp = client.get("/api/vault/notes/insights/does-not-exist.md")
+    assert resp.status_code == 404
+
+
+def test_get_vault_note_rejects_non_markdown(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    resp = client.get("/api/vault/notes/secrets.txt")
+    assert resp.status_code == 400
+
+
+def test_list_vault_notes_empty_when_no_vault(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    resp = client.get("/api/vault/notes")
+    assert resp.status_code == 200
+    assert resp.json()["notes"] == []
+    assert resp.json()["exists"] is False
+
+
+def test_edit_vault_note_roundtrip(tmp_path, monkeypatch):
+    from core.knowledge.manager import KnowledgeManager
+
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    listing = client.get("/api/vault/notes").json()
+    insight = next(n for n in listing["notes"] if n["type"] == "insight")
+    resp = client.put(f"/api/vault/notes/{insight['path']}", json={"content": "GUI で編集した本文"})
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "accepted"
+    assert KnowledgeManager(tmp_path).get_insights(limit=10)[0]["content"] == "GUI で編集した本文"
+
+
+def test_edit_vault_note_rejected_for_json_mirror(tmp_path, monkeypatch):
+    from core.metrics.outcomes import OutcomeStore
+
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    listing = client.get("/api/vault/notes").json()
+    outcome = next(n for n in listing["notes"] if n["type"] == "outcome")
+    resp = client.put(f"/api/vault/notes/{outcome['path']}", json={"content": "改ざん"})
+
+    assert resp.status_code == 409  # 読み取り専用ミラー（収益インテグリティ）
+    assert OutcomeStore(tmp_path).summary_for_org("Foo").total_revenue == 250.0
+
+
+def test_sync_vault_endpoint(tmp_path, monkeypatch):
+    from core.knowledge.manager import KnowledgeManager
+    from core.vault.format import parse_note, render_note
+
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    # Obsidian での編集を再現（ファイル本文を書き換え）
+    note_path = next((tmp_path / "vault" / "insights").glob("*.md"))
+    note = parse_note(note_path.read_text(encoding="utf-8"))
+    note_path.write_text(render_note(note.frontmatter, "Obsidian で編集"), encoding="utf-8")
+
+    resp = client.post("/api/vault/sync")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["import"]["imported"] == 1
+    assert KnowledgeManager(tmp_path).get_insights(limit=10)[0]["content"] == "Obsidian で編集"
+
+
+def test_vault_graph_endpoint(tmp_path, monkeypatch):
+    _patch_vault_home(tmp_path, monkeypatch)
+    _seed_vault_stores(tmp_path)
+    _export_vault(tmp_path)
+
+    resp = client.get("/api/vault/graph")
+    assert resp.status_code == 200
+    data = resp.json()
+    groups = {n["group"] for n in data["nodes"]}
+    assert "insight" in groups
+    assert any(e["target"] == "org:Foo" for e in data["edges"])
+    assert data["counts"]["notes"] >= 2

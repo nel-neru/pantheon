@@ -101,6 +101,7 @@ from commands.story import cmd_story_schedule as _cmd_story_schedule_impl
 from commands.story import cmd_story_thumbnail as _cmd_story_thumbnail_impl
 from commands.traces import cmd_traces as _cmd_traces_impl
 from commands.up import cmd_up as _cmd_up_impl
+from commands.vault import cmd_vault as _cmd_vault_impl
 from commands.version import cmd_version as _cmd_version_impl
 from core.paths import resource_root
 from core.platform.state import PlatformStateManager
@@ -513,6 +514,10 @@ def cmd_chat(args) -> None:
 
 def cmd_atlas(args) -> None:
     _cmd_atlas_impl(args)
+
+
+def cmd_vault(args) -> None:
+    _cmd_vault_impl(args)
 
 
 def cmd_traces(args) -> None:
@@ -966,6 +971,7 @@ HANDLERS = {
     "cmd_daemon_status": cmd_daemon_status,
     "cmd_chat": cmd_chat,
     "cmd_atlas": cmd_atlas,
+    "cmd_vault": cmd_vault,
     "cmd_traces": cmd_traces,
     "cmd_eval": cmd_eval,
     "cmd_memory_propagate": cmd_memory_propagate,

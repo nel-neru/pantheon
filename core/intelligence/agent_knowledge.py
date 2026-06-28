@@ -82,6 +82,10 @@ class AgentKnowledgeAccumulator:
         patterns.sort(key=lambda p: (p.success_score, p.created_at), reverse=True)
         return patterns[:limit]
 
+    def list_patterns(self) -> list[SuccessPattern]:
+        """全成功パターンを返す（Vault ミラー等の一覧用）。"""
+        return self._load_patterns()
+
     def _append_pattern(self, pattern: SuccessPattern) -> None:
         with self.pattern_file.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(pattern.to_dict(), ensure_ascii=False) + "\n")

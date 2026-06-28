@@ -68,6 +68,34 @@ class KnowledgeManager:
         title = kwargs.pop("title", f"[{repo_name}] insight")
         self.save_insight(title=title, content=content, tags=merged_tags, **kwargs)
 
+    def update_insight(
+        self,
+        entry_id: str,
+        *,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        importance: Optional[str] = None,
+    ) -> bool:
+        """既存 insight の編集可能フィールドのみ更新する（Vault からの書き戻し用）。
+
+        usage_count / last_referenced / quality_score / archived / created_at は実行時/JSON 所有
+        なので touch しない（None 指定のフィールドは変更しない）。未知 ``entry_id`` は False。
+        """
+        record = self._load_by_id(entry_id)
+        if not record:
+            return False
+        if title is not None:
+            record["title"] = title
+        if content is not None:
+            record["content"] = content
+        if tags is not None:
+            record["tags"] = list(tags)
+        if importance is not None:
+            record["importance"] = importance
+        self._write_record(record)
+        return True
+
     def get_insights(
         self,
         limit: int = 20,
