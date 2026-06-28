@@ -119,6 +119,15 @@ KNOWN_DAEMONS: Dict[str, DaemonSpec] = {
         pid_filename="task_daemon.pid",
         log_filename="task_daemon.log",
     ),
+    "vault_sync": DaemonSpec(
+        name="vault_sync",
+        description="Obsidian 互換 Vault の自動同期（store↔vault を定期双方向同期・LLM非依存・ローカルI/O）",
+        runner_module="core._vault_sync_daemon_runner",
+        frozen_flag="--vault-sync-daemon-run",
+        default_interval=300,
+        pid_filename="vault_sync_daemon.pid",
+        log_filename="vault_sync_daemon.log",
+    ),
 }
 
 
