@@ -3165,6 +3165,86 @@ def test_daemons_status_lists_registry(tmp_path, monkeypatch):
         assert d["healthy"] is False
 
 
+# ── Grok Phase 2: collect opt-in + 接続 API ────────────────────────────────────
+
+
+def test_collect_trends_default_no_grok(tmp_path, monkeypatch):
+    """body 無し POST /api/trends/collect は既定 sources=None（web+youtube・後方互換）。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    captured: dict = {}
+
+    async def fake_collect(**kwargs):
+        captured.update(kwargs)
+        return {"collected": 0, "added": 0}
+
+    monkeypatch.setattr("core.trends.runner.collect_and_store", fake_collect)
+
+    resp = client.post("/api/trends/collect")
+    assert resp.status_code == 200
+    assert captured["sources"] is None
+
+
+def test_collect_trends_include_grok(tmp_path, monkeypatch):
+    """include_grok=True で sources に grok が入り、grok_query が渡る。未接続は捏造せず返す。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    captured: dict = {}
+
+    async def fake_collect(**kwargs):
+        captured.update(kwargs)
+        return {"collected": 0, "added": 0, "grok": 0, "grok_needs_reconnect": True}
+
+    monkeypatch.setattr("core.trends.runner.collect_and_store", fake_collect)
+
+    resp = client.post(
+        "/api/trends/collect", json={"include_grok": True, "grok_query": "AI ツール"}
+    )
+    assert resp.status_code == 200
+    assert captured["sources"] == {"web", "youtube", "grok"}
+    assert captured["grok_query"] == "AI ツール"
+    assert resp.json()["grok_needs_reconnect"] is True
+
+
+def test_grok_status_disconnected(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    resp = client.get("/api/trends/grok/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["platform"] == "grok"
+    assert data["status"] == "disconnected"
+    assert data["connected_at"] is None
+
+
+def test_grok_disconnect_no_session(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+
+    resp = client.delete("/api/trends/grok")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["platform"] == "grok"
+    assert data["cleared"] is False
+    assert data["status"] == "disconnected"
+
+
+def test_grok_connect_unavailable_without_playwright(tmp_path, monkeypatch):
+    """Playwright 不可時はブラウザを起動せず unavailable を正直に返す（facade 無し）。"""
+    monkeypatch.setattr(server, "get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
+    monkeypatch.setattr("core.publishing.base.playwright_available", lambda: False)
+
+    resp = client.post("/api/trends/grok/connect")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["platform"] == "grok"
+    assert data["status"] == "unavailable"
+
+
 def test_daemons_start_unknown_name_returns_404(tmp_path, monkeypatch):
     monkeypatch.setattr("core.platform.state.get_platform_home", lambda: tmp_path)
     resp = client.post("/api/daemons/ghost/start")

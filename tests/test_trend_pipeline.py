@@ -42,6 +42,52 @@ def _seed_trends(home, scores):
         )
 
 
+def test_trend_scheduler_grok_opt_in_passes_grok_source(tmp_path, monkeypatch):
+    """grok_enabled=True で collect に sources={web,youtube,grok} が渡る（opt-in・既定オフ）。"""
+    from core.runtime.quota_governor import Verdict
+    from core.trends.trend_scheduler import TrendScheduler
+
+    home, psm, org = _setup(tmp_path, monkeypatch)
+
+    sched = TrendScheduler(platform_home=home, grok_enabled=True)
+    monkeypatch.setattr(sched._governor, "allow", lambda prio, **kw: Verdict(True, False, "ok"))
+
+    captured: dict = {}
+
+    async def fake_collect(**kwargs):
+        captured.update(kwargs)
+        return {"collected": 0, "added": 0, "grok": 0, "grok_needs_reconnect": True}
+
+    monkeypatch.setattr("core.trends.runner.collect_and_store", fake_collect)
+
+    summary = _run(sched.run_cycle())
+    assert captured["sources"] == {"web", "youtube", "grok"}
+    # 未接続/失効は捏造せず summary に観測可能なシグナルとして現れる。
+    assert summary["grok_needs_reconnect"] is True
+
+
+def test_trend_scheduler_grok_off_by_default(tmp_path, monkeypatch):
+    """既定（grok_enabled 未指定）は sources=None（web+youtube のみ・後方互換）。"""
+    from core.runtime.quota_governor import Verdict
+    from core.trends.trend_scheduler import TrendScheduler
+
+    home, psm, org = _setup(tmp_path, monkeypatch)
+
+    sched = TrendScheduler(platform_home=home)
+    monkeypatch.setattr(sched._governor, "allow", lambda prio, **kw: Verdict(True, False, "ok"))
+
+    captured: dict = {}
+
+    async def fake_collect(**kwargs):
+        captured.update(kwargs)
+        return {"collected": 0, "added": 0}
+
+    monkeypatch.setattr("core.trends.runner.collect_and_store", fake_collect)
+
+    _run(sched.run_cycle())
+    assert captured["sources"] is None
+
+
 def test_convert_creates_jobs_and_proposals(tmp_path, monkeypatch):
     home, psm, org = _setup(tmp_path, monkeypatch)
     _seed_trends(home, [9.0, 8.0, 3.0])  # 2 件が min_score(7) 以上
