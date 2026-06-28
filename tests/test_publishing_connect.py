@@ -201,3 +201,20 @@ async def test_cli_publish_status_lists_all_platforms(tmp_path, monkeypatch, cap
     out = capsys.readouterr().out
     for platform in ("note", "x", "wordpress"):
         assert platform in out
+
+
+def test_launcher_channel_resolution(monkeypatch):
+    """ブラウザチャンネル解決の優先順位: 明示 channel > PANTHEON_BROWSER_CHANNEL > None。
+
+    同梱 Chromium が起動できない Windows でシステム Chrome/Edge へ切り替えるための load-bearing
+    な設定経路（launch() はこの値で同梱→chrome→edge のフォールバックを決める）。
+    """
+    from core.publishing.connect import PlaywrightLauncher
+
+    monkeypatch.delenv("PANTHEON_BROWSER_CHANNEL", raising=False)
+    assert PlaywrightLauncher()._channel is None  # 既定 = 同梱 chromium（→自動フォールバック）
+    assert PlaywrightLauncher(channel="chrome")._channel == "chrome"
+
+    monkeypatch.setenv("PANTHEON_BROWSER_CHANNEL", "msedge")
+    assert PlaywrightLauncher()._channel == "msedge"  # env から解決
+    assert PlaywrightLauncher(channel="chrome")._channel == "chrome"  # 明示 param が env より優先

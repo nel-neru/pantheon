@@ -342,6 +342,57 @@ export async function getPortfolioOverview(): Promise<PortfolioOverview> {
   return api<PortfolioOverview>('GET', '/api/portfolio/overview')
 }
 
+// ─── UI status monitor (GET/POST /api/ui/status) ─────────────────────────────
+
+/** 1 ページが叩く 1 API のヘルスチェック結果。 */
+export type UiApiCheck = {
+  method: string
+  path: string
+  status_code: number
+  ok: boolean
+  latency_ms: number
+  error?: string | null
+}
+
+/** 1 ページのヘルス。status は ok / degraded / error のいずれか。 */
+export type UiPageStatus = {
+  route: string
+  label: string
+  group: string
+  status: 'ok' | 'degraded' | 'error'
+  static: boolean
+  apis: UiApiCheck[]
+  controls: string[]
+}
+
+/** UI 全体の集計。 */
+export type UiStatusOverall = {
+  pages: number
+  ok: number
+  degraded: number
+  error: number
+  total_apis: number
+  ok_apis: number
+}
+
+/** 生成済みの UI 状態レポート。 */
+export type UiStatusReport = {
+  available?: true
+  generated_at: string
+  overall: UiStatusOverall
+  pages: UiPageStatus[]
+}
+
+/** レポート未生成（まだ一度もチェックしていない）状態。 */
+export type UiStatusUnavailable = {
+  available: false
+  message?: string
+}
+
+/** GET /api/ui/status は判別ユニオン（生成済み or 未生成）を返す。 */
+// 判別ユニオン型。呼び出しは既存規約どおりページ側で api('GET'|'POST', '/api/ui/status'[/refresh]) を直接使う。
+export type UiStatusResponse = UiStatusReport | UiStatusUnavailable
+
 /**
  * SSE ストリーミング POST ヘルパー。
  * バックエンドの text/event-stream レスポンスを chunk 単位で読み取り、

@@ -1507,13 +1507,26 @@ tr:hover td { background: var(--color-surface-2); }
   padding: 20px;
 }
 
+/*
+ * Radix Dialog.Content はポータルされ Overlay の「兄弟」として描画されるため、
+ * Overlay(.dialog-overlay) の flex 中央寄せは Content に効かない。Content 自身（.dialog）に
+ * fixed 中央寄せを与える必要がある（さもないと通常フロー＝ページ末尾/左下に描画され、
+ * 長いページでは画面外に押し出され到達不能になる）。
+ */
 .dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 101;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: 20px;
   width: 100%;
   max-width: 480px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   box-shadow: 0 20px 60px oklch(0 0 0 / 50%);
 }
 
@@ -1537,16 +1550,7 @@ tr:hover td { background: var(--color-surface-2); }
   margin-top: 20px;
 }
 
-/* Radix Dialog ベースの共通 ConfirmDialog（Content はポータルされ単独で中央寄せが要る） */
-.confirm-dialog {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 101;
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
-}
+/* ConfirmDialog の中央寄せ/サイズ制約は基底 .dialog に集約済み（旧: ここで個別指定していた）。 */
 
 .confirm-word {
   margin-top: 4px;
@@ -2016,8 +2020,17 @@ tr:hover td { background: var(--color-surface-2); }
 }
 
 .detail-panel {
+  /*
+   * Radix Dialog.Content（Overlay の兄弟としてポータルされる）なので、
+   * Overlay の justify-content:flex-end は効かない。Content 自身を viewport 右端の
+   * フル高ドロワーとして fixed 配置する（さもないと通常フローでページ末尾/左下に描画される）。
+   */
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 201;
   width: min(480px, 100vw);
-  height: 100%;
+  height: 100vh;
   min-height: 0;
   background: var(--color-surface);
   border-left: 1px solid var(--color-border-subtle);

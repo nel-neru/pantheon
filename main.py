@@ -731,6 +731,24 @@ async def cmd_trends_business_proposals(args) -> None:
     await _impl(args)
 
 
+async def cmd_trends_connect_grok(args) -> None:
+    from commands.trends import cmd_trends_connect_grok as _impl
+
+    await _impl(args)
+
+
+async def cmd_trends_grok_status(args) -> None:
+    from commands.trends import cmd_trends_grok_status as _impl
+
+    await _impl(args)
+
+
+async def cmd_trends_disconnect_grok(args) -> None:
+    from commands.trends import cmd_trends_disconnect_grok as _impl
+
+    await _impl(args)
+
+
 async def cmd_revenue_collect(args) -> None:
     from commands.revenue import cmd_revenue_collect as _impl
 
@@ -881,6 +899,12 @@ async def cmd_publish_jobs_delete(args) -> None:
     await _impl(args)
 
 
+async def cmd_ui_status(args) -> None:
+    from commands.ui_status import cmd_ui_status as _impl
+
+    await _impl(args)
+
+
 HANDLERS = {
     "cmd_init": cmd_init,
     "cmd_org_add": cmd_org_add,
@@ -983,6 +1007,9 @@ HANDLERS = {
     "cmd_trends_business_scan": cmd_trends_business_scan,
     "cmd_trends_untapped": cmd_trends_untapped,
     "cmd_trends_business_proposals": cmd_trends_business_proposals,
+    "cmd_trends_connect_grok": cmd_trends_connect_grok,
+    "cmd_trends_grok_status": cmd_trends_grok_status,
+    "cmd_trends_disconnect_grok": cmd_trends_disconnect_grok,
     "cmd_revenue_collect": cmd_revenue_collect,
     "cmd_revenue_report": cmd_revenue_report,
     "cmd_revenue_intelligence": cmd_revenue_intelligence,
@@ -1008,6 +1035,7 @@ HANDLERS = {
     "cmd_publish_jobs_run": cmd_publish_jobs_run,
     "cmd_publish_jobs_confirm": cmd_publish_jobs_confirm,
     "cmd_publish_jobs_delete": cmd_publish_jobs_delete,
+    "cmd_ui_status": cmd_ui_status,
 }
 
 
