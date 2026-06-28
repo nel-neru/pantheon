@@ -3150,7 +3150,15 @@ def test_daemons_status_lists_registry(tmp_path, monkeypatch):
     data = resp.json()
     assert data["rate_limited"] is False
     names = [d["name"] for d in data["daemons"]]
-    assert names == ["content", "improvement", "revenue", "task", "trend", "watchdog"]
+    assert names == [
+        "content",
+        "improvement",
+        "revenue",
+        "task",
+        "trend",
+        "vault_sync",
+        "watchdog",
+    ]
     for d in data["daemons"]:
         assert d["running"] is False
         assert d["heartbeat_stale"] is True

@@ -29,6 +29,7 @@ def test_known_daemons_and_get_spec():
         "trend",
         "revenue",
         "task",
+        "vault_sync",
     }
     assert get_spec("improvement").pid_filename == "daemon.pid"  # 既存レイアウト互換
     assert get_spec("content").pid_filename == "content_daemon.pid"
@@ -41,6 +42,10 @@ def test_known_daemons_and_get_spec():
     assert task.pid_filename == "task_daemon.pid"
     assert task.runner_module == "core._task_daemon_runner"
     assert task.frozen_flag == "--task-daemon-run"
+    vault_sync = get_spec("vault_sync")
+    assert vault_sync.pid_filename == "vault_sync_daemon.pid"
+    assert vault_sync.runner_module == "core._vault_sync_daemon_runner"
+    assert vault_sync.frozen_flag == "--vault-sync-daemon-run"
     with pytest.raises(ValueError):
         get_spec("ghost")
 
