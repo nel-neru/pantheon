@@ -92,6 +92,10 @@ web/frontend/.vite/
 .claude/settings.local.json
 .claude/.credentials.json
 
+# Codex live shell-env config is machine-specific (absolute paths); only the
+# portable .codex/config.toml.example is tracked.
+.codex/config.toml
+
 # Misc
 *.log
 *.bak
