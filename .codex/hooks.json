@@ -1,0 +1,66 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/guard-bash.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/protect-secrets.mjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/format.mjs",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "node .codex/hooks/post-edit-checks.mjs",
+            "timeout": 45
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/session-context.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .codex/hooks/session-heartbeat.mjs"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/auto-commit.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

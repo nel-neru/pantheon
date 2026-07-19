@@ -1,0 +1,13 @@
+# Codex shell-environment bootstrap for Pantheon.
+#
+# Copy this file to `.codex/config.toml` (which is gitignored, machine-local)
+# on each machine. The `${...}` references expand against your environment,
+# so no absolute user path is hard-coded here. Adjust the Node.js entry to
+# match your local install if it differs.
+
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+PATH = '${LOCALAPPDATA}\Microsoft\WinGet\Packages\OpenJS.NodeJS.LTS_Microsoft.Winget.Source_8wekyb3d8bbwe\node-v24.16.0-win-x64;${USERPROFILE}\NEL\pantheon\.venv\Scripts;C:\Program Files\Git\cmd;${USERPROFILE}\.local\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;${PATH}'
+PANTHEON_CLAUDE_BIN = '${USERPROFILE}\.local\bin\claude.exe'
